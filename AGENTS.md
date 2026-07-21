@@ -91,9 +91,22 @@ CLI 参数（全部有默认值）：
 2. `go build ./... && go test ./...` 验证项目健康
 3. 审查 dependabot PRs，安全则合并
 4. 修复 issue → commit → push → 打 patch tag（v1.0.1 等）
-5. 无需操作时报告 "no pending work" 并正常退出
+5. **上游同步**：对比 `progress.json` 中 `upstream_commits` 的 hash
+   - 用 GitHub API 查询新提交：`curl -s "https://api.github.com/repos/decolua/9router/commits?since=<date>"`
+   - 重点关注 `open-sse/providers/registry/`（新 provider、baseUrl 变更）
+   - 重点关注 `open-sse/config/`（模型映射、能力变更）
+   - 有值得借鉴的改动 → 移植到 Go → commit → push
+   - 更新 `upstream_commits` hash
+6. 无需操作时报告 "no pending work" 并正常退出
 
 Phase 10 永远不会被标记为 done——它是持续运行的守护状态。
+
+## 参考项目使用策略
+
+- **开发期（Phase 2-9）**：按需 `git clone --depth 1` 到 /tmp，用完即弃
+- **维护期（Phase 10）**：不 clone，用 GitHub API 对比 commit 差异
+- **不需要每次 session 都 clone 参考项目**——只在当前 phase 任务明确需要时拉取
+- 上游 commit hash 记录在 `progress.json` 的 `upstream_commits` 字段
 
 ## 环境配置
 

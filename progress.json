@@ -129,17 +129,24 @@
     {
       "id": 10,
       "name": "Maintenance Mode (post-v1.0.0)",
-      "description": "After all phases done: check issues, fix bugs, update deps, report status",
+      "description": "Perpetual: issues, deps, upstream sync (9router/VansRouter), provider registry updates",
       "status": "pending",
       "tasks": [
         "Check GitHub Issues for bug reports or feature requests",
         "Run go build ./... && go test ./... to verify project health",
         "Review and merge dependabot PRs if safe",
-        "Fix reported issues and push patches",
+        "Fix reported issues and push patches (tag v1.0.x)",
+        "Upstream sync: compare upstream_commits hashes, analyze new commits for borrowable improvements",
+        "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
+        "If upstream has relevant changes: port to Go, commit, push",
         "If no action needed: report 'no pending work' and exit"
       ]
     }
   ],
   "current_phase": 2,
+  "upstream_commits": {
+    "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1",
+    "Vanszs/VansRouter": "fc7d27ac07cb823a51cbeaed17c5c573ade8972b"
+  },
   "last_updated": "2026-07-21"
 }
