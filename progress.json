@@ -125,6 +125,19 @@
         "Implement provider connection testing endpoint",
         "Implement max_tokens clamping for specific providers (NVIDIA Kimi)"
       ]
+    },
+    {
+      "id": 10,
+      "name": "Maintenance Mode (post-v1.0.0)",
+      "description": "After all phases done: check issues, fix bugs, update deps, report status",
+      "status": "pending",
+      "tasks": [
+        "Check GitHub Issues for bug reports or feature requests",
+        "Run go build ./... && go test ./... to verify project health",
+        "Review and merge dependabot PRs if safe",
+        "Fix reported issues and push patches",
+        "If no action needed: report 'no pending work' and exit"
+      ]
     }
   ],
   "current_phase": 2,

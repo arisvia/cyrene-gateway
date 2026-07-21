@@ -68,19 +68,32 @@ schema.sql                   # 数据库 schema 参考
 
 三层降级策略：
 1. `-dashboard /path/to/ui` → 用户指定的本地前端目录（最高优先级）
-2. 运行时从 `-panel-url` 下载完整面板 → 缓存到 data 目录
-3. 内置 embed 单 HTML（Vue3 + TailwindCSS via CDN）→ 永远可用的兜底
+2. 内置 embed `templates/index.html`（Vue3 + TailwindCSS via CDN）→ 零配置兜底
+3. `-panel-url` → 可选，拉取远程更新版面板（默认指向本仓库 raw 文件）
+
+面板是单 HTML 文件，随主仓库维护在 `templates/index.html`，不需要独立前端仓库。
 
 CLI 参数（全部有默认值）：
 ```
 -host 0.0.0.0       # 监听地址
 -port 20128         # 端口
 -db data.sqlite     # 数据库路径
--dashboard ""       # 本地面板路径
--panel-url <默认链接> # 面板下载地址
+-dashboard ""       # 本地面板路径（空=使用内置）
+-panel-url https://raw.githubusercontent.com/arisvia/cyrene-gateway/main/templates/index.html
 -secret ""          # Dashboard 访问密码
 ```
 环境变量 CYRENE_HOST / CYRENE_PORT 等同样支持，flag 优先于 env。
+
+## 维护模式（Phase 9 完成后）
+
+当所有开发 phase（1-9）均为 done 时，后续定时触发进入维护模式：
+1. 检查 GitHub Issues（bug 报告、feature request）
+2. `go build ./... && go test ./...` 验证项目健康
+3. 审查 dependabot PRs，安全则合并
+4. 修复 issue → commit → push → 打 patch tag（v1.0.1 等）
+5. 无需操作时报告 "no pending work" 并正常退出
+
+Phase 10 永远不会被标记为 done——它是持续运行的守护状态。
 
 ## 环境配置
 
