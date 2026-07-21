@@ -103,13 +103,13 @@ Phase 10 永远不会被标记为 done——它是持续运行的守护状态。
 
 ## 参考项目使用策略
 
-- **主上游**: `decolua/9router` — 每次维护周期都检查新提交
-- **VansRouter**: 9router 的 fork，底层代码 90%+ 相同，**不做定期 diff**（会重复运算）
-  - 仅在需要其独有增强时按需参考（loop guard、termination prompt 等）
-  - 不记录在 `upstream_commits` 中
-- **其他参考**: 用户通过 Issue 指定，按需分析
-- **开发期（Phase 2-9）**：按需 `git clone --depth 1` 到 /tmp，用完即弃
-- **维护期（Phase 10）**：不 clone，用 GitHub API 对比 commit 差异
+- **开发期（Phase 2-9）**：9router 和 VansRouter **都参考**
+  - 9router：核心架构、路由逻辑、provider 定义的权威来源
+  - VansRouter：已做的增强（loop guard、termination prompt、bug fix）直接借鉴
+  - 按需 `git clone --depth 1` 到 /tmp，用完即弃
+- **维护期（Phase 10）**：只定期 diff 9router（主上游）
+  - VansRouter 是 9router 的 fork，底层 90%+ 相同，定期 diff 会重复运算
+  - 仅在 Issue 指定或其独有增强相关时按需查看
 - **不需要每次 session 都 clone 参考项目**——只在当前 phase 任务明确需要时拉取
 - 上游 commit hash 记录在 `progress.json` 的 `upstream_commits` 字段
 - 新增上游参考：往 `upstream_commits` map 加一条即可
