@@ -1,0 +1,7 @@
+/data.sqlite
+/cyrene-gateway
+/cyrene-gateway.exe
+/dist
+/build
+.DS_Store
+*.log
