@@ -59,10 +59,28 @@ schema.sql                   # 数据库 schema 参考
 - Phase 1 完成 → v0.1.0
 - Phase 2 完成 → v0.2.0
 - ...
-- Phase 8 完成 → v0.8.0
+- Phase 9 完成 → v0.9.0
 - 最终稳定 → v1.0.0
 
 打 tag 会触发 GitHub Actions 创建 Release（含 5 平台二进制）。
+
+## Dashboard 面板设计（Phase 5）
+
+三层降级策略：
+1. `-dashboard /path/to/ui` → 用户指定的本地前端目录（最高优先级）
+2. 运行时从 `-panel-url` 下载完整面板 → 缓存到 data 目录
+3. 内置 embed 单 HTML（Vue3 + TailwindCSS via CDN）→ 永远可用的兜底
+
+CLI 参数（全部有默认值）：
+```
+-host 0.0.0.0       # 监听地址
+-port 20128         # 端口
+-db data.sqlite     # 数据库路径
+-dashboard ""       # 本地面板路径
+-panel-url <默认链接> # 面板下载地址
+-secret ""          # Dashboard 访问密码
+```
+环境变量 CYRENE_HOST / CYRENE_PORT 等同样支持，flag 优先于 env。
 
 ## 环境配置
 

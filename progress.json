@@ -1,6 +1,6 @@
 {
   "project": "cyrene-gateway",
-  "description": "Go 1.21+ high-performance AI proxy gateway refactored from 9router (Next.js)",
+  "description": "Go 1.22+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
   "phases": [
@@ -10,7 +10,7 @@
       "description": "Project structure, SQLite persistence, config management, graceful shutdown",
       "status": "done",
       "tasks": [
-        "Restructure Go project layout (cmd/, internal/, pkg/)",
+        "Restructure Go project layout (cmd/, internal/)",
         "Implement SQLite database layer with migrations (schema.sql tables)",
         "Implement settings repository (JSON blob store)",
         "Implement KV store",
@@ -24,11 +24,11 @@
       "description": "Provider registry, connection CRUD, account fallback with exponential backoff",
       "status": "pending",
       "tasks": [
-        "Implement provider registry (static config for known providers)",
-        "Implement provider connections repository (CRUD + priority + active status)",
         "Implement provider nodes repository (custom compatible endpoints)",
-        "Implement account fallback logic (cooldown, backoff, model locks)",
-        "Implement credential selection (priority-based, exclude set)"
+        "Implement account fallback logic (cooldown, exponential backoff, model locks)",
+        "Implement credential selection (priority-based, exclude set, cooldown-aware)",
+        "Implement connection status management (active/error/rate-limited)",
+        "Implement provider CRUD API endpoints (update/delete)"
       ]
     },
     {
@@ -37,11 +37,11 @@
       "description": "Model string parsing, alias resolution, combo fallback strategies",
       "status": "pending",
       "tasks": [
-        "Implement model string parser (provider/model format)",
-        "Implement model alias resolution (DB-backed aliases)",
-        "Implement provider inference from model name prefix",
         "Implement combo system (fallback + round-robin strategies)",
-        "Implement model availability and disabled models"
+        "Implement combo sticky round-robin limit",
+        "Implement model availability and disabled models",
+        "Implement combo CRUD API enhancements (update)",
+        "Add unit tests for model parsing and combo logic"
       ]
     },
     {
@@ -50,56 +50,70 @@
       "description": "/v1/chat/completions, /v1/models, /v1/embeddings endpoints with streaming",
       "status": "pending",
       "tasks": [
-        "Implement HTTP router with middleware chain",
-        "Implement /v1/models endpoint (aggregate from connections)",
-        "Implement /v1/chat/completions handler (non-streaming)",
-        "Implement SSE streaming proxy (chunked transfer)",
-        "Implement /v1/embeddings endpoint",
-        "Implement request/response format translation (OpenAI<->Claude<->Gemini)"
+        "Implement middleware chain (logging, recovery, CORS)",
+        "Implement /v1/messages endpoint (Anthropic-compatible passthrough)",
+        "Enhance SSE streaming proxy (disconnect-aware, [DONE] handling)",
+        "Implement request/response format translation (OpenAI<->Claude<->Gemini)",
+        "Implement usage extraction from upstream responses",
+        "Add integration tests with mock upstream"
       ]
     },
     {
       "id": 5,
+      "name": "Dashboard Panel System",
+      "description": "Embedded single-HTML panel (Vue3+Tailwind CDN), local mount, runtime download, CLI params",
+      "status": "pending",
+      "tasks": [
+        "Implement CLI params: -host, -port, -db, -dashboard, -panel-url, -secret (all with defaults)",
+        "Implement env var support (CYRENE_HOST, CYRENE_PORT, etc.), flag takes priority",
+        "Implement embedded single-HTML dashboard (Vue3 + TailwindCSS via CDN, go:embed)",
+        "Implement panel serving: local dir (-dashboard) > downloaded cache > embedded fallback",
+        "Implement runtime panel download from -panel-url with cache in data dir",
+        "Implement panel routes (GET / serves dashboard, static file serving)",
+        "Panel features: provider list, connection status, alias management, basic usage view"
+      ]
+    },
+    {
+      "id": 6,
       "name": "Authentication & API Keys",
       "description": "Local API key management, Bearer token validation, dashboard auth",
       "status": "pending",
       "tasks": [
         "Implement API key generation (HMAC-signed)",
-        "Implement API key validation middleware",
-        "Implement API keys repository (CRUD)",
-        "Implement dashboard session auth (cookie-based JWT)",
-        "Implement login/logout endpoints"
+        "Implement API key validation middleware for /v1/* routes",
+        "Implement dashboard session auth (cookie-based, -secret param)",
+        "Implement login/logout endpoints",
+        "Implement requireApiKey setting enforcement"
       ]
     },
     {
-      "id": 6,
+      "id": 7,
       "name": "Usage Tracking & Observability",
       "description": "Token usage recording, daily aggregation, request details logging",
       "status": "pending",
       "tasks": [
         "Implement usage history repository",
-        "Implement usage extraction from provider responses",
-        "Implement daily usage aggregation",
-        "Implement request details logging",
+        "Implement usage extraction from provider responses (stream + non-stream)",
+        "Implement daily usage aggregation (usageDaily table)",
+        "Implement request details logging (requestDetails table)",
         "Implement /api/usage/* dashboard endpoints"
       ]
     },
     {
-      "id": 7,
+      "id": 8,
       "name": "Dashboard Management API",
-      "description": "REST API for providers, connections, combos, settings management",
+      "description": "Complete REST API for all management operations",
       "status": "pending",
       "tasks": [
-        "Implement /api/providers CRUD endpoints",
-        "Implement /api/combos CRUD endpoints",
-        "Implement /api/settings GET/PUT endpoints",
-        "Implement /api/keys CRUD endpoints",
-        "Implement /api/models/alias management",
-        "Implement /api/health endpoint (enhanced)"
+        "Implement /api/providers update/delete endpoints",
+        "Implement /api/provider-nodes CRUD endpoints",
+        "Implement /api/combos update endpoint",
+        "Implement /api/proxy-pools CRUD endpoints",
+        "Implement /api/health enhanced (db status, uptime, connection count)"
       ]
     },
     {
-      "id": 8,
+      "id": 9,
       "name": "Advanced Features & Enhancements",
       "description": "Token refresh, loop guard (VansRouter), proxy pools, provider testing",
       "status": "pending",
@@ -109,7 +123,7 @@
         "Implement termination prompt injection",
         "Implement proxy pool support (outbound proxy rotation)",
         "Implement provider connection testing endpoint",
-        "Implement max_tokens clamping for specific providers"
+        "Implement max_tokens clamping for specific providers (NVIDIA Kimi)"
       ]
     }
   ],
