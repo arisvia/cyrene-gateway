@@ -145,8 +145,11 @@
   ],
   "current_phase": 2,
   "upstream_commits": {
-    "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1",
-    "Vanszs/VansRouter": "fc7d27ac07cb823a51cbeaed17c5c573ade8972b"
+    "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
+  },
+  "upstream_notes": {
+    "decolua/9router": "primary upstream, sync every maintenance cycle",
+    "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
   "last_updated": "2026-07-21"
 }
