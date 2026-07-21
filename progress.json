@@ -22,7 +22,7 @@
       "id": 2,
       "name": "Provider & Connection Management",
       "description": "Provider registry, connection CRUD, account fallback with exponential backoff",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Implement provider nodes repository (custom compatible endpoints)",
         "Implement account fallback logic (cooldown, exponential backoff, model locks)",
@@ -143,7 +143,7 @@
       ]
     }
   ],
-  "current_phase": 2,
+  "current_phase": 3,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

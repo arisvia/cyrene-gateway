@@ -67,8 +67,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Select first available connection (priority-ordered, cooldown-aware)
-	conn := selectAvailableConnection(conns)
+	// Select best available connection (priority-ordered, cooldown-aware, model-lock-aware)
+	conn := selectAvailableConnection(conns, modelInfo.Model, nil)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
@@ -190,7 +190,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := selectAvailableConnection(conns)
+	conn := selectAvailableConnection(conns, modelInfo.Model, nil)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "all accounts rate-limited"})
 		return
@@ -234,17 +234,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 }
 
-// selectAvailableConnection picks the first connection not in cooldown
-func selectAvailableConnection(conns []model.ProviderConnection) *model.ProviderConnection {
-	now := time.Now()
-	for i := range conns {
-		if conns[i].Data.RateLimitedUntil == "" {
-			return &conns[i]
-		}
-		until, err := time.Parse(time.RFC3339, conns[i].Data.RateLimitedUntil)
-		if err != nil || until.Before(now) {
-			return &conns[i]
-		}
-	}
-	return nil
+// selectAvailableConnection picks the best connection using priority, cooldown, and model locks.
+func selectAvailableConnection(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool) *model.ProviderConnection {
+	return provider.SelectCredential(conns, modelName, excludeIDs)
 }

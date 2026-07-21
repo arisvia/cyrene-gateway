@@ -40,6 +40,13 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	s.Router.HandleFunc("GET /api/providers", s.handleListProviders)
 	s.Router.HandleFunc("POST /api/providers", s.handleCreateProvider)
+	s.Router.HandleFunc("PUT /api/providers/{id}", s.handleUpdateProvider)
+	s.Router.HandleFunc("DELETE /api/providers/{id}", s.handleDeleteProvider)
+	s.Router.HandleFunc("POST /api/providers/{id}/reset", s.handleResetProviderStatus)
+	s.Router.HandleFunc("GET /api/provider-nodes", s.handleListNodes)
+	s.Router.HandleFunc("POST /api/provider-nodes", s.handleCreateNode)
+	s.Router.HandleFunc("PUT /api/provider-nodes/{id}", s.handleUpdateNode)
+	s.Router.HandleFunc("DELETE /api/provider-nodes/{id}", s.handleDeleteNode)
 	s.Router.HandleFunc("GET /api/combos", s.handleListCombos)
 	s.Router.HandleFunc("POST /api/combos", s.handleCreateCombo)
 	s.Router.HandleFunc("DELETE /api/combos/{id}", s.handleDeleteCombo)
@@ -190,6 +197,185 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, pc)
+}
+
+func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	existing, err := s.DB.GetConnection(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+
+	var req struct {
+		Provider *string        `json:"provider"`
+		AuthType *string        `json:"authType"`
+		Name     *string        `json:"name"`
+		Email    *string        `json:"email"`
+		Priority *int           `json:"priority"`
+		IsActive *bool          `json:"isActive"`
+		Data     map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	if req.Provider != nil {
+		existing.Provider = *req.Provider
+	}
+	if req.AuthType != nil {
+		existing.AuthType = *req.AuthType
+	}
+	if req.Name != nil {
+		existing.Name = *req.Name
+	}
+	if req.Email != nil {
+		existing.Email = *req.Email
+	}
+	if req.Priority != nil {
+		existing.Priority = *req.Priority
+	}
+	if req.IsActive != nil {
+		existing.IsActive = *req.IsActive
+	}
+	if req.Data != nil {
+		dataBytes, _ := json.Marshal(req.Data)
+		var connData model.ConnectionData
+		json.Unmarshal(dataBytes, &connData)
+		existing.Data = connData
+	}
+
+	if err := s.DB.UpdateConnection(existing); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update connection"})
+		return
+	}
+	writeJSON(w, http.StatusOK, existing)
+}
+
+func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.DB.DeleteConnection(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete connection"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleResetProviderStatus(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	conn, err := s.DB.GetConnection(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+
+	provider.ResetAccountState(conn)
+	provider.ClearModelLocks(conn)
+
+	if err := s.DB.UpdateConnection(conn); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset connection"})
+		return
+	}
+	writeJSON(w, http.StatusOK, conn)
+}
+
+func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
+	nodes, err := s.DB.ListNodes()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, nodes)
+}
+
+func (s *Server) handleCreateNode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+		Data struct {
+			Prefix  string `json:"prefix"`
+			APIType string `json:"apiType"`
+			BaseURL string `json:"baseUrl"`
+			APIKey  string `json:"apiKey"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	n := &model.ProviderNode{
+		ID:   generateID(),
+		Type: req.Type,
+		Name: req.Name,
+		Data: model.NodeData{
+			Prefix:  req.Data.Prefix,
+			APIType: req.Data.APIType,
+			BaseURL: req.Data.BaseURL,
+			APIKey:  req.Data.APIKey,
+		},
+	}
+
+	if err := s.DB.CreateNode(n); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create node"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, n)
+}
+
+func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	existing, err := s.DB.GetNode(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "node not found"})
+		return
+	}
+
+	var req struct {
+		Type *string `json:"type"`
+		Name *string `json:"name"`
+		Data *struct {
+			Prefix  string `json:"prefix"`
+			APIType string `json:"apiType"`
+			BaseURL string `json:"baseUrl"`
+			APIKey  string `json:"apiKey"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	if req.Type != nil {
+		existing.Type = *req.Type
+	}
+	if req.Name != nil {
+		existing.Name = *req.Name
+	}
+	if req.Data != nil {
+		existing.Data = model.NodeData{
+			Prefix:  req.Data.Prefix,
+			APIType: req.Data.APIType,
+			BaseURL: req.Data.BaseURL,
+			APIKey:  req.Data.APIKey,
+		}
+	}
+
+	if err := s.DB.UpdateNode(existing); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update node"})
+		return
+	}
+	writeJSON(w, http.StatusOK, existing)
+}
+
+func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := s.DB.DeleteNode(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete node"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
 func (s *Server) handleListCombos(w http.ResponseWriter, r *http.Request) {
