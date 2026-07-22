@@ -48,7 +48,7 @@
       "id": 4,
       "name": "OpenAI-Compatible API Surface",
       "description": "/v1/chat/completions, /v1/models, /v1/embeddings endpoints with streaming",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Implement middleware chain (logging, recovery, CORS)",
         "Implement /v1/messages endpoint (Anthropic-compatible passthrough)",
@@ -143,7 +143,7 @@
       ]
     }
   ],
-  "current_phase": 4,
+  "current_phase": 5,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
