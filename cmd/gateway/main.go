@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/handler"
@@ -17,6 +18,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Override auth secret if -secret flag is provided
+	auth.SetSecret(cfg.Secret)
 
 	// Structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))

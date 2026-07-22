@@ -359,3 +359,185 @@ func TestDashboardServesHTML(t *testing.T) {
 		t.Fatal("expected dashboard HTML content")
 	}
 }
+
+func TestAuthStatusNoLoginRequired(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	req := httptest.NewRequest("GET", "/api/auth/status", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["requireLogin"] != false {
+		t.Fatalf("expected requireLogin=false, got %v", resp["requireLogin"])
+	}
+	if resp["authenticated"] != true {
+		t.Fatalf("expected authenticated=true when login not required, got %v", resp["authenticated"])
+	}
+}
+
+func TestLoginWithDefaultPassword(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	body := `{"password":"123456"}`
+	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Check that auth_token cookie is set
+	cookies := w.Result().Cookies()
+	found := false
+	for _, c := range cookies {
+		if c.Name == "auth_token" && c.Value != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected auth_token cookie to be set")
+	}
+}
+
+func TestLoginWithWrongPassword(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	body := `{"password":"wrongpass"}`
+	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestLogout(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	req := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Check that auth_token cookie is cleared
+	cookies := w.Result().Cookies()
+	for _, c := range cookies {
+		if c.Name == "auth_token" && c.MaxAge != -1 {
+			t.Fatal("expected auth_token cookie to be cleared")
+		}
+	}
+}
+
+func TestAPIKeyAuthEnforcement(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Enable requireApiKey
+	settings, _ := database.GetSettings()
+	settings.RequireAPIKey = true
+	database.SaveSettings(settings)
+
+	// Request without API key should be rejected
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without API key, got %d", w.Code)
+	}
+}
+
+func TestAPIKeyAuthWithValidKey(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Enable requireApiKey
+	settings, _ := database.GetSettings()
+	settings.RequireAPIKey = true
+	database.SaveSettings(settings)
+
+	// Create an API key
+	key := &model.APIKey{
+		ID:       "test-key-id",
+		Key:      "cg-testkey123",
+		Name:     "test",
+		IsActive: true,
+	}
+	database.CreateAPIKey(key)
+
+	// Request with valid API key should pass through (will get 503 for no credentials, not 401)
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer cg-testkey123")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code == http.StatusUnauthorized {
+		t.Fatalf("expected non-401 with valid API key, got %d", w.Code)
+	}
+}
+
+func TestDashboardAuthEnforcement(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Enable requireLogin
+	settings, _ := database.GetSettings()
+	settings.RequireLogin = true
+	database.SaveSettings(settings)
+
+	// Request to protected API without session should be rejected
+	req := httptest.NewRequest("GET", "/api/providers", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without session, got %d", w.Code)
+	}
+
+	// Public paths should still work
+	req = httptest.NewRequest("GET", "/api/health", nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for public path, got %d", w.Code)
+	}
+}
+
+func TestCreateAPIKeyEndpoint(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	body := `{"name":"my-key"}`
+	req := httptest.NewRequest("POST", "/api/keys", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	key, ok := resp["key"].(string)
+	if !ok || !strings.HasPrefix(key, "cg-") {
+		t.Fatalf("expected cg- prefixed key, got %v", resp["key"])
+	}
+	if !strings.Contains(key, ".") {
+		t.Fatalf("expected HMAC-signed key with dot separator, got %s", key)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
@@ -19,6 +20,7 @@ type Server struct {
 	Handler   http.Handler // Router wrapped with middleware
 	Combos    *provider.ComboManager
 	Dashboard *DashboardHandler
+	Auth      *AuthHandler
 }
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {
@@ -28,6 +30,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Router:    mux,
 		Combos:    provider.NewComboManager(),
 		Dashboard: NewDashboardHandler(cfg),
+		Auth:      NewAuthHandler(database),
 	}
 	s.registerRoutes()
 
@@ -36,6 +39,8 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		middleware.Recovery,
 		middleware.Logging,
 		middleware.CORS,
+		middleware.APIKeyAuth(database),
+		middleware.DashboardAuth(database),
 	)
 	return s
 }
@@ -47,6 +52,11 @@ func (s *Server) registerRoutes() {
 	// Health & meta
 	s.Router.HandleFunc("GET /api/health", s.handleHealth)
 	s.Router.HandleFunc("GET /api/version", s.handleVersion)
+
+	// Auth endpoints
+	s.Router.HandleFunc("POST /api/auth/login", s.Auth.HandleLogin)
+	s.Router.HandleFunc("POST /api/auth/logout", s.Auth.HandleLogout)
+	s.Router.HandleFunc("GET /api/auth/status", s.Auth.HandleStatus)
 
 	// OpenAI-compatible API surface
 	s.Router.HandleFunc("GET /v1/models", s.handleModels)
@@ -524,7 +534,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 
 	key := &model.APIKey{
 		ID:       generateID(),
-		Key:      generateAPIKey(),
+		Key:      auth.GenerateAPIKey(),
 		Name:     req.Name,
 		IsActive: true,
 	}
