@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
@@ -19,7 +20,13 @@ func setupTestServer(t *testing.T) (*Server, *db.DB) {
 		t.Fatalf("failed to open test db: %v", err)
 	}
 	t.Cleanup(func() { database.Close() })
-	srv := NewServer(database)
+	cfg := &config.Config{
+		Host:    "127.0.0.1",
+		Port:    0,
+		DBPath:  ":memory:",
+		DataDir: t.TempDir(),
+	}
+	srv := NewServer(database, cfg)
 	return srv, database
 }
 
@@ -331,5 +338,24 @@ func TestDisabledModel(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for disabled model, got %d", w.Code)
+	}
+}
+
+func TestDashboardServesHTML(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html content type, got %s", ct)
+	}
+	if !strings.Contains(w.Body.String(), "Cyrene") {
+		t.Fatal("expected dashboard HTML content")
 	}
 }

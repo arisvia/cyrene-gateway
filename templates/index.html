@@ -4,49 +4,298 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cyrene Control Hub</title>
-  <!-- Load Vue 3 Global from Unpkg CDN -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <!-- Load Tailwind CSS Play CDN for modern responsive utilities -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 flex flex-col min-h-screen">
   <div id="app" class="max-w-6xl mx-auto p-4 md:p-8 w-full flex-1">
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10 border-b border-slate-800 pb-6">
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-slate-800 pb-6">
       <div>
         <h1 class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">
           Cyrene Gateway Hub
         </h1>
-        <p class="text-xs text-slate-500 mt-1 font-mono">Modern API Router & OAuth Hub</p>
+        <p class="text-xs text-slate-500 mt-1 font-mono">Modern API Router &amp; OAuth Hub</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-3">
         <span class="flex h-2.5 w-2.5 relative">
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
           <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
         </span>
         <span class="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-md">
-          Go API Gateway Engine
+          v{{ version }}
         </span>
       </div>
     </header>
 
-    <main class="grid gap-6 md:grid-cols-2">
-      <!-- Status Card -->
-      <section class="bg-slate-900/50 backdrop-blur border border-slate-800/80 p-6 rounded-xl shadow-xl">
-        <h2 class="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
-          <span>🖥️</span> Gateway Core
-        </h2>
-        <div class="space-y-4">
-          <div class="flex justify-between items-center text-sm border-b border-slate-800 pb-2">
-            <span class="text-slate-400">Database Status</span>
-            <span class="text-emerald-400 font-semibold font-mono">CONNECTED</span>
+    <!-- Tab Navigation -->
+    <nav class="flex gap-1 mb-6 bg-slate-900/50 p-1 rounded-lg border border-slate-800 w-fit">
+      <button v-for="tab in tabs" :key="tab.id"
+        @click="activeTab = tab.id"
+        :class="[
+          'px-4 py-2 rounded-md text-sm font-medium transition-colors',
+          activeTab === tab.id ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-slate-200'
+        ]">
+        {{ tab.label }}
+      </button>
+    </nav>
+
+    <!-- Providers Tab -->
+    <section v-if="activeTab === 'providers'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-slate-200">Provider Connections</h2>
+        <button @click="showAddProvider = !showAddProvider"
+          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
+          + Add Provider
+        </button>
+      </div>
+
+      <!-- Add Provider Form -->
+      <div v-if="showAddProvider" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <input v-model="newProvider.provider" placeholder="Provider (e.g. openai)" class="input">
+          <input v-model="newProvider.name" placeholder="Display name" class="input">
+          <input v-model="newProvider.data.apiKey" placeholder="API Key" type="password" class="input">
+          <input v-model="newProvider.data.baseUrl" placeholder="Base URL (optional)" class="input">
+        </div>
+        <div class="flex gap-2">
+          <button @click="addProvider" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Save</button>
+          <button @click="showAddProvider = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Provider List -->
+      <div v-for="p in providers" :key="p.id"
+        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex justify-between items-center">
+        <div>
+          <div class="flex items-center gap-2">
+            <span :class="['w-2 h-2 rounded-full', p.isActive ? 'bg-emerald-500' : 'bg-red-500']"></span>
+            <span class="font-semibold text-sm">{{ p.name || p.provider }}</span>
+            <span class="text-xs text-slate-500 font-mono">{{ p.provider }}</span>
           </div>
-          <div class="flex justify-between items-center text-sm">
-            <span class="text-slate-400">Memory Footprint</span>
-            <span class="text-slate-300 font-mono">&lt; 15 MB</span>
+          <div class="text-xs text-slate-500 mt-1">
+            Priority: {{ p.priority }} | Auth: {{ p.authType }}
           </div>
         </div>
-      </section>
-    </main>
+        <div class="flex gap-2">
+          <button @click="toggleProvider(p)" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">
+            {{ p.isActive ? 'Disable' : 'Enable' }}
+          </button>
+          <button @click="resetProvider(p)" class="text-xs px-2 py-1 rounded bg-amber-700/50 hover:bg-amber-600/50 text-amber-300">
+            Reset
+          </button>
+          <button @click="deleteProvider(p)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">
+            Delete
+          </button>
+        </div>
+      </div>
+      <p v-if="providers.length === 0" class="text-slate-500 text-sm text-center py-8">No providers configured yet.</p>
+    </section>
+
+    <!-- Aliases Tab -->
+    <section v-if="activeTab === 'aliases'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-slate-200">Model Aliases</h2>
+      </div>
+      <div class="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-3">
+        <input v-model="newAlias.alias" placeholder="Alias name" class="input flex-1">
+        <input v-model="newAlias.target" placeholder="Target model" class="input flex-1">
+        <button @click="addAlias" class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md">Add</button>
+      </div>
+      <div v-for="(target, alias) in aliases" :key="alias"
+        class="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex justify-between items-center">
+        <div class="text-sm">
+          <span class="font-mono text-teal-400">{{ alias }}</span>
+          <span class="text-slate-500 mx-2">&rarr;</span>
+          <span class="font-mono text-slate-300">{{ target }}</span>
+        </div>
+        <button @click="deleteAlias(alias)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">Delete</button>
+      </div>
+      <p v-if="Object.keys(aliases).length === 0" class="text-slate-500 text-sm text-center py-8">No aliases configured.</p>
+    </section>
+
+    <!-- Combos Tab -->
+    <section v-if="activeTab === 'combos'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-slate-200">Combos (Fallback Groups)</h2>
+        <button @click="showAddCombo = !showAddCombo"
+          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
+          + Add Combo
+        </button>
+      </div>
+      <div v-if="showAddCombo" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <input v-model="newCombo.name" placeholder="Combo name" class="input">
+          <select v-model="newCombo.kind" class="input">
+            <option value="fallback">Fallback</option>
+            <option value="round-robin">Round Robin</option>
+          </select>
+        </div>
+        <input v-model="newCombo.modelsStr" placeholder="Models (comma-separated)" class="input w-full">
+        <div class="flex gap-2">
+          <button @click="addCombo" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Save</button>
+          <button @click="showAddCombo = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
+        </div>
+      </div>
+      <div v-for="c in combos" :key="c.id"
+        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+        <div class="flex justify-between items-center">
+          <div>
+            <span class="font-semibold text-sm">{{ c.name }}</span>
+            <span class="text-xs text-slate-500 ml-2">{{ c.kind }}</span>
+          </div>
+          <button @click="deleteCombo(c)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">Delete</button>
+        </div>
+        <div class="flex flex-wrap gap-1 mt-2">
+          <span v-for="m in c.models" :key="m" class="text-xs bg-slate-800 px-2 py-0.5 rounded font-mono text-slate-400">{{ m }}</span>
+        </div>
+      </div>
+      <p v-if="combos.length === 0" class="text-slate-500 text-sm text-center py-8">No combos configured.</p>
+    </section>
+
+    <!-- Status Tab -->
+    <section v-if="activeTab === 'status'" class="space-y-4">
+      <h2 class="text-lg font-bold text-slate-200">Gateway Status</h2>
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5">
+          <h3 class="text-sm font-semibold text-slate-400 mb-3">Core</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Service</span><span class="text-emerald-400 font-mono">{{ health.service || '—' }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Status</span><span class="text-emerald-400 font-mono">{{ health.status || '—' }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Version</span><span class="text-slate-300 font-mono">{{ version }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Time</span><span class="text-slate-300 font-mono">{{ health.time || '—' }}</span></div>
+          </div>
+        </div>
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5">
+          <h3 class="text-sm font-semibold text-slate-400 mb-3">Connections</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Total</span><span class="text-slate-300 font-mono">{{ providers.length }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Active</span><span class="text-emerald-400 font-mono">{{ providers.filter(p => p.isActive).length }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Inactive</span><span class="text-red-400 font-mono">{{ providers.filter(p => !p.isActive).length }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Aliases</span><span class="text-slate-300 font-mono">{{ Object.keys(aliases).length }}</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="mt-12 pt-4 border-t border-slate-800 text-center text-xs text-slate-600">
+      Cyrene Gateway &mdash; Go AI Proxy Engine
+    </footer>
   </div>
+
+  <style>
+    .input {
+      @apply bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500;
+    }
+  </style>
+
+  <script>
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const tabs = [
+          { id: 'providers', label: 'Providers' },
+          { id: 'aliases', label: 'Aliases' },
+          { id: 'combos', label: 'Combos' },
+          { id: 'status', label: 'Status' },
+        ];
+        const activeTab = ref('providers');
+        const version = ref('...');
+        const health = ref({});
+        const providers = ref([]);
+        const aliases = ref({});
+        const combos = ref([]);
+        const showAddProvider = ref(false);
+        const showAddCombo = ref(false);
+        const newProvider = ref({ provider: '', name: '', data: { apiKey: '', baseUrl: '' } });
+        const newAlias = ref({ alias: '', target: '' });
+        const newCombo = ref({ name: '', kind: 'fallback', modelsStr: '' });
+
+        async function api(path, opts = {}) {
+          const res = await fetch(path, {
+            headers: { 'Content-Type': 'application/json' },
+            ...opts,
+          });
+          return res.json();
+        }
+
+        async function loadAll() {
+          try {
+            const [v, h, p, a, c] = await Promise.all([
+              api('/api/version'),
+              api('/api/health'),
+              api('/api/providers'),
+              api('/api/models/alias'),
+              api('/api/combos'),
+            ]);
+            version.value = v.version || 'dev';
+            health.value = h;
+            providers.value = Array.isArray(p) ? p : [];
+            aliases.value = a || {};
+            combos.value = Array.isArray(c) ? c : [];
+          } catch (e) {
+            console.error('Failed to load data:', e);
+          }
+        }
+
+        async function addProvider() {
+          await api('/api/providers', { method: 'POST', body: JSON.stringify(newProvider.value) });
+          newProvider.value = { provider: '', name: '', data: { apiKey: '', baseUrl: '' } };
+          showAddProvider.value = false;
+          loadAll();
+        }
+
+        async function toggleProvider(p) {
+          await api(`/api/providers/${p.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !p.isActive }) });
+          loadAll();
+        }
+
+        async function resetProvider(p) {
+          await api(`/api/providers/${p.id}/reset`, { method: 'POST' });
+          loadAll();
+        }
+
+        async function deleteProvider(p) {
+          if (!confirm('Delete this provider?')) return;
+          await api(`/api/providers/${p.id}`, { method: 'DELETE' });
+          loadAll();
+        }
+
+        async function addAlias() {
+          await api('/api/models/alias', { method: 'POST', body: JSON.stringify(newAlias.value) });
+          newAlias.value = { alias: '', target: '' };
+          loadAll();
+        }
+
+        async function deleteAlias(alias) {
+          await api('/api/models/alias', { method: 'DELETE', body: JSON.stringify({ alias }) });
+          loadAll();
+        }
+
+        async function addCombo() {
+          const models = newCombo.value.modelsStr.split(',').map(s => s.trim()).filter(Boolean);
+          await api('/api/combos', { method: 'POST', body: JSON.stringify({ name: newCombo.value.name, kind: newCombo.value.kind, models }) });
+          newCombo.value = { name: '', kind: 'fallback', modelsStr: '' };
+          showAddCombo.value = false;
+          loadAll();
+        }
+
+        async function deleteCombo(c) {
+          if (!confirm('Delete this combo?')) return;
+          await api(`/api/combos/${c.id}`, { method: 'DELETE' });
+          loadAll();
+        }
+
+        onMounted(loadAll);
+
+        return {
+          tabs, activeTab, version, health, providers, aliases, combos,
+          showAddProvider, showAddCombo, newProvider, newAlias, newCombo,
+          addProvider, toggleProvider, resetProvider, deleteProvider,
+          addAlias, deleteAlias, addCombo, deleteCombo,
+        };
+      }
+    }).mount('#app');
+  </script>
 </body>
 </html>

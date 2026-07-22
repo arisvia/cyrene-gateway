@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -13,18 +14,20 @@ import (
 )
 
 type Server struct {
-	DB      *db.DB
-	Router  *http.ServeMux
-	Handler http.Handler // Router wrapped with middleware
-	Combos  *provider.ComboManager
+	DB        *db.DB
+	Router    *http.ServeMux
+	Handler   http.Handler // Router wrapped with middleware
+	Combos    *provider.ComboManager
+	Dashboard *DashboardHandler
 }
 
-func NewServer(database *db.DB) *Server {
+func NewServer(database *db.DB, cfg *config.Config) *Server {
 	mux := http.NewServeMux()
 	s := &Server{
-		DB:     database,
-		Router: mux,
-		Combos: provider.NewComboManager(),
+		DB:        database,
+		Router:    mux,
+		Combos:    provider.NewComboManager(),
+		Dashboard: NewDashboardHandler(cfg),
 	}
 	s.registerRoutes()
 
@@ -38,6 +41,9 @@ func NewServer(database *db.DB) *Server {
 }
 
 func (s *Server) registerRoutes() {
+	// Dashboard panel (root)
+	s.Router.Handle("GET /{$}", s.Dashboard)
+
 	// Health & meta
 	s.Router.HandleFunc("GET /api/health", s.handleHealth)
 	s.Router.HandleFunc("GET /api/version", s.handleVersion)

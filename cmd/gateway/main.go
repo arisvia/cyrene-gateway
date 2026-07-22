@@ -37,7 +37,10 @@ func main() {
 	defer database.Close()
 
 	// Create HTTP server
-	srv := handler.NewServer(database)
+	srv := handler.NewServer(database, cfg)
+
+	// Attempt to download latest panel (non-blocking, falls back to embedded)
+	go srv.Dashboard.TryDownload()
 
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
