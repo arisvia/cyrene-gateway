@@ -44,6 +44,207 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if model is disabled
+	if provider.IsModelDisabled(req.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
+	}
+
+	// Check if model string is a combo
+	if combo, ok := provider.ResolveCombo(req.Model, s.DB); ok {
+		s.handleComboChat(w, r, req, combo)
+		return
+	}
+
+	// Single model path
+	s.handleSingleModelChat(w, r, req)
+}
+
+// handleComboChat processes a combo request with fallback/round-robin strategy.
+func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, combo *model.Combo) {
+	// Determine strategy from combo kind or global settings
+	strategy := provider.StrategyFallback
+	if combo.Kind == "round-robin" {
+		strategy = provider.StrategyRoundRobin
+	} else if combo.Kind == "" {
+		settings, err := s.DB.GetSettings()
+		if err == nil && settings.ComboStrategy == "round-robin" {
+			strategy = provider.StrategyRoundRobin
+		}
+	}
+
+	// Get sticky limit from settings (default 1)
+	stickyLimit := 1
+
+	// Apply rotation
+	models := s.Combos.GetRotatedModels(combo.Models, combo.Name, strategy, stickyLimit)
+
+	slog.Info("Combo request",
+		slog.String("combo", combo.Name),
+		slog.String("strategy", string(strategy)),
+		slog.Int("models", len(models)),
+	)
+
+	// Try each model in order with fallback
+	var lastStatus int
+	var lastError string
+
+	for i, modelStr := range models {
+		slog.Info("Combo trying model",
+			slog.Int("attempt", i+1),
+			slog.Int("total", len(models)),
+			slog.String("model", modelStr),
+		)
+
+		// Resolve this model string
+		modelInfo, err := provider.ResolveModel(modelStr, s.DB)
+		if err != nil || modelInfo.Provider == "" {
+			lastError = fmt.Sprintf("cannot resolve model: %s", modelStr)
+			lastStatus = 400
+			continue
+		}
+
+		// Skip disabled models within combo
+		if provider.IsModelDisabled(modelStr, s.DB) {
+			lastError = fmt.Sprintf("model disabled: %s", modelStr)
+			lastStatus = 403
+			continue
+		}
+
+		providerInfo, ok := provider.GetProvider(modelInfo.Provider)
+		if !ok {
+			lastError = fmt.Sprintf("unknown provider: %s", modelInfo.Provider)
+			lastStatus = 400
+			continue
+		}
+
+		conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
+		if err != nil || len(conns) == 0 {
+			lastError = fmt.Sprintf("no credentials for provider: %s", modelInfo.Provider)
+			lastStatus = 503
+			continue
+		}
+
+		conn := selectAvailableConnection(conns, modelInfo.Model, nil)
+		if conn == nil {
+			lastError = fmt.Sprintf("all accounts rate-limited for: %s", modelInfo.Provider)
+			lastStatus = 503
+			continue
+		}
+
+		baseURL := providerInfo.BaseURL
+		if conn.Data.BaseURL != "" {
+			baseURL = conn.Data.BaseURL
+		}
+		if baseURL == "" {
+			lastError = fmt.Sprintf("no base URL for provider: %s", modelInfo.Provider)
+			lastStatus = 503
+			continue
+		}
+
+		// Build and execute upstream request
+		reqCopy := req
+		reqCopy.Model = modelInfo.Model
+		bodyBytes, err := json.Marshal(reqCopy)
+		if err != nil {
+			lastError = "failed to marshal request"
+			lastStatus = 500
+			continue
+		}
+
+		targetURL := strings.TrimRight(baseURL, "/") + "/chat/completions"
+		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			lastError = "failed to create upstream request"
+			lastStatus = 500
+			continue
+		}
+
+		if conn.Data.APIKey != "" {
+			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
+		} else if conn.Data.AccessToken != "" {
+			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+		}
+		upstreamReq.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 5 * time.Minute}
+		resp, err := client.Do(upstreamReq)
+		if err != nil {
+			lastError = fmt.Sprintf("upstream request failed: %v", err)
+			lastStatus = 502
+			slog.Warn("Combo model failed", slog.String("model", modelStr), "error", err)
+			continue
+		}
+
+		// Success (2xx) - stream response to client
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			slog.Info("Combo model succeeded", slog.String("model", modelStr))
+			for key, values := range resp.Header {
+				for _, v := range values {
+					w.Header().Add(key, v)
+				}
+			}
+			w.WriteHeader(resp.StatusCode)
+			if req.Stream {
+				flusher, ok := w.(http.Flusher)
+				if !ok {
+					io.Copy(w, resp.Body)
+					resp.Body.Close()
+					return
+				}
+				buf := make([]byte, 4096)
+				for {
+					n, readErr := resp.Body.Read(buf)
+					if n > 0 {
+						w.Write(buf[:n])
+						flusher.Flush()
+					}
+					if readErr != nil {
+						break
+					}
+				}
+			} else {
+				io.Copy(w, resp.Body)
+			}
+			resp.Body.Close()
+			return
+		}
+
+		// Error response - read body for error classification
+		errBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		lastStatus = resp.StatusCode
+		lastError = string(errBody)
+
+		// Check if should fallback
+		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), 0)
+		if !fallbackResult.ShouldFallback {
+			// Non-fallbackable error, return immediately
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(resp.StatusCode)
+			w.Write(errBody)
+			return
+		}
+
+		slog.Warn("Combo model failed, trying next",
+			slog.String("model", modelStr),
+			slog.Int("status", resp.StatusCode),
+		)
+	}
+
+	// All models failed
+	if lastStatus == 0 {
+		lastStatus = 503
+	}
+	if lastError == "" {
+		lastError = "all combo models unavailable"
+	}
+	writeJSON(w, lastStatus, map[string]string{"error": lastError})
+}
+
+// handleSingleModelChat processes a single model request (non-combo).
+func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest) {
 	// Resolve model to provider + model name
 	modelInfo, err := provider.ResolveModel(req.Model, s.DB)
 	if err != nil || modelInfo.Provider == "" {

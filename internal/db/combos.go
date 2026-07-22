@@ -81,6 +81,20 @@ func (d *DB) CreateCombo(c *model.Combo) error {
 	return err
 }
 
+func (d *DB) UpdateCombo(c *model.Combo) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	models, err := json.Marshal(c.Models)
+	if err != nil {
+		return err
+	}
+
+	_, err = d.conn.Exec(
+		`UPDATE combos SET name = ?, kind = ?, models = ?, updatedAt = ? WHERE id = ?`,
+		c.Name, c.Kind, string(models), now, c.ID,
+	)
+	return err
+}
+
 func (d *DB) DeleteCombo(id string) error {
 	_, err := d.conn.Exec(`DELETE FROM combos WHERE id = ?`, id)
 	return err

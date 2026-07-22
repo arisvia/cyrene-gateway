@@ -14,12 +14,14 @@ import (
 type Server struct {
 	DB     *db.DB
 	Router *http.ServeMux
+	Combos *provider.ComboManager
 }
 
 func NewServer(database *db.DB) *Server {
 	s := &Server{
 		DB:     database,
 		Router: http.NewServeMux(),
+		Combos: provider.NewComboManager(),
 	}
 	s.registerRoutes()
 	return s
@@ -49,6 +51,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("DELETE /api/provider-nodes/{id}", s.handleDeleteNode)
 	s.Router.HandleFunc("GET /api/combos", s.handleListCombos)
 	s.Router.HandleFunc("POST /api/combos", s.handleCreateCombo)
+	s.Router.HandleFunc("PUT /api/combos/{id}", s.handleUpdateCombo)
 	s.Router.HandleFunc("DELETE /api/combos/{id}", s.handleDeleteCombo)
 	s.Router.HandleFunc("GET /api/keys", s.handleListKeys)
 	s.Router.HandleFunc("POST /api/keys", s.handleCreateKey)
@@ -56,6 +59,9 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/models/alias", s.handleListAliases)
 	s.Router.HandleFunc("POST /api/models/alias", s.handleSetAlias)
 	s.Router.HandleFunc("DELETE /api/models/alias", s.handleDeleteAlias)
+	s.Router.HandleFunc("GET /api/models/disabled", s.handleListDisabledModels)
+	s.Router.HandleFunc("POST /api/models/disabled", s.handleDisableModel)
+	s.Router.HandleFunc("DELETE /api/models/disabled", s.handleEnableModel)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +102,16 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for alias := range aliases {
 		models = append(models, ModelEntry{
 			ID:      alias,
+			Object:  "model",
+			OwnedBy: "cyrene-gateway",
+		})
+	}
+
+	// Add combo names as models
+	combos, _ := s.DB.ListCombos()
+	for _, c := range combos {
+		models = append(models, ModelEntry{
+			ID:      c.Name,
 			Object:  "model",
 			OwnedBy: "cyrene-gateway",
 		})
@@ -412,12 +428,62 @@ func (s *Server) handleCreateCombo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, c)
 }
 
+func (s *Server) handleUpdateCombo(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	combos, err := s.DB.ListCombos()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	var existing *model.Combo
+	for i := range combos {
+		if combos[i].ID == id {
+			existing = &combos[i]
+			break
+		}
+	}
+	if existing == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "combo not found"})
+		return
+	}
+
+	var req struct {
+		Name   *string   `json:"name"`
+		Kind   *string   `json:"kind"`
+		Models *[]string `json:"models"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	if req.Name != nil {
+		existing.Name = *req.Name
+	}
+	if req.Kind != nil {
+		existing.Kind = *req.Kind
+	}
+	if req.Models != nil {
+		existing.Models = *req.Models
+	}
+
+	if err := s.DB.UpdateCombo(existing); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update combo"})
+		return
+	}
+	s.Combos.ResetRotation(existing.Name)
+	writeJSON(w, http.StatusOK, existing)
+}
+
 func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.DB.DeleteCombo(id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete combo"})
 		return
 	}
+	s.Combos.ResetRotation("")
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
@@ -501,6 +567,49 @@ func (s *Server) handleDeleteAlias(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.DB.KVDelete("aliases", req.Alias); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete alias"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleListDisabledModels(w http.ResponseWriter, r *http.Request) {
+	disabled, err := s.DB.KVList("disabledModels")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, disabled)
+}
+
+func (s *Server) handleDisableModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if req.Model == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model required"})
+		return
+	}
+	if err := s.DB.KVSet("disabledModels", req.Model, "true"); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to disable model"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleEnableModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if err := s.DB.KVDelete("disabledModels", req.Model); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to enable model"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
