@@ -43,7 +43,8 @@ schema.sql                   # 数据库 schema 参考
 
 ## 开发规范
 
-- 每个 phase 完成后：`go fmt ./...` → `go build ./...` → commit → push → 更新 progress.json
+- 每个 phase 完成后：`go fmt ./...` → `go build ./...` → `go test ./...` → commit → push → 更新 progress.json
+- 更新 progress.json 后，打版本 tag 并推送：`git tag v0.N.0 && git push --tags`（N = 当前 phase 编号）
 - Commit 格式：`feat: Phase N - 描述` 或 `fix: 描述`
 - 不引入不必要的第三方依赖，优先标准库
 - 所有 DB 操作通过 internal/db 的方法，不在 handler 里直接写 SQL
