@@ -149,8 +149,8 @@ git config user.email "$GITHUB_EMAIL"
 
 Go 版本：
 ```bash
-# 平台内置 Go 可能低于 1.26，需升级：
-curl -sL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -C /usr/local -xz
+# 平台内置 Go 可能低于 1.26，需升级（必须先删旧版，否则 runtime 文件冲突）：
+rm -rf /usr/local/go && curl -sL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -C /usr/local -xz
 go version  # 应输出 go1.26.2
 ```
 
