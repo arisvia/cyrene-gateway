@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/translator"
+	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
 
 // ChatCompletionRequest represents an OpenAI-compatible chat request
@@ -179,33 +182,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		// Success (2xx) - stream response to client
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			slog.Info("Combo model succeeded", slog.String("model", modelStr))
-			for key, values := range resp.Header {
-				for _, v := range values {
-					w.Header().Add(key, v)
-				}
-			}
-			w.WriteHeader(resp.StatusCode)
-			if req.Stream {
-				flusher, ok := w.(http.Flusher)
-				if !ok {
-					io.Copy(w, resp.Body)
-					resp.Body.Close()
-					return
-				}
-				buf := make([]byte, 4096)
-				for {
-					n, readErr := resp.Body.Read(buf)
-					if n > 0 {
-						w.Write(buf[:n])
-						flusher.Flush()
-					}
-					if readErr != nil {
-						break
-					}
-				}
-			} else {
-				io.Copy(w, resp.Body)
-			}
+			s.proxyResponse(w, r, resp, req.Stream, translator.FormatOpenAI, modelInfo.Model)
 			resp.Body.Close()
 			return
 		}
@@ -289,15 +266,56 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	// Build upstream request
-	req.Model = modelInfo.Model
-	bodyBytes, err := json.Marshal(req)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
-		return
+	// Determine target format and build upstream request
+	targetFormat := translator.FormatOpenAI
+	switch providerInfo.APIType {
+	case "anthropic":
+		targetFormat = translator.FormatAnthropic
+	case "gemini":
+		targetFormat = translator.FormatGemini
 	}
 
-	targetURL := strings.TrimRight(baseURL, "/") + "/chat/completions"
+	var bodyBytes []byte
+	var targetURL string
+
+	if targetFormat == translator.FormatOpenAI {
+		// Standard OpenAI-compatible passthrough
+		req.Model = modelInfo.Model
+		bodyBytes, err = json.Marshal(req)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
+			return
+		}
+		targetURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
+	} else {
+		// Translate request to provider format
+		var bodyMap map[string]any
+		rawBody, _ := json.Marshal(req)
+		json.Unmarshal(rawBody, &bodyMap)
+
+		translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, req.Stream)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("translation failed: %v", err)})
+			return
+		}
+		bodyBytes, err = json.Marshal(translated)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal translated request"})
+			return
+		}
+
+		switch targetFormat {
+		case translator.FormatAnthropic:
+			targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
+		case translator.FormatGemini:
+			if req.Stream {
+				targetURL = strings.TrimRight(baseURL, "/") + "/v1beta/models/" + modelInfo.Model + ":streamGenerateContent?alt=sse"
+			} else {
+				targetURL = strings.TrimRight(baseURL, "/") + "/v1beta/models/" + modelInfo.Model + ":generateContent"
+			}
+		}
+	}
+
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
@@ -306,15 +324,26 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// Set auth headers
 	if conn.Data.APIKey != "" {
-		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
+		if targetFormat == translator.FormatAnthropic {
+			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
+			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
+		} else if targetFormat == translator.FormatGemini {
+			// Gemini uses query param for API key
+			q := upstreamReq.URL.Query()
+			q.Set("key", conn.Data.APIKey)
+			upstreamReq.URL.RawQuery = q.Encode()
+		} else {
+			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
+		}
 	} else if conn.Data.AccessToken != "" {
 		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 
 	slog.Info("Proxying request",
-		slog.String("model", req.Model),
+		slog.String("model", modelInfo.Model),
 		slog.String("provider", modelInfo.Provider),
+		slog.String("format", string(targetFormat)),
 		slog.String("connection", conn.ID),
 		slog.Bool("stream", req.Stream),
 	)
@@ -329,34 +358,317 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	}
 	defer resp.Body.Close()
 
-	// Copy response headers
-	for key, values := range resp.Header {
-		for _, v := range values {
-			w.Header().Add(key, v)
-		}
+	// Handle upstream errors
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errBody, _ := io.ReadAll(resp.Body)
+		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
+		s.DB.UpdateConnection(conn)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		w.Write(errBody)
+		return
 	}
-	w.WriteHeader(resp.StatusCode)
 
-	// Stream or copy body
-	if req.Stream {
-		// SSE streaming - flush each chunk
+	// Reset error state on success
+	provider.ResetAccountState(conn)
+	s.DB.UpdateConnection(conn)
+
+	// Proxy the response with format translation
+	s.proxyResponse(w, r, resp, req.Stream, targetFormat, modelInfo.Model)
+}
+
+// proxyResponse handles streaming and non-streaming response proxying with format translation.
+func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *http.Response, stream bool, format translator.Format, model string) {
+	if !stream {
+		s.proxyNonStreaming(w, resp, format, model)
+		return
+	}
+	s.proxyStreaming(w, r, resp, format, model)
+}
+
+// proxyNonStreaming reads the full response, translates if needed, and writes it.
+func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, format translator.Format, model string) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
+		return
+	}
+
+	// Extract usage before translation
+	var u usage.Usage
+	switch format {
+	case translator.FormatAnthropic:
+		u = usage.ExtractFromClaude(body)
+	case translator.FormatGemini:
+		u = usage.ExtractFromGemini(body)
+	default:
+		u = usage.ExtractFromOpenAI(body)
+	}
+
+	if u.TotalTokens > 0 {
+		slog.Info("Usage extracted",
+			slog.String("model", model),
+			slog.Int("prompt_tokens", u.PromptTokens),
+			slog.Int("completion_tokens", u.CompletionTokens),
+		)
+	}
+
+	// Translate response to OpenAI format if needed
+	if format != translator.FormatOpenAI {
+		translated, err := translator.TranslateResponse(format, body, model)
+		if err != nil {
+			// Fallback to raw response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(resp.StatusCode)
+			w.Write(body)
+			return
+		}
+		body = translated
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
+}
+
+// proxyStreaming handles SSE streaming with disconnect awareness and [DONE] handling.
+func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// Fallback: read all and write
+		io.Copy(w, resp.Body)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	ctx := r.Context()
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		// Check for client disconnect
+		select {
+		case <-ctx.Done():
+			slog.Info("Client disconnected during stream", slog.String("model", model))
+			return
+		default:
+		}
+
+		line := scanner.Text()
+
+		// Skip empty lines (SSE separators)
+		if line == "" {
+			continue
+		}
+
+		// Handle SSE data lines
+		if !strings.HasPrefix(line, "data: ") && !strings.HasPrefix(line, "data:") {
+			// Non-data SSE lines (event:, id:, etc.) - pass through for OpenAI format
+			if format == translator.FormatOpenAI {
+				fmt.Fprintf(w, "%s\n", line)
+				flusher.Flush()
+			}
+			continue
+		}
+
+		// Extract data payload
+		data := strings.TrimPrefix(line, "data: ")
+		data = strings.TrimPrefix(data, "data:")
+		data = strings.TrimSpace(data)
+
+		// Handle [DONE] marker
+		if data == "[DONE]" {
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			flusher.Flush()
+			return
+		}
+
+		// Translate SSE chunk if needed
+		if format != translator.FormatOpenAI {
+			translated, isDone, err := translator.TranslateSSEChunk(format, []byte(data), model)
+			if err != nil || translated == nil {
+				continue
+			}
+			if isDone {
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", translated)
+		} else {
+			// OpenAI format passthrough
+			fmt.Fprintf(w, "data: %s\n\n", data)
+		}
+		flusher.Flush()
+	}
+
+	// Ensure [DONE] is sent if stream ends without it
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
+}
+
+// handleMessages implements the Anthropic-compatible /v1/messages passthrough endpoint.
+func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	// Read the raw body for passthrough
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(bodyBytes, &reqBody); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+
+	modelStr, _ := reqBody["model"].(string)
+	if modelStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
+		return
+	}
+
+	stream, _ := reqBody["stream"].(bool)
+
+	// Resolve model
+	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
+	if err != nil || modelInfo.Provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelStr)})
+		return
+	}
+
+	providerInfo, ok := provider.GetProvider(modelInfo.Provider)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown provider: %s", modelInfo.Provider)})
+		return
+	}
+
+	conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
+	if err != nil || len(conns) == 0 {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider),
+		})
+		return
+	}
+
+	conn := selectAvailableConnection(conns, modelInfo.Model, nil)
+	if conn == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
+		})
+		return
+	}
+
+	baseURL := providerInfo.BaseURL
+	if conn.Data.BaseURL != "" {
+		baseURL = conn.Data.BaseURL
+	}
+
+	// Set the resolved model name
+	reqBody["model"] = modelInfo.Model
+	translatedBody, _ := json.Marshal(reqBody)
+
+	// Determine target URL based on provider API type
+	var targetURL string
+	switch providerInfo.APIType {
+	case "anthropic":
+		targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
+	default:
+		// For OpenAI-compatible providers, translate Claude format to OpenAI
+		targetURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
+		// TODO: translate Claude request to OpenAI format for non-Anthropic providers
+	}
+
+	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(translatedBody))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
+		return
+	}
+
+	// Set auth headers
+	if conn.Data.APIKey != "" {
+		if providerInfo.APIType == "anthropic" {
+			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
+			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
+		} else {
+			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
+		}
+	} else if conn.Data.AccessToken != "" {
+		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+	}
+	upstreamReq.Header.Set("Content-Type", "application/json")
+
+	slog.Info("Messages passthrough",
+		slog.String("model", modelInfo.Model),
+		slog.String("provider", modelInfo.Provider),
+		slog.Bool("stream", stream),
+	)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(upstreamReq)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		errBody, _ := io.ReadAll(resp.Body)
+		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
+		s.DB.UpdateConnection(conn)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		w.Write(errBody)
+		return
+	}
+
+	provider.ResetAccountState(conn)
+	s.DB.UpdateConnection(conn)
+
+	// For Anthropic passthrough, stream directly without translation
+	if stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			io.Copy(w, resp.Body)
 			return
 		}
+
+		ctx := r.Context()
 		buf := make([]byte, 4096)
 		for {
-			n, err := resp.Body.Read(buf)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			n, readErr := resp.Body.Read(buf)
 			if n > 0 {
 				w.Write(buf[:n])
 				flusher.Flush()
 			}
-			if err != nil {
+			if readErr != nil {
 				break
 			}
 		}
 	} else {
+		// Copy headers and body
+		for key, values := range resp.Header {
+			for _, v := range values {
+				w.Header().Add(key, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
 		io.Copy(w, resp.Body)
 	}
 }

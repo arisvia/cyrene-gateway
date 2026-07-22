@@ -7,23 +7,33 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/middleware"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 type Server struct {
-	DB     *db.DB
-	Router *http.ServeMux
-	Combos *provider.ComboManager
+	DB      *db.DB
+	Router  *http.ServeMux
+	Handler http.Handler // Router wrapped with middleware
+	Combos  *provider.ComboManager
 }
 
 func NewServer(database *db.DB) *Server {
+	mux := http.NewServeMux()
 	s := &Server{
 		DB:     database,
-		Router: http.NewServeMux(),
+		Router: mux,
 		Combos: provider.NewComboManager(),
 	}
 	s.registerRoutes()
+
+	// Wrap the mux with the middleware chain
+	s.Handler = middleware.Chain(mux,
+		middleware.Recovery,
+		middleware.Logging,
+		middleware.CORS,
+	)
 	return s
 }
 
@@ -36,6 +46,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /v1/models", s.handleModels)
 	s.Router.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
 	s.Router.HandleFunc("POST /v1/embeddings", s.handleEmbeddings)
+	s.Router.HandleFunc("POST /v1/messages", s.handleMessages)
 
 	// Dashboard management API
 	s.Router.HandleFunc("GET /api/settings", s.handleGetSettings)
