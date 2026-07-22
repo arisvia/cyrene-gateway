@@ -541,3 +541,198 @@ func TestCreateAPIKeyEndpoint(t *testing.T) {
 		t.Fatalf("expected HMAC-signed key with dot separator, got %s", key)
 	}
 }
+
+func TestHealthEndpointEnhanced(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Create a connection to verify connection count
+	conn := &model.ProviderConnection{
+		ID:       "health-test-conn",
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data:     model.ConnectionData{APIKey: "sk-test"},
+	}
+	database.CreateConnection(conn)
+
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	if resp["db"] != "ok" {
+		t.Fatalf("expected db=ok, got %v", resp["db"])
+	}
+	if _, ok := resp["uptimeSeconds"]; !ok {
+		t.Fatal("expected uptimeSeconds field in health response")
+	}
+	if resp["connections"] != float64(1) {
+		t.Fatalf("expected connections=1, got %v", resp["connections"])
+	}
+	if resp["activeConnections"] != float64(1) {
+		t.Fatalf("expected activeConnections=1, got %v", resp["activeConnections"])
+	}
+}
+
+func TestProxyPoolCRUD(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// Create
+	body := `{"name":"test-proxy","proxyUrl":"http://127.0.0.1:7890","type":"http","strictProxy":true}`
+	req := httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var createResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &createResp)
+	pool := createResp["proxyPool"].(map[string]any)
+	poolID := pool["id"].(string)
+	if poolID == "" {
+		t.Fatal("expected non-empty pool id")
+	}
+	poolData := pool["data"].(map[string]any)
+	if poolData["name"] != "test-proxy" {
+		t.Fatalf("expected name=test-proxy, got %v", poolData["name"])
+	}
+	if poolData["proxyUrl"] != "http://127.0.0.1:7890" {
+		t.Fatalf("expected proxyUrl, got %v", poolData["proxyUrl"])
+	}
+
+	// List
+	req = httptest.NewRequest("GET", "/api/proxy-pools", nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var listResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &listResp)
+	pools := listResp["proxyPools"].([]any)
+	if len(pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(pools))
+	}
+
+	// Get by ID
+	req = httptest.NewRequest("GET", "/api/proxy-pools/"+poolID, nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Update
+	body = `{"name":"updated-proxy","isActive":false}`
+	req = httptest.NewRequest("PUT", "/api/proxy-pools/"+poolID, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var updateResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &updateResp)
+	updatedPool := updateResp["proxyPool"].(map[string]any)
+	updatedData := updatedPool["data"].(map[string]any)
+	if updatedData["name"] != "updated-proxy" {
+		t.Fatalf("expected name=updated-proxy, got %v", updatedData["name"])
+	}
+	if updatedPool["isActive"] != false {
+		t.Fatalf("expected isActive=false, got %v", updatedPool["isActive"])
+	}
+
+	// Delete
+	req = httptest.NewRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify deleted
+	req = httptest.NewRequest("GET", "/api/proxy-pools/"+poolID, nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d", w.Code)
+	}
+}
+
+func TestProxyPoolCreateValidation(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// Missing name
+	body := `{"proxyUrl":"http://127.0.0.1:7890"}`
+	req := httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing name, got %d", w.Code)
+	}
+
+	// Missing proxyUrl
+	body = `{"name":"test"}`
+	req = httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing proxyUrl, got %d", w.Code)
+	}
+}
+
+func TestProxyPoolDeleteConflict(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Create a proxy pool
+	body := `{"name":"bound-proxy","proxyUrl":"http://127.0.0.1:7890"}`
+	req := httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	var createResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &createResp)
+	pool := createResp["proxyPool"].(map[string]any)
+	poolID := pool["id"].(string)
+
+	// Create a connection bound to this pool
+	conn := &model.ProviderConnection{
+		ID:       "bound-conn",
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:               "sk-test",
+			ProviderSpecificData: map[string]any{"proxyPoolId": poolID},
+		},
+	}
+	database.CreateConnection(conn)
+
+	// Attempt delete should return 409
+	req = httptest.NewRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for in-use pool, got %d: %s", w.Code, w.Body.String())
+	}
+}

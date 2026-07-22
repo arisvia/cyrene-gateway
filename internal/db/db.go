@@ -37,6 +37,10 @@ func (d *DB) Close() error {
 	return d.conn.Close()
 }
 
+func (d *DB) Ping() error {
+	return d.conn.Ping()
+}
+
 func (d *DB) Conn() *sql.DB {
 	return d.conn
 }

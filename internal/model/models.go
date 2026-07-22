@@ -72,6 +72,24 @@ type ModelInfo struct {
 	Model    string `json:"model"`
 }
 
+// ProxyPool represents an outbound proxy configuration
+type ProxyPool struct {
+	ID         string        `json:"id"`
+	IsActive   bool          `json:"isActive"`
+	TestStatus string        `json:"testStatus,omitempty"`
+	Data       ProxyPoolData `json:"data"`
+	CreatedAt  time.Time     `json:"createdAt"`
+	UpdatedAt  time.Time     `json:"updatedAt"`
+}
+
+type ProxyPoolData struct {
+	Name        string `json:"name"`
+	ProxyURL    string `json:"proxyUrl"`
+	NoProxy     string `json:"noProxy,omitempty"`
+	StrictProxy bool   `json:"strictProxy"`
+	Type        string `json:"type"` // http, vercel, cloudflare, deno
+}
+
 // UsageEntry represents a single usage record
 type UsageEntry struct {
 	ID               int64     `json:"id,omitempty"`
