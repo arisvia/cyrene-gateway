@@ -23,6 +23,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	slog.Info("Starting cyrene-gateway",
+		slog.String("host", cfg.Host),
 		slog.Int("port", cfg.Port),
 		slog.String("db", cfg.DBPath),
 	)
@@ -39,7 +40,7 @@ func main() {
 	srv := handler.NewServer(database)
 
 	httpServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler:      srv.Router,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 5 * time.Minute,

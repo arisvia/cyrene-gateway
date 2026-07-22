@@ -75,7 +75,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":    "0.1.0",
+		"version":    Version(),
 		"service":    "cyrene-gateway",
 		"refactored": "9router (Next.js) → Go",
 	})

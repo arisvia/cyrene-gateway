@@ -55,6 +55,7 @@ schema.sql                   # 数据库 schema 参考
 - **主参考**: decolua/9router（Next.js 原版，`--depth 1` clone 到 /data/workspace/9router）
 - **增强参考**: Vanszs/VansRouter（loop guard、termination prompt 等增强，按需 clone 到 /data/workspace/VansRouter）
 - 重点参考目录：`open-sse/services/`（fallback/credential）、`open-sse/config/`（error rules）、`open-sse/handlers/`（chat core）
+- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。Phase 10 维护模式更新 hash 后，后续 session 自然拿到新版本。
 
 ## progress.json 使用规则
 
