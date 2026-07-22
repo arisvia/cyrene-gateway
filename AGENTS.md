@@ -21,7 +21,7 @@ Cyrene Gateway 是一个 Go 语言实现的高性能 AI 代理网关，从 9rout
 
 ### 软性约束（满足触发条件时可调整）
 
-- **HTTP 路由**: 默认 net/http + Go 1.22 ServeMux；若中间件链超过 5 层可引入 chi（仅路由+中间件）
+- **HTTP 路由**: 默认 net/http + Go 1.22+ ServeMux（method+path 路由）；若中间件链超过 5 层可引入 chi（仅路由+中间件）
 - **数据库**: 默认 SQLite；若需多实例部署，可通过 database/sql 接口替换为 Postgres
 - **面板**: 默认 templates/index.html 单文件；若复杂度超出单文件承载能力，可拆分为独立前端目录（但仍由 Go 二进制 embed 或 serve）
 

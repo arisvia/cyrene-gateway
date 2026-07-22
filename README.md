@@ -1,6 +1,6 @@
 # Cyrene Gateway
 
-Go 1.22+ 高性能 AI 代理网关，从 [9router](https://github.com/decolua/9router)（Next.js）重构而来。
+Go 1.26+ 高性能 AI 代理网关，从 [9router](https://github.com/decolua/9router)（Next.js）重构而来。
 
 提供 OpenAI 兼容的统一 API 端点（`/v1/*`），将流量智能路由到多个上游 AI Provider，支持多账号 fallback、模型别名、Combo 策略等。
 
@@ -80,9 +80,9 @@ internal/handler/      # HTTP 处理
 
 ## 技术栈
 
-- Go 1.22+（纯 Go，CGO_ENABLED=0）
+- Go 1.26+（纯 Go，CGO_ENABLED=0）
 - SQLite（modernc.org/sqlite）
-- 标准库 net/http（Go 1.22 路由模式）
+- 标准库 net/http（Go 1.22+ 路由模式）
 
 ## 进度
 

@@ -1,6 +1,6 @@
 {
   "project": "cyrene-gateway",
-  "description": "Go 1.22+ high-performance AI proxy gateway refactored from 9router (Next.js)",
+  "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
   "phases": [
