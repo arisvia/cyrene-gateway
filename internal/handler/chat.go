@@ -11,11 +11,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
+
+// usageContext carries metadata for recording usage after a proxied response.
+type usageContext struct {
+	Provider     string
+	Model        string
+	ConnectionID string
+	APIKey       string
+	Endpoint     string
+}
 
 // ChatCompletionRequest represents an OpenAI-compatible chat request
 type ChatCompletionRequest struct {
@@ -182,7 +192,14 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		// Success (2xx) - stream response to client
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			slog.Info("Combo model succeeded", slog.String("model", modelStr))
-			s.proxyResponse(w, r, resp, req.Stream, translator.FormatOpenAI, modelInfo.Model)
+			uc := &usageContext{
+				Provider:     modelInfo.Provider,
+				Model:        modelInfo.Model,
+				ConnectionID: conn.ID,
+				APIKey:       extractRequestAPIKey(r),
+				Endpoint:     "/v1/chat/completions",
+			}
+			s.proxyResponse(w, r, resp, req.Stream, translator.FormatOpenAI, modelInfo.Model, uc)
 			resp.Body.Close()
 			return
 		}
@@ -374,20 +391,27 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	s.DB.UpdateConnection(conn)
 
 	// Proxy the response with format translation
-	s.proxyResponse(w, r, resp, req.Stream, targetFormat, modelInfo.Model)
+	uc := &usageContext{
+		Provider:     modelInfo.Provider,
+		Model:        modelInfo.Model,
+		ConnectionID: conn.ID,
+		APIKey:       extractRequestAPIKey(r),
+		Endpoint:     "/v1/chat/completions",
+	}
+	s.proxyResponse(w, r, resp, req.Stream, targetFormat, modelInfo.Model, uc)
 }
 
 // proxyResponse handles streaming and non-streaming response proxying with format translation.
-func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *http.Response, stream bool, format translator.Format, model string) {
+func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *http.Response, stream bool, format translator.Format, model string, uc *usageContext) {
 	if !stream {
-		s.proxyNonStreaming(w, resp, format, model)
+		s.proxyNonStreaming(w, resp, format, model, uc)
 		return
 	}
-	s.proxyStreaming(w, r, resp, format, model)
+	s.proxyStreaming(w, r, resp, format, model, uc)
 }
 
 // proxyNonStreaming reads the full response, translates if needed, and writes it.
-func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, format translator.Format, model string) {
+func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, format translator.Format, model string, uc *usageContext) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
@@ -411,6 +435,7 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 			slog.Int("prompt_tokens", u.PromptTokens),
 			slog.Int("completion_tokens", u.CompletionTokens),
 		)
+		s.recordUsage(uc, u)
 	}
 
 	// Translate response to OpenAI format if needed
@@ -432,7 +457,7 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 }
 
 // proxyStreaming handles SSE streaming with disconnect awareness and [DONE] handling.
-func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string) {
+func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		// Fallback: read all and write
@@ -451,11 +476,16 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var lastUsage usage.Usage
+
 	for scanner.Scan() {
 		// Check for client disconnect
 		select {
 		case <-ctx.Done():
 			slog.Info("Client disconnected during stream", slog.String("model", model))
+			if lastUsage.TotalTokens > 0 {
+				s.recordUsage(uc, lastUsage)
+			}
 			return
 		default:
 		}
@@ -484,18 +514,29 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 
 		// Handle [DONE] marker
 		if data == "[DONE]" {
+			if lastUsage.TotalTokens > 0 {
+				s.recordUsage(uc, lastUsage)
+			}
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
 			return
 		}
 
-		// Translate SSE chunk if needed
+		// Extract usage from SSE chunk (final chunk often has usage)
+		if u := usage.ExtractFromSSELine([]byte(data)); u.TotalTokens > 0 {
+			lastUsage = u
+		}
+
+		// Translate SSE chunks if needed
 		if format != translator.FormatOpenAI {
 			translated, isDone, err := translator.TranslateSSEChunk(format, []byte(data), model)
 			if err != nil || translated == nil {
 				continue
 			}
 			if isDone {
+				if lastUsage.TotalTokens > 0 {
+					s.recordUsage(uc, lastUsage)
+				}
 				fmt.Fprintf(w, "data: [DONE]\n\n")
 				flusher.Flush()
 				return
@@ -509,6 +550,9 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	}
 
 	// Ensure [DONE] is sent if stream ends without it
+	if lastUsage.TotalTokens > 0 {
+		s.recordUsage(uc, lastUsage)
+	}
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 }
@@ -750,4 +794,36 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 // selectAvailableConnection picks the best connection using priority, cooldown, and model locks.
 func selectAvailableConnection(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool) *model.ProviderConnection {
 	return provider.SelectCredential(conns, modelName, excludeIDs)
+}
+
+// recordUsage persists a usage entry to the database asynchronously-safe (called inline).
+func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
+	if uc == nil || u.TotalTokens == 0 {
+		return
+	}
+	entry := &db.UsageEntry{
+		Provider:         uc.Provider,
+		Model:            uc.Model,
+		ConnectionID:     uc.ConnectionID,
+		APIKey:           uc.APIKey,
+		Endpoint:         uc.Endpoint,
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		Status:           "ok",
+	}
+	if err := s.DB.SaveUsageEntry(entry); err != nil {
+		slog.Warn("Failed to record usage", "error", err, "model", uc.Model)
+	}
+}
+
+// extractRequestAPIKey extracts the API key from the request Authorization header.
+func extractRequestAPIKey(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	if key := r.Header.Get("x-api-key"); key != "" {
+		return key
+	}
+	return ""
 }

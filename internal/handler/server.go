@@ -89,6 +89,13 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/models/disabled", s.handleListDisabledModels)
 	s.Router.HandleFunc("POST /api/models/disabled", s.handleDisableModel)
 	s.Router.HandleFunc("DELETE /api/models/disabled", s.handleEnableModel)
+
+	// Usage & observability API
+	s.Router.HandleFunc("GET /api/usage/stats", s.handleUsageStats)
+	s.Router.HandleFunc("GET /api/usage/history", s.handleUsageHistory)
+	s.Router.HandleFunc("GET /api/usage/chart", s.handleUsageChart)
+	s.Router.HandleFunc("GET /api/usage/request-details", s.handleUsageRequestDetails)
+	s.Router.HandleFunc("GET /api/usage/request-details/{id}", s.handleUsageRequestDetailByID)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
