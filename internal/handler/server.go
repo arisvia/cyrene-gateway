@@ -19,6 +19,7 @@ type Server struct {
 	Router    *http.ServeMux
 	Handler   http.Handler // Router wrapped with middleware
 	Combos    *provider.ComboManager
+	Proxies   *provider.ProxyManager
 	Dashboard *DashboardHandler
 	Auth      *AuthHandler
 	startTime time.Time
@@ -26,10 +27,20 @@ type Server struct {
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {
 	mux := http.NewServeMux()
+
+	// Initialize proxy manager from active pools
+	var proxyMgr *provider.ProxyManager
+	if pools, err := database.ListProxyPools(); err == nil {
+		proxyMgr = provider.NewProxyManager(pools)
+	} else {
+		proxyMgr = provider.NewProxyManager(nil)
+	}
+
 	s := &Server{
 		DB:        database,
 		Router:    mux,
 		Combos:    provider.NewComboManager(),
+		Proxies:   proxyMgr,
 		Dashboard: NewDashboardHandler(cfg),
 		Auth:      NewAuthHandler(database),
 		startTime: time.Now(),
@@ -96,6 +107,9 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/proxy-pools/{id}", s.handleGetProxyPool)
 	s.Router.HandleFunc("PUT /api/proxy-pools/{id}", s.handleUpdateProxyPool)
 	s.Router.HandleFunc("DELETE /api/proxy-pools/{id}", s.handleDeleteProxyPool)
+
+	// Provider connection testing
+	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
 
 	// Usage & observability API
 	s.Router.HandleFunc("GET /api/usage/stats", s.handleUsageStats)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
@@ -71,6 +72,60 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Single model path
 	s.handleSingleModelChat(w, r, req)
+}
+
+// runLoopGuard analyzes messages for loop patterns and returns a hint if detected.
+func runLoopGuard(messages []Message) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	// Convert handler messages to loopguard messages
+	lgMsgs := make([]loopguard.Message, 0, len(messages))
+	for _, m := range messages {
+		lgMsg := loopguard.Message{
+			Role:    m.Role,
+			Content: m.Content,
+		}
+		if m.ToolCalls != nil {
+			var tcs []loopguard.ToolCall
+			if err := json.Unmarshal(m.ToolCalls, &tcs); err == nil {
+				lgMsg.ToolCalls = tcs
+			}
+		}
+		lgMsgs = append(lgMsgs, lgMsg)
+	}
+	result := loopguard.DetectLoop(lgMsgs)
+	if result.Detected {
+		slog.Warn("Loop detected in conversation", slog.String("hint", result.Hint[:min(60, len(result.Hint))]))
+		return result.Hint
+	}
+	return ""
+}
+
+// getHTTPClient returns an HTTP client, using proxy rotation if available.
+func (s *Server) getHTTPClient(timeout time.Duration) *http.Client {
+	if s.Proxies != nil && s.Proxies.HasProxies() {
+		client := s.Proxies.GetHTTPClient()
+		client.Timeout = timeout
+		return client
+	}
+	return &http.Client{Timeout: timeout}
+}
+
+// tryRefreshToken attempts to refresh OAuth credentials if needed.
+// Returns true if refresh was attempted (regardless of success).
+func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
+	if !provider.ShouldRefresh(conn) {
+		return false
+	}
+	result, err := provider.RefreshCredentials(conn.Provider, conn, nil)
+	if err != nil {
+		slog.Warn("Token refresh failed", slog.String("provider", conn.Provider), "error", err)
+		return true
+	}
+	provider.ApplyRefreshResult(conn, result)
+	s.DB.UpdateConnection(conn)
+	return true
 }
 
 // handleComboChat processes a combo request with fallback/round-robin strategy.
@@ -145,6 +200,9 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
+		// Phase 9: Pre-check OAuth token refresh
+		s.tryRefreshToken(conn)
+
 		baseURL := providerInfo.BaseURL
 		if conn.Data.BaseURL != "" {
 			baseURL = conn.Data.BaseURL
@@ -180,7 +238,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 		upstreamReq.Header.Set("Content-Type", "application/json")
 
-		client := &http.Client{Timeout: 5 * time.Minute}
+		client := s.getHTTPClient(5 * time.Minute)
 		resp, err := client.Do(upstreamReq)
 		if err != nil {
 			lastError = fmt.Sprintf("upstream request failed: %v", err)
@@ -271,6 +329,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
+	// Phase 9: Pre-check OAuth token refresh
+	s.tryRefreshToken(conn)
+
 	// Determine base URL
 	baseURL := providerInfo.BaseURL
 	if conn.Data.BaseURL != "" {
@@ -298,7 +359,26 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	if targetFormat == translator.FormatOpenAI {
 		// Standard OpenAI-compatible passthrough
 		req.Model = modelInfo.Model
-		bodyBytes, err = json.Marshal(req)
+
+		// Phase 9: Loop guard + termination prompt + max_tokens clamping
+		var bodyMap map[string]any
+		rawBody, _ := json.Marshal(req)
+		json.Unmarshal(rawBody, &bodyMap)
+
+		// Loop guard detection
+		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
+			loopguard.InjectLoopHint(bodyMap, "openai", loopHint)
+		}
+
+		// Termination prompt injection (only when tools are present)
+		if req.Tools != nil {
+			loopguard.InjectTerminationPrompt(bodyMap, "openai")
+		}
+
+		// Max_tokens clamping for specific providers
+		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
+
+		bodyBytes, err = json.Marshal(bodyMap)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
 			return
@@ -310,11 +390,23 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		rawBody, _ := json.Marshal(req)
 		json.Unmarshal(rawBody, &bodyMap)
 
+		// Phase 9: Loop guard + termination prompt for translated formats
+		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
+			loopguard.InjectLoopHint(bodyMap, string(targetFormat), loopHint)
+		}
+		if req.Tools != nil {
+			loopguard.InjectTerminationPrompt(bodyMap, string(targetFormat))
+		}
+
 		translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, req.Stream)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("translation failed: %v", err)})
 			return
 		}
+
+		// Max_tokens clamping on translated body
+		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, translated)
+
 		bodyBytes, err = json.Marshal(translated)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal translated request"})
@@ -365,8 +457,8 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		slog.Bool("stream", req.Stream),
 	)
 
-	// Execute upstream request
-	client := &http.Client{Timeout: 5 * time.Minute}
+	// Phase 9: Use proxy-aware HTTP client
+	client := s.getHTTPClient(5 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		slog.Error("Upstream request failed", "error", err, "provider", modelInfo.Provider)
@@ -374,6 +466,39 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	defer resp.Body.Close()
+
+	// Phase 9: On-401 retry with token refresh
+	if resp.StatusCode == http.StatusUnauthorized && conn.Data.RefreshToken != "" {
+		io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, nil)
+		if refreshErr == nil {
+			provider.ApplyRefreshResult(conn, result)
+			s.DB.UpdateConnection(conn)
+
+			// Retry the request with new token
+			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
+			if retryErr == nil {
+				if conn.Data.AccessToken != "" {
+					retryReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+				}
+				retryReq.Header.Set("Content-Type", "application/json")
+				if targetFormat == translator.FormatAnthropic {
+					retryReq.Header.Set("x-api-key", conn.Data.AccessToken)
+					retryReq.Header.Set("anthropic-version", "2023-06-01")
+				}
+
+				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))
+				resp, err = client.Do(retryReq)
+				if err != nil {
+					writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed after refresh"})
+					return
+				}
+				defer resp.Body.Close()
+			}
+		}
+	}
 
 	// Handle upstream errors
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
