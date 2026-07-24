@@ -130,7 +130,7 @@
       "id": 10,
       "name": "Provider Registry Expansion & Categorization",
       "description": "Port full provider registry from 9router (~100 providers) with category metadata and auth modes",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Add Category and AuthModes fields to ProviderInfo struct",
         "Port all 64 apikey-category providers from 9router registry (baseUrl, apiType, aliases)",
@@ -216,7 +216,7 @@
       ]
     }
   ],
-  "current_phase": 10,
+  "current_phase": 11,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

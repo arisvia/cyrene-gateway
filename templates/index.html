@@ -555,8 +555,16 @@
           <div class="dialog" style="max-width:540px">
             <h3 class="dialog-title">Add Provider</h3>
             <p class="dialog-desc">Select from the registry or configure a custom endpoint.</p>
+            <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
+              <button :class="['btn btn-sm', !registryFilter && 'btn-primary']" @click="registryFilter=''" style="font-size:10px;padding:2px 8px">All</button>
+              <button v-for="cat in registryCategories" :key="cat.category"
+                :class="['btn btn-sm', registryFilter === cat.category && 'btn-primary']"
+                @click="registryFilter = registryFilter === cat.category ? '' : cat.category"
+                style="font-size:10px;padding:2px 8px">{{ cat.category }} ({{ cat.count }})</button>
+              <input v-model="registrySearch" class="input" placeholder="Search providers..." style="flex:1;min-width:120px;font-size:11px;padding:3px 8px">
+            </div>
             <div class="registry-grid">
-              <div v-for="rp in registryList" :key="rp.id"
+              <div v-for="rp in filteredRegistry" :key="rp.id"
                 :class="['registry-item', newProvider.provider === rp.id && 'selected']"
                 @click="selectRegistryProvider(rp)">
                 <div class="registry-name">
@@ -1042,6 +1050,18 @@ createApp({
     const proxyPools = ref([]);
     const settings = ref({});
     const registryList = ref([]);
+    const registryCategories = ref([]);
+    const registryFilter = ref('');
+    const registrySearch = ref('');
+    const filteredRegistry = computed(() => {
+      let list = registryList.value;
+      if (registryFilter.value) list = list.filter(p => p.category === registryFilter.value);
+      if (registrySearch.value) {
+        const q = registrySearch.value.toLowerCase();
+        list = list.filter(p => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
+      }
+      return list;
+    });
     const usageStats = ref({});
     const usageChart = ref([]);
     const requestDetails = ref([]);
@@ -1098,7 +1118,11 @@ createApp({
         providers.value = Array.isArray(p) ? p : [];
         aliases.value = a || {};
         combos.value = Array.isArray(c) ? c : [];
-        registryList.value = (reg?.providers || []).sort((x, y) => x.name.localeCompare(y.name));
+        // Registry now returns {categories: [...], total: N}
+        const allProviders = [];
+        (reg?.categories || []).forEach(cat => { (cat.providers || []).forEach(p => allProviders.push(p)); });
+        registryList.value = allProviders.sort((x, y) => x.name.localeCompare(y.name));
+        registryCategories.value = (reg?.categories || []).map(c => ({ category: c.category, count: c.count }));
       } catch (e) { console.error('load failed:', e); }
       loadKeys(); loadProxies(); loadUsage();
       refreshIcons();
@@ -1204,7 +1228,8 @@ createApp({
       theme, toggleTheme,
       authState, requireLogin, loginPassword, loginError, loginLoading, doLogin, doLogout,
       version, health, providers, aliases, combos, apiKeys, proxyPools, settings,
-      registryList, usageStats, usageChart, requestDetails, usagePeriod, loadUsage,
+      registryList, registryCategories, registryFilter, registrySearch, filteredRegistry,
+      usageStats, usageChart, requestDetails, usagePeriod, loadUsage,
       showAddProvider, showAddKey, showAddCombo, showAddProxy,
       newProvider, newAlias, newCombo, newKeyName, lastCreatedKey, newProxy, newPassword, settingsSaved,
       openAddProvider, selectRegistryProvider, registryBaseUrl,

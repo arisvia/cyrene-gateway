@@ -12,7 +12,7 @@ func TestParseModel(t *testing.T) {
 		wantModel string
 	}{
 		{"provider/model", "openai/gpt-4", "openai", "gpt-4"},
-		{"alias/model", "claude/claude-3-opus", "anthropic", "claude-3-opus"},
+		{"alias/model", "anthropic/claude-3-opus", "anthropic", "claude-3-opus"},
 		{"alias or/model", "or/llama-3", "openrouter", "llama-3"},
 		{"bare model", "gpt-4", "", "gpt-4"},
 		{"empty", "", "", ""},
@@ -66,10 +66,10 @@ func TestResolveProviderAlias(t *testing.T) {
 	}{
 		{"openai", "openai"},
 		{"oai", "openai"},
-		{"claude", "anthropic"},
 		{"anthropic", "anthropic"},
-		{"google", "gemini"},
+		{"claude", "claude"}, // "claude" is now its own provider (Claude Code)
 		{"gemini", "gemini"},
+		{"google", "gemini"},
 		{"or", "openrouter"},
 		{"ds", "deepseek"},
 		{"sf", "siliconflow"},

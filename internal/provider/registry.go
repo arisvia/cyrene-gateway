@@ -10,90 +10,49 @@ type ProviderInfo struct {
 	Aliases  []string `json:"aliases,omitempty"`
 	BaseURL  string   `json:"baseUrl"`
 	APIType  string   `json:"apiType"`  // "openai", "anthropic", "gemini"
-	AuthType string   `json:"authType"` // "api-key", "oauth"
+	AuthType string   `json:"authType"` // "api-key", "oauth", "cookie", "none"
+
+	// Category and auth metadata (Phase 10)
+	Category  string   `json:"category"`            // "apikey", "oauth", "freeTier", "free", "webCookie"
+	AuthModes []string `json:"authModes,omitempty"` // supported auth modes
+	Priority  int      `json:"priority,omitempty"`  // lower = higher priority
+
+	// Display metadata
+	Color    string `json:"color,omitempty"`
+	Website  string `json:"website,omitempty"`
+	Icon     string `json:"icon,omitempty"`
+	TextIcon string `json:"textIcon,omitempty"`
+
+	// Flags
+	Hidden  bool `json:"hidden,omitempty"`
+	HasFree bool `json:"hasFree,omitempty"`
+	NoAuth  bool `json:"noAuth,omitempty"`
+
+	// OAuth configuration
+	DeviceCodeURL string `json:"deviceCodeUrl,omitempty"`
+	TokenURL      string `json:"tokenUrl,omitempty"`
+	AuthorizeURL  string `json:"authorizeUrl,omitempty"`
+	ClientID      string `json:"clientId,omitempty"`
 }
 
-// Registry is the static provider registry
-var Registry = map[string]ProviderInfo{
-	"openai": {
-		ID: "openai", Name: "OpenAI", Alias: "oai",
-		Aliases: []string{"openai"},
-		BaseURL: "https://api.openai.com/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"anthropic": {
-		ID: "anthropic", Name: "Anthropic", Alias: "claude",
-		Aliases: []string{"claude", "anthropic"},
-		BaseURL: "https://api.anthropic.com", APIType: "anthropic", AuthType: "api-key",
-	},
-	"gemini": {
-		ID: "gemini", Name: "Google Gemini", Alias: "google",
-		Aliases: []string{"google", "gemini"},
-		BaseURL: "https://generativelanguage.googleapis.com", APIType: "gemini", AuthType: "api-key",
-	},
-	"openrouter": {
-		ID: "openrouter", Name: "OpenRouter", Alias: "or",
-		Aliases: []string{"or", "openrouter"},
-		BaseURL: "https://openrouter.ai/api/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"deepseek": {
-		ID: "deepseek", Name: "DeepSeek", Alias: "ds",
-		Aliases: []string{"ds", "deepseek"},
-		BaseURL: "https://api.deepseek.com/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"groq": {
-		ID: "groq", Name: "Groq", Alias: "groq",
-		Aliases: []string{"groq"},
-		BaseURL: "https://api.groq.com/openai/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"mistral": {
-		ID: "mistral", Name: "Mistral AI", Alias: "mistral",
-		Aliases: []string{"mistral"},
-		BaseURL: "https://api.mistral.ai/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"together": {
-		ID: "together", Name: "Together AI", Alias: "together",
-		Aliases: []string{"together"},
-		BaseURL: "https://api.together.xyz/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"fireworks": {
-		ID: "fireworks", Name: "Fireworks AI", Alias: "fw",
-		Aliases: []string{"fw", "fireworks"},
-		BaseURL: "https://api.fireworks.ai/inference/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"siliconflow": {
-		ID: "siliconflow", Name: "SiliconFlow", Alias: "sf",
-		Aliases: []string{"sf", "siliconflow"},
-		BaseURL: "https://api.siliconflow.cn/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"ollama": {
-		ID: "ollama", Name: "Ollama (Local)", Alias: "ollama",
-		Aliases: []string{"ollama"},
-		BaseURL: "http://localhost:11434/v1", APIType: "openai", AuthType: "none",
-	},
-	"xai": {
-		ID: "xai", Name: "xAI (Grok)", Alias: "xai",
-		Aliases: []string{"xai", "grok"},
-		BaseURL: "https://api.x.ai/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"nvidia": {
-		ID: "nvidia", Name: "NVIDIA NIM", Alias: "nvidia",
-		Aliases: []string{"nvidia", "nim"},
-		BaseURL: "https://integrate.api.nvidia.com/v1", APIType: "openai", AuthType: "api-key",
-	},
-	"azure": {
-		ID: "azure", Name: "Azure OpenAI", Alias: "azure",
-		Aliases: []string{"azure"},
-		BaseURL: "", APIType: "openai", AuthType: "api-key",
-	},
-	"vertex": {
-		ID: "vertex", Name: "Google Vertex AI", Alias: "vertex",
-		Aliases: []string{"vertex"},
-		BaseURL: "", APIType: "gemini", AuthType: "oauth",
-	},
-}
+// Registry is the static provider registry, populated in init() by registry_data.go
+var Registry map[string]ProviderInfo
 
 // aliasMap is built once for fast lookup
-var aliasMap = buildAliasMap()
+var aliasMap map[string]string
+
+// legacyAliases provides backward-compatible aliases from the original registry
+var legacyAliases = map[string]string{
+	"oai":    "openai",
+	"claude": "anthropic",
+	"google": "gemini",
+	"or":     "openrouter",
+	"ds":     "deepseek",
+	"sf":     "siliconflow",
+	"fw":     "fireworks",
+	"nim":    "nvidia",
+	"grok":   "xai",
+}
 
 func buildAliasMap() map[string]string {
 	m := make(map[string]string)
@@ -104,6 +63,12 @@ func buildAliasMap() map[string]string {
 		}
 		for _, a := range p.Aliases {
 			m[a] = id
+		}
+	}
+	// Apply legacy aliases (do not override existing entries)
+	for alias, id := range legacyAliases {
+		if _, exists := m[alias]; !exists {
+			m[alias] = id
 		}
 	}
 	return m
@@ -123,6 +88,35 @@ func GetProvider(id string) (ProviderInfo, bool) {
 	return p, ok
 }
 
+// RegistryByCategory groups providers by category with counts
+type RegistryByCategory struct {
+	Category  string         `json:"category"`
+	Count     int            `json:"count"`
+	Providers []ProviderInfo `json:"providers"`
+}
+
+// GetRegistryByCategory returns providers grouped by category
+func GetRegistryByCategory() []RegistryByCategory {
+	catMap := make(map[string][]ProviderInfo)
+	for _, p := range Registry {
+		catMap[p.Category] = append(catMap[p.Category], p)
+	}
+
+	// Fixed category order
+	order := []string{"apikey", "oauth", "freeTier", "free", "webCookie"}
+	result := make([]RegistryByCategory, 0, len(order))
+	for _, cat := range order {
+		if providers, ok := catMap[cat]; ok {
+			result = append(result, RegistryByCategory{
+				Category:  cat,
+				Count:     len(providers),
+				Providers: providers,
+			})
+		}
+	}
+	return result
+}
+
 // modelPrefixProviders maps model name prefixes to providers
 var modelPrefixProviders = []struct {
 	prefix   string
@@ -138,6 +132,12 @@ var modelPrefixProviders = []struct {
 	{"grok-", "xai"},
 	{"llama-", "openrouter"},
 	{"mistral-", "mistral"},
+	{"qwen", "qwen"},
+	{"kimi-", "kimi"},
+	{"glm-", "glm"},
+	{"minimax-", "minimax"},
+	{"jina-", "jina-ai"},
+	{"accounts/fireworks/", "fireworks"},
 }
 
 // InferProviderFromModel infers provider from model name prefix

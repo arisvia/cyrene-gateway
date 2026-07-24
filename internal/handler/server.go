@@ -156,11 +156,22 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
-	providers := make([]provider.ProviderInfo, 0, len(provider.Registry))
-	for _, p := range provider.Registry {
-		providers = append(providers, p)
+	category := r.URL.Query().Get("category")
+	if category != "" {
+		// Filter by category
+		providers := make([]provider.ProviderInfo, 0)
+		for _, p := range provider.Registry {
+			if p.Category == category {
+				providers = append(providers, p)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"providers": providers, "count": len(providers)})
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
+	// Return grouped by category with counts
+	categories := provider.GetRegistryByCategory()
+	total := len(provider.Registry)
+	writeJSON(w, http.StatusOK, map[string]any{"categories": categories, "total": total})
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
