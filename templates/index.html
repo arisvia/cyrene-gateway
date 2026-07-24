@@ -969,6 +969,85 @@
       </section>
 
       <!-- ══════ SETTINGS ══════ -->
+      <!-- ══════ QUOTA TRACKER ══════ -->
+      <section v-if="activeTab === 'quota'">
+        <div class="glass-card card-pad">
+          <p class="card-section-title">Connection Quotas</p>
+          <p v-if="quotaEntries.length === 0" style="color:var(--text-muted);font-size:13px;padding:12px 0">No connections have quota limits configured. Set quotaLimit on a connection to enable tracking.</p>
+          <table v-else class="table">
+            <thead><tr><th>Provider</th><th>Name</th><th>Period</th><th>Used / Limit</th><th>Tokens</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr v-for="q in quotaEntries" :key="q.connectionId">
+                <td>{{ q.provider }}</td>
+                <td>{{ q.name || q.connectionId.slice(0,8) }}</td>
+                <td>{{ q.quotaPeriod }}</td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;height:6px;border-radius:3px;background:var(--glass);overflow:hidden;min-width:60px">
+                      <div :style="{width: Math.min(100, (q.usedRequests/q.quotaLimit)*100)+'%', height:'100%', borderRadius:'3px', background: q.overQuota ? 'var(--red)' : 'var(--accent)'}"></div>
+                    </div>
+                    <span style="font-size:12px;white-space:nowrap">{{ q.usedRequests }} / {{ q.quotaLimit }}</span>
+                  </div>
+                </td>
+                <td style="font-size:12px">{{ formatNum(q.usedPromptTokens + q.usedCompTokens) }}</td>
+                <td><span :class="['badge', q.overQuota ? 'badge-red' : 'badge-green']">{{ q.overQuota ? 'Over Quota' : 'OK' }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ══════ TOKEN SAVER ══════ -->
+      <section v-if="activeTab === 'tokensaver'" style="max-width:600px;margin:0 auto">
+        <div class="glass-card card-pad section-gap">
+          <p class="card-section-title">RTK Compression</p>
+          <div class="settings-row">
+            <div><p class="settings-title">Enable RTK</p><p class="settings-desc">Compress large tool_result outputs (smart truncation)</p></div>
+            <button :class="['switch', settings.rtkEnabled ? 'switch-on' : 'switch-off']" @click="settings.rtkEnabled = !settings.rtkEnabled"><span class="switch-thumb"></span></button>
+          </div>
+        </div>
+
+        <div class="glass-card card-pad section-gap">
+          <p class="card-section-title">Caveman (Terse Output)</p>
+          <div class="settings-row">
+            <div><p class="settings-title">Enable Caveman</p><p class="settings-desc">Inject terse-style system prompt to reduce output tokens</p></div>
+            <button :class="['switch', settings.cavemanEnabled ? 'switch-on' : 'switch-off']" @click="settings.cavemanEnabled = !settings.cavemanEnabled"><span class="switch-thumb"></span></button>
+          </div>
+          <div class="settings-row" v-if="settings.cavemanEnabled" style="padding-bottom:0">
+            <div><p class="settings-title">Level</p></div>
+            <select v-model="settings.cavemanLevel" class="input" style="width:140px;height:29px;font-size:12px">
+              <option value="lite">lite</option>
+              <option value="full">full</option>
+              <option value="ultra">ultra</option>
+              <option value="wenyan-lite">wenyan-lite</option>
+              <option value="wenyan">wenyan</option>
+              <option value="wenyan-ultra">wenyan-ultra</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="glass-card card-pad section-gap">
+          <p class="card-section-title">Ponytail (Minimal Code)</p>
+          <div class="settings-row">
+            <div><p class="settings-title">Enable Ponytail</p><p class="settings-desc">Inject lazy-senior-dev prompt to bias toward minimal code</p></div>
+            <button :class="['switch', settings.ponytailEnabled ? 'switch-on' : 'switch-off']" @click="settings.ponytailEnabled = !settings.ponytailEnabled"><span class="switch-thumb"></span></button>
+          </div>
+          <div class="settings-row" v-if="settings.ponytailEnabled" style="padding-bottom:0">
+            <div><p class="settings-title">Level</p></div>
+            <select v-model="settings.ponytailLevel" class="input" style="width:140px;height:29px;font-size:12px">
+              <option value="lite">lite</option>
+              <option value="full">full</option>
+              <option value="ultra">ultra</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex-gap" style="justify-content:center">
+          <button class="btn btn-primary" @click="saveSettings">Save Token Saver</button>
+          <span v-if="settingsSaved" class="saved-indicator"><i data-lucide="check"></i>Saved</span>
+        </div>
+      </section>
+
       <section v-if="activeTab === 'settings'" style="max-width:600px;margin:0 auto">
         <div class="glass-card card-pad section-gap">
           <p class="card-section-title">Security</p>
@@ -1047,6 +1126,8 @@ createApp({
       { id: 'aliases', label: 'Model Aliases', icon: 'git-branch' },
       { id: 'combos', label: 'Combos', icon: 'layers' },
       { id: 'usage', label: 'Usage', icon: 'bar-chart-3' },
+      { id: 'quota', label: 'Quota', icon: 'gauge' },
+      { id: 'tokensaver', label: 'Token Saver', icon: 'zap' },
     ];
     const navSystem = [
       { id: 'proxies', label: 'Proxy Pools', icon: 'globe' },
@@ -1142,6 +1223,7 @@ createApp({
     const usageChart = ref([]);
     const requestDetails = ref([]);
     const usagePeriod = ref('7d');
+    const quotaEntries = ref([]);
 
     const showAddProvider = ref(false);
     const showAddKey = ref(false);
@@ -1171,6 +1253,8 @@ createApp({
       aliases: ['Model Aliases', 'Map short names to full model identifiers.'],
       combos: ['Combos', 'Fallback and round-robin model groups for resilient routing.'],
       usage: ['Usage', 'Token consumption, costs, and request analytics.'],
+      quota: ['Quota Tracker', 'Per-connection quota limits and usage monitoring.'],
+      tokensaver: ['Token Saver', 'RTK compression, caveman, and ponytail token optimization.'],
       proxies: ['Proxy Pools', 'Outbound proxy rotation for upstream requests.'],
       settings: ['Settings', 'Security, authentication, and routing configuration.'],
       status: ['Status', 'Gateway health and resource overview.'],
@@ -1189,6 +1273,8 @@ createApp({
       activeTab.value = id;
       if (id === 'usage') loadUsage();
       if (id === 'settings') loadSettings();
+      if (id === 'quota') loadQuota();
+      if (id === 'tokensaver') loadSettings();
       refreshIcons();
     }
 
@@ -1228,6 +1314,13 @@ createApp({
         usageChart.value = Array.isArray(chart) ? chart : [];
         requestDetails.value = Array.isArray(details) ? details : (details?.details || []);
       } catch (e) { console.error('usage load failed:', e); }
+    }
+
+    async function loadQuota() {
+      try {
+        const res = await api('/api/quota');
+        quotaEntries.value = Array.isArray(res.entries) ? res.entries : [];
+      } catch (e) { console.error('quota load failed:', e); }
     }
 
     // --- Providers ---
@@ -1369,6 +1462,7 @@ createApp({
       version, health, providers, aliases, combos, apiKeys, proxyPools, settings,
       registryList, registryCategories, registryFilter, registrySearch, filteredRegistry,
       usageStats, usageChart, requestDetails, usagePeriod, loadUsage,
+      quotaEntries, loadQuota,
       showAddProvider, showAddKey, showAddCombo, showAddProxy,
       newProvider, newAlias, newCombo, newKeyName, lastCreatedKey, newProxy, newPassword, settingsSaved,
       openAddProvider, selectRegistryProvider, registryBaseUrl,

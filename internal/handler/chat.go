@@ -15,6 +15,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/rtk"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
@@ -197,7 +198,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		conn := selectAvailableConnection(conns, modelInfo.Model, nil)
+		conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
 		if conn == nil {
 			lastError = fmt.Sprintf("all accounts rate-limited for: %s", modelInfo.Provider)
 			lastStatus = 503
@@ -325,7 +326,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	}
 
 	// Select best available connection (priority-ordered, cooldown-aware, model-lock-aware)
-	conn := selectAvailableConnection(conns, modelInfo.Model, nil)
+	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
@@ -382,6 +383,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		// Max_tokens clamping for specific providers
 		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
 
+		// Phase 13: Token saver (RTK + caveman + ponytail)
+		s.applyTokenSaver(bodyMap, "openai")
+
 		bodyBytes, err = json.Marshal(bodyMap)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
@@ -410,6 +414,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 		// Max_tokens clamping on translated body
 		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, translated)
+
+		// Phase 13: Token saver (RTK + caveman + ponytail)
+		s.applyTokenSaver(translated, string(targetFormat))
 
 		bodyBytes, err = json.Marshal(translated)
 		if err != nil {
@@ -730,7 +737,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := selectAvailableConnection(conns, modelInfo.Model, nil)
+	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
@@ -876,7 +883,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := selectAvailableConnection(conns, modelInfo.Model, nil)
+	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "all accounts rate-limited"})
 		return
@@ -920,9 +927,34 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 }
 
-// selectAvailableConnection picks the best connection using priority, cooldown, and model locks.
-func selectAvailableConnection(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool) *model.ProviderConnection {
-	return provider.SelectCredential(conns, modelName, excludeIDs)
+// selectAvailableConnection picks the best connection using priority, cooldown, model locks, and quota.
+func (s *Server) selectAvailableConnection(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool) *model.ProviderConnection {
+	return provider.SelectCredentialWithQuota(conns, modelName, excludeIDs, s.quotaChecker())
+}
+
+// applyTokenSaver applies RTK compression, caveman, and ponytail based on settings.
+func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
+	settings, err := s.DB.GetSettings()
+	if err != nil {
+		return
+	}
+
+	// RTK compression of tool results
+	if settings.RTKEnabled {
+		if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
+			slog.Debug("RTK compressed tool results", slog.Int("bytes_saved", saved))
+		}
+	}
+
+	// Caveman: inject terse-style system prompt
+	if settings.CavemanEnabled && settings.CavemanLevel != "" {
+		rtk.InjectCaveman(bodyMap, format, settings.CavemanLevel)
+	}
+
+	// Ponytail: inject lazy-senior-dev system prompt
+	if settings.PonytailEnabled && settings.PonytailLevel != "" {
+		rtk.InjectPonytail(bodyMap, format, settings.PonytailLevel)
+	}
 }
 
 // recordUsage persists a usage entry to the database asynchronously-safe (called inline).

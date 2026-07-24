@@ -133,6 +133,9 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/usage/chart", s.handleUsageChart)
 	s.Router.HandleFunc("GET /api/usage/request-details", s.handleUsageRequestDetails)
 	s.Router.HandleFunc("GET /api/usage/request-details/{id}", s.handleUsageRequestDetailByID)
+
+	// Quota tracker
+	s.Router.HandleFunc("GET /api/quota", s.handleQuota)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

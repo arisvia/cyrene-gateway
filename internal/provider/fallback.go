@@ -153,9 +153,18 @@ func IsModelLockActive(conn *model.ProviderConnection, modelName string) bool {
 	return false
 }
 
+// QuotaChecker is a function that returns the current usage count for a connection
+// within its quota period. If nil, quota checks are skipped.
+type QuotaChecker func(connectionID string, period string) int
+
 // SelectCredential picks the best available connection for a provider.
-// It respects priority ordering, cooldown state, model locks, and an exclude set.
+// It respects priority ordering, cooldown state, model locks, quota limits, and an exclude set.
 func SelectCredential(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool) *model.ProviderConnection {
+	return SelectCredentialWithQuota(conns, modelName, excludeIDs, nil)
+}
+
+// SelectCredentialWithQuota extends SelectCredential with quota awareness.
+func SelectCredentialWithQuota(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker) *model.ProviderConnection {
 	now := time.Now()
 
 	for i := range conns {
@@ -182,6 +191,18 @@ func SelectCredential(conns []model.ProviderConnection, modelName string, exclud
 		// Skip model-locked connections
 		if modelName != "" && IsModelLockActive(c, modelName) {
 			continue
+		}
+
+		// Skip over-quota connections
+		if c.Data.QuotaLimit > 0 && quotaFn != nil {
+			period := c.Data.QuotaPeriod
+			if period == "" {
+				period = "daily"
+			}
+			used := quotaFn(c.ID, period)
+			if used >= c.Data.QuotaLimit {
+				continue
+			}
 		}
 
 		return c

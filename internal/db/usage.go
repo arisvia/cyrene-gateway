@@ -370,6 +370,54 @@ func (d *DB) GetTotalRequestsLifetime() (int64, error) {
 	return n, nil
 }
 
+// GetConnectionUsageCount returns the number of requests for a connection within a period.
+// Period can be "daily", "weekly", or "monthly".
+func (d *DB) GetConnectionUsageCount(connectionID string, period string) int {
+	now := time.Now().UTC()
+	var cutoff time.Time
+	switch period {
+	case "weekly":
+		cutoff = now.AddDate(0, 0, -7)
+	case "monthly":
+		cutoff = now.AddDate(0, -1, 0)
+	default: // daily
+		cutoff = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	}
+
+	var count int
+	err := d.conn.QueryRow(
+		`SELECT COUNT(*) FROM usageHistory WHERE connectionId = ? AND timestamp >= ?`,
+		connectionID, cutoff.Format(time.RFC3339),
+	).Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// GetConnectionUsageTokens returns total tokens used by a connection within a period.
+func (d *DB) GetConnectionUsageTokens(connectionID string, period string) (prompt, completion int) {
+	now := time.Now().UTC()
+	var cutoff time.Time
+	switch period {
+	case "weekly":
+		cutoff = now.AddDate(0, 0, -7)
+	case "monthly":
+		cutoff = now.AddDate(0, -1, 0)
+	default: // daily
+		cutoff = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	}
+
+	err := d.conn.QueryRow(
+		`SELECT COALESCE(SUM(promptTokens),0), COALESCE(SUM(completionTokens),0) FROM usageHistory WHERE connectionId = ? AND timestamp >= ?`,
+		connectionID, cutoff.Format(time.RFC3339),
+	).Scan(&prompt, &completion)
+	if err != nil {
+		return 0, 0
+	}
+	return prompt, completion
+}
+
 func dateKeyFromTimestamp(ts string) string {
 	t, err := time.Parse(time.RFC3339, ts)
 	if err != nil {

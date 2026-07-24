@@ -26,6 +26,8 @@ type ConnectionData struct {
 	LastError            string         `json:"lastError,omitempty"`
 	RateLimitedUntil     string         `json:"rateLimitedUntil,omitempty"`
 	BackoffLevel         int            `json:"backoffLevel,omitempty"`
+	QuotaLimit           int            `json:"quotaLimit,omitempty"`
+	QuotaPeriod          string         `json:"quotaPeriod,omitempty"` // daily, weekly, monthly
 	ProviderSpecificData map[string]any `json:"providerSpecificData,omitempty"`
 }
 
