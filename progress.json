@@ -128,7 +128,80 @@
     },
     {
       "id": 10,
-      "name": "Maintenance Mode (post-v1.0.0)",
+      "name": "Provider Registry Expansion & Categorization",
+      "description": "Port full provider registry from 9router (~100 providers) with category metadata and auth modes",
+      "status": "pending",
+      "tasks": [
+        "Add Category and AuthModes fields to ProviderInfo struct",
+        "Port all 64 apikey-category providers from 9router registry (baseUrl, apiType, aliases)",
+        "Port 16 oauth-category providers with OAuth config (tokenUrl, authorizeUrl, deviceCodeUrl)",
+        "Port 13 freeTier + 5 free + 2 webCookie providers",
+        "Extend GET /api/registry to return category grouping and counts",
+        "Panel: category filter tabs + search in Add Provider registry picker",
+        "Unit tests for registry completeness (all 9router providers present)"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Provider Detail Management",
+      "description": "Per-provider detail page: connection testing, credential editing, custom model management",
+      "status": "pending",
+      "tasks": [
+        "Panel: provider detail view (click provider row to drill in)",
+        "Panel: connection test button with latency/status feedback (existing POST /api/providers/{id}/test)",
+        "Panel: edit API key / access token / base URL inline",
+        "Add custom models per provider (KV store: providerModels scope)",
+        "GET /api/providers/{id}/models endpoint (custom + registry models)",
+        "Panel: model list with add/remove custom models",
+        "Display cooldown state and error status per connection"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "OAuth Authorization Flow",
+      "description": "Full OAuth connect flow for oauth-category providers: authorize redirect, callback, device code, token import",
+      "status": "pending",
+      "tasks": [
+        "GET /api/oauth/{provider}/authorize - generate authorize URL (PKCE where supported)",
+        "GET /api/oauth/{provider}/callback - exchange code for tokens, create connection",
+        "POST /api/oauth/{provider}/device-code - initiate device code flow (qwen, kimi)",
+        "POST /api/oauth/{provider}/device-code/poll - poll for token",
+        "POST /api/oauth/{provider}/import - manual token paste import (codex, cursor, kiro patterns)",
+        "Panel: OAuth connect modal per provider (authorize / device code display / token paste)",
+        "Panel: OAuth connection status (expiry, refresh state)",
+        "Wire token refresh (existing oauth.go) into chat request path with dedup lock"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Quota Tracker & Token Saver",
+      "description": "Per-connection quota limits with usage tracking, and RTK token optimization UI (caveman/ponytail)",
+      "status": "pending",
+      "tasks": [
+        "Add quota fields to connection data (quotaLimit, quotaPeriod)",
+        "Quota check in fallback selection (skip connections over quota)",
+        "GET /api/quota endpoint (per-connection usage vs limit)",
+        "Panel: Quota Tracker page (progress bars, period selector, over-quota alerts)",
+        "Panel: Token Saver page (RTK/caveman/ponytail toggles + levels, wired to existing settings fields)",
+        "Apply caveman/ponytail compression in request path when enabled"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Tunnel & Tailscale",
+      "description": "Inbound tunnel management: Tailscale install/enable/status, tunnel UI with graceful degradation",
+      "status": "pending",
+      "tasks": [
+        "Tailscale detection (binary presence, daemon status)",
+        "POST /api/tunnel/tailscale-install, enable, disable endpoints",
+        "GET /api/tunnel/status endpoint",
+        "Panel: Tunnel page (Tailscale status card, install/enable controls, funnel URL display)",
+        "Graceful degradation when tailscale unavailable (clear UI messaging)"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Maintenance Mode (final, perpetual)",
       "description": "Perpetual: issues, deps, upstream sync (9router/VansRouter), provider registry updates",
       "status": "pending",
       "tasks": [

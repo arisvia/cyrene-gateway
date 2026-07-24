@@ -55,7 +55,7 @@ schema.sql                   # 数据库 schema 参考
 - **主参考**: decolua/9router（Next.js 原版，`--depth 1` clone 到 /data/workspace/9router）
 - **增强参考**: Vanszs/VansRouter（loop guard、termination prompt 等增强，按需 clone 到 /data/workspace/VansRouter）
 - 重点参考目录：`open-sse/services/`（fallback/credential）、`open-sse/config/`（error rules）、`open-sse/handlers/`（chat core）
-- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。Phase 10 维护模式更新 hash 后，后续 session 自然拿到新版本。
+- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。Phase 15 维护模式更新 hash 后，后续 session 自然拿到新版本。
 
 ## progress.json 使用规则
 
@@ -71,9 +71,25 @@ schema.sql                   # 数据库 schema 参考
 - Phase 2 完成 → v0.2.0
 - ...
 - Phase 9 完成 → v0.9.0
-- 最终稳定 → v1.0.0
+- Phase 10-14（功能增强）→ v0.10.0 ... v0.14.0
+- 全部完成 → v1.0.0
+- Phase 15 为维护模式（永不 done），patch 版本 v1.0.x
 
 打 tag 会触发 GitHub Actions 创建 Release（含 5 平台二进制）。
+
+## 功能增强阶段（Phase 10-14）
+
+Phase 9 之后插入的功能增强阶段，参考 9router/VansRouter 的完整功能集：
+
+- **Phase 10**: Provider Registry 扩充（~100 providers，category 分类：apikey/oauth/freeTier/free/webCookie）
+- **Phase 11**: Provider 详情管理（连接测试、凭据编辑、自定义 model）
+- **Phase 12**: OAuth 授权流程（authorize/callback/device-code/token import）
+- **Phase 13**: Quota Tracker & Token Saver（配额限制 + RTK token 优化）
+- **Phase 14**: Tunnel & Tailscale（入站隧道管理）
+- **Phase 15**: 维护模式（原 Phase 10，永不 done 的守护状态）
+
+面板架构说明：单 HTML + Vue 3 hash 路由，v-if 按 tab 卸载 DOM，
+15 个页面量级无性能问题。若超出承载能力，按软性约束条款拆分前端目录。
 
 ## Dashboard 面板设计（Phase 5）
 
@@ -95,9 +111,9 @@ CLI 参数（全部有默认值）：
 ```
 环境变量 CYRENE_HOST / CYRENE_PORT 等同样支持，flag 优先于 env。
 
-## 维护模式（Phase 9 完成后）
+## 维护模式（Phase 15，原 Phase 10）
 
-当所有开发 phase（1-9）均为 done 时，后续定时触发进入维护模式：
+当所有开发 phase（1-14）均为 done 时，后续定时触发进入维护模式：
 1. 检查 GitHub Issues（bug 报告、feature request）
 2. `go build ./... && go test ./...` 验证项目健康
 3. 审查 dependabot PRs，安全则合并
@@ -110,16 +126,16 @@ CLI 参数（全部有默认值）：
    - 更新 `upstream_commits` hash
 6. 无需操作时报告 "no pending work" 并正常退出
 
-Phase 10 永远不会被标记为 done——它是持续运行的守护状态。
+Phase 15 永远不会被标记为 done——它是持续运行的守护状态。
 
 ## 参考项目使用策略
 
-- **开发期（Phase 2-9）**：9router 和 VansRouter **都参考**
+- **开发期（Phase 2-14）**：9router 和 VansRouter **都参考**
   - 9router：核心架构、路由逻辑、provider 定义的权威来源
   - VansRouter：已做的增强（loop guard、termination prompt、bug fix）直接借鉴
   - 9router clone 到 /data/workspace/9router（若不存在则每轮 session 开头 clone）
   - VansRouter 仅在当前 phase 明确需要时按需 clone 到 /data/workspace/VansRouter
-- **维护期（Phase 10）**：只定期 diff 9router（主上游）
+- **维护期（Phase 15）**：只定期 diff 9router（主上游）
   - VansRouter 是 9router 的 fork，底层 90%+ 相同，定期 diff 会重复运算
   - 仅在 Issue 指定或其独有增强相关时按需查看
 - 上游 commit hash 记录在 `progress.json` 的 `upstream_commits` 字段
