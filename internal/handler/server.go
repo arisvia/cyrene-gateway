@@ -70,6 +70,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/auth/login", s.Auth.HandleLogin)
 	s.Router.HandleFunc("POST /api/auth/logout", s.Auth.HandleLogout)
 	s.Router.HandleFunc("GET /api/auth/status", s.Auth.HandleStatus)
+	s.Router.HandleFunc("POST /api/auth/password", s.Auth.HandleSetPassword)
 
 	// OpenAI-compatible API surface
 	s.Router.HandleFunc("GET /v1/models", s.handleModels)

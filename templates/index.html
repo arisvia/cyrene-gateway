@@ -28,9 +28,9 @@
     </header>
 
     <!-- Tab Navigation -->
-    <nav class="flex gap-1 mb-6 bg-slate-900/50 p-1 rounded-lg border border-slate-800 w-fit">
+    <nav class="flex flex-wrap gap-1 mb-6 bg-slate-900/50 p-1 rounded-lg border border-slate-800 w-fit">
       <button v-for="tab in tabs" :key="tab.id"
-        @click="activeTab = tab.id"
+        @click="switchTab(tab.id)"
         :class="[
           'px-4 py-2 rounded-md text-sm font-medium transition-colors',
           activeTab === tab.id ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-slate-200'
@@ -89,6 +89,56 @@
         </div>
       </div>
       <p v-if="providers.length === 0" class="text-slate-500 text-sm text-center py-8">No providers configured yet.</p>
+    </section>
+
+    <!-- API Keys Tab -->
+    <section v-if="activeTab === 'keys'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-slate-200">API Keys</h2>
+        <button @click="showAddKey = !showAddKey"
+          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
+          + Generate Key
+        </button>
+      </div>
+
+      <!-- Generate Key Form -->
+      <div v-if="showAddKey" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
+        <div class="flex gap-3">
+          <input v-model="newKeyName" placeholder="Key name (e.g. my-laptop)" class="input flex-1">
+          <button @click="createKey" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Generate</button>
+          <button @click="showAddKey = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Newly Created Key Banner -->
+      <div v-if="lastCreatedKey" class="bg-emerald-900/30 border border-emerald-700 rounded-lg p-4">
+        <p class="text-sm text-emerald-300 font-semibold mb-2">Key generated successfully — copy it now, it will be masked on reload:</p>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 text-xs bg-slate-900 border border-slate-700 rounded px-3 py-2 font-mono text-emerald-200 break-all">{{ lastCreatedKey.key }}</code>
+          <button @click="copyText(lastCreatedKey.key)" class="text-xs px-3 py-2 rounded bg-emerald-700 hover:bg-emerald-600 shrink-0">Copy</button>
+          <button @click="lastCreatedKey = null" class="text-xs px-2 py-2 rounded bg-slate-700 hover:bg-slate-600 shrink-0">&times;</button>
+        </div>
+      </div>
+
+      <!-- Key List -->
+      <div v-for="k in apiKeys" :key="k.id"
+        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex justify-between items-center">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span :class="['w-2 h-2 rounded-full shrink-0', k.isActive ? 'bg-emerald-500' : 'bg-red-500']"></span>
+            <span class="font-semibold text-sm truncate">{{ k.name || 'Unnamed key' }}</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-1 font-mono flex items-center gap-2">
+            <span>{{ maskKey(k.key) }}</span>
+            <button @click="copyText(k.key)" class="text-teal-400 hover:text-teal-300">[copy]</button>
+          </div>
+          <div class="text-xs text-slate-600 mt-0.5">Created: {{ formatDate(k.createdAt) }}</div>
+        </div>
+        <button @click="deleteKey(k)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300 shrink-0">
+          Delete
+        </button>
+      </div>
+      <p v-if="apiKeys.length === 0" class="text-slate-500 text-sm text-center py-8">No API keys yet. Generate one to use with <code class="text-teal-400">Authorization: Bearer &lt;key&gt;</code>.</p>
     </section>
 
     <!-- Aliases Tab -->
@@ -152,6 +202,202 @@
       <p v-if="combos.length === 0" class="text-slate-500 text-sm text-center py-8">No combos configured.</p>
     </section>
 
+    <!-- Usage Tab -->
+    <section v-if="activeTab === 'usage'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-slate-200">Usage Statistics</h2>
+        <select v-model="usagePeriod" @change="loadUsage" class="input text-xs">
+          <option value="today">Today</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="60d">Last 60 days</option>
+        </select>
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-teal-400">{{ formatNum(usageStats.totalRequests) }}</div>
+          <div class="text-xs text-slate-500 mt-1">Requests</div>
+        </div>
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-emerald-400">{{ formatNum(usageStats.totalPromptTokens) }}</div>
+          <div class="text-xs text-slate-500 mt-1">Prompt Tokens</div>
+        </div>
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-sky-400">{{ formatNum(usageStats.totalCompletionTokens) }}</div>
+          <div class="text-xs text-slate-500 mt-1">Completion Tokens</div>
+        </div>
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
+          <div class="text-2xl font-bold text-amber-400">${{ usageStats.totalCost ? usageStats.totalCost.toFixed(4) : '0.0000' }}</div>
+          <div class="text-xs text-slate-500 mt-1">Est. Cost</div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-slate-400 mb-3">Tokens per {{ usagePeriod === 'today' ? 'Hour' : 'Day' }}</h3>
+        <div class="flex items-end gap-1 h-32">
+          <div v-for="(b, i) in usageChart" :key="i" class="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+            <div class="w-full bg-teal-600/70 rounded-t min-h-[2px] transition-all"
+              :style="{ height: chartBarHeight(b.tokens) + '%' }"
+              :title="b.label + ': ' + formatNum(b.tokens) + ' tokens'"></div>
+            <span class="text-[9px] text-slate-600 truncate w-full text-center">{{ b.label }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- By Provider / Model -->
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-slate-400 mb-3">By Provider</h3>
+          <div v-if="Object.keys(usageStats.byProvider || {}).length === 0" class="text-xs text-slate-600">No data in this period.</div>
+          <div v-for="(v, k) in usageStats.byProvider" :key="k" class="flex justify-between text-xs py-1.5 border-b border-slate-800/50 last:border-0">
+            <span class="font-mono text-slate-300">{{ k }}</span>
+            <span class="text-slate-500">{{ formatNum(v.requests) }} req / {{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
+          </div>
+        </div>
+        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-slate-400 mb-3">By Model</h3>
+          <div v-if="Object.keys(usageStats.byModel || {}).length === 0" class="text-xs text-slate-600">No data in this period.</div>
+          <div v-for="(v, k) in usageStats.byModel" :key="k" class="flex justify-between text-xs py-1.5 border-b border-slate-800/50 last:border-0">
+            <span class="font-mono text-slate-300 truncate mr-2">{{ k }}</span>
+            <span class="text-slate-500 shrink-0">{{ formatNum(v.requests) }} req / {{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Requests -->
+      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-slate-400 mb-3">Recent Requests</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="text-slate-500 border-b border-slate-800">
+                <th class="text-left py-2 pr-3 font-medium">Time</th>
+                <th class="text-left py-2 pr-3 font-medium">Provider</th>
+                <th class="text-left py-2 pr-3 font-medium">Model</th>
+                <th class="text-right py-2 pr-3 font-medium">Tokens</th>
+                <th class="text-right py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="rd in requestDetails" :key="rd.id" class="border-b border-slate-800/50 last:border-0">
+                <td class="py-2 pr-3 text-slate-400 whitespace-nowrap">{{ formatDate(rd.timestamp || rd.createdAt) }}</td>
+                <td class="py-2 pr-3 font-mono text-slate-300">{{ rd.provider }}</td>
+                <td class="py-2 pr-3 font-mono text-slate-400 truncate max-w-[200px]">{{ rd.model }}</td>
+                <td class="py-2 pr-3 text-right text-slate-400">{{ formatNum((rd.promptTokens || 0) + (rd.completionTokens || 0)) }}</td>
+                <td class="py-2 text-right">
+                  <span :class="['px-1.5 py-0.5 rounded text-[10px] font-semibold', rd.status === 'success' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400']">{{ rd.status }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="requestDetails.length === 0" class="text-slate-600 text-xs text-center py-4">No request details recorded yet.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Proxy Pools Tab -->
+    <section v-if="activeTab === 'proxies'" class="space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-slate-200">Proxy Pools</h2>
+        <button @click="showAddProxy = !showAddProxy"
+          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
+          + Add Proxy
+        </button>
+      </div>
+
+      <!-- Add Proxy Form -->
+      <div v-if="showAddProxy" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <input v-model="newProxy.data.name" placeholder="Pool name" class="input">
+          <select v-model="newProxy.data.type" class="input">
+            <option value="http">HTTP Proxy</option>
+            <option value="vercel">Vercel</option>
+            <option value="cloudflare">Cloudflare Worker</option>
+            <option value="deno">Deno Deploy</option>
+          </select>
+          <input v-model="newProxy.data.proxyUrl" placeholder="Proxy URL (e.g. http://127.0.0.1:7890)" class="input col-span-2">
+          <input v-model="newProxy.data.noProxy" placeholder="No-proxy hosts (comma-separated, optional)" class="input col-span-2">
+        </div>
+        <label class="flex items-center gap-2 text-sm text-slate-400">
+          <input type="checkbox" v-model="newProxy.data.strictProxy" class="accent-teal-500">
+          Strict proxy (fail requests if proxy is unreachable)
+        </label>
+        <div class="flex gap-2">
+          <button @click="addProxy" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Save</button>
+          <button @click="showAddProxy = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Proxy List -->
+      <div v-for="pp in proxyPools" :key="pp.id"
+        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex justify-between items-center">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span :class="['w-2 h-2 rounded-full shrink-0', pp.isActive ? 'bg-emerald-500' : 'bg-red-500']"></span>
+            <span class="font-semibold text-sm">{{ pp.data.name || 'Unnamed pool' }}</span>
+            <span class="text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">{{ pp.data.type }}</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-1 font-mono truncate">{{ pp.data.proxyUrl }}</div>
+          <div v-if="pp.data.strictProxy" class="text-xs text-amber-500/70 mt-0.5">strict mode</div>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button @click="toggleProxy(pp)" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">
+            {{ pp.isActive ? 'Disable' : 'Enable' }}
+          </button>
+          <button @click="deleteProxy(pp)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">
+            Delete
+          </button>
+        </div>
+      </div>
+      <p v-if="proxyPools.length === 0" class="text-slate-500 text-sm text-center py-8">No proxy pools configured. Outbound requests go direct.</p>
+    </section>
+
+    <!-- Settings Tab -->
+    <section v-if="activeTab === 'settings'" class="space-y-4">
+      <h2 class="text-lg font-bold text-slate-200">Settings</h2>
+
+      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5 space-y-4">
+        <h3 class="text-sm font-semibold text-slate-400">Security</h3>
+        <label class="flex items-center justify-between text-sm">
+          <span class="text-slate-300">Require login for dashboard</span>
+          <input type="checkbox" v-model="settings.requireLogin" class="accent-teal-500 w-4 h-4">
+        </label>
+        <label class="flex items-center justify-between text-sm">
+          <span class="text-slate-300">Require API key for /v1/* endpoints</span>
+          <input type="checkbox" v-model="settings.requireApiKey" class="accent-teal-500 w-4 h-4">
+        </label>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-300">Dashboard password</span>
+          <div class="flex gap-2">
+            <input v-model="newPassword" type="password" placeholder="New password" class="input text-xs w-40">
+            <button @click="setPassword" class="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1.5 rounded-md">Set</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5 space-y-4">
+        <h3 class="text-sm font-semibold text-slate-400">Routing</h3>
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-slate-300">Default combo strategy</span>
+          <select v-model="settings.comboStrategy" class="input text-xs w-40">
+            <option value="">Default (fallback)</option>
+            <option value="fallback">Fallback</option>
+            <option value="round-robin">Round Robin</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button @click="saveSettings" class="text-sm bg-teal-600 hover:bg-teal-500 px-4 py-2 rounded-md transition-colors">
+          Save Settings
+        </button>
+      </div>
+      <p v-if="settingsSaved" class="text-xs text-emerald-400 text-right">Settings saved.</p>
+    </section>
+
     <!-- Status Tab -->
     <section v-if="activeTab === 'status'" class="space-y-4">
       <h2 class="text-lg font-bold text-slate-200">Gateway Status</h2>
@@ -162,6 +408,7 @@
             <div class="flex justify-between"><span class="text-slate-500">Service</span><span class="text-emerald-400 font-mono">{{ health.service || '—' }}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Status</span><span class="text-emerald-400 font-mono">{{ health.status || '—' }}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Version</span><span class="text-slate-300 font-mono">{{ version }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Uptime</span><span class="text-slate-300 font-mono">{{ formatUptime(health.uptimeSeconds) }}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Time</span><span class="text-slate-300 font-mono">{{ health.time || '—' }}</span></div>
           </div>
         </div>
@@ -172,6 +419,9 @@
             <div class="flex justify-between"><span class="text-slate-500">Active</span><span class="text-emerald-400 font-mono">{{ providers.filter(p => p.isActive).length }}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Inactive</span><span class="text-red-400 font-mono">{{ providers.filter(p => !p.isActive).length }}</span></div>
             <div class="flex justify-between"><span class="text-slate-500">Aliases</span><span class="text-slate-300 font-mono">{{ Object.keys(aliases).length }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">API Keys</span><span class="text-slate-300 font-mono">{{ apiKeys.length }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Proxy Pools</span><span class="text-slate-300 font-mono">{{ proxyPools.length }}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Lifetime Requests</span><span class="text-slate-300 font-mono">{{ formatNum(usageStats.totalRequestsLifetime) }}</span></div>
           </div>
         </div>
       </div>
@@ -195,8 +445,12 @@
       setup() {
         const tabs = [
           { id: 'providers', label: 'Providers' },
+          { id: 'keys', label: 'API Keys' },
           { id: 'aliases', label: 'Aliases' },
           { id: 'combos', label: 'Combos' },
+          { id: 'usage', label: 'Usage' },
+          { id: 'proxies', label: 'Proxy Pools' },
+          { id: 'settings', label: 'Settings' },
           { id: 'status', label: 'Status' },
         ];
         const activeTab = ref('providers');
@@ -205,11 +459,26 @@
         const providers = ref([]);
         const aliases = ref({});
         const combos = ref([]);
+        const apiKeys = ref([]);
+        const proxyPools = ref([]);
+        const settings = ref({});
+        const usageStats = ref({});
+        const usageChart = ref([]);
+        const requestDetails = ref([]);
+        const usagePeriod = ref('7d');
+
         const showAddProvider = ref(false);
         const showAddCombo = ref(false);
+        const showAddKey = ref(false);
+        const showAddProxy = ref(false);
         const newProvider = ref({ provider: '', name: '', data: { apiKey: '', baseUrl: '' } });
         const newAlias = ref({ alias: '', target: '' });
         const newCombo = ref({ name: '', kind: 'fallback', modelsStr: '' });
+        const newKeyName = ref('');
+        const lastCreatedKey = ref(null);
+        const newProxy = ref({ data: { name: '', proxyUrl: '', noProxy: '', strictProxy: false, type: 'http' } });
+        const newPassword = ref('');
+        const settingsSaved = ref(false);
 
         async function api(path, opts = {}) {
           const res = await fetch(path, {
@@ -217,6 +486,14 @@
             ...opts,
           });
           return res.json();
+        }
+
+        function switchTab(id) {
+          activeTab.value = id;
+          if (id === 'usage') loadUsage();
+          if (id === 'keys') loadKeys();
+          if (id === 'proxies') loadProxies();
+          if (id === 'settings') loadSettings();
         }
 
         async function loadAll() {
@@ -236,8 +513,47 @@
           } catch (e) {
             console.error('Failed to load data:', e);
           }
+          loadKeys();
+          loadProxies();
+          loadUsage();
         }
 
+        async function loadKeys() {
+          try {
+            const keys = await api('/api/keys');
+            apiKeys.value = Array.isArray(keys) ? keys : [];
+          } catch (e) { apiKeys.value = []; }
+        }
+
+        async function loadProxies() {
+          try {
+            const res = await api('/api/proxy-pools');
+            proxyPools.value = Array.isArray(res?.proxyPools) ? res.proxyPools : (Array.isArray(res) ? res : []);
+          } catch (e) { proxyPools.value = []; }
+        }
+
+        async function loadSettings() {
+          try {
+            settings.value = await api('/api/settings');
+          } catch (e) { settings.value = {}; }
+        }
+
+        async function loadUsage() {
+          try {
+            const [stats, chart, details] = await Promise.all([
+              api(`/api/usage/stats?period=${usagePeriod.value}`),
+              api(`/api/usage/chart?period=${usagePeriod.value}`),
+              api('/api/usage/request-details?page=1&pageSize=20'),
+            ]);
+            usageStats.value = stats || {};
+            usageChart.value = Array.isArray(chart) ? chart : [];
+            requestDetails.value = Array.isArray(details) ? details : (details?.details || []);
+          } catch (e) {
+            console.error('Failed to load usage:', e);
+          }
+        }
+
+        // --- Providers ---
         async function addProvider() {
           await api('/api/providers', { method: 'POST', body: JSON.stringify(newProvider.value) });
           newProvider.value = { provider: '', name: '', data: { apiKey: '', baseUrl: '' } };
@@ -261,6 +577,38 @@
           loadAll();
         }
 
+        // --- API Keys ---
+        async function createKey() {
+          const key = await api('/api/keys', { method: 'POST', body: JSON.stringify({ name: newKeyName.value }) });
+          lastCreatedKey.value = key;
+          newKeyName.value = '';
+          showAddKey.value = false;
+          loadKeys();
+        }
+
+        async function deleteKey(k) {
+          if (!confirm(`Delete key "${k.name || k.id}"?`)) return;
+          await api(`/api/keys/${k.id}`, { method: 'DELETE' });
+          loadKeys();
+        }
+
+        function maskKey(key) {
+          if (!key || key.length <= 12) return key || '';
+          return key.slice(0, 8) + '...' + key.slice(-4);
+        }
+
+        function copyText(text) {
+          navigator.clipboard.writeText(text).catch(() => {
+            const el = document.createElement('textarea');
+            el.value = text;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+          });
+        }
+
+        // --- Aliases ---
         async function addAlias() {
           await api('/api/models/alias', { method: 'POST', body: JSON.stringify(newAlias.value) });
           newAlias.value = { alias: '', target: '' };
@@ -272,6 +620,7 @@
           loadAll();
         }
 
+        // --- Combos ---
         async function addCombo() {
           const models = newCombo.value.modelsStr.split(',').map(s => s.trim()).filter(Boolean);
           await api('/api/combos', { method: 'POST', body: JSON.stringify({ name: newCombo.value.name, kind: newCombo.value.kind, models }) });
@@ -286,13 +635,82 @@
           loadAll();
         }
 
+        // --- Proxy Pools ---
+        async function addProxy() {
+          await api('/api/proxy-pools', { method: 'POST', body: JSON.stringify(newProxy.value.data) });
+          newProxy.value = { data: { name: '', proxyUrl: '', noProxy: '', strictProxy: false, type: 'http' } };
+          showAddProxy.value = false;
+          loadProxies();
+        }
+
+        async function toggleProxy(pp) {
+          await api(`/api/proxy-pools/${pp.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !pp.isActive }) });
+          loadProxies();
+        }
+
+        async function deleteProxy(pp) {
+          if (!confirm(`Delete proxy pool "${pp.data.name || pp.id}"?`)) return;
+          await api(`/api/proxy-pools/${pp.id}`, { method: 'DELETE' });
+          loadProxies();
+        }
+
+        // --- Settings ---
+        async function saveSettings() {
+          await api('/api/settings', { method: 'PUT', body: JSON.stringify(settings.value) });
+          settingsSaved.value = true;
+          setTimeout(() => { settingsSaved.value = false; }, 2000);
+        }
+
+        async function setPassword() {
+          if (!newPassword.value) return;
+          const res = await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ password: newPassword.value }) });
+          if (res.error) { alert(res.error); return; }
+          newPassword.value = '';
+          settingsSaved.value = true;
+          setTimeout(() => { settingsSaved.value = false; }, 2000);
+        }
+
+        // --- Helpers ---
+        function formatNum(n) {
+          if (n === undefined || n === null) return '0';
+          return n.toLocaleString();
+        }
+
+        function formatDate(ts) {
+          if (!ts) return '—';
+          const d = new Date(ts);
+          return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatUptime(seconds) {
+          if (!seconds && seconds !== 0) return '—';
+          const d = Math.floor(seconds / 86400);
+          const h = Math.floor((seconds % 86400) / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          if (d > 0) return `${d}d ${h}h ${m}m`;
+          if (h > 0) return `${h}h ${m}m`;
+          return `${m}m`;
+        }
+
+        function chartBarHeight(tokens) {
+          const max = Math.max(...usageChart.value.map(b => b.tokens || 0), 1);
+          return Math.max(2, Math.round((tokens / max) * 100));
+        }
+
         onMounted(loadAll);
 
         return {
           tabs, activeTab, version, health, providers, aliases, combos,
-          showAddProvider, showAddCombo, newProvider, newAlias, newCombo,
+          apiKeys, proxyPools, settings, usageStats, usageChart, requestDetails, usagePeriod,
+          showAddProvider, showAddCombo, showAddKey, showAddProxy,
+          newProvider, newAlias, newCombo, newKeyName, lastCreatedKey, newProxy, newPassword, settingsSaved,
+          switchTab, loadUsage,
           addProvider, toggleProvider, resetProvider, deleteProvider,
+          createKey, deleteKey, maskKey, copyText,
           addAlias, deleteAlias, addCombo, deleteCombo,
+          addProxy, toggleProxy, deleteProxy,
+          saveSettings, setPassword,
+          formatNum, formatDate, formatUptime, chartBarHeight,
         };
       }
     }).mount('#app');

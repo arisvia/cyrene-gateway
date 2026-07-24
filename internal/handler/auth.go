@@ -98,6 +98,34 @@ func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
+func (h *AuthHandler) HandleSetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if len(req.Password) < 6 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 6 characters"})
+		return
+	}
+
+	settings, err := h.db.GetSettings()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	settings.PasswordHash = auth.HashPassword(req.Password)
+	if err := h.db.SaveSettings(settings); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save password"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
 func (h *AuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.db.GetSettings()
 	if err != nil {
