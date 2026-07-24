@@ -1,568 +1,780 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cyrene Gateway</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            border: 'hsl(240 3.7% 15.9%)',
-            input: 'hsl(240 3.7% 15.9%)',
-            ring: 'hsl(240 4.9% 83.9%)',
-            background: 'hsl(240 10% 3.9%)',
-            foreground: 'hsl(0 0% 98%)',
-            primary: { DEFAULT: 'hsl(0 0% 98%)', foreground: 'hsl(240 5.9% 10%)' },
-            secondary: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
-            muted: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(240 5% 64.9%)' },
-            accent: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
-            destructive: { DEFAULT: 'hsl(0 62.8% 30.6%)', foreground: 'hsl(0 0% 98%)' },
-            card: { DEFAULT: 'hsl(240 10% 3.9%)', foreground: 'hsl(0 0% 98%)' },
-            sidebar: 'hsl(240 5.9% 6%)',
-          },
-          borderRadius: { lg: '0.5rem', md: 'calc(0.5rem - 2px)', sm: 'calc(0.5rem - 4px)' },
-        }
-      }
-    }
-  </script>
   <style>
-    [v-cloak] { display: none; }
-    * { border-color: hsl(240 3.7% 15.9%); }
-    body { background: hsl(240 10% 3.9%); color: hsl(0 0% 98%); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    /* ═══════════ Design Tokens ═══════════ */
+    :root {
+      --bg: #08080d;
+      --bg-elevated: #0e0e15;
+      --glass: rgba(255,255,255,0.028);
+      --glass-hover: rgba(255,255,255,0.05);
+      --glass-border: rgba(255,255,255,0.07);
+      --glass-border-hover: rgba(255,255,255,0.13);
+      --text: #ececf1;
+      --text-muted: #8b8b9e;
+      --text-faint: #55556a;
+      --accent: #2dd4bf;
+      --accent-2: #38bdf8;
+      --accent-3: #a78bfa;
+      --gradient: linear-gradient(135deg, #2dd4bf, #38bdf8, #a78bfa);
+      --green: #34d399;
+      --red: #f87171;
+      --amber: #fbbf24;
+      --radius: 10px;
+      --radius-sm: 6px;
+      --sidebar-w: 232px;
+      --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+      --shadow-glow: 0 0 24px rgba(45,212,191,0.06);
+    }
+
+    /* ═══════════ Base ═══════════ */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    [v-cloak] { display: none !important; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: hsl(240 3.7% 20%); border-radius: 3px; }
-    .fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
-    .fade-enter-from, .fade-leave-to { opacity: 0; }
-    .sidebar-item { @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer select-none; }
-    .sidebar-item-active { @apply bg-secondary text-foreground; }
-    .sidebar-item-idle { @apply text-muted-foreground hover:bg-secondary/60 hover:text-foreground; }
-    .btn { @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50; }
-    .btn-default { @apply bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2; }
-    .btn-secondary { @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2; }
-    .btn-ghost { @apply hover:bg-secondary hover:text-foreground h-9 px-3 py-2; }
-    .btn-destructive { @apply bg-destructive text-white hover:bg-destructive/90 h-9 px-4 py-2; }
-    .btn-sm { @apply h-8 px-3 text-xs; }
-    .btn-icon { @apply h-8 w-8 p-0; }
-    .input { @apply flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50; }
-    .card { @apply rounded-lg border bg-card text-card-foreground; }
-    .badge { @apply inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold transition-colors; }
-    .badge-secondary { @apply border-transparent bg-secondary text-secondary-foreground; }
-    .badge-outline { @apply text-foreground; }
-    .badge-green { @apply border-transparent bg-emerald-500/15 text-emerald-400; }
-    .badge-red { @apply border-transparent bg-red-500/15 text-red-400; }
-    .badge-amber { @apply border-transparent bg-amber-500/15 text-amber-400; }
-    .badge-blue { @apply border-transparent bg-sky-500/15 text-sky-400; }
-    .switch { @apply relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
-    .switch-on { @apply bg-primary; }
-    .switch-off { @apply bg-input; }
-    .switch-thumb { @apply pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform; }
-    .table-head { @apply h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs; }
-    .table-cell { @apply px-3 py-2.5 align-middle text-sm; }
-    .dialog-overlay { @apply fixed inset-0 z-50 bg-black/80; }
-    .dialog-content { @apply fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-6 shadow-lg; }
-    .separator { @apply shrink-0 bg-border h-px w-full; }
-    .stat-card { @apply card p-5; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    ::selection { background: rgba(45,212,191,0.25); }
+
+    /* ═══════════ Ambient Background ═══════════ */
+    .ambient {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 600px 400px at 12% -5%, rgba(45,212,191,0.07), transparent 60%),
+        radial-gradient(ellipse 500px 500px at 88% 100%, rgba(167,139,250,0.06), transparent 60%),
+        radial-gradient(ellipse 400px 300px at 60% 40%, rgba(56,189,248,0.03), transparent 60%);
+    }
+    .ambient::before {
+      content: ''; position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, black 20%, transparent 70%);
+    }
+    .ambient::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse 300px 200px at 30% 20%, rgba(45,212,191,0.05), transparent 60%);
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    @keyframes drift {
+      0% { transform: translate(0, 0) scale(1); opacity: 0.6; }
+      50% { transform: translate(80px, 40px) scale(1.3); opacity: 1; }
+      100% { transform: translate(-40px, 80px) scale(0.9); opacity: 0.5; }
+    }
+
+    /* ═══════════ Layout ═══════════ */
+    .app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+
+    .sidebar {
+      position: fixed; inset-block: 0; left: 0; z-index: 40;
+      width: var(--sidebar-w); display: flex; flex-direction: column;
+      background: rgba(10,10,16,0.75);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-right: 1px solid var(--glass-border);
+    }
+    .sidebar-brand {
+      display: flex; align-items: center; gap: 10px;
+      height: 56px; padding: 0 16px;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    .brand-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--gradient); color: #08080d;
+      box-shadow: 0 0 16px rgba(45,212,191,0.3);
+    }
+    .brand-icon svg { width: 16px; height: 16px; }
+    .brand-name { font-size: 13.5px; font-weight: 650; letter-spacing: -0.02em; }
+    .brand-ver { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); margin-left: 6px; }
+
+    .sidebar-nav { flex: 1; overflow-y: auto; padding: 12px 10px; }
+    .nav-group-label {
+      padding: 10px 10px 5px; font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 480; color: var(--text-muted);
+      cursor: pointer; transition: all 0.15s ease; user-select: none;
+      border: 1px solid transparent; margin-bottom: 1px;
+    }
+    .nav-item svg { width: 15px; height: 15px; opacity: 0.7; flex-shrink: 0; }
+    .nav-item:hover { color: var(--text); background: var(--glass-hover); }
+    .nav-item.active {
+      color: var(--text); background: var(--glass-hover);
+      border-color: var(--glass-border);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), var(--shadow-glow);
+    }
+    .nav-item.active svg { opacity: 1; color: var(--accent); }
+
+    .sidebar-footer {
+      padding: 12px 14px; border-top: 1px solid var(--glass-border);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .status-dot { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+    .status-dot::after {
+      content: ''; position: absolute; inset: -3px; border-radius: 50%;
+      background: var(--green); opacity: 0.4; animation: ping 2s cubic-bezier(0,0,0.2,1) infinite;
+    }
+    @keyframes ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
+    .status-text { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+
+    .main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
+    .content { max-width: 960px; margin: 0 auto; padding: 28px 32px 60px; }
+
+    .page-header { margin-bottom: 24px; }
+    .page-title { font-size: 19px; font-weight: 650; letter-spacing: -0.02em; }
+    .page-desc { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    /* ═══════════ Components ═══════════ */
+    .glass-card {
+      background: var(--glass);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      transition: border-color 0.2s ease;
+    }
+    .glass-card:hover { border-color: var(--glass-border-hover); }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      height: 34px; padding: 0 14px; border-radius: var(--radius-sm);
+      font-size: 12.5px; font-weight: 550; font-family: var(--font);
+      border: 1px solid transparent; cursor: pointer;
+      transition: all 0.15s ease; white-space: nowrap;
+    }
+    .btn svg { width: 13px; height: 13px; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary {
+      background: var(--gradient); color: #08080d; border: none;
+      box-shadow: 0 2px 12px rgba(45,212,191,0.2);
+    }
+    .btn-primary:hover { box-shadow: 0 4px 20px rgba(45,212,191,0.35); filter: brightness(1.1); }
+    .btn-ghost {
+      background: transparent; color: var(--text-muted);
+      border-color: var(--glass-border);
+    }
+    .btn-ghost:hover { color: var(--text); background: var(--glass-hover); border-color: var(--glass-border-hover); }
+    .btn-danger-ghost { background: transparent; color: var(--text-faint); border-color: transparent; }
+    .btn-danger-ghost:hover { color: var(--red); background: rgba(248,113,113,0.08); }
+    .btn-sm { height: 29px; padding: 0 11px; font-size: 12px; }
+    .btn-icon { width: 29px; height: 29px; padding: 0; }
+
+    .input {
+      width: 100%; height: 34px; padding: 0 12px;
+      background: rgba(255,255,255,0.03); color: var(--text);
+      border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+      font-size: 13px; font-family: var(--font);
+      transition: all 0.15s ease; outline: none;
+    }
+    .input::placeholder { color: var(--text-faint); }
+    .input:focus { border-color: rgba(45,212,191,0.5); box-shadow: 0 0 0 3px rgba(45,212,191,0.08); }
+    .input-mono { font-family: var(--font-mono); font-size: 12px; }
+    select.input { appearance: none; cursor: pointer; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 20px;
+      font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em;
+      border: 1px solid transparent;
+    }
+    .badge-glass { background: var(--glass-hover); color: var(--text-muted); border-color: var(--glass-border); }
+    .badge-green { background: rgba(52,211,153,0.1); color: var(--green); border-color: rgba(52,211,153,0.2); }
+    .badge-red { background: rgba(248,113,113,0.1); color: var(--red); border-color: rgba(248,113,113,0.2); }
+    .badge-amber { background: rgba(251,191,36,0.1); color: var(--amber); border-color: rgba(251,191,36,0.2); }
+    .badge-blue { background: rgba(56,189,248,0.1); color: var(--accent-2); border-color: rgba(56,189,248,0.2); }
+    .badge-violet { background: rgba(167,139,250,0.1); color: var(--accent-3); border-color: rgba(167,139,250,0.2); }
+
+    .switch {
+      position: relative; width: 36px; height: 20px; border-radius: 20px;
+      border: none; cursor: pointer; transition: background 0.2s ease; flex-shrink: 0;
+    }
+    .switch-on { background: var(--accent); box-shadow: 0 0 10px rgba(45,212,191,0.3); }
+    .switch-off { background: rgba(255,255,255,0.1); }
+    .switch-thumb {
+      position: absolute; top: 3px; left: 3px; width: 14px; height: 14px;
+      border-radius: 50%; background: white; transition: transform 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
+    .switch-on .switch-thumb { transform: translateX(16px); }
+
+    .list-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.12s ease;
+    }
+    .list-row:last-child { border-bottom: none; }
+    .list-row:hover { background: rgba(255,255,255,0.015); }
+
+    .row-icon {
+      width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--glass-hover); border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+    }
+    .row-icon svg { width: 15px; height: 15px; }
+
+    .dialog-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(4,4,8,0.8);
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      animation: fadeIn 0.15s ease;
+    }
+    .dialog {
+      width: 100%; max-width: 480px; margin: 16px;
+      background: rgba(14,14,22,0.95);
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border-hover);
+      border-radius: 14px; padding: 24px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5), var(--shadow-glow);
+      animation: slideUp 0.2s ease;
+    }
+    .dialog-title { font-size: 15px; font-weight: 650; margin-bottom: 4px; }
+    .dialog-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+    @keyframes fadeIn { from { opacity: 0; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+    .form-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin-bottom: 6px; }
+    .form-group { margin-bottom: 14px; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    @media (max-width: 800px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card { padding: 16px 18px; }
+    .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin-top: 4px; }
+    .stat-value.teal { background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+    .chart-area { display: flex; align-items: flex-end; gap: 3px; height: 140px; padding-top: 8px; }
+    .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+    .chart-bar {
+      width: 100%; border-radius: 3px 3px 1px 1px; min-height: 2px;
+      background: linear-gradient(180deg, rgba(45,212,191,0.7), rgba(56,189,248,0.3));
+      transition: all 0.2s ease; position: relative;
+    }
+    .chart-bar-wrap:hover .chart-bar { background: linear-gradient(180deg, rgba(45,212,191,1), rgba(56,189,248,0.6)); box-shadow: 0 0 12px rgba(45,212,191,0.3); }
+    .chart-label { font-size: 8.5px; color: var(--text-faint); width: 100%; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .table { width: 100%; border-collapse: collapse; }
+    .table th {
+      padding: 10px 14px; text-align: left; font-size: 10.5px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
+      border-bottom: 1px solid var(--glass-border);
+    }
+    .table td { padding: 10px 14px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .table tr:last-child td { border-bottom: none; }
+    .table tbody tr { transition: background 0.1s; }
+    .table tbody tr:hover { background: rgba(255,255,255,0.015); }
+    .th-right, .td-right { text-align: right; }
+
+    .registry-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-height: 200px; overflow-y: auto; padding-right: 4px; margin-bottom: 18px; }
+    .registry-item {
+      padding: 10px 11px; border-radius: 8px; cursor: pointer;
+      border: 1px solid var(--glass-border); background: var(--glass);
+      transition: all 0.15s ease;
+    }
+    .registry-item:hover { border-color: var(--glass-border-hover); background: var(--glass-hover); }
+    .registry-item.selected { border-color: rgba(45,212,191,0.5); background: rgba(45,212,191,0.06); box-shadow: 0 0 12px rgba(45,212,191,0.08); }
+    .registry-name { font-size: 11.5px; font-weight: 550; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+    .registry-id { font-size: 9.5px; color: var(--text-faint); font-family: var(--font-mono); margin-top: 3px; }
+
+    .empty-state { padding: 48px 20px; text-align: center; font-size: 13px; color: var(--text-faint); }
+    .section-gap { margin-bottom: 16px; }
+    .flex-between { display: flex; align-items: center; justify-content: space-between; }
+    .flex-gap { display: flex; align-items: center; gap: 8px; }
+    .mono { font-family: var(--font-mono); }
+    .text-xs { font-size: 11.5px; }
+    .text-muted { color: var(--text-muted); }
+    .text-faint { color: var(--text-faint); }
+    .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .min-w-0 { min-width: 0; }
+    .shrink-0 { flex-shrink: 0; }
+    .mt-sm { margin-top: 6px; }
+    .key-highlight {
+      border-color: rgba(52,211,153,0.3); background: rgba(52,211,153,0.04);
+      padding: 14px 16px; border-radius: var(--radius);
+    }
+    .key-code {
+      flex: 1; padding: 8px 12px; border-radius: var(--radius-sm);
+      background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
+      font-family: var(--font-mono); font-size: 11px; color: var(--green);
+      word-break: break-all;
+    }
+    .period-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 8px; background: var(--glass); border: 1px solid var(--glass-border); }
+    .period-tab {
+      padding: 5px 12px; border-radius: 6px; font-size: 11.5px; font-weight: 550;
+      color: var(--text-faint); cursor: pointer; border: none; background: none;
+      font-family: var(--font); transition: all 0.15s ease;
+    }
+    .period-tab:hover { color: var(--text-muted); }
+    .period-tab.active { background: var(--glass-hover); color: var(--text); border: 1px solid var(--glass-border); box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
+    .settings-row + .settings-row { border-top: 1px solid rgba(255,255,255,0.04); }
+    .settings-title { font-size: 13px; font-weight: 550; }
+    .settings-desc { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+    .saved-indicator { font-size: 12px; color: var(--green); display: inline-flex; align-items: center; gap: 5px; animation: fadeIn 0.2s ease; }
+    .saved-indicator svg { width: 13px; height: 13px; }
+    .kv-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; font-size: 13px; }
+    .kv-row + .kv-row { border-top: 1px solid rgba(255,255,255,0.03); }
+    .kv-label { color: var(--text-muted); }
+    .kv-value { font-family: var(--font-mono); font-size: 11.5px; }
+    .card-pad { padding: 18px 20px; }
+    .card-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin-bottom: 12px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+    .model-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .model-chip { font-family: var(--font-mono); font-size: 10px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); color: var(--text-muted); }
   </style>
 </head>
-<body class="min-h-screen antialiased">
-<div id="app" v-cloak class="flex min-h-screen">
+<body>
+<div id="app" v-cloak class="app">
+  <div class="ambient"></div>
 
-  <!-- Sidebar -->
-  <aside class="fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r bg-sidebar">
-    <div class="flex h-14 items-center gap-2.5 border-b px-4">
-      <div class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-        <i data-lucide="route" class="h-4 w-4"></i>
-      </div>
-      <div>
-        <span class="text-sm font-semibold tracking-tight">Cyrene Gateway</span>
-        <span class="ml-2 text-[10px] text-muted-foreground font-mono">v{{ version }}</span>
-      </div>
+  <!-- ═══════════ Sidebar ═══════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon"><i data-lucide="route"></i></div>
+      <span class="brand-name">Cyrene</span>
+      <span class="brand-ver">v{{ version }}</span>
     </div>
-
-    <nav class="flex-1 space-y-1 overflow-y-auto p-3">
-      <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Gateway</p>
+    <nav class="sidebar-nav">
+      <p class="nav-group-label">Gateway</p>
       <div v-for="item in navMain" :key="item.id"
-        :class="['sidebar-item', activeTab === item.id ? 'sidebar-item-active' : 'sidebar-item-idle']"
-        @click="switchTab(item.id)">
-        <i :data-lucide="item.icon" class="h-4 w-4 shrink-0"></i>
-        <span>{{ item.label }}</span>
+        :class="['nav-item', activeTab === item.id && 'active']" @click="switchTab(item.id)">
+        <i :data-lucide="item.icon"></i><span>{{ item.label }}</span>
       </div>
-
-      <p class="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">System</p>
+      <p class="nav-group-label">System</p>
       <div v-for="item in navSystem" :key="item.id"
-        :class="['sidebar-item', activeTab === item.id ? 'sidebar-item-active' : 'sidebar-item-idle']"
-        @click="switchTab(item.id)">
-        <i :data-lucide="item.icon" class="h-4 w-4 shrink-0"></i>
-        <span>{{ item.label }}</span>
+        :class="['nav-item', activeTab === item.id && 'active']" @click="switchTab(item.id)">
+        <i :data-lucide="item.icon"></i><span>{{ item.label }}</span>
       </div>
     </nav>
-
-    <div class="border-t p-3">
-      <div class="flex items-center gap-2 rounded-md px-3 py-2">
-        <span class="relative flex h-2 w-2">
-          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
-          <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-        </span>
-        <span class="text-xs text-muted-foreground">{{ health.status || 'online' }} · {{ formatUptime(health.uptimeSeconds) }}</span>
-      </div>
+    <div class="sidebar-footer">
+      <span class="status-dot"></span>
+      <span class="status-text">{{ health.status || 'online' }} · {{ formatUptime(health.uptimeSeconds) }}</span>
     </div>
   </aside>
 
-  <!-- Main Content -->
-  <main class="ml-60 flex-1">
-    <div class="mx-auto max-w-5xl p-6 md:p-8">
-
-      <!-- Page Header -->
-      <div class="mb-6">
-        <h1 class="text-xl font-semibold tracking-tight">{{ pageTitle }}</h1>
-        <p class="text-sm text-muted-foreground mt-1">{{ pageDesc }}</p>
+  <!-- ═══════════ Main ═══════════ -->
+  <main class="main">
+    <div class="content">
+      <div class="page-header">
+        <h1 class="page-title">{{ pageTitle }}</h1>
+        <p class="page-desc">{{ pageDesc }}</p>
       </div>
 
-      <!-- ═══════════ PROVIDERS ═══════════ -->
-      <section v-if="activeTab === 'providers'" class="space-y-4">
-        <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2">
-            <span class="badge badge-secondary">{{ providers.length }} connections</span>
+      <!-- ══════ PROVIDERS ══════ -->
+      <section v-if="activeTab === 'providers'">
+        <div class="flex-between section-gap">
+          <div class="flex-gap">
+            <span class="badge badge-glass">{{ providers.length }} connections</span>
             <span class="badge badge-green">{{ providers.filter(p => p.isActive).length }} active</span>
           </div>
-          <button class="btn btn-default btn-sm" @click="openAddProvider"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Add Provider</button>
+          <button class="btn btn-primary btn-sm" @click="openAddProvider"><i data-lucide="plus"></i>Add Provider</button>
         </div>
 
-        <div class="card divide-y divide-border">
-          <div v-for="p in providers" :key="p.id" class="flex items-center justify-between p-4">
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
-                <i data-lucide="server" class="h-4 w-4 text-muted-foreground"></i>
-              </div>
+        <div class="glass-card">
+          <div v-for="p in providers" :key="p.id" class="list-row">
+            <div class="flex-gap min-w-0">
+              <div class="row-icon"><i data-lucide="server"></i></div>
               <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium truncate">{{ p.name || p.provider }}</span>
-                  <span class="badge badge-outline font-mono text-[10px]">{{ p.provider }}</span>
-                  <span :class="['badge', p.authType === 'oauth' ? 'badge-blue' : 'badge-secondary']">{{ p.authType }}</span>
+                <div class="flex-gap">
+                  <span class="truncate" style="font-size:13.5px;font-weight:550">{{ p.name || p.provider }}</span>
+                  <span class="badge badge-glass mono">{{ p.provider }}</span>
+                  <span :class="['badge', p.authType === 'oauth' ? 'badge-blue' : p.authType === 'none' ? 'badge-green' : 'badge-violet']">{{ p.authType }}</span>
                 </div>
-                <p class="text-xs text-muted-foreground mt-0.5">Priority {{ p.priority || 0 }} · {{ p.data?.baseUrl || registryBaseUrl(p.provider) || 'default endpoint' }}</p>
+                <p class="text-xs text-faint mt-sm mono truncate">priority {{ p.priority || 0 }} · {{ p.data?.baseUrl || registryBaseUrl(p.provider) || 'default endpoint' }}</p>
               </div>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button :class="['switch', p.isActive ? 'switch-on' : 'switch-off']" @click="toggleProvider(p)" :title="p.isActive ? 'Disable' : 'Enable'">
-                <span :class="['switch-thumb', p.isActive ? 'translate-x-4' : 'translate-x-0']"></span>
+            <div class="flex-gap shrink-0">
+              <button :class="['switch', p.isActive ? 'switch-on' : 'switch-off']" @click="toggleProvider(p)">
+                <span class="switch-thumb"></span>
               </button>
-              <button class="btn btn-ghost btn-icon" @click="resetProvider(p)" title="Reset cooldown state"><i data-lucide="rotate-ccw" class="h-3.5 w-3.5"></i></button>
-              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteProvider(p)" title="Delete"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+              <button class="btn btn-ghost btn-icon" @click="resetProvider(p)" title="Reset cooldown"><i data-lucide="rotate-ccw"></i></button>
+              <button class="btn btn-danger-ghost btn-icon" @click="deleteProvider(p)" title="Delete"><i data-lucide="trash-2"></i></button>
             </div>
           </div>
-          <div v-if="providers.length === 0" class="p-10 text-center text-sm text-muted-foreground">
-            No provider connections yet. Add one to start routing.
-          </div>
+          <div v-if="providers.length === 0" class="empty-state">No provider connections yet. Add one to start routing.</div>
         </div>
 
         <!-- Add Provider Dialog -->
         <div v-if="showAddProvider" class="dialog-overlay" @click.self="showAddProvider = false">
-          <div class="dialog-content max-w-xl">
-            <h3 class="text-base font-semibold mb-1">Add Provider</h3>
-            <p class="text-xs text-muted-foreground mb-5">Select from the registry or configure a custom endpoint.</p>
-
-            <!-- Registry grid -->
-            <div class="grid grid-cols-3 gap-2 mb-5 max-h-52 overflow-y-auto pr-1">
+          <div class="dialog" style="max-width:540px">
+            <h3 class="dialog-title">Add Provider</h3>
+            <p class="dialog-desc">Select from the registry or configure a custom endpoint.</p>
+            <div class="registry-grid">
               <div v-for="rp in registryList" :key="rp.id"
-                :class="['rounded-md border p-2.5 cursor-pointer transition-colors', newProvider.provider === rp.id ? 'border-ring bg-secondary' : 'hover:bg-secondary/50']"
+                :class="['registry-item', newProvider.provider === rp.id && 'selected']"
                 @click="selectRegistryProvider(rp)">
-                <div class="flex items-center justify-between">
-                  <span class="text-xs font-medium truncate">{{ rp.name }}</span>
-                  <span :class="['badge text-[9px] px-1 py-0', rp.authType === 'oauth' ? 'badge-blue' : rp.authType === 'none' ? 'badge-green' : 'badge-secondary']">{{ rp.authType === 'api-key' ? 'key' : rp.authType }}</span>
+                <div class="registry-name">
+                  <span class="truncate">{{ rp.name }}</span>
+                  <span :class="['badge', rp.authType === 'oauth' ? 'badge-blue' : rp.authType === 'none' ? 'badge-green' : 'badge-glass']" style="font-size:9px;padding:1px 6px">{{ rp.authType === 'api-key' ? 'key' : rp.authType }}</span>
                 </div>
-                <p class="text-[10px] text-muted-foreground font-mono mt-1 truncate">{{ rp.id }}</p>
+                <p class="registry-id">{{ rp.id }}</p>
               </div>
             </div>
-
-            <div class="space-y-3">
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Provider ID</label>
-                  <input v-model="newProvider.provider" class="input" placeholder="e.g. openai">
-                </div>
-                <div>
-                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</label>
-                  <input v-model="newProvider.name" class="input" placeholder="optional">
-                </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Provider ID</label>
+                <input v-model="newProvider.provider" class="input input-mono" placeholder="e.g. openai">
               </div>
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">API Key / Access Token</label>
-                <input v-model="newProvider.data.apiKey" type="password" class="input" placeholder="sk-...">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Base URL <span class="text-muted-foreground/60">(auto-filled from registry)</span></label>
-                <input v-model="newProvider.data.baseUrl" class="input font-mono text-xs" placeholder="https://api.openai.com/v1">
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Auth Type</label>
-                  <select v-model="newProvider.authType" class="input">
-                    <option value="api-key">api-key</option>
-                    <option value="oauth">oauth</option>
-                    <option value="none">none</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Priority</label>
-                  <input v-model.number="newProvider.priority" type="number" class="input" placeholder="0">
-                </div>
+              <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input v-model="newProvider.name" class="input" placeholder="optional">
               </div>
             </div>
-
-            <div class="mt-6 flex justify-end gap-2">
-              <button class="btn btn-ghost" @click="showAddProvider = false">Cancel</button>
-              <button class="btn btn-default" @click="addProvider">Add Connection</button>
+            <div class="form-group">
+              <label class="form-label">API Key / Access Token</label>
+              <input v-model="newProvider.data.apiKey" type="password" class="input input-mono" placeholder="sk-...">
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══════════ API KEYS ═══════════ -->
-      <section v-if="activeTab === 'keys'" class="space-y-4">
-        <div class="flex justify-between items-center">
-          <span class="badge badge-secondary">{{ apiKeys.length }} keys</span>
-          <button class="btn btn-default btn-sm" @click="showAddKey = true"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Generate Key</button>
-        </div>
-
-        <!-- New key banner -->
-        <div v-if="lastCreatedKey" class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-400"></i>
-            <span class="text-sm font-medium text-emerald-300">Key generated — copy it now</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <code class="flex-1 rounded-md bg-background border px-3 py-2 text-xs font-mono text-emerald-200 break-all">{{ lastCreatedKey.key }}</code>
-            <button class="btn btn-secondary btn-sm shrink-0" @click="copyText(lastCreatedKey.key)"><i data-lucide="copy" class="h-3 w-3"></i>Copy</button>
-            <button class="btn btn-ghost btn-icon" @click="lastCreatedKey = null"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
-          </div>
-        </div>
-
-        <div class="card divide-y divide-border">
-          <div v-for="k in apiKeys" :key="k.id" class="flex items-center justify-between p-4">
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
-                <i data-lucide="key-round" class="h-4 w-4 text-muted-foreground"></i>
-              </div>
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium">{{ k.name || 'Unnamed' }}</span>
-                  <span :class="['badge', k.isActive ? 'badge-green' : 'badge-red']">{{ k.isActive ? 'active' : 'disabled' }}</span>
-                </div>
-                <div class="flex items-center gap-2 mt-0.5">
-                  <code class="text-xs text-muted-foreground font-mono">{{ maskKey(k.key) }}</code>
-                  <button class="text-muted-foreground hover:text-foreground transition-colors" @click="copyText(k.key)" title="Copy full key"><i data-lucide="copy" class="h-3 w-3"></i></button>
-                </div>
-              </div>
+            <div class="form-group">
+              <label class="form-label">Base URL <span class="text-faint">(auto-filled from registry)</span></label>
+              <input v-model="newProvider.data.baseUrl" class="input input-mono" placeholder="https://api.openai.com/v1">
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <span class="text-xs text-muted-foreground">{{ formatDate(k.createdAt) }}</span>
-              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteKey(k)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
-            </div>
-          </div>
-          <div v-if="apiKeys.length === 0" class="p-10 text-center text-sm text-muted-foreground">
-            No API keys. Generate one to authenticate <code class="text-xs">Authorization: Bearer &lt;key&gt;</code> requests.
-          </div>
-        </div>
-
-        <!-- Generate Key Dialog -->
-        <div v-if="showAddKey" class="dialog-overlay" @click.self="showAddKey = false">
-          <div class="dialog-content max-w-sm">
-            <h3 class="text-base font-semibold mb-4">Generate API Key</h3>
-            <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Key Name</label>
-            <input v-model="newKeyName" class="input" placeholder="e.g. my-laptop, production" @keyup.enter="createKey">
-            <div class="mt-6 flex justify-end gap-2">
-              <button class="btn btn-ghost" @click="showAddKey = false">Cancel</button>
-              <button class="btn btn-default" @click="createKey">Generate</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ═══════════ ALIASES ═══════════ -->
-      <section v-if="activeTab === 'aliases'" class="space-y-4">
-        <div class="card p-4">
-          <div class="flex gap-3">
-            <input v-model="newAlias.alias" class="input flex-1" placeholder="Alias (e.g. fast)">
-            <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground self-center shrink-0"></i>
-            <input v-model="newAlias.target" class="input flex-1" placeholder="Target model (e.g. groq/llama-3.3-70b)">
-            <button class="btn btn-default shrink-0" @click="addAlias">Add</button>
-          </div>
-        </div>
-        <div class="card divide-y divide-border">
-          <div v-for="(target, alias) in aliases" :key="alias" class="flex items-center justify-between p-4">
-            <div class="flex items-center gap-3 text-sm font-mono">
-              <span class="text-foreground">{{ alias }}</span>
-              <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-muted-foreground"></i>
-              <span class="text-muted-foreground">{{ target }}</span>
-            </div>
-            <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteAlias(alias)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
-          </div>
-          <div v-if="Object.keys(aliases).length === 0" class="p-10 text-center text-sm text-muted-foreground">No aliases configured.</div>
-        </div>
-      </section>
-
-      <!-- ═══════════ COMBOS ═══════════ -->
-      <section v-if="activeTab === 'combos'" class="space-y-4">
-        <div class="flex justify-between items-center">
-          <span class="badge badge-secondary">{{ combos.length }} combos</span>
-          <button class="btn btn-default btn-sm" @click="showAddCombo = true"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Add Combo</button>
-        </div>
-        <div class="card divide-y divide-border">
-          <div v-for="c in combos" :key="c.id" class="p-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-medium">{{ c.name }}</span>
-                <span :class="['badge', c.kind === 'round-robin' ? 'badge-blue' : 'badge-secondary']">{{ c.kind }}</span>
-              </div>
-              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteCombo(c)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
-            </div>
-            <div class="flex flex-wrap gap-1.5 mt-2.5">
-              <span v-for="m in c.models" :key="m" class="badge badge-outline font-mono text-[10px]">{{ m }}</span>
-            </div>
-          </div>
-          <div v-if="combos.length === 0" class="p-10 text-center text-sm text-muted-foreground">No combos. Create fallback groups for model routing.</div>
-        </div>
-
-        <!-- Add Combo Dialog -->
-        <div v-if="showAddCombo" class="dialog-overlay" @click.self="showAddCombo = false">
-          <div class="dialog-content max-w-md">
-            <h3 class="text-base font-semibold mb-4">Create Combo</h3>
-            <div class="space-y-3">
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Combo Name</label>
-                <input v-model="newCombo.name" class="input" placeholder="e.g. reliable-chat">
-              </div>
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Strategy</label>
-                <select v-model="newCombo.kind" class="input">
-                  <option value="fallback">Fallback — try in order until success</option>
-                  <option value="round-robin">Round Robin — distribute evenly</option>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Auth Type</label>
+                <select v-model="newProvider.authType" class="input">
+                  <option value="api-key">api-key</option>
+                  <option value="oauth">oauth</option>
+                  <option value="none">none</option>
                 </select>
               </div>
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Models (comma-separated, in priority order)</label>
-                <input v-model="newCombo.modelsStr" class="input" placeholder="openai/gpt-4o, anthropic/claude-sonnet-4-20250514">
+              <div class="form-group">
+                <label class="form-label">Priority</label>
+                <input v-model.number="newProvider.priority" type="number" class="input" placeholder="0">
               </div>
             </div>
-            <div class="mt-6 flex justify-end gap-2">
-              <button class="btn btn-ghost" @click="showAddCombo = false">Cancel</button>
-              <button class="btn btn-default" @click="addCombo">Create</button>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+              <button class="btn btn-ghost" @click="showAddProvider = false">Cancel</button>
+              <button class="btn btn-primary" @click="addProvider">Add Connection</button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ═══════════ USAGE ═══════════ -->
-      <section v-if="activeTab === 'usage'" class="space-y-4">
-        <div class="flex justify-between items-center">
-          <div class="flex gap-1 rounded-md bg-secondary/50 p-1">
+      <!-- ══════ API KEYS ══════ -->
+      <section v-if="activeTab === 'keys'">
+        <div class="flex-between section-gap">
+          <span class="badge badge-glass">{{ apiKeys.length }} keys</span>
+          <button class="btn btn-primary btn-sm" @click="showAddKey = true"><i data-lucide="plus"></i>Generate Key</button>
+        </div>
+
+        <div v-if="lastCreatedKey" class="key-highlight glass-card section-gap">
+          <div class="flex-gap" style="margin-bottom:10px">
+            <i data-lucide="check-circle-2" style="width:15px;height:15px;color:var(--green)"></i>
+            <span style="font-size:13px;font-weight:550;color:var(--green)">Key generated — copy it now</span>
+          </div>
+          <div class="flex-gap">
+            <code class="key-code">{{ lastCreatedKey.key }}</code>
+            <button class="btn btn-ghost btn-sm shrink-0" @click="copyText(lastCreatedKey.key)"><i data-lucide="copy"></i>Copy</button>
+            <button class="btn btn-danger-ghost btn-icon" @click="lastCreatedKey = null"><i data-lucide="x"></i></button>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <div v-for="k in apiKeys" :key="k.id" class="list-row">
+            <div class="flex-gap min-w-0">
+              <div class="row-icon"><i data-lucide="key-round"></i></div>
+              <div class="min-w-0">
+                <div class="flex-gap">
+                  <span style="font-size:13.5px;font-weight:550">{{ k.name || 'Unnamed' }}</span>
+                  <span :class="['badge', k.isActive ? 'badge-green' : 'badge-red']">{{ k.isActive ? 'active' : 'disabled' }}</span>
+                </div>
+                <div class="flex-gap mt-sm">
+                  <code class="text-xs text-faint mono">{{ maskKey(k.key) }}</code>
+                  <button class="btn btn-danger-ghost btn-icon" style="width:22px;height:22px" @click="copyText(k.key)" title="Copy full key"><i data-lucide="copy" style="width:11px;height:11px"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="flex-gap shrink-0">
+              <span class="text-xs text-faint">{{ formatDate(k.createdAt) }}</span>
+              <button class="btn btn-danger-ghost btn-icon" @click="deleteKey(k)"><i data-lucide="trash-2"></i></button>
+            </div>
+          </div>
+          <div v-if="apiKeys.length === 0" class="empty-state">No API keys. Generate one to authenticate <code class="mono text-xs">Authorization: Bearer &lt;key&gt;</code> requests.</div>
+        </div>
+
+        <div v-if="showAddKey" class="dialog-overlay" @click.self="showAddKey = false">
+          <div class="dialog" style="max-width:380px">
+            <h3 class="dialog-title">Generate API Key</h3>
+            <p class="dialog-desc">The key will be shown once after creation.</p>
+            <div class="form-group">
+              <label class="form-label">Key Name</label>
+              <input v-model="newKeyName" class="input" placeholder="e.g. my-laptop, production" @keyup.enter="createKey">
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button class="btn btn-ghost" @click="showAddKey = false">Cancel</button>
+              <button class="btn btn-primary" @click="createKey">Generate</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════ ALIASES ══════ -->
+      <section v-if="activeTab === 'aliases'">
+        <div class="glass-card card-pad section-gap">
+          <div style="display:flex;gap:10px;align-items:center">
+            <input v-model="newAlias.alias" class="input" placeholder="Alias (e.g. fast)" style="flex:1">
+            <i data-lucide="arrow-right" style="width:15px;height:15px;color:var(--text-faint);flex-shrink:0"></i>
+            <input v-model="newAlias.target" class="input input-mono" placeholder="Target (e.g. groq/llama-3.3-70b)" style="flex:1.4">
+            <button class="btn btn-primary shrink-0" @click="addAlias">Add</button>
+          </div>
+        </div>
+        <div class="glass-card">
+          <div v-for="(target, alias) in aliases" :key="alias" class="list-row">
+            <div class="flex-gap mono" style="font-size:12.5px">
+              <span>{{ alias }}</span>
+              <i data-lucide="arrow-right" style="width:13px;height:13px;color:var(--text-faint)"></i>
+              <span class="text-muted">{{ target }}</span>
+            </div>
+            <button class="btn btn-danger-ghost btn-icon" @click="deleteAlias(alias)"><i data-lucide="trash-2"></i></button>
+          </div>
+          <div v-if="Object.keys(aliases).length === 0" class="empty-state">No aliases configured.</div>
+        </div>
+      </section>
+
+      <!-- ══════ COMBOS ══════ -->
+      <section v-if="activeTab === 'combos'">
+        <div class="flex-between section-gap">
+          <span class="badge badge-glass">{{ combos.length }} combos</span>
+          <button class="btn btn-primary btn-sm" @click="showAddCombo = true"><i data-lucide="plus"></i>Add Combo</button>
+        </div>
+        <div class="glass-card">
+          <div v-for="c in combos" :key="c.id" style="padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.04)">
+            <div class="flex-between">
+              <div class="flex-gap">
+                <span style="font-size:13.5px;font-weight:550">{{ c.name }}</span>
+                <span :class="['badge', c.kind === 'round-robin' ? 'badge-blue' : 'badge-glass']">{{ c.kind }}</span>
+              </div>
+              <button class="btn btn-danger-ghost btn-icon" @click="deleteCombo(c)"><i data-lucide="trash-2"></i></button>
+            </div>
+            <div class="model-chips">
+              <span v-for="m in c.models" :key="m" class="model-chip">{{ m }}</span>
+            </div>
+          </div>
+          <div v-if="combos.length === 0" class="empty-state">No combos. Create fallback groups for resilient model routing.</div>
+        </div>
+
+        <div v-if="showAddCombo" class="dialog-overlay" @click.self="showAddCombo = false">
+          <div class="dialog" style="max-width:420px">
+            <h3 class="dialog-title">Create Combo</h3>
+            <p class="dialog-desc">Route a virtual model name across multiple upstreams.</p>
+            <div class="form-group">
+              <label class="form-label">Combo Name</label>
+              <input v-model="newCombo.name" class="input" placeholder="e.g. reliable-chat">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Strategy</label>
+              <select v-model="newCombo.kind" class="input">
+                <option value="fallback">Fallback — try in order until success</option>
+                <option value="round-robin">Round Robin — distribute evenly</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Models (comma-separated, priority order)</label>
+              <input v-model="newCombo.modelsStr" class="input input-mono" placeholder="openai/gpt-4o, anthropic/claude-sonnet-4-20250514">
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
+              <button class="btn btn-ghost" @click="showAddCombo = false">Cancel</button>
+              <button class="btn btn-primary" @click="addCombo">Create</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════ USAGE ══════ -->
+      <section v-if="activeTab === 'usage'">
+        <div class="section-gap">
+          <div class="period-tabs">
             <button v-for="p in ['today','7d','30d','60d']" :key="p"
-              :class="['px-3 py-1 rounded text-xs font-medium transition-colors', usagePeriod === p ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground']"
+              :class="['period-tab', usagePeriod === p && 'active']"
               @click="usagePeriod = p; loadUsage()">{{ p === 'today' ? 'Today' : p.toUpperCase() }}</button>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div class="stat-card">
-            <p class="text-xs text-muted-foreground">Requests</p>
-            <p class="text-2xl font-bold mt-1 tracking-tight">{{ formatNum(usageStats.totalRequests) }}</p>
+        <div class="stat-grid section-gap">
+          <div class="glass-card stat-card">
+            <p class="stat-label">Requests</p>
+            <p class="stat-value teal">{{ formatNum(usageStats.totalRequests) }}</p>
           </div>
-          <div class="stat-card">
-            <p class="text-xs text-muted-foreground">Prompt Tokens</p>
-            <p class="text-2xl font-bold mt-1 tracking-tight">{{ formatNum(usageStats.totalPromptTokens) }}</p>
+          <div class="glass-card stat-card">
+            <p class="stat-label">Prompt Tokens</p>
+            <p class="stat-value">{{ formatNum(usageStats.totalPromptTokens) }}</p>
           </div>
-          <div class="stat-card">
-            <p class="text-xs text-muted-foreground">Completion Tokens</p>
-            <p class="text-2xl font-bold mt-1 tracking-tight">{{ formatNum(usageStats.totalCompletionTokens) }}</p>
+          <div class="glass-card stat-card">
+            <p class="stat-label">Completion Tokens</p>
+            <p class="stat-value">{{ formatNum(usageStats.totalCompletionTokens) }}</p>
           </div>
-          <div class="stat-card">
-            <p class="text-xs text-muted-foreground">Est. Cost</p>
-            <p class="text-2xl font-bold mt-1 tracking-tight">${{ usageStats.totalCost ? usageStats.totalCost.toFixed(4) : '0.00' }}</p>
+          <div class="glass-card stat-card">
+            <p class="stat-label">Est. Cost</p>
+            <p class="stat-value">${{ usageStats.totalCost ? usageStats.totalCost.toFixed(4) : '0.00' }}</p>
           </div>
         </div>
 
-        <!-- Chart -->
-        <div class="card p-5">
-          <p class="text-xs font-medium text-muted-foreground mb-4">Token volume · {{ usagePeriod === 'today' ? 'hourly' : 'daily' }}</p>
-          <div class="flex items-end gap-[3px] h-36">
-            <div v-for="(b, i) in usageChart" :key="i" class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
-              <div class="w-full rounded-sm bg-primary/20 group-hover:bg-primary/40 transition-colors relative"
-                :style="{ height: chartBarHeight(b.tokens) + '%' }"
-                :title="b.label + ' — ' + formatNum(b.tokens) + ' tokens'">
-                <div class="absolute inset-x-0 bottom-0 rounded-sm bg-primary/60" :style="{ height: '100%' }" style="opacity:.5"></div>
-              </div>
-              <span class="text-[8px] text-muted-foreground/60 truncate w-full text-center">{{ b.label }}</span>
+        <div class="glass-card card-pad section-gap">
+          <p class="card-section-title">Token volume · {{ usagePeriod === 'today' ? 'hourly' : 'daily' }}</p>
+          <div class="chart-area">
+            <div v-for="(b, i) in usageChart" :key="i" class="chart-bar-wrap">
+              <div class="chart-bar" :style="{ height: chartBarHeight(b.tokens) + '%' }"
+                :title="b.label + ' — ' + formatNum(b.tokens) + ' tokens'"></div>
+              <span class="chart-label">{{ b.label }}</span>
             </div>
           </div>
         </div>
 
-        <div class="grid lg:grid-cols-2 gap-4">
-          <div class="card p-5">
-            <p class="text-xs font-medium text-muted-foreground mb-3">By Provider</p>
-            <div class="space-y-2.5">
-              <div v-for="(v, k) in usageStats.byProvider" :key="k" class="flex items-center justify-between text-sm">
-                <span class="font-mono text-xs">{{ k }}</span>
-                <div class="flex items-center gap-3">
-                  <span class="text-xs text-muted-foreground">{{ formatNum(v.requests) }} req</span>
-                  <span class="text-xs font-medium">{{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
-                </div>
-              </div>
-              <p v-if="!usageStats.byProvider || Object.keys(usageStats.byProvider).length === 0" class="text-xs text-muted-foreground/60">No data in this period.</p>
+        <div class="grid-2 section-gap">
+          <div class="glass-card card-pad">
+            <p class="card-section-title">By Provider</p>
+            <div v-for="(v, k) in usageStats.byProvider" :key="k" class="kv-row">
+              <span class="mono text-xs">{{ k }}</span>
+              <span class="text-xs text-muted">{{ formatNum(v.requests) }} req · <b style="color:var(--text)">{{ formatNum(v.promptTokens + v.completionTokens) }}</b> tok</span>
             </div>
+            <p v-if="!usageStats.byProvider || Object.keys(usageStats.byProvider).length === 0" class="text-xs text-faint">No data in this period.</p>
           </div>
-          <div class="card p-5">
-            <p class="text-xs font-medium text-muted-foreground mb-3">By Model</p>
-            <div class="space-y-2.5 max-h-56 overflow-y-auto">
-              <div v-for="(v, k) in usageStats.byModel" :key="k" class="flex items-center justify-between text-sm">
-                <span class="font-mono text-xs truncate mr-3">{{ k }}</span>
-                <div class="flex items-center gap-3 shrink-0">
-                  <span class="text-xs text-muted-foreground">{{ formatNum(v.requests) }} req</span>
-                  <span class="text-xs font-medium">{{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
-                </div>
+          <div class="glass-card card-pad">
+            <p class="card-section-title">By Model</p>
+            <div style="max-height:220px;overflow-y:auto">
+              <div v-for="(v, k) in usageStats.byModel" :key="k" class="kv-row">
+                <span class="mono text-xs truncate" style="max-width:55%">{{ k }}</span>
+                <span class="text-xs text-muted shrink-0">{{ formatNum(v.requests) }} req · <b style="color:var(--text)">{{ formatNum(v.promptTokens + v.completionTokens) }}</b> tok</span>
               </div>
-              <p v-if="!usageStats.byModel || Object.keys(usageStats.byModel).length === 0" class="text-xs text-muted-foreground/60">No data in this period.</p>
             </div>
+            <p v-if="!usageStats.byModel || Object.keys(usageStats.byModel).length === 0" class="text-xs text-faint">No data in this period.</p>
           </div>
         </div>
 
-        <!-- Recent requests -->
-        <div class="card overflow-hidden">
-          <div class="px-5 pt-4 pb-2"><p class="text-xs font-medium text-muted-foreground">Recent Requests</p></div>
-          <table class="w-full">
-            <thead><tr class="border-b">
-              <th class="table-head">Time</th><th class="table-head">Provider</th><th class="table-head">Model</th>
-              <th class="table-head text-right">Tokens</th><th class="table-head text-right">Status</th>
+        <div class="glass-card" style="overflow:hidden">
+          <div style="padding:16px 20px 8px"><p class="card-section-title" style="margin-bottom:0">Recent Requests</p></div>
+          <table class="table">
+            <thead><tr>
+              <th>Time</th><th>Provider</th><th>Model</th>
+              <th class="th-right">Tokens</th><th class="th-right">Status</th>
             </tr></thead>
-            <tbody class="divide-y divide-border/50">
-              <tr v-for="rd in requestDetails" :key="rd.id" class="hover:bg-secondary/30 transition-colors">
-                <td class="table-cell text-xs text-muted-foreground whitespace-nowrap">{{ formatDate(rd.timestamp || rd.createdAt) }}</td>
-                <td class="table-cell font-mono text-xs">{{ rd.provider }}</td>
-                <td class="table-cell font-mono text-xs text-muted-foreground max-w-[220px] truncate">{{ rd.model }}</td>
-                <td class="table-cell text-xs text-right">{{ formatNum((rd.promptTokens || 0) + (rd.completionTokens || 0)) }}</td>
-                <td class="table-cell text-right"><span :class="['badge', rd.status === 'success' || rd.status === 'ok' ? 'badge-green' : 'badge-red']">{{ rd.status }}</span></td>
+            <tbody>
+              <tr v-for="rd in requestDetails" :key="rd.id">
+                <td class="text-xs text-faint" style="white-space:nowrap">{{ formatDate(rd.timestamp || rd.createdAt) }}</td>
+                <td class="mono text-xs">{{ rd.provider }}</td>
+                <td class="mono text-xs text-muted truncate" style="max-width:200px">{{ rd.model }}</td>
+                <td class="td-right text-xs">{{ formatNum((rd.promptTokens || 0) + (rd.completionTokens || 0)) }}</td>
+                <td class="td-right"><span :class="['badge', rd.status === 'success' || rd.status === 'ok' ? 'badge-green' : 'badge-red']">{{ rd.status }}</span></td>
               </tr>
             </tbody>
           </table>
-          <p v-if="requestDetails.length === 0" class="p-8 text-center text-xs text-muted-foreground">No request details recorded yet.</p>
+          <div v-if="requestDetails.length === 0" class="empty-state" style="padding:32px">No request details recorded yet.</div>
         </div>
       </section>
 
-      <!-- ═══════════ PROXY POOLS ═══════════ -->
-      <section v-if="activeTab === 'proxies'" class="space-y-4">
-        <div class="flex justify-between items-center">
-          <span class="badge badge-secondary">{{ proxyPools.length }} pools</span>
-          <button class="btn btn-default btn-sm" @click="showAddProxy = true"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Add Proxy</button>
+      <!-- ══════ PROXY POOLS ══════ -->
+      <section v-if="activeTab === 'proxies'">
+        <div class="flex-between section-gap">
+          <span class="badge badge-glass">{{ proxyPools.length }} pools</span>
+          <button class="btn btn-primary btn-sm" @click="showAddProxy = true"><i data-lucide="plus"></i>Add Proxy</button>
         </div>
-        <div class="card divide-y divide-border">
-          <div v-for="pp in proxyPools" :key="pp.id" class="flex items-center justify-between p-4">
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
-                <i data-lucide="globe" class="h-4 w-4 text-muted-foreground"></i>
-              </div>
+        <div class="glass-card">
+          <div v-for="pp in proxyPools" :key="pp.id" class="list-row">
+            <div class="flex-gap min-w-0">
+              <div class="row-icon"><i data-lucide="globe"></i></div>
               <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium">{{ pp.data.name }}</span>
-                  <span class="badge badge-secondary">{{ pp.data.type }}</span>
+                <div class="flex-gap">
+                  <span style="font-size:13.5px;font-weight:550">{{ pp.data.name }}</span>
+                  <span class="badge badge-glass">{{ pp.data.type }}</span>
                   <span v-if="pp.data.strictProxy" class="badge badge-amber">strict</span>
                 </div>
-                <p class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{{ pp.data.proxyUrl }}</p>
+                <p class="text-xs text-faint mt-sm mono truncate">{{ pp.data.proxyUrl }}</p>
               </div>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button :class="['switch', pp.isActive ? 'switch-on' : 'switch-off']" @click="toggleProxy(pp)">
-                <span :class="['switch-thumb', pp.isActive ? 'translate-x-4' : 'translate-x-0']"></span>
-              </button>
-              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteProxy(pp)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            <div class="flex-gap shrink-0">
+              <button :class="['switch', pp.isActive ? 'switch-on' : 'switch-off']" @click="toggleProxy(pp)"><span class="switch-thumb"></span></button>
+              <button class="btn btn-danger-ghost btn-icon" @click="deleteProxy(pp)"><i data-lucide="trash-2"></i></button>
             </div>
           </div>
-          <div v-if="proxyPools.length === 0" class="p-10 text-center text-sm text-muted-foreground">No proxy pools. Outbound requests go direct.</div>
+          <div v-if="proxyPools.length === 0" class="empty-state">No proxy pools. Outbound requests go direct.</div>
         </div>
 
-        <!-- Add Proxy Dialog -->
         <div v-if="showAddProxy" class="dialog-overlay" @click.self="showAddProxy = false">
-          <div class="dialog-content max-w-md">
-            <h3 class="text-base font-semibold mb-4">Add Proxy Pool</h3>
-            <div class="space-y-3">
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Name</label>
-                  <input v-model="newProxy.name" class="input" placeholder="e.g. home-proxy">
-                </div>
-                <div>
-                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Type</label>
-                  <select v-model="newProxy.type" class="input">
-                    <option value="http">HTTP</option>
-                    <option value="vercel">Vercel</option>
-                    <option value="cloudflare">Cloudflare Worker</option>
-                    <option value="deno">Deno Deploy</option>
-                  </select>
-                </div>
+          <div class="dialog" style="max-width:420px">
+            <h3 class="dialog-title">Add Proxy Pool</h3>
+            <p class="dialog-desc">Outbound proxy rotation for upstream requests.</p>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Name</label>
+                <input v-model="newProxy.name" class="input" placeholder="e.g. home-proxy">
               </div>
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Proxy URL</label>
-                <input v-model="newProxy.proxyUrl" class="input font-mono text-xs" placeholder="http://127.0.0.1:7890">
+              <div class="form-group">
+                <label class="form-label">Type</label>
+                <select v-model="newProxy.type" class="input">
+                  <option value="http">HTTP</option>
+                  <option value="vercel">Vercel</option>
+                  <option value="cloudflare">Cloudflare Worker</option>
+                  <option value="deno">Deno Deploy</option>
+                </select>
               </div>
-              <div>
-                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">No-Proxy Hosts <span class="text-muted-foreground/60">(optional)</span></label>
-                <input v-model="newProxy.noProxy" class="input font-mono text-xs" placeholder="localhost,127.0.0.1">
-              </div>
-              <label class="flex items-center gap-2.5 cursor-pointer">
-                <button type="button" :class="['switch', newProxy.strictProxy ? 'switch-on' : 'switch-off']" @click="newProxy.strictProxy = !newProxy.strictProxy">
-                  <span :class="['switch-thumb', newProxy.strictProxy ? 'translate-x-4' : 'translate-x-0']"></span>
-                </button>
-                <span class="text-sm">Strict mode <span class="text-xs text-muted-foreground">— fail if proxy unreachable</span></span>
-              </label>
             </div>
-            <div class="mt-6 flex justify-end gap-2">
+            <div class="form-group">
+              <label class="form-label">Proxy URL</label>
+              <input v-model="newProxy.proxyUrl" class="input input-mono" placeholder="http://127.0.0.1:7890">
+            </div>
+            <div class="form-group">
+              <label class="form-label">No-Proxy Hosts <span class="text-faint">(optional)</span></label>
+              <input v-model="newProxy.noProxy" class="input input-mono" placeholder="localhost,127.0.0.1">
+            </div>
+            <div class="form-group" style="display:flex;align-items:center;gap:10px">
+              <button type="button" :class="['switch', newProxy.strictProxy ? 'switch-on' : 'switch-off']" @click="newProxy.strictProxy = !newProxy.strictProxy"><span class="switch-thumb"></span></button>
+              <span style="font-size:13px">Strict mode <span class="text-faint text-xs">— fail if proxy unreachable</span></span>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px">
               <button class="btn btn-ghost" @click="showAddProxy = false">Cancel</button>
-              <button class="btn btn-default" @click="addProxy">Add Pool</button>
+              <button class="btn btn-primary" @click="addProxy">Add Pool</button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ═══════════ SETTINGS ═══════════ -->
-      <section v-if="activeTab === 'settings'" class="space-y-4 max-w-2xl">
-        <div class="card p-5 space-y-5">
-          <p class="text-sm font-medium">Security</p>
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div><p class="text-sm">Require dashboard login</p><p class="text-xs text-muted-foreground">Protect management UI with password</p></div>
-              <button :class="['switch', settings.requireLogin ? 'switch-on' : 'switch-off']" @click="settings.requireLogin = !settings.requireLogin">
-                <span :class="['switch-thumb', settings.requireLogin ? 'translate-x-4' : 'translate-x-0']"></span>
-              </button>
-            </div>
-            <div class="separator"></div>
-            <div class="flex items-center justify-between">
-              <div><p class="text-sm">Require API key</p><p class="text-xs text-muted-foreground">Enforce Bearer token on /v1/* endpoints</p></div>
-              <button :class="['switch', settings.requireApiKey ? 'switch-on' : 'switch-off']" @click="settings.requireApiKey = !settings.requireApiKey">
-                <span :class="['switch-thumb', settings.requireApiKey ? 'translate-x-4' : 'translate-x-0']"></span>
-              </button>
-            </div>
-            <div class="separator"></div>
-            <div class="flex items-center justify-between">
-              <div><p class="text-sm">Change password</p><p class="text-xs text-muted-foreground">Minimum 6 characters</p></div>
-              <div class="flex gap-2">
-                <input v-model="newPassword" type="password" class="input h-8 w-36 text-xs" placeholder="New password">
-                <button class="btn btn-secondary btn-sm" @click="setPassword">Set</button>
-              </div>
+      <!-- ══════ SETTINGS ══════ -->
+      <section v-if="activeTab === 'settings'" style="max-width:600px">
+        <div class="glass-card card-pad section-gap">
+          <p class="card-section-title">Security</p>
+          <div class="settings-row">
+            <div><p class="settings-title">Require dashboard login</p><p class="settings-desc">Protect management UI with password</p></div>
+            <button :class="['switch', settings.requireLogin ? 'switch-on' : 'switch-off']" @click="settings.requireLogin = !settings.requireLogin"><span class="switch-thumb"></span></button>
+          </div>
+          <div class="settings-row">
+            <div><p class="settings-title">Require API key</p><p class="settings-desc">Enforce Bearer token on /v1/* endpoints</p></div>
+            <button :class="['switch', settings.requireApiKey ? 'switch-on' : 'switch-off']" @click="settings.requireApiKey = !settings.requireApiKey"><span class="switch-thumb"></span></button>
+          </div>
+          <div class="settings-row">
+            <div><p class="settings-title">Change password</p><p class="settings-desc">Minimum 6 characters</p></div>
+            <div class="flex-gap">
+              <input v-model="newPassword" type="password" class="input" style="width:140px;height:29px;font-size:12px" placeholder="New password">
+              <button class="btn btn-ghost btn-sm" @click="setPassword">Set</button>
             </div>
           </div>
         </div>
 
-        <div class="card p-5 space-y-5">
-          <p class="text-sm font-medium">Routing</p>
-          <div class="flex items-center justify-between">
-            <div><p class="text-sm">Default combo strategy</p><p class="text-xs text-muted-foreground">Used when combo has no explicit kind</p></div>
-            <select v-model="settings.comboStrategy" class="input h-8 w-36 text-xs">
+        <div class="glass-card card-pad section-gap">
+          <p class="card-section-title">Routing</p>
+          <div class="settings-row" style="padding-bottom:0">
+            <div><p class="settings-title">Default combo strategy</p><p class="settings-desc">Used when combo has no explicit kind</p></div>
+            <select v-model="settings.comboStrategy" class="input" style="width:130px;height:29px;font-size:12px">
               <option value="">fallback</option>
               <option value="fallback">fallback</option>
               <option value="round-robin">round-robin</option>
@@ -570,36 +782,32 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-3">
-          <button class="btn btn-default" @click="saveSettings">Save Settings</button>
-          <transition name="fade"><span v-if="settingsSaved" class="text-xs text-emerald-400 flex items-center gap-1"><i data-lucide="check" class="h-3 w-3"></i>Saved</span></transition>
+        <div class="flex-gap">
+          <button class="btn btn-primary" @click="saveSettings">Save Settings</button>
+          <span v-if="settingsSaved" class="saved-indicator"><i data-lucide="check"></i>Saved</span>
         </div>
       </section>
 
-      <!-- ═══════════ STATUS ═══════════ -->
-      <section v-if="activeTab === 'status'" class="space-y-4">
-        <div class="grid lg:grid-cols-2 gap-4">
-          <div class="card p-5">
-            <p class="text-xs font-medium text-muted-foreground mb-4">Core</p>
-            <div class="space-y-3 text-sm">
-              <div class="flex justify-between"><span class="text-muted-foreground">Service</span><span class="font-mono text-xs">{{ health.service || '—' }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Status</span><span class="badge badge-green">{{ health.status || 'active' }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Version</span><span class="font-mono text-xs">v{{ version }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Database</span><span :class="['badge', health.db === 'ok' ? 'badge-green' : 'badge-red']">{{ health.db || '—' }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Uptime</span><span class="font-mono text-xs">{{ formatUptime(health.uptimeSeconds) }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Server Time</span><span class="font-mono text-xs">{{ health.time || '—' }}</span></div>
-            </div>
+      <!-- ══════ STATUS ══════ -->
+      <section v-if="activeTab === 'status'">
+        <div class="grid-2">
+          <div class="glass-card card-pad">
+            <p class="card-section-title">Core</p>
+            <div class="kv-row"><span class="kv-label">Service</span><span class="kv-value">{{ health.service || '—' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Status</span><span class="badge badge-green">{{ health.status || 'active' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Version</span><span class="kv-value">v{{ version }}</span></div>
+            <div class="kv-row"><span class="kv-label">Database</span><span :class="['badge', health.db === 'ok' ? 'badge-green' : 'badge-red']">{{ health.db || '—' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Uptime</span><span class="kv-value">{{ formatUptime(health.uptimeSeconds) }}</span></div>
+            <div class="kv-row"><span class="kv-label">Server Time</span><span class="kv-value">{{ health.time || '—' }}</span></div>
           </div>
-          <div class="card p-5">
-            <p class="text-xs font-medium text-muted-foreground mb-4">Resources</p>
-            <div class="space-y-3 text-sm">
-              <div class="flex justify-between"><span class="text-muted-foreground">Connections</span><span class="font-mono text-xs">{{ health.connections ?? providers.length }} ({{ health.activeConnections ?? providers.filter(p=>p.isActive).length }} active)</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">API Keys</span><span class="font-mono text-xs">{{ apiKeys.length }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Combos</span><span class="font-mono text-xs">{{ combos.length }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Aliases</span><span class="font-mono text-xs">{{ Object.keys(aliases).length }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Proxy Pools</span><span class="font-mono text-xs">{{ proxyPools.length }}</span></div>
-              <div class="flex justify-between"><span class="text-muted-foreground">Lifetime Requests</span><span class="font-mono text-xs">{{ formatNum(usageStats.totalRequestsLifetime) }}</span></div>
-            </div>
+          <div class="glass-card card-pad">
+            <p class="card-section-title">Resources</p>
+            <div class="kv-row"><span class="kv-label">Connections</span><span class="kv-value">{{ health.connections ?? providers.length }} ({{ health.activeConnections ?? providers.filter(p=>p.isActive).length }} active)</span></div>
+            <div class="kv-row"><span class="kv-label">API Keys</span><span class="kv-value">{{ apiKeys.length }}</span></div>
+            <div class="kv-row"><span class="kv-label">Combos</span><span class="kv-value">{{ combos.length }}</span></div>
+            <div class="kv-row"><span class="kv-label">Aliases</span><span class="kv-value">{{ Object.keys(aliases).length }}</span></div>
+            <div class="kv-row"><span class="kv-label">Proxy Pools</span><span class="kv-value">{{ proxyPools.length }}</span></div>
+            <div class="kv-row"><span class="kv-label">Lifetime Requests</span><span class="kv-value">{{ formatNum(usageStats.totalRequestsLifetime) }}</span></div>
           </div>
         </div>
       </section>
@@ -741,9 +949,7 @@ createApp({
     }
     async function deleteKey(k) { if (!confirm(`Delete key "${k.name || k.id}"?`)) return; await api(`/api/keys/${k.id}`, { method: 'DELETE' }); loadKeys(); }
     function maskKey(key) { if (!key || key.length <= 12) return key || ''; return key.slice(0, 8) + '····' + key.slice(-4); }
-    function copyText(text) {
-      navigator.clipboard?.writeText(text).catch(() => {});
-    }
+    function copyText(text) { navigator.clipboard?.writeText(text).catch(() => {}); }
 
     // --- Aliases ---
     async function addAlias() { await api('/api/models/alias', { method: 'POST', body: JSON.stringify(newAlias.value) }); newAlias.value = { alias: '', target: '' }; loadAll(); }

@@ -26,11 +26,13 @@ func NewDashboardHandler(cfg *config.Config) *DashboardHandler {
 }
 
 func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+
 	// Tier 1: Local dashboard directory
 	if d.cfg.Dashboard != "" {
 		indexPath := filepath.Join(d.cfg.Dashboard, "index.html")
 		if data, err := os.ReadFile(indexPath); err == nil {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Write(data)
 			return
 		}
@@ -38,7 +40,6 @@ func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Tier 2: Downloaded cache
 	if cached := d.readCache(); cached != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(cached)
 		return
 	}
@@ -49,7 +50,6 @@ func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(data)
 }
 
@@ -87,8 +87,10 @@ func (d *DashboardHandler) TryDownload() {
 	slog.Info("Panel downloaded and cached", "url", d.cfg.PanelURL, "size", len(data))
 }
 
+// cachePath is version-scoped: a binary upgrade invalidates the old cache
+// so users always get the panel matching their binary version.
 func (d *DashboardHandler) cachePath() string {
-	return filepath.Join(d.cfg.DataDir, "panel_cache.html")
+	return filepath.Join(d.cfg.DataDir, fmt.Sprintf("panel_cache_%s.html", Version()))
 }
 
 func (d *DashboardHandler) readCache() []byte {
@@ -102,6 +104,13 @@ func (d *DashboardHandler) readCache() []byte {
 func (d *DashboardHandler) writeCache(data []byte) error {
 	if err := os.MkdirAll(d.cfg.DataDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
+	}
+	// Clean up stale caches from previous versions
+	entries, _ := os.ReadDir(d.cfg.DataDir)
+	for _, e := range entries {
+		if name := e.Name(); name != filepath.Base(d.cachePath()) && len(name) > len("panel_cache_") && name[:len("panel_cache_")] == "panel_cache_" {
+			os.Remove(filepath.Join(d.cfg.DataDir, name))
+		}
 	}
 	return os.WriteFile(d.cachePath(), data, 0o644)
 }
