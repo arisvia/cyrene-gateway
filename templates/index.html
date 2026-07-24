@@ -1,719 +1,816 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cyrene Control Hub</title>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <title>Cyrene Gateway</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(240 3.7% 15.9%)',
+            input: 'hsl(240 3.7% 15.9%)',
+            ring: 'hsl(240 4.9% 83.9%)',
+            background: 'hsl(240 10% 3.9%)',
+            foreground: 'hsl(0 0% 98%)',
+            primary: { DEFAULT: 'hsl(0 0% 98%)', foreground: 'hsl(240 5.9% 10%)' },
+            secondary: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
+            muted: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(240 5% 64.9%)' },
+            accent: { DEFAULT: 'hsl(240 3.7% 15.9%)', foreground: 'hsl(0 0% 98%)' },
+            destructive: { DEFAULT: 'hsl(0 62.8% 30.6%)', foreground: 'hsl(0 0% 98%)' },
+            card: { DEFAULT: 'hsl(240 10% 3.9%)', foreground: 'hsl(0 0% 98%)' },
+            sidebar: 'hsl(240 5.9% 6%)',
+          },
+          borderRadius: { lg: '0.5rem', md: 'calc(0.5rem - 2px)', sm: 'calc(0.5rem - 4px)' },
+        }
+      }
+    }
+  </script>
+  <style>
+    [v-cloak] { display: none; }
+    * { border-color: hsl(240 3.7% 15.9%); }
+    body { background: hsl(240 10% 3.9%); color: hsl(0 0% 98%); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: hsl(240 3.7% 20%); border-radius: 3px; }
+    .fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+    .sidebar-item { @apply flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer select-none; }
+    .sidebar-item-active { @apply bg-secondary text-foreground; }
+    .sidebar-item-idle { @apply text-muted-foreground hover:bg-secondary/60 hover:text-foreground; }
+    .btn { @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50; }
+    .btn-default { @apply bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2; }
+    .btn-secondary { @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2; }
+    .btn-ghost { @apply hover:bg-secondary hover:text-foreground h-9 px-3 py-2; }
+    .btn-destructive { @apply bg-destructive text-white hover:bg-destructive/90 h-9 px-4 py-2; }
+    .btn-sm { @apply h-8 px-3 text-xs; }
+    .btn-icon { @apply h-8 w-8 p-0; }
+    .input { @apply flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50; }
+    .card { @apply rounded-lg border bg-card text-card-foreground; }
+    .badge { @apply inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold transition-colors; }
+    .badge-secondary { @apply border-transparent bg-secondary text-secondary-foreground; }
+    .badge-outline { @apply text-foreground; }
+    .badge-green { @apply border-transparent bg-emerald-500/15 text-emerald-400; }
+    .badge-red { @apply border-transparent bg-red-500/15 text-red-400; }
+    .badge-amber { @apply border-transparent bg-amber-500/15 text-amber-400; }
+    .badge-blue { @apply border-transparent bg-sky-500/15 text-sky-400; }
+    .switch { @apply relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
+    .switch-on { @apply bg-primary; }
+    .switch-off { @apply bg-input; }
+    .switch-thumb { @apply pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform; }
+    .table-head { @apply h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs; }
+    .table-cell { @apply px-3 py-2.5 align-middle text-sm; }
+    .dialog-overlay { @apply fixed inset-0 z-50 bg-black/80; }
+    .dialog-content { @apply fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-6 shadow-lg; }
+    .separator { @apply shrink-0 bg-border h-px w-full; }
+    .stat-card { @apply card p-5; }
+  </style>
 </head>
-<body class="bg-slate-950 text-slate-100 flex flex-col min-h-screen">
-  <div id="app" class="max-w-6xl mx-auto p-4 md:p-8 w-full flex-1">
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-slate-800 pb-6">
-      <div>
-        <h1 class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent">
-          Cyrene Gateway Hub
-        </h1>
-        <p class="text-xs text-slate-500 mt-1 font-mono">Modern API Router &amp; OAuth Hub</p>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="flex h-2.5 w-2.5 relative">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-        </span>
-        <span class="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-md">
-          v{{ version }}
-        </span>
-      </div>
-    </header>
+<body class="min-h-screen antialiased">
+<div id="app" v-cloak class="flex min-h-screen">
 
-    <!-- Tab Navigation -->
-    <nav class="flex flex-wrap gap-1 mb-6 bg-slate-900/50 p-1 rounded-lg border border-slate-800 w-fit">
-      <button v-for="tab in tabs" :key="tab.id"
-        @click="switchTab(tab.id)"
-        :class="[
-          'px-4 py-2 rounded-md text-sm font-medium transition-colors',
-          activeTab === tab.id ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-slate-200'
-        ]">
-        {{ tab.label }}
-      </button>
+  <!-- Sidebar -->
+  <aside class="fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r bg-sidebar">
+    <div class="flex h-14 items-center gap-2.5 border-b px-4">
+      <div class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <i data-lucide="route" class="h-4 w-4"></i>
+      </div>
+      <div>
+        <span class="text-sm font-semibold tracking-tight">Cyrene Gateway</span>
+        <span class="ml-2 text-[10px] text-muted-foreground font-mono">v{{ version }}</span>
+      </div>
+    </div>
+
+    <nav class="flex-1 space-y-1 overflow-y-auto p-3">
+      <p class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">Gateway</p>
+      <div v-for="item in navMain" :key="item.id"
+        :class="['sidebar-item', activeTab === item.id ? 'sidebar-item-active' : 'sidebar-item-idle']"
+        @click="switchTab(item.id)">
+        <i :data-lucide="item.icon" class="h-4 w-4 shrink-0"></i>
+        <span>{{ item.label }}</span>
+      </div>
+
+      <p class="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">System</p>
+      <div v-for="item in navSystem" :key="item.id"
+        :class="['sidebar-item', activeTab === item.id ? 'sidebar-item-active' : 'sidebar-item-idle']"
+        @click="switchTab(item.id)">
+        <i :data-lucide="item.icon" class="h-4 w-4 shrink-0"></i>
+        <span>{{ item.label }}</span>
+      </div>
     </nav>
 
-    <!-- Providers Tab -->
-    <section v-if="activeTab === 'providers'" class="space-y-4">
-      <div class="flex justify-between items-center">
-        <h2 class="text-lg font-bold text-slate-200">Provider Connections</h2>
-        <button @click="showAddProvider = !showAddProvider"
-          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
-          + Add Provider
-        </button>
+    <div class="border-t p-3">
+      <div class="flex items-center gap-2 rounded-md px-3 py-2">
+        <span class="relative flex h-2 w-2">
+          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+          <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+        </span>
+        <span class="text-xs text-muted-foreground">{{ health.status || 'online' }} · {{ formatUptime(health.uptimeSeconds) }}</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="ml-60 flex-1">
+    <div class="mx-auto max-w-5xl p-6 md:p-8">
+
+      <!-- Page Header -->
+      <div class="mb-6">
+        <h1 class="text-xl font-semibold tracking-tight">{{ pageTitle }}</h1>
+        <p class="text-sm text-muted-foreground mt-1">{{ pageDesc }}</p>
       </div>
 
-      <!-- Add Provider Form -->
-      <div v-if="showAddProvider" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <input v-model="newProvider.provider" placeholder="Provider (e.g. openai)" class="input">
-          <input v-model="newProvider.name" placeholder="Display name" class="input">
-          <input v-model="newProvider.data.apiKey" placeholder="API Key" type="password" class="input">
-          <input v-model="newProvider.data.baseUrl" placeholder="Base URL (optional)" class="input">
-        </div>
-        <div class="flex gap-2">
-          <button @click="addProvider" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Save</button>
-          <button @click="showAddProvider = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
-        </div>
-      </div>
-
-      <!-- Provider List -->
-      <div v-for="p in providers" :key="p.id"
-        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex justify-between items-center">
-        <div>
-          <div class="flex items-center gap-2">
-            <span :class="['w-2 h-2 rounded-full', p.isActive ? 'bg-emerald-500' : 'bg-red-500']"></span>
-            <span class="font-semibold text-sm">{{ p.name || p.provider }}</span>
-            <span class="text-xs text-slate-500 font-mono">{{ p.provider }}</span>
-          </div>
-          <div class="text-xs text-slate-500 mt-1">
-            Priority: {{ p.priority }} | Auth: {{ p.authType }}
-          </div>
-        </div>
-        <div class="flex gap-2">
-          <button @click="toggleProvider(p)" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">
-            {{ p.isActive ? 'Disable' : 'Enable' }}
-          </button>
-          <button @click="resetProvider(p)" class="text-xs px-2 py-1 rounded bg-amber-700/50 hover:bg-amber-600/50 text-amber-300">
-            Reset
-          </button>
-          <button @click="deleteProvider(p)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">
-            Delete
-          </button>
-        </div>
-      </div>
-      <p v-if="providers.length === 0" class="text-slate-500 text-sm text-center py-8">No providers configured yet.</p>
-    </section>
-
-    <!-- API Keys Tab -->
-    <section v-if="activeTab === 'keys'" class="space-y-4">
-      <div class="flex justify-between items-center">
-        <h2 class="text-lg font-bold text-slate-200">API Keys</h2>
-        <button @click="showAddKey = !showAddKey"
-          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
-          + Generate Key
-        </button>
-      </div>
-
-      <!-- Generate Key Form -->
-      <div v-if="showAddKey" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
-        <div class="flex gap-3">
-          <input v-model="newKeyName" placeholder="Key name (e.g. my-laptop)" class="input flex-1">
-          <button @click="createKey" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Generate</button>
-          <button @click="showAddKey = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
-        </div>
-      </div>
-
-      <!-- Newly Created Key Banner -->
-      <div v-if="lastCreatedKey" class="bg-emerald-900/30 border border-emerald-700 rounded-lg p-4">
-        <p class="text-sm text-emerald-300 font-semibold mb-2">Key generated successfully — copy it now, it will be masked on reload:</p>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 text-xs bg-slate-900 border border-slate-700 rounded px-3 py-2 font-mono text-emerald-200 break-all">{{ lastCreatedKey.key }}</code>
-          <button @click="copyText(lastCreatedKey.key)" class="text-xs px-3 py-2 rounded bg-emerald-700 hover:bg-emerald-600 shrink-0">Copy</button>
-          <button @click="lastCreatedKey = null" class="text-xs px-2 py-2 rounded bg-slate-700 hover:bg-slate-600 shrink-0">&times;</button>
-        </div>
-      </div>
-
-      <!-- Key List -->
-      <div v-for="k in apiKeys" :key="k.id"
-        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex justify-between items-center">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2">
-            <span :class="['w-2 h-2 rounded-full shrink-0', k.isActive ? 'bg-emerald-500' : 'bg-red-500']"></span>
-            <span class="font-semibold text-sm truncate">{{ k.name || 'Unnamed key' }}</span>
-          </div>
-          <div class="text-xs text-slate-500 mt-1 font-mono flex items-center gap-2">
-            <span>{{ maskKey(k.key) }}</span>
-            <button @click="copyText(k.key)" class="text-teal-400 hover:text-teal-300">[copy]</button>
-          </div>
-          <div class="text-xs text-slate-600 mt-0.5">Created: {{ formatDate(k.createdAt) }}</div>
-        </div>
-        <button @click="deleteKey(k)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300 shrink-0">
-          Delete
-        </button>
-      </div>
-      <p v-if="apiKeys.length === 0" class="text-slate-500 text-sm text-center py-8">No API keys yet. Generate one to use with <code class="text-teal-400">Authorization: Bearer &lt;key&gt;</code>.</p>
-    </section>
-
-    <!-- Aliases Tab -->
-    <section v-if="activeTab === 'aliases'" class="space-y-4">
-      <div class="flex justify-between items-center">
-        <h2 class="text-lg font-bold text-slate-200">Model Aliases</h2>
-      </div>
-      <div class="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-3">
-        <input v-model="newAlias.alias" placeholder="Alias name" class="input flex-1">
-        <input v-model="newAlias.target" placeholder="Target model" class="input flex-1">
-        <button @click="addAlias" class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md">Add</button>
-      </div>
-      <div v-for="(target, alias) in aliases" :key="alias"
-        class="bg-slate-900/50 border border-slate-800 rounded-lg p-3 flex justify-between items-center">
-        <div class="text-sm">
-          <span class="font-mono text-teal-400">{{ alias }}</span>
-          <span class="text-slate-500 mx-2">&rarr;</span>
-          <span class="font-mono text-slate-300">{{ target }}</span>
-        </div>
-        <button @click="deleteAlias(alias)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">Delete</button>
-      </div>
-      <p v-if="Object.keys(aliases).length === 0" class="text-slate-500 text-sm text-center py-8">No aliases configured.</p>
-    </section>
-
-    <!-- Combos Tab -->
-    <section v-if="activeTab === 'combos'" class="space-y-4">
-      <div class="flex justify-between items-center">
-        <h2 class="text-lg font-bold text-slate-200">Combos (Fallback Groups)</h2>
-        <button @click="showAddCombo = !showAddCombo"
-          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
-          + Add Combo
-        </button>
-      </div>
-      <div v-if="showAddCombo" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <input v-model="newCombo.name" placeholder="Combo name" class="input">
-          <select v-model="newCombo.kind" class="input">
-            <option value="fallback">Fallback</option>
-            <option value="round-robin">Round Robin</option>
-          </select>
-        </div>
-        <input v-model="newCombo.modelsStr" placeholder="Models (comma-separated)" class="input w-full">
-        <div class="flex gap-2">
-          <button @click="addCombo" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Save</button>
-          <button @click="showAddCombo = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
-        </div>
-      </div>
-      <div v-for="c in combos" :key="c.id"
-        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+      <!-- ═══════════ PROVIDERS ═══════════ -->
+      <section v-if="activeTab === 'providers'" class="space-y-4">
         <div class="flex justify-between items-center">
-          <div>
-            <span class="font-semibold text-sm">{{ c.name }}</span>
-            <span class="text-xs text-slate-500 ml-2">{{ c.kind }}</span>
+          <div class="flex items-center gap-2">
+            <span class="badge badge-secondary">{{ providers.length }} connections</span>
+            <span class="badge badge-green">{{ providers.filter(p => p.isActive).length }} active</span>
           </div>
-          <button @click="deleteCombo(c)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">Delete</button>
+          <button class="btn btn-default btn-sm" @click="openAddProvider"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Add Provider</button>
         </div>
-        <div class="flex flex-wrap gap-1 mt-2">
-          <span v-for="m in c.models" :key="m" class="text-xs bg-slate-800 px-2 py-0.5 rounded font-mono text-slate-400">{{ m }}</span>
-        </div>
-      </div>
-      <p v-if="combos.length === 0" class="text-slate-500 text-sm text-center py-8">No combos configured.</p>
-    </section>
 
-    <!-- Usage Tab -->
-    <section v-if="activeTab === 'usage'" class="space-y-4">
-      <div class="flex justify-between items-center">
-        <h2 class="text-lg font-bold text-slate-200">Usage Statistics</h2>
-        <select v-model="usagePeriod" @change="loadUsage" class="input text-xs">
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="60d">Last 60 days</option>
-        </select>
-      </div>
-
-      <!-- Summary Cards -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
-          <div class="text-2xl font-bold text-teal-400">{{ formatNum(usageStats.totalRequests) }}</div>
-          <div class="text-xs text-slate-500 mt-1">Requests</div>
-        </div>
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
-          <div class="text-2xl font-bold text-emerald-400">{{ formatNum(usageStats.totalPromptTokens) }}</div>
-          <div class="text-xs text-slate-500 mt-1">Prompt Tokens</div>
-        </div>
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
-          <div class="text-2xl font-bold text-sky-400">{{ formatNum(usageStats.totalCompletionTokens) }}</div>
-          <div class="text-xs text-slate-500 mt-1">Completion Tokens</div>
-        </div>
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 text-center">
-          <div class="text-2xl font-bold text-amber-400">${{ usageStats.totalCost ? usageStats.totalCost.toFixed(4) : '0.0000' }}</div>
-          <div class="text-xs text-slate-500 mt-1">Est. Cost</div>
-        </div>
-      </div>
-
-      <!-- Chart -->
-      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
-        <h3 class="text-sm font-semibold text-slate-400 mb-3">Tokens per {{ usagePeriod === 'today' ? 'Hour' : 'Day' }}</h3>
-        <div class="flex items-end gap-1 h-32">
-          <div v-for="(b, i) in usageChart" :key="i" class="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-            <div class="w-full bg-teal-600/70 rounded-t min-h-[2px] transition-all"
-              :style="{ height: chartBarHeight(b.tokens) + '%' }"
-              :title="b.label + ': ' + formatNum(b.tokens) + ' tokens'"></div>
-            <span class="text-[9px] text-slate-600 truncate w-full text-center">{{ b.label }}</span>
+        <div class="card divide-y divide-border">
+          <div v-for="p in providers" :key="p.id" class="flex items-center justify-between p-4">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
+                <i data-lucide="server" class="h-4 w-4 text-muted-foreground"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium truncate">{{ p.name || p.provider }}</span>
+                  <span class="badge badge-outline font-mono text-[10px]">{{ p.provider }}</span>
+                  <span :class="['badge', p.authType === 'oauth' ? 'badge-blue' : 'badge-secondary']">{{ p.authType }}</span>
+                </div>
+                <p class="text-xs text-muted-foreground mt-0.5">Priority {{ p.priority || 0 }} · {{ p.data?.baseUrl || registryBaseUrl(p.provider) || 'default endpoint' }}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button :class="['switch', p.isActive ? 'switch-on' : 'switch-off']" @click="toggleProvider(p)" :title="p.isActive ? 'Disable' : 'Enable'">
+                <span :class="['switch-thumb', p.isActive ? 'translate-x-4' : 'translate-x-0']"></span>
+              </button>
+              <button class="btn btn-ghost btn-icon" @click="resetProvider(p)" title="Reset cooldown state"><i data-lucide="rotate-ccw" class="h-3.5 w-3.5"></i></button>
+              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteProvider(p)" title="Delete"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
+          </div>
+          <div v-if="providers.length === 0" class="p-10 text-center text-sm text-muted-foreground">
+            No provider connections yet. Add one to start routing.
           </div>
         </div>
-      </div>
 
-      <!-- By Provider / Model -->
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
-          <h3 class="text-sm font-semibold text-slate-400 mb-3">By Provider</h3>
-          <div v-if="Object.keys(usageStats.byProvider || {}).length === 0" class="text-xs text-slate-600">No data in this period.</div>
-          <div v-for="(v, k) in usageStats.byProvider" :key="k" class="flex justify-between text-xs py-1.5 border-b border-slate-800/50 last:border-0">
-            <span class="font-mono text-slate-300">{{ k }}</span>
-            <span class="text-slate-500">{{ formatNum(v.requests) }} req / {{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
+        <!-- Add Provider Dialog -->
+        <div v-if="showAddProvider" class="dialog-overlay" @click.self="showAddProvider = false">
+          <div class="dialog-content max-w-xl">
+            <h3 class="text-base font-semibold mb-1">Add Provider</h3>
+            <p class="text-xs text-muted-foreground mb-5">Select from the registry or configure a custom endpoint.</p>
+
+            <!-- Registry grid -->
+            <div class="grid grid-cols-3 gap-2 mb-5 max-h-52 overflow-y-auto pr-1">
+              <div v-for="rp in registryList" :key="rp.id"
+                :class="['rounded-md border p-2.5 cursor-pointer transition-colors', newProvider.provider === rp.id ? 'border-ring bg-secondary' : 'hover:bg-secondary/50']"
+                @click="selectRegistryProvider(rp)">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium truncate">{{ rp.name }}</span>
+                  <span :class="['badge text-[9px] px-1 py-0', rp.authType === 'oauth' ? 'badge-blue' : rp.authType === 'none' ? 'badge-green' : 'badge-secondary']">{{ rp.authType === 'api-key' ? 'key' : rp.authType }}</span>
+                </div>
+                <p class="text-[10px] text-muted-foreground font-mono mt-1 truncate">{{ rp.id }}</p>
+              </div>
+            </div>
+
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Provider ID</label>
+                  <input v-model="newProvider.provider" class="input" placeholder="e.g. openai">
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Display Name</label>
+                  <input v-model="newProvider.name" class="input" placeholder="optional">
+                </div>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">API Key / Access Token</label>
+                <input v-model="newProvider.data.apiKey" type="password" class="input" placeholder="sk-...">
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Base URL <span class="text-muted-foreground/60">(auto-filled from registry)</span></label>
+                <input v-model="newProvider.data.baseUrl" class="input font-mono text-xs" placeholder="https://api.openai.com/v1">
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Auth Type</label>
+                  <select v-model="newProvider.authType" class="input">
+                    <option value="api-key">api-key</option>
+                    <option value="oauth">oauth</option>
+                    <option value="none">none</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Priority</label>
+                  <input v-model.number="newProvider.priority" type="number" class="input" placeholder="0">
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+              <button class="btn btn-ghost" @click="showAddProvider = false">Cancel</button>
+              <button class="btn btn-default" @click="addProvider">Add Connection</button>
+            </div>
           </div>
         </div>
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
-          <h3 class="text-sm font-semibold text-slate-400 mb-3">By Model</h3>
-          <div v-if="Object.keys(usageStats.byModel || {}).length === 0" class="text-xs text-slate-600">No data in this period.</div>
-          <div v-for="(v, k) in usageStats.byModel" :key="k" class="flex justify-between text-xs py-1.5 border-b border-slate-800/50 last:border-0">
-            <span class="font-mono text-slate-300 truncate mr-2">{{ k }}</span>
-            <span class="text-slate-500 shrink-0">{{ formatNum(v.requests) }} req / {{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
+      </section>
+
+      <!-- ═══════════ API KEYS ═══════════ -->
+      <section v-if="activeTab === 'keys'" class="space-y-4">
+        <div class="flex justify-between items-center">
+          <span class="badge badge-secondary">{{ apiKeys.length }} keys</span>
+          <button class="btn btn-default btn-sm" @click="showAddKey = true"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Generate Key</button>
+        </div>
+
+        <!-- New key banner -->
+        <div v-if="lastCreatedKey" class="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-400"></i>
+            <span class="text-sm font-medium text-emerald-300">Key generated — copy it now</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 rounded-md bg-background border px-3 py-2 text-xs font-mono text-emerald-200 break-all">{{ lastCreatedKey.key }}</code>
+            <button class="btn btn-secondary btn-sm shrink-0" @click="copyText(lastCreatedKey.key)"><i data-lucide="copy" class="h-3 w-3"></i>Copy</button>
+            <button class="btn btn-ghost btn-icon" @click="lastCreatedKey = null"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
           </div>
         </div>
-      </div>
 
-      <!-- Recent Requests -->
-      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
-        <h3 class="text-sm font-semibold text-slate-400 mb-3">Recent Requests</h3>
-        <div class="overflow-x-auto">
-          <table class="w-full text-xs">
-            <thead>
-              <tr class="text-slate-500 border-b border-slate-800">
-                <th class="text-left py-2 pr-3 font-medium">Time</th>
-                <th class="text-left py-2 pr-3 font-medium">Provider</th>
-                <th class="text-left py-2 pr-3 font-medium">Model</th>
-                <th class="text-right py-2 pr-3 font-medium">Tokens</th>
-                <th class="text-right py-2 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="rd in requestDetails" :key="rd.id" class="border-b border-slate-800/50 last:border-0">
-                <td class="py-2 pr-3 text-slate-400 whitespace-nowrap">{{ formatDate(rd.timestamp || rd.createdAt) }}</td>
-                <td class="py-2 pr-3 font-mono text-slate-300">{{ rd.provider }}</td>
-                <td class="py-2 pr-3 font-mono text-slate-400 truncate max-w-[200px]">{{ rd.model }}</td>
-                <td class="py-2 pr-3 text-right text-slate-400">{{ formatNum((rd.promptTokens || 0) + (rd.completionTokens || 0)) }}</td>
-                <td class="py-2 text-right">
-                  <span :class="['px-1.5 py-0.5 rounded text-[10px] font-semibold', rd.status === 'success' ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400']">{{ rd.status }}</span>
-                </td>
+        <div class="card divide-y divide-border">
+          <div v-for="k in apiKeys" :key="k.id" class="flex items-center justify-between p-4">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
+                <i data-lucide="key-round" class="h-4 w-4 text-muted-foreground"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium">{{ k.name || 'Unnamed' }}</span>
+                  <span :class="['badge', k.isActive ? 'badge-green' : 'badge-red']">{{ k.isActive ? 'active' : 'disabled' }}</span>
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <code class="text-xs text-muted-foreground font-mono">{{ maskKey(k.key) }}</code>
+                  <button class="text-muted-foreground hover:text-foreground transition-colors" @click="copyText(k.key)" title="Copy full key"><i data-lucide="copy" class="h-3 w-3"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-xs text-muted-foreground">{{ formatDate(k.createdAt) }}</span>
+              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteKey(k)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
+          </div>
+          <div v-if="apiKeys.length === 0" class="p-10 text-center text-sm text-muted-foreground">
+            No API keys. Generate one to authenticate <code class="text-xs">Authorization: Bearer &lt;key&gt;</code> requests.
+          </div>
+        </div>
+
+        <!-- Generate Key Dialog -->
+        <div v-if="showAddKey" class="dialog-overlay" @click.self="showAddKey = false">
+          <div class="dialog-content max-w-sm">
+            <h3 class="text-base font-semibold mb-4">Generate API Key</h3>
+            <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Key Name</label>
+            <input v-model="newKeyName" class="input" placeholder="e.g. my-laptop, production" @keyup.enter="createKey">
+            <div class="mt-6 flex justify-end gap-2">
+              <button class="btn btn-ghost" @click="showAddKey = false">Cancel</button>
+              <button class="btn btn-default" @click="createKey">Generate</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ ALIASES ═══════════ -->
+      <section v-if="activeTab === 'aliases'" class="space-y-4">
+        <div class="card p-4">
+          <div class="flex gap-3">
+            <input v-model="newAlias.alias" class="input flex-1" placeholder="Alias (e.g. fast)">
+            <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground self-center shrink-0"></i>
+            <input v-model="newAlias.target" class="input flex-1" placeholder="Target model (e.g. groq/llama-3.3-70b)">
+            <button class="btn btn-default shrink-0" @click="addAlias">Add</button>
+          </div>
+        </div>
+        <div class="card divide-y divide-border">
+          <div v-for="(target, alias) in aliases" :key="alias" class="flex items-center justify-between p-4">
+            <div class="flex items-center gap-3 text-sm font-mono">
+              <span class="text-foreground">{{ alias }}</span>
+              <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-muted-foreground"></i>
+              <span class="text-muted-foreground">{{ target }}</span>
+            </div>
+            <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteAlias(alias)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+          </div>
+          <div v-if="Object.keys(aliases).length === 0" class="p-10 text-center text-sm text-muted-foreground">No aliases configured.</div>
+        </div>
+      </section>
+
+      <!-- ═══════════ COMBOS ═══════════ -->
+      <section v-if="activeTab === 'combos'" class="space-y-4">
+        <div class="flex justify-between items-center">
+          <span class="badge badge-secondary">{{ combos.length }} combos</span>
+          <button class="btn btn-default btn-sm" @click="showAddCombo = true"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Add Combo</button>
+        </div>
+        <div class="card divide-y divide-border">
+          <div v-for="c in combos" :key="c.id" class="p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">{{ c.name }}</span>
+                <span :class="['badge', c.kind === 'round-robin' ? 'badge-blue' : 'badge-secondary']">{{ c.kind }}</span>
+              </div>
+              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteCombo(c)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
+            <div class="flex flex-wrap gap-1.5 mt-2.5">
+              <span v-for="m in c.models" :key="m" class="badge badge-outline font-mono text-[10px]">{{ m }}</span>
+            </div>
+          </div>
+          <div v-if="combos.length === 0" class="p-10 text-center text-sm text-muted-foreground">No combos. Create fallback groups for model routing.</div>
+        </div>
+
+        <!-- Add Combo Dialog -->
+        <div v-if="showAddCombo" class="dialog-overlay" @click.self="showAddCombo = false">
+          <div class="dialog-content max-w-md">
+            <h3 class="text-base font-semibold mb-4">Create Combo</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Combo Name</label>
+                <input v-model="newCombo.name" class="input" placeholder="e.g. reliable-chat">
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Strategy</label>
+                <select v-model="newCombo.kind" class="input">
+                  <option value="fallback">Fallback — try in order until success</option>
+                  <option value="round-robin">Round Robin — distribute evenly</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Models (comma-separated, in priority order)</label>
+                <input v-model="newCombo.modelsStr" class="input" placeholder="openai/gpt-4o, anthropic/claude-sonnet-4-20250514">
+              </div>
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+              <button class="btn btn-ghost" @click="showAddCombo = false">Cancel</button>
+              <button class="btn btn-default" @click="addCombo">Create</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════ USAGE ═══════════ -->
+      <section v-if="activeTab === 'usage'" class="space-y-4">
+        <div class="flex justify-between items-center">
+          <div class="flex gap-1 rounded-md bg-secondary/50 p-1">
+            <button v-for="p in ['today','7d','30d','60d']" :key="p"
+              :class="['px-3 py-1 rounded text-xs font-medium transition-colors', usagePeriod === p ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground']"
+              @click="usagePeriod = p; loadUsage()">{{ p === 'today' ? 'Today' : p.toUpperCase() }}</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="stat-card">
+            <p class="text-xs text-muted-foreground">Requests</p>
+            <p class="text-2xl font-bold mt-1 tracking-tight">{{ formatNum(usageStats.totalRequests) }}</p>
+          </div>
+          <div class="stat-card">
+            <p class="text-xs text-muted-foreground">Prompt Tokens</p>
+            <p class="text-2xl font-bold mt-1 tracking-tight">{{ formatNum(usageStats.totalPromptTokens) }}</p>
+          </div>
+          <div class="stat-card">
+            <p class="text-xs text-muted-foreground">Completion Tokens</p>
+            <p class="text-2xl font-bold mt-1 tracking-tight">{{ formatNum(usageStats.totalCompletionTokens) }}</p>
+          </div>
+          <div class="stat-card">
+            <p class="text-xs text-muted-foreground">Est. Cost</p>
+            <p class="text-2xl font-bold mt-1 tracking-tight">${{ usageStats.totalCost ? usageStats.totalCost.toFixed(4) : '0.00' }}</p>
+          </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="card p-5">
+          <p class="text-xs font-medium text-muted-foreground mb-4">Token volume · {{ usagePeriod === 'today' ? 'hourly' : 'daily' }}</p>
+          <div class="flex items-end gap-[3px] h-36">
+            <div v-for="(b, i) in usageChart" :key="i" class="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
+              <div class="w-full rounded-sm bg-primary/20 group-hover:bg-primary/40 transition-colors relative"
+                :style="{ height: chartBarHeight(b.tokens) + '%' }"
+                :title="b.label + ' — ' + formatNum(b.tokens) + ' tokens'">
+                <div class="absolute inset-x-0 bottom-0 rounded-sm bg-primary/60" :style="{ height: '100%' }" style="opacity:.5"></div>
+              </div>
+              <span class="text-[8px] text-muted-foreground/60 truncate w-full text-center">{{ b.label }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-4">
+          <div class="card p-5">
+            <p class="text-xs font-medium text-muted-foreground mb-3">By Provider</p>
+            <div class="space-y-2.5">
+              <div v-for="(v, k) in usageStats.byProvider" :key="k" class="flex items-center justify-between text-sm">
+                <span class="font-mono text-xs">{{ k }}</span>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-muted-foreground">{{ formatNum(v.requests) }} req</span>
+                  <span class="text-xs font-medium">{{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
+                </div>
+              </div>
+              <p v-if="!usageStats.byProvider || Object.keys(usageStats.byProvider).length === 0" class="text-xs text-muted-foreground/60">No data in this period.</p>
+            </div>
+          </div>
+          <div class="card p-5">
+            <p class="text-xs font-medium text-muted-foreground mb-3">By Model</p>
+            <div class="space-y-2.5 max-h-56 overflow-y-auto">
+              <div v-for="(v, k) in usageStats.byModel" :key="k" class="flex items-center justify-between text-sm">
+                <span class="font-mono text-xs truncate mr-3">{{ k }}</span>
+                <div class="flex items-center gap-3 shrink-0">
+                  <span class="text-xs text-muted-foreground">{{ formatNum(v.requests) }} req</span>
+                  <span class="text-xs font-medium">{{ formatNum(v.promptTokens + v.completionTokens) }} tok</span>
+                </div>
+              </div>
+              <p v-if="!usageStats.byModel || Object.keys(usageStats.byModel).length === 0" class="text-xs text-muted-foreground/60">No data in this period.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent requests -->
+        <div class="card overflow-hidden">
+          <div class="px-5 pt-4 pb-2"><p class="text-xs font-medium text-muted-foreground">Recent Requests</p></div>
+          <table class="w-full">
+            <thead><tr class="border-b">
+              <th class="table-head">Time</th><th class="table-head">Provider</th><th class="table-head">Model</th>
+              <th class="table-head text-right">Tokens</th><th class="table-head text-right">Status</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border/50">
+              <tr v-for="rd in requestDetails" :key="rd.id" class="hover:bg-secondary/30 transition-colors">
+                <td class="table-cell text-xs text-muted-foreground whitespace-nowrap">{{ formatDate(rd.timestamp || rd.createdAt) }}</td>
+                <td class="table-cell font-mono text-xs">{{ rd.provider }}</td>
+                <td class="table-cell font-mono text-xs text-muted-foreground max-w-[220px] truncate">{{ rd.model }}</td>
+                <td class="table-cell text-xs text-right">{{ formatNum((rd.promptTokens || 0) + (rd.completionTokens || 0)) }}</td>
+                <td class="table-cell text-right"><span :class="['badge', rd.status === 'success' || rd.status === 'ok' ? 'badge-green' : 'badge-red']">{{ rd.status }}</span></td>
               </tr>
             </tbody>
           </table>
-          <p v-if="requestDetails.length === 0" class="text-slate-600 text-xs text-center py-4">No request details recorded yet.</p>
+          <p v-if="requestDetails.length === 0" class="p-8 text-center text-xs text-muted-foreground">No request details recorded yet.</p>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Proxy Pools Tab -->
-    <section v-if="activeTab === 'proxies'" class="space-y-4">
-      <div class="flex justify-between items-center">
-        <h2 class="text-lg font-bold text-slate-200">Proxy Pools</h2>
-        <button @click="showAddProxy = !showAddProxy"
-          class="text-sm bg-teal-600 hover:bg-teal-500 px-3 py-1.5 rounded-md transition-colors">
-          + Add Proxy
-        </button>
-      </div>
-
-      <!-- Add Proxy Form -->
-      <div v-if="showAddProxy" class="bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3">
-        <div class="grid grid-cols-2 gap-3">
-          <input v-model="newProxy.data.name" placeholder="Pool name" class="input">
-          <select v-model="newProxy.data.type" class="input">
-            <option value="http">HTTP Proxy</option>
-            <option value="vercel">Vercel</option>
-            <option value="cloudflare">Cloudflare Worker</option>
-            <option value="deno">Deno Deploy</option>
-          </select>
-          <input v-model="newProxy.data.proxyUrl" placeholder="Proxy URL (e.g. http://127.0.0.1:7890)" class="input col-span-2">
-          <input v-model="newProxy.data.noProxy" placeholder="No-proxy hosts (comma-separated, optional)" class="input col-span-2">
+      <!-- ═══════════ PROXY POOLS ═══════════ -->
+      <section v-if="activeTab === 'proxies'" class="space-y-4">
+        <div class="flex justify-between items-center">
+          <span class="badge badge-secondary">{{ proxyPools.length }} pools</span>
+          <button class="btn btn-default btn-sm" @click="showAddProxy = true"><i data-lucide="plus" class="h-3.5 w-3.5"></i>Add Proxy</button>
         </div>
-        <label class="flex items-center gap-2 text-sm text-slate-400">
-          <input type="checkbox" v-model="newProxy.data.strictProxy" class="accent-teal-500">
-          Strict proxy (fail requests if proxy is unreachable)
-        </label>
-        <div class="flex gap-2">
-          <button @click="addProxy" class="text-sm bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded-md">Save</button>
-          <button @click="showAddProxy = false" class="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md">Cancel</button>
-        </div>
-      </div>
-
-      <!-- Proxy List -->
-      <div v-for="pp in proxyPools" :key="pp.id"
-        class="bg-slate-900/50 border border-slate-800 rounded-lg p-4 flex justify-between items-center">
-        <div class="min-w-0">
-          <div class="flex items-center gap-2">
-            <span :class="['w-2 h-2 rounded-full shrink-0', pp.isActive ? 'bg-emerald-500' : 'bg-red-500']"></span>
-            <span class="font-semibold text-sm">{{ pp.data.name || 'Unnamed pool' }}</span>
-            <span class="text-xs bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">{{ pp.data.type }}</span>
+        <div class="card divide-y divide-border">
+          <div v-for="pp in proxyPools" :key="pp.id" class="flex items-center justify-between p-4">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary">
+                <i data-lucide="globe" class="h-4 w-4 text-muted-foreground"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium">{{ pp.data.name }}</span>
+                  <span class="badge badge-secondary">{{ pp.data.type }}</span>
+                  <span v-if="pp.data.strictProxy" class="badge badge-amber">strict</span>
+                </div>
+                <p class="text-xs text-muted-foreground font-mono mt-0.5 truncate">{{ pp.data.proxyUrl }}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button :class="['switch', pp.isActive ? 'switch-on' : 'switch-off']" @click="toggleProxy(pp)">
+                <span :class="['switch-thumb', pp.isActive ? 'translate-x-4' : 'translate-x-0']"></span>
+              </button>
+              <button class="btn btn-ghost btn-icon text-muted-foreground hover:text-red-400" @click="deleteProxy(pp)"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>
+            </div>
           </div>
-          <div class="text-xs text-slate-500 mt-1 font-mono truncate">{{ pp.data.proxyUrl }}</div>
-          <div v-if="pp.data.strictProxy" class="text-xs text-amber-500/70 mt-0.5">strict mode</div>
+          <div v-if="proxyPools.length === 0" class="p-10 text-center text-sm text-muted-foreground">No proxy pools. Outbound requests go direct.</div>
         </div>
-        <div class="flex gap-2 shrink-0">
-          <button @click="toggleProxy(pp)" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">
-            {{ pp.isActive ? 'Disable' : 'Enable' }}
-          </button>
-          <button @click="deleteProxy(pp)" class="text-xs px-2 py-1 rounded bg-red-900/50 hover:bg-red-800/50 text-red-300">
-            Delete
-          </button>
-        </div>
-      </div>
-      <p v-if="proxyPools.length === 0" class="text-slate-500 text-sm text-center py-8">No proxy pools configured. Outbound requests go direct.</p>
-    </section>
 
-    <!-- Settings Tab -->
-    <section v-if="activeTab === 'settings'" class="space-y-4">
-      <h2 class="text-lg font-bold text-slate-200">Settings</h2>
-
-      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5 space-y-4">
-        <h3 class="text-sm font-semibold text-slate-400">Security</h3>
-        <label class="flex items-center justify-between text-sm">
-          <span class="text-slate-300">Require login for dashboard</span>
-          <input type="checkbox" v-model="settings.requireLogin" class="accent-teal-500 w-4 h-4">
-        </label>
-        <label class="flex items-center justify-between text-sm">
-          <span class="text-slate-300">Require API key for /v1/* endpoints</span>
-          <input type="checkbox" v-model="settings.requireApiKey" class="accent-teal-500 w-4 h-4">
-        </label>
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-slate-300">Dashboard password</span>
-          <div class="flex gap-2">
-            <input v-model="newPassword" type="password" placeholder="New password" class="input text-xs w-40">
-            <button @click="setPassword" class="text-xs bg-slate-700 hover:bg-slate-600 px-2.5 py-1.5 rounded-md">Set</button>
+        <!-- Add Proxy Dialog -->
+        <div v-if="showAddProxy" class="dialog-overlay" @click.self="showAddProxy = false">
+          <div class="dialog-content max-w-md">
+            <h3 class="text-base font-semibold mb-4">Add Proxy Pool</h3>
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Name</label>
+                  <input v-model="newProxy.name" class="input" placeholder="e.g. home-proxy">
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Type</label>
+                  <select v-model="newProxy.type" class="input">
+                    <option value="http">HTTP</option>
+                    <option value="vercel">Vercel</option>
+                    <option value="cloudflare">Cloudflare Worker</option>
+                    <option value="deno">Deno Deploy</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">Proxy URL</label>
+                <input v-model="newProxy.proxyUrl" class="input font-mono text-xs" placeholder="http://127.0.0.1:7890">
+              </div>
+              <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1.5 block">No-Proxy Hosts <span class="text-muted-foreground/60">(optional)</span></label>
+                <input v-model="newProxy.noProxy" class="input font-mono text-xs" placeholder="localhost,127.0.0.1">
+              </div>
+              <label class="flex items-center gap-2.5 cursor-pointer">
+                <button type="button" :class="['switch', newProxy.strictProxy ? 'switch-on' : 'switch-off']" @click="newProxy.strictProxy = !newProxy.strictProxy">
+                  <span :class="['switch-thumb', newProxy.strictProxy ? 'translate-x-4' : 'translate-x-0']"></span>
+                </button>
+                <span class="text-sm">Strict mode <span class="text-xs text-muted-foreground">— fail if proxy unreachable</span></span>
+              </label>
+            </div>
+            <div class="mt-6 flex justify-end gap-2">
+              <button class="btn btn-ghost" @click="showAddProxy = false">Cancel</button>
+              <button class="btn btn-default" @click="addProxy">Add Pool</button>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5 space-y-4">
-        <h3 class="text-sm font-semibold text-slate-400">Routing</h3>
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-slate-300">Default combo strategy</span>
-          <select v-model="settings.comboStrategy" class="input text-xs w-40">
-            <option value="">Default (fallback)</option>
-            <option value="fallback">Fallback</option>
-            <option value="round-robin">Round Robin</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="flex justify-end">
-        <button @click="saveSettings" class="text-sm bg-teal-600 hover:bg-teal-500 px-4 py-2 rounded-md transition-colors">
-          Save Settings
-        </button>
-      </div>
-      <p v-if="settingsSaved" class="text-xs text-emerald-400 text-right">Settings saved.</p>
-    </section>
-
-    <!-- Status Tab -->
-    <section v-if="activeTab === 'status'" class="space-y-4">
-      <h2 class="text-lg font-bold text-slate-200">Gateway Status</h2>
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5">
-          <h3 class="text-sm font-semibold text-slate-400 mb-3">Core</h3>
-          <div class="space-y-2 text-sm">
-            <div class="flex justify-between"><span class="text-slate-500">Service</span><span class="text-emerald-400 font-mono">{{ health.service || '—' }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Status</span><span class="text-emerald-400 font-mono">{{ health.status || '—' }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Version</span><span class="text-slate-300 font-mono">{{ version }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Uptime</span><span class="text-slate-300 font-mono">{{ formatUptime(health.uptimeSeconds) }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Time</span><span class="text-slate-300 font-mono">{{ health.time || '—' }}</span></div>
+      <!-- ═══════════ SETTINGS ═══════════ -->
+      <section v-if="activeTab === 'settings'" class="space-y-4 max-w-2xl">
+        <div class="card p-5 space-y-5">
+          <p class="text-sm font-medium">Security</p>
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div><p class="text-sm">Require dashboard login</p><p class="text-xs text-muted-foreground">Protect management UI with password</p></div>
+              <button :class="['switch', settings.requireLogin ? 'switch-on' : 'switch-off']" @click="settings.requireLogin = !settings.requireLogin">
+                <span :class="['switch-thumb', settings.requireLogin ? 'translate-x-4' : 'translate-x-0']"></span>
+              </button>
+            </div>
+            <div class="separator"></div>
+            <div class="flex items-center justify-between">
+              <div><p class="text-sm">Require API key</p><p class="text-xs text-muted-foreground">Enforce Bearer token on /v1/* endpoints</p></div>
+              <button :class="['switch', settings.requireApiKey ? 'switch-on' : 'switch-off']" @click="settings.requireApiKey = !settings.requireApiKey">
+                <span :class="['switch-thumb', settings.requireApiKey ? 'translate-x-4' : 'translate-x-0']"></span>
+              </button>
+            </div>
+            <div class="separator"></div>
+            <div class="flex items-center justify-between">
+              <div><p class="text-sm">Change password</p><p class="text-xs text-muted-foreground">Minimum 6 characters</p></div>
+              <div class="flex gap-2">
+                <input v-model="newPassword" type="password" class="input h-8 w-36 text-xs" placeholder="New password">
+                <button class="btn btn-secondary btn-sm" @click="setPassword">Set</button>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-5">
-          <h3 class="text-sm font-semibold text-slate-400 mb-3">Connections</h3>
-          <div class="space-y-2 text-sm">
-            <div class="flex justify-between"><span class="text-slate-500">Total</span><span class="text-slate-300 font-mono">{{ providers.length }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Active</span><span class="text-emerald-400 font-mono">{{ providers.filter(p => p.isActive).length }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Inactive</span><span class="text-red-400 font-mono">{{ providers.filter(p => !p.isActive).length }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Aliases</span><span class="text-slate-300 font-mono">{{ Object.keys(aliases).length }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">API Keys</span><span class="text-slate-300 font-mono">{{ apiKeys.length }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Proxy Pools</span><span class="text-slate-300 font-mono">{{ proxyPools.length }}</span></div>
-            <div class="flex justify-between"><span class="text-slate-500">Lifetime Requests</span><span class="text-slate-300 font-mono">{{ formatNum(usageStats.totalRequestsLifetime) }}</span></div>
+
+        <div class="card p-5 space-y-5">
+          <p class="text-sm font-medium">Routing</p>
+          <div class="flex items-center justify-between">
+            <div><p class="text-sm">Default combo strategy</p><p class="text-xs text-muted-foreground">Used when combo has no explicit kind</p></div>
+            <select v-model="settings.comboStrategy" class="input h-8 w-36 text-xs">
+              <option value="">fallback</option>
+              <option value="fallback">fallback</option>
+              <option value="round-robin">round-robin</option>
+            </select>
           </div>
         </div>
-      </div>
-    </section>
 
-    <footer class="mt-12 pt-4 border-t border-slate-800 text-center text-xs text-slate-600">
-      Cyrene Gateway &mdash; Go AI Proxy Engine
-    </footer>
-  </div>
+        <div class="flex items-center gap-3">
+          <button class="btn btn-default" @click="saveSettings">Save Settings</button>
+          <transition name="fade"><span v-if="settingsSaved" class="text-xs text-emerald-400 flex items-center gap-1"><i data-lucide="check" class="h-3 w-3"></i>Saved</span></transition>
+        </div>
+      </section>
 
-  <style>
-    .input {
-      @apply bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500;
+      <!-- ═══════════ STATUS ═══════════ -->
+      <section v-if="activeTab === 'status'" class="space-y-4">
+        <div class="grid lg:grid-cols-2 gap-4">
+          <div class="card p-5">
+            <p class="text-xs font-medium text-muted-foreground mb-4">Core</p>
+            <div class="space-y-3 text-sm">
+              <div class="flex justify-between"><span class="text-muted-foreground">Service</span><span class="font-mono text-xs">{{ health.service || '—' }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Status</span><span class="badge badge-green">{{ health.status || 'active' }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Version</span><span class="font-mono text-xs">v{{ version }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Database</span><span :class="['badge', health.db === 'ok' ? 'badge-green' : 'badge-red']">{{ health.db || '—' }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Uptime</span><span class="font-mono text-xs">{{ formatUptime(health.uptimeSeconds) }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Server Time</span><span class="font-mono text-xs">{{ health.time || '—' }}</span></div>
+            </div>
+          </div>
+          <div class="card p-5">
+            <p class="text-xs font-medium text-muted-foreground mb-4">Resources</p>
+            <div class="space-y-3 text-sm">
+              <div class="flex justify-between"><span class="text-muted-foreground">Connections</span><span class="font-mono text-xs">{{ health.connections ?? providers.length }} ({{ health.activeConnections ?? providers.filter(p=>p.isActive).length }} active)</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">API Keys</span><span class="font-mono text-xs">{{ apiKeys.length }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Combos</span><span class="font-mono text-xs">{{ combos.length }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Aliases</span><span class="font-mono text-xs">{{ Object.keys(aliases).length }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Proxy Pools</span><span class="font-mono text-xs">{{ proxyPools.length }}</span></div>
+              <div class="flex justify-between"><span class="text-muted-foreground">Lifetime Requests</span><span class="font-mono text-xs">{{ formatNum(usageStats.totalRequestsLifetime) }}</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+createApp({
+  setup() {
+    const navMain = [
+      { id: 'providers', label: 'Providers', icon: 'server' },
+      { id: 'keys', label: 'API Keys', icon: 'key-round' },
+      { id: 'aliases', label: 'Model Aliases', icon: 'git-branch' },
+      { id: 'combos', label: 'Combos', icon: 'layers' },
+      { id: 'usage', label: 'Usage', icon: 'bar-chart-3' },
+    ];
+    const navSystem = [
+      { id: 'proxies', label: 'Proxy Pools', icon: 'globe' },
+      { id: 'settings', label: 'Settings', icon: 'settings' },
+      { id: 'status', label: 'Status', icon: 'activity' },
+    ];
+
+    const activeTab = ref('providers');
+    const version = ref('...');
+    const health = ref({});
+    const providers = ref([]);
+    const aliases = ref({});
+    const combos = ref([]);
+    const apiKeys = ref([]);
+    const proxyPools = ref([]);
+    const settings = ref({});
+    const registryList = ref([]);
+    const usageStats = ref({});
+    const usageChart = ref([]);
+    const requestDetails = ref([]);
+    const usagePeriod = ref('7d');
+
+    const showAddProvider = ref(false);
+    const showAddKey = ref(false);
+    const showAddCombo = ref(false);
+    const showAddProxy = ref(false);
+    const newProvider = ref({ provider: '', name: '', authType: 'api-key', priority: 0, data: { apiKey: '', baseUrl: '' } });
+    const newAlias = ref({ alias: '', target: '' });
+    const newCombo = ref({ name: '', kind: 'fallback', modelsStr: '' });
+    const newKeyName = ref('');
+    const lastCreatedKey = ref(null);
+    const newProxy = ref({ name: '', proxyUrl: '', noProxy: '', strictProxy: false, type: 'http' });
+    const newPassword = ref('');
+    const settingsSaved = ref(false);
+
+    const pageTitles = {
+      providers: ['Providers', 'Manage upstream AI provider connections and credentials.'],
+      keys: ['API Keys', 'Generate and manage Bearer tokens for gateway access.'],
+      aliases: ['Model Aliases', 'Map short names to full model identifiers.'],
+      combos: ['Combos', 'Fallback and round-robin model groups for resilient routing.'],
+      usage: ['Usage', 'Token consumption, costs, and request analytics.'],
+      proxies: ['Proxy Pools', 'Outbound proxy rotation for upstream requests.'],
+      settings: ['Settings', 'Security, authentication, and routing configuration.'],
+      status: ['Status', 'Gateway health and resource overview.'],
+    };
+    const pageTitle = computed(() => pageTitles[activeTab.value]?.[0] || '');
+    const pageDesc = computed(() => pageTitles[activeTab.value]?.[1] || '');
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+      return res.json();
     }
-  </style>
 
-  <script>
-    const { createApp, ref, onMounted } = Vue;
+    function refreshIcons() { nextTick(() => { if (window.lucide) lucide.createIcons(); }); }
 
-    createApp({
-      setup() {
-        const tabs = [
-          { id: 'providers', label: 'Providers' },
-          { id: 'keys', label: 'API Keys' },
-          { id: 'aliases', label: 'Aliases' },
-          { id: 'combos', label: 'Combos' },
-          { id: 'usage', label: 'Usage' },
-          { id: 'proxies', label: 'Proxy Pools' },
-          { id: 'settings', label: 'Settings' },
-          { id: 'status', label: 'Status' },
-        ];
-        const activeTab = ref('providers');
-        const version = ref('...');
-        const health = ref({});
-        const providers = ref([]);
-        const aliases = ref({});
-        const combos = ref([]);
-        const apiKeys = ref([]);
-        const proxyPools = ref([]);
-        const settings = ref({});
-        const usageStats = ref({});
-        const usageChart = ref([]);
-        const requestDetails = ref([]);
-        const usagePeriod = ref('7d');
+    function switchTab(id) {
+      activeTab.value = id;
+      if (id === 'usage') loadUsage();
+      if (id === 'settings') loadSettings();
+      refreshIcons();
+    }
 
-        const showAddProvider = ref(false);
-        const showAddCombo = ref(false);
-        const showAddKey = ref(false);
-        const showAddProxy = ref(false);
-        const newProvider = ref({ provider: '', name: '', data: { apiKey: '', baseUrl: '' } });
-        const newAlias = ref({ alias: '', target: '' });
-        const newCombo = ref({ name: '', kind: 'fallback', modelsStr: '' });
-        const newKeyName = ref('');
-        const lastCreatedKey = ref(null);
-        const newProxy = ref({ data: { name: '', proxyUrl: '', noProxy: '', strictProxy: false, type: 'http' } });
-        const newPassword = ref('');
-        const settingsSaved = ref(false);
+    async function loadAll() {
+      try {
+        const [v, h, p, a, c, reg] = await Promise.all([
+          api('/api/version'), api('/api/health'), api('/api/providers'),
+          api('/api/models/alias'), api('/api/combos'), api('/api/registry'),
+        ]);
+        version.value = v.version || 'dev';
+        health.value = h;
+        providers.value = Array.isArray(p) ? p : [];
+        aliases.value = a || {};
+        combos.value = Array.isArray(c) ? c : [];
+        registryList.value = (reg?.providers || []).sort((x, y) => x.name.localeCompare(y.name));
+      } catch (e) { console.error('load failed:', e); }
+      loadKeys(); loadProxies(); loadUsage();
+      refreshIcons();
+    }
 
-        async function api(path, opts = {}) {
-          const res = await fetch(path, {
-            headers: { 'Content-Type': 'application/json' },
-            ...opts,
-          });
-          return res.json();
-        }
+    async function loadKeys() { try { const k = await api('/api/keys'); apiKeys.value = Array.isArray(k) ? k : []; } catch(e) { apiKeys.value = []; } }
+    async function loadProxies() { try { const r = await api('/api/proxy-pools'); proxyPools.value = r?.proxyPools || (Array.isArray(r) ? r : []); } catch(e) { proxyPools.value = []; } }
+    async function loadSettings() { try { settings.value = await api('/api/settings'); } catch(e) { settings.value = {}; } refreshIcons(); }
 
-        function switchTab(id) {
-          activeTab.value = id;
-          if (id === 'usage') loadUsage();
-          if (id === 'keys') loadKeys();
-          if (id === 'proxies') loadProxies();
-          if (id === 'settings') loadSettings();
-        }
+    async function loadUsage() {
+      try {
+        const [stats, chart, details] = await Promise.all([
+          api(`/api/usage/stats?period=${usagePeriod.value}`),
+          api(`/api/usage/chart?period=${usagePeriod.value}`),
+          api('/api/usage/request-details?page=1&pageSize=15'),
+        ]);
+        usageStats.value = stats || {};
+        usageChart.value = Array.isArray(chart) ? chart : [];
+        requestDetails.value = Array.isArray(details) ? details : (details?.details || []);
+      } catch (e) { console.error('usage load failed:', e); }
+    }
 
-        async function loadAll() {
-          try {
-            const [v, h, p, a, c] = await Promise.all([
-              api('/api/version'),
-              api('/api/health'),
-              api('/api/providers'),
-              api('/api/models/alias'),
-              api('/api/combos'),
-            ]);
-            version.value = v.version || 'dev';
-            health.value = h;
-            providers.value = Array.isArray(p) ? p : [];
-            aliases.value = a || {};
-            combos.value = Array.isArray(c) ? c : [];
-          } catch (e) {
-            console.error('Failed to load data:', e);
-          }
-          loadKeys();
-          loadProxies();
-          loadUsage();
-        }
+    // --- Providers ---
+    function openAddProvider() { showAddProvider.value = true; refreshIcons(); }
+    function selectRegistryProvider(rp) {
+      newProvider.value.provider = rp.id;
+      newProvider.value.authType = rp.authType || 'api-key';
+      if (rp.baseUrl) newProvider.value.data.baseUrl = rp.baseUrl;
+      if (!newProvider.value.name) newProvider.value.name = rp.name;
+    }
+    function registryBaseUrl(id) { const rp = registryList.value.find(p => p.id === id); return rp?.baseUrl || ''; }
+    async function addProvider() {
+      await api('/api/providers', { method: 'POST', body: JSON.stringify(newProvider.value) });
+      newProvider.value = { provider: '', name: '', authType: 'api-key', priority: 0, data: { apiKey: '', baseUrl: '' } };
+      showAddProvider.value = false; loadAll();
+    }
+    async function toggleProvider(p) { await api(`/api/providers/${p.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !p.isActive }) }); loadAll(); }
+    async function resetProvider(p) { await api(`/api/providers/${p.id}/reset`, { method: 'POST' }); loadAll(); }
+    async function deleteProvider(p) { if (!confirm(`Delete provider "${p.name || p.provider}"?`)) return; await api(`/api/providers/${p.id}`, { method: 'DELETE' }); loadAll(); }
 
-        async function loadKeys() {
-          try {
-            const keys = await api('/api/keys');
-            apiKeys.value = Array.isArray(keys) ? keys : [];
-          } catch (e) { apiKeys.value = []; }
-        }
+    // --- Keys ---
+    async function createKey() {
+      const key = await api('/api/keys', { method: 'POST', body: JSON.stringify({ name: newKeyName.value }) });
+      lastCreatedKey.value = key; newKeyName.value = ''; showAddKey.value = false;
+      loadKeys(); refreshIcons();
+    }
+    async function deleteKey(k) { if (!confirm(`Delete key "${k.name || k.id}"?`)) return; await api(`/api/keys/${k.id}`, { method: 'DELETE' }); loadKeys(); }
+    function maskKey(key) { if (!key || key.length <= 12) return key || ''; return key.slice(0, 8) + '····' + key.slice(-4); }
+    function copyText(text) {
+      navigator.clipboard?.writeText(text).catch(() => {});
+    }
 
-        async function loadProxies() {
-          try {
-            const res = await api('/api/proxy-pools');
-            proxyPools.value = Array.isArray(res?.proxyPools) ? res.proxyPools : (Array.isArray(res) ? res : []);
-          } catch (e) { proxyPools.value = []; }
-        }
+    // --- Aliases ---
+    async function addAlias() { await api('/api/models/alias', { method: 'POST', body: JSON.stringify(newAlias.value) }); newAlias.value = { alias: '', target: '' }; loadAll(); }
+    async function deleteAlias(alias) { await api('/api/models/alias', { method: 'DELETE', body: JSON.stringify({ alias }) }); loadAll(); }
 
-        async function loadSettings() {
-          try {
-            settings.value = await api('/api/settings');
-          } catch (e) { settings.value = {}; }
-        }
+    // --- Combos ---
+    async function addCombo() {
+      const models = newCombo.value.modelsStr.split(',').map(s => s.trim()).filter(Boolean);
+      await api('/api/combos', { method: 'POST', body: JSON.stringify({ name: newCombo.value.name, kind: newCombo.value.kind, models }) });
+      newCombo.value = { name: '', kind: 'fallback', modelsStr: '' }; showAddCombo.value = false; loadAll();
+    }
+    async function deleteCombo(c) { if (!confirm(`Delete combo "${c.name}"?`)) return; await api(`/api/combos/${c.id}`, { method: 'DELETE' }); loadAll(); }
 
-        async function loadUsage() {
-          try {
-            const [stats, chart, details] = await Promise.all([
-              api(`/api/usage/stats?period=${usagePeriod.value}`),
-              api(`/api/usage/chart?period=${usagePeriod.value}`),
-              api('/api/usage/request-details?page=1&pageSize=20'),
-            ]);
-            usageStats.value = stats || {};
-            usageChart.value = Array.isArray(chart) ? chart : [];
-            requestDetails.value = Array.isArray(details) ? details : (details?.details || []);
-          } catch (e) {
-            console.error('Failed to load usage:', e);
-          }
-        }
+    // --- Proxies ---
+    async function addProxy() {
+      await api('/api/proxy-pools', { method: 'POST', body: JSON.stringify(newProxy.value) });
+      newProxy.value = { name: '', proxyUrl: '', noProxy: '', strictProxy: false, type: 'http' };
+      showAddProxy.value = false; loadProxies();
+    }
+    async function toggleProxy(pp) { await api(`/api/proxy-pools/${pp.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !pp.isActive }) }); loadProxies(); }
+    async function deleteProxy(pp) { if (!confirm(`Delete proxy "${pp.data.name}"?`)) return; await api(`/api/proxy-pools/${pp.id}`, { method: 'DELETE' }); loadProxies(); }
 
-        // --- Providers ---
-        async function addProvider() {
-          await api('/api/providers', { method: 'POST', body: JSON.stringify(newProvider.value) });
-          newProvider.value = { provider: '', name: '', data: { apiKey: '', baseUrl: '' } };
-          showAddProvider.value = false;
-          loadAll();
-        }
+    // --- Settings ---
+    async function saveSettings() {
+      await api('/api/settings', { method: 'PUT', body: JSON.stringify(settings.value) });
+      settingsSaved.value = true; refreshIcons();
+      setTimeout(() => { settingsSaved.value = false; }, 2500);
+    }
+    async function setPassword() {
+      if (!newPassword.value) return;
+      const res = await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ password: newPassword.value }) });
+      if (res.error) { alert(res.error); return; }
+      newPassword.value = ''; settingsSaved.value = true; refreshIcons();
+      setTimeout(() => { settingsSaved.value = false; }, 2500);
+    }
 
-        async function toggleProvider(p) {
-          await api(`/api/providers/${p.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !p.isActive }) });
-          loadAll();
-        }
+    // --- Helpers ---
+    function formatNum(n) { return n == null ? '0' : n.toLocaleString(); }
+    function formatDate(ts) { if (!ts) return '—'; return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+    function formatUptime(s) {
+      if (s == null) return '—';
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+      return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+    function chartBarHeight(tokens) {
+      const max = Math.max(...usageChart.value.map(b => b.tokens || 0), 1);
+      return Math.max(2, Math.round((tokens / max) * 100));
+    }
 
-        async function resetProvider(p) {
-          await api(`/api/providers/${p.id}/reset`, { method: 'POST' });
-          loadAll();
-        }
+    onMounted(loadAll);
 
-        async function deleteProvider(p) {
-          if (!confirm('Delete this provider?')) return;
-          await api(`/api/providers/${p.id}`, { method: 'DELETE' });
-          loadAll();
-        }
-
-        // --- API Keys ---
-        async function createKey() {
-          const key = await api('/api/keys', { method: 'POST', body: JSON.stringify({ name: newKeyName.value }) });
-          lastCreatedKey.value = key;
-          newKeyName.value = '';
-          showAddKey.value = false;
-          loadKeys();
-        }
-
-        async function deleteKey(k) {
-          if (!confirm(`Delete key "${k.name || k.id}"?`)) return;
-          await api(`/api/keys/${k.id}`, { method: 'DELETE' });
-          loadKeys();
-        }
-
-        function maskKey(key) {
-          if (!key || key.length <= 12) return key || '';
-          return key.slice(0, 8) + '...' + key.slice(-4);
-        }
-
-        function copyText(text) {
-          navigator.clipboard.writeText(text).catch(() => {
-            const el = document.createElement('textarea');
-            el.value = text;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-          });
-        }
-
-        // --- Aliases ---
-        async function addAlias() {
-          await api('/api/models/alias', { method: 'POST', body: JSON.stringify(newAlias.value) });
-          newAlias.value = { alias: '', target: '' };
-          loadAll();
-        }
-
-        async function deleteAlias(alias) {
-          await api('/api/models/alias', { method: 'DELETE', body: JSON.stringify({ alias }) });
-          loadAll();
-        }
-
-        // --- Combos ---
-        async function addCombo() {
-          const models = newCombo.value.modelsStr.split(',').map(s => s.trim()).filter(Boolean);
-          await api('/api/combos', { method: 'POST', body: JSON.stringify({ name: newCombo.value.name, kind: newCombo.value.kind, models }) });
-          newCombo.value = { name: '', kind: 'fallback', modelsStr: '' };
-          showAddCombo.value = false;
-          loadAll();
-        }
-
-        async function deleteCombo(c) {
-          if (!confirm('Delete this combo?')) return;
-          await api(`/api/combos/${c.id}`, { method: 'DELETE' });
-          loadAll();
-        }
-
-        // --- Proxy Pools ---
-        async function addProxy() {
-          await api('/api/proxy-pools', { method: 'POST', body: JSON.stringify(newProxy.value.data) });
-          newProxy.value = { data: { name: '', proxyUrl: '', noProxy: '', strictProxy: false, type: 'http' } };
-          showAddProxy.value = false;
-          loadProxies();
-        }
-
-        async function toggleProxy(pp) {
-          await api(`/api/proxy-pools/${pp.id}`, { method: 'PUT', body: JSON.stringify({ isActive: !pp.isActive }) });
-          loadProxies();
-        }
-
-        async function deleteProxy(pp) {
-          if (!confirm(`Delete proxy pool "${pp.data.name || pp.id}"?`)) return;
-          await api(`/api/proxy-pools/${pp.id}`, { method: 'DELETE' });
-          loadProxies();
-        }
-
-        // --- Settings ---
-        async function saveSettings() {
-          await api('/api/settings', { method: 'PUT', body: JSON.stringify(settings.value) });
-          settingsSaved.value = true;
-          setTimeout(() => { settingsSaved.value = false; }, 2000);
-        }
-
-        async function setPassword() {
-          if (!newPassword.value) return;
-          const res = await api('/api/auth/password', { method: 'POST', body: JSON.stringify({ password: newPassword.value }) });
-          if (res.error) { alert(res.error); return; }
-          newPassword.value = '';
-          settingsSaved.value = true;
-          setTimeout(() => { settingsSaved.value = false; }, 2000);
-        }
-
-        // --- Helpers ---
-        function formatNum(n) {
-          if (n === undefined || n === null) return '0';
-          return n.toLocaleString();
-        }
-
-        function formatDate(ts) {
-          if (!ts) return '—';
-          const d = new Date(ts);
-          return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        }
-
-        function formatUptime(seconds) {
-          if (!seconds && seconds !== 0) return '—';
-          const d = Math.floor(seconds / 86400);
-          const h = Math.floor((seconds % 86400) / 3600);
-          const m = Math.floor((seconds % 3600) / 60);
-          if (d > 0) return `${d}d ${h}h ${m}m`;
-          if (h > 0) return `${h}h ${m}m`;
-          return `${m}m`;
-        }
-
-        function chartBarHeight(tokens) {
-          const max = Math.max(...usageChart.value.map(b => b.tokens || 0), 1);
-          return Math.max(2, Math.round((tokens / max) * 100));
-        }
-
-        onMounted(loadAll);
-
-        return {
-          tabs, activeTab, version, health, providers, aliases, combos,
-          apiKeys, proxyPools, settings, usageStats, usageChart, requestDetails, usagePeriod,
-          showAddProvider, showAddCombo, showAddKey, showAddProxy,
-          newProvider, newAlias, newCombo, newKeyName, lastCreatedKey, newProxy, newPassword, settingsSaved,
-          switchTab, loadUsage,
-          addProvider, toggleProvider, resetProvider, deleteProvider,
-          createKey, deleteKey, maskKey, copyText,
-          addAlias, deleteAlias, addCombo, deleteCombo,
-          addProxy, toggleProxy, deleteProxy,
-          saveSettings, setPassword,
-          formatNum, formatDate, formatUptime, chartBarHeight,
-        };
-      }
-    }).mount('#app');
-  </script>
+    return {
+      navMain, navSystem, activeTab, switchTab, pageTitle, pageDesc,
+      version, health, providers, aliases, combos, apiKeys, proxyPools, settings,
+      registryList, usageStats, usageChart, requestDetails, usagePeriod, loadUsage,
+      showAddProvider, showAddKey, showAddCombo, showAddProxy,
+      newProvider, newAlias, newCombo, newKeyName, lastCreatedKey, newProxy, newPassword, settingsSaved,
+      openAddProvider, selectRegistryProvider, registryBaseUrl,
+      addProvider, toggleProvider, resetProvider, deleteProvider,
+      createKey, deleteKey, maskKey, copyText,
+      addAlias, deleteAlias, addCombo, deleteCombo,
+      addProxy, toggleProxy, deleteProxy,
+      saveSettings, setPassword,
+      formatNum, formatDate, formatUptime, chartBarHeight,
+    };
+  }
+}).mount('#app');
+</script>
 </body>
 </html>

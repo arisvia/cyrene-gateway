@@ -65,6 +65,7 @@ func (s *Server) registerRoutes() {
 	// Health & meta
 	s.Router.HandleFunc("GET /api/health", s.handleHealth)
 	s.Router.HandleFunc("GET /api/version", s.handleVersion)
+	s.Router.HandleFunc("GET /api/registry", s.handleRegistry)
 
 	// Auth endpoints
 	s.Router.HandleFunc("POST /api/auth/login", s.Auth.HandleLogin)
@@ -152,6 +153,14 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		"service":    "cyrene-gateway",
 		"refactored": "9router (Next.js) → Go",
 	})
+}
+
+func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
+	providers := make([]provider.ProviderInfo, 0, len(provider.Registry))
+	for _, p := range provider.Registry {
+		providers = append(providers, p)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providers": providers})
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
