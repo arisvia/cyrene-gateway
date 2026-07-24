@@ -151,5 +151,5 @@
     "decolua/9router": "primary upstream, sync every maintenance cycle",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
-  "last_updated": "2026-07-23"
+  "last_updated": "2026-07-24"
 }
