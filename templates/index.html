@@ -1087,6 +1087,44 @@
       </section>
 
       <!-- ══════ STATUS ══════ -->
+      <!-- ══════ TUNNEL ══════ -->
+      <section v-if="activeTab === 'tunnel'" style="max-width:640px;margin:0 auto">
+        <div class="glass-card card-pad">
+          <p class="card-section-title">Tailscale Status</p>
+          <div v-if="!tunnelStatus.installed" style="text-align:center;padding:24px 0">
+            <p style="color:var(--text-muted);margin-bottom:12px">Tailscale is not installed on this system.</p>
+            <button class="btn btn-primary btn-sm" @click="installTailscale" :disabled="tunnelInstalling">
+              <i data-lucide="download"></i>{{ tunnelInstalling ? 'Installing...' : 'Install Tailscale' }}
+            </button>
+            <p v-if="tunnelInstallMsg" style="margin-top:8px;font-size:0.82rem;color:var(--text-faint)">{{ tunnelInstallMsg }}</p>
+          </div>
+          <template v-else>
+            <div class="kv-row"><span class="kv-label">Installed</span><span class="badge badge-green">Yes</span></div>
+            <div class="kv-row"><span class="kv-label">Daemon</span><span :class="['badge', tunnelStatus.daemonRunning ? 'badge-green' : 'badge-red']">{{ tunnelStatus.daemonRunning ? 'Running' : 'Stopped' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Logged In</span><span :class="['badge', tunnelStatus.loggedIn ? 'badge-green' : 'badge-red']">{{ tunnelStatus.loggedIn ? 'Yes' : 'No' }}</span></div>
+            <div class="kv-row"><span class="kv-label">Funnel</span><span :class="['badge', tunnelStatus.funnelRunning ? 'badge-green' : 'badge-red']">{{ tunnelStatus.funnelRunning ? 'Active' : 'Inactive' }}</span></div>
+            <div v-if="tunnelStatus.tunnelUrl" class="kv-row"><span class="kv-label">Tunnel URL</span><span class="kv-value" style="font-family:var(--font-mono);font-size:0.82rem">{{ tunnelStatus.tunnelUrl }}</span></div>
+            <div v-if="tunnelStatus.binPath" class="kv-row"><span class="kv-label">Binary</span><span class="kv-value" style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-faint)">{{ tunnelStatus.binPath }}</span></div>
+            <div style="display:flex;gap:8px;margin-top:16px">
+              <button class="btn btn-primary btn-sm" @click="enableTunnel" :disabled="tunnelBusy">
+                <i data-lucide="play"></i>{{ tunnelBusy ? 'Working...' : 'Enable Funnel' }}
+              </button>
+              <button class="btn btn-ghost btn-sm" @click="disableTunnel" :disabled="tunnelBusy">
+                <i data-lucide="square"></i>Disable
+              </button>
+              <button class="btn btn-ghost btn-sm" @click="loadTunnelStatus" style="margin-left:auto">
+                <i data-lucide="refresh-cw"></i>Refresh
+              </button>
+            </div>
+            <div v-if="tunnelMsg" style="margin-top:12px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--code-bg);font-size:0.82rem;color:var(--text-muted)">
+              {{ tunnelMsg }}
+              <a v-if="tunnelAuthUrl" :href="tunnelAuthUrl" target="_blank" style="color:var(--accent);text-decoration:underline">Open login page</a>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <!-- ══════ STATUS ══════ -->
       <section v-if="activeTab === 'status'">
         <div class="grid-2">
           <div class="glass-card card-pad">
@@ -1131,6 +1169,7 @@ createApp({
     ];
     const navSystem = [
       { id: 'proxies', label: 'Proxy Pools', icon: 'globe' },
+      { id: 'tunnel', label: 'Tunnel', icon: 'network' },
       { id: 'settings', label: 'Settings', icon: 'settings' },
       { id: 'status', label: 'Status', icon: 'activity' },
     ];
@@ -1256,6 +1295,7 @@ createApp({
       quota: ['Quota Tracker', 'Per-connection quota limits and usage monitoring.'],
       tokensaver: ['Token Saver', 'RTK compression, caveman, and ponytail token optimization.'],
       proxies: ['Proxy Pools', 'Outbound proxy rotation for upstream requests.'],
+      tunnel: ['Tunnel', 'Tailscale inbound tunnel for secure remote access.'],
       settings: ['Settings', 'Security, authentication, and routing configuration.'],
       status: ['Status', 'Gateway health and resource overview.'],
     };
@@ -1275,6 +1315,7 @@ createApp({
       if (id === 'settings') loadSettings();
       if (id === 'quota') loadQuota();
       if (id === 'tokensaver') loadSettings();
+      if (id === 'tunnel') loadTunnelStatus();
       refreshIcons();
     }
 
@@ -1453,6 +1494,78 @@ createApp({
       return Math.max(2, Math.round((tokens / max) * 100));
     }
 
+    // --- Tunnel ---
+    const tunnelStatus = ref({});
+    const tunnelBusy = ref(false);
+    const tunnelMsg = ref('');
+    const tunnelAuthUrl = ref('');
+    const tunnelInstalling = ref(false);
+    const tunnelInstallMsg = ref('');
+
+    async function loadTunnelStatus() {
+      try {
+        tunnelStatus.value = await api('/api/tunnel/status');
+      } catch (e) { tunnelStatus.value = {}; }
+      refreshIcons();
+    }
+
+    async function enableTunnel() {
+      tunnelBusy.value = true;
+      tunnelMsg.value = 'Enabling tunnel...';
+      tunnelAuthUrl.value = '';
+      try {
+        const res = await api('/api/tunnel/tailscale-enable', { method: 'POST' });
+        if (res.error) { tunnelMsg.value = res.error; }
+        else if (res.needsLogin) { tunnelMsg.value = 'Login required. '; tunnelAuthUrl.value = res.authUrl || ''; }
+        else if (res.success) { tunnelMsg.value = 'Tunnel active: ' + (res.tunnelUrl || ''); }
+        else { tunnelMsg.value = JSON.stringify(res); }
+      } catch (e) { tunnelMsg.value = 'Request failed'; }
+      tunnelBusy.value = false;
+      loadTunnelStatus();
+    }
+
+    async function disableTunnel() {
+      tunnelBusy.value = true;
+      tunnelMsg.value = 'Disabling...';
+      tunnelAuthUrl.value = '';
+      try {
+        await api('/api/tunnel/tailscale-disable', { method: 'POST' });
+        tunnelMsg.value = 'Tunnel disabled.';
+      } catch (e) { tunnelMsg.value = 'Failed to disable'; }
+      tunnelBusy.value = false;
+      loadTunnelStatus();
+    }
+
+    async function installTailscale() {
+      tunnelInstalling.value = true;
+      tunnelInstallMsg.value = 'Starting installation...';
+      try {
+        const res = await fetch('/api/tunnel/tailscale-install', { method: 'POST' });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const d = JSON.parse(line.slice(6));
+                if (d.message) tunnelInstallMsg.value = d.message;
+                if (d.error) tunnelInstallMsg.value = 'Error: ' + d.error;
+                if (d.success) tunnelInstallMsg.value = 'Installation complete!';
+              } catch {}
+            }
+          }
+        }
+      } catch (e) { tunnelInstallMsg.value = 'Install request failed'; }
+      tunnelInstalling.value = false;
+      loadTunnelStatus();
+    }
+
     onMounted(checkAuth);
 
     return {
@@ -1473,6 +1586,8 @@ createApp({
       addAlias, deleteAlias, addCombo, deleteCombo,
       addProxy, toggleProxy, deleteProxy,
       saveSettings, setPassword,
+      tunnelStatus, tunnelBusy, tunnelMsg, tunnelAuthUrl, tunnelInstalling, tunnelInstallMsg,
+      loadTunnelStatus, enableTunnel, disableTunnel, installTailscale,
       formatNum, formatDate, formatUptime, chartBarHeight,
     };
   }

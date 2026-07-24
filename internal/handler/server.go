@@ -12,6 +12,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/tunnel"
 )
 
 type Server struct {
@@ -22,6 +23,7 @@ type Server struct {
 	Proxies   *provider.ProxyManager
 	Dashboard *DashboardHandler
 	Auth      *AuthHandler
+	Tunnel    *TunnelHandler
 	startTime time.Time
 }
 
@@ -36,6 +38,8 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		proxyMgr = provider.NewProxyManager(nil)
 	}
 
+	tunnelMgr := tunnel.NewManager(cfg.DataDir, cfg.Port)
+
 	s := &Server{
 		DB:        database,
 		Router:    mux,
@@ -43,6 +47,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Proxies:   proxyMgr,
 		Dashboard: NewDashboardHandler(cfg),
 		Auth:      NewAuthHandler(database),
+		Tunnel:    NewTunnelHandler(tunnelMgr),
 		startTime: time.Now(),
 	}
 	s.registerRoutes()
@@ -136,6 +141,12 @@ func (s *Server) registerRoutes() {
 
 	// Quota tracker
 	s.Router.HandleFunc("GET /api/quota", s.handleQuota)
+
+	// Tunnel management
+	s.Router.HandleFunc("GET /api/tunnel/status", s.Tunnel.HandleStatus)
+	s.Router.HandleFunc("POST /api/tunnel/tailscale-install", s.Tunnel.HandleInstall)
+	s.Router.HandleFunc("POST /api/tunnel/tailscale-enable", s.Tunnel.HandleEnable)
+	s.Router.HandleFunc("POST /api/tunnel/tailscale-disable", s.Tunnel.HandleDisable)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
