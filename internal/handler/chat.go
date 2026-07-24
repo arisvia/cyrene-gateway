@@ -113,12 +113,16 @@ func (s *Server) getHTTPClient(timeout time.Duration) *http.Client {
 }
 
 // tryRefreshToken attempts to refresh OAuth credentials if needed.
+// Uses dedup lock to prevent concurrent refreshes for the same token.
 // Returns true if refresh was attempted (regardless of success).
 func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 	if !provider.ShouldRefresh(conn) {
 		return false
 	}
-	result, err := provider.RefreshCredentials(conn.Provider, conn, nil)
+	oldToken := conn.Data.AccessToken
+	result, err := provider.DedupRefresh(conn.Provider, oldToken, func() (*provider.RefreshResult, error) {
+		return provider.RefreshCredentials(conn.Provider, conn, nil)
+	})
 	if err != nil {
 		slog.Warn("Token refresh failed", slog.String("provider", conn.Provider), "error", err)
 		return true

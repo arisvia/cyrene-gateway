@@ -118,6 +118,15 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/providers/{id}/models", s.handleAddProviderModel)
 	s.Router.HandleFunc("DELETE /api/providers/{id}/models", s.handleDeleteProviderModel)
 
+	// OAuth authorization flow
+	s.Router.HandleFunc("GET /api/oauth/{provider}/authorize", s.handleOAuthAuthorize)
+	s.Router.HandleFunc("GET /api/oauth/{provider}/callback", s.handleOAuthCallback)
+	s.Router.HandleFunc("POST /api/oauth/{provider}/exchange", s.handleOAuthExchange)
+	s.Router.HandleFunc("POST /api/oauth/{provider}/device-code", s.handleOAuthDeviceCode)
+	s.Router.HandleFunc("POST /api/oauth/{provider}/device-code/poll", s.handleOAuthDeviceCodePoll)
+	s.Router.HandleFunc("POST /api/oauth/{provider}/import", s.handleOAuthImport)
+	s.Router.HandleFunc("GET /api/oauth/{provider}/status", s.handleOAuthStatus)
+
 	// Usage & observability API
 	s.Router.HandleFunc("GET /api/usage/stats", s.handleUsageStats)
 	s.Router.HandleFunc("GET /api/usage/history", s.handleUsageHistory)
