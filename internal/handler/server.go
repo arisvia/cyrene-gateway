@@ -113,6 +113,11 @@ func (s *Server) registerRoutes() {
 	// Provider connection testing
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
 
+	// Provider detail: models (registry + custom)
+	s.Router.HandleFunc("GET /api/providers/{id}/models", s.handleGetProviderModels)
+	s.Router.HandleFunc("POST /api/providers/{id}/models", s.handleAddProviderModel)
+	s.Router.HandleFunc("DELETE /api/providers/{id}/models", s.handleDeleteProviderModel)
+
 	// Usage & observability API
 	s.Router.HandleFunc("GET /api/usage/stats", s.handleUsageStats)
 	s.Router.HandleFunc("GET /api/usage/history", s.handleUsageHistory)

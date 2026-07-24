@@ -543,6 +543,7 @@
               <button :class="['switch', p.isActive ? 'switch-on' : 'switch-off']" @click="toggleProvider(p)">
                 <span class="switch-thumb"></span>
               </button>
+              <button class="btn btn-ghost btn-icon" @click="openProviderDetail(p)" title="Details & models"><i data-lucide="settings-2"></i></button>
               <button class="btn btn-ghost btn-icon" @click="resetProvider(p)" title="Reset cooldown"><i data-lucide="rotate-ccw"></i></button>
               <button class="btn btn-danger-ghost btn-icon" @click="deleteProvider(p)" title="Delete"><i data-lucide="trash-2"></i></button>
             </div>
@@ -609,6 +610,81 @@
             <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
               <button class="btn btn-ghost" @click="showAddProvider = false">Cancel</button>
               <button class="btn btn-primary" @click="addProvider">Add Connection</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Provider Detail Dialog -->
+        <div v-if="detailProvider" class="dialog-overlay" @click.self="closeProviderDetail">
+          <div class="dialog" style="max-width:600px;max-height:88vh;overflow-y:auto">
+            <div class="flex-between" style="margin-bottom:4px">
+              <h3 class="dialog-title" style="margin:0">{{ detailProvider.name || detailProvider.provider }}</h3>
+              <button class="btn btn-ghost btn-icon" @click="closeProviderDetail"><i data-lucide="x"></i></button>
+            </div>
+            <p class="dialog-desc mono">{{ detailProvider.provider }} · priority {{ detailProvider.priority || 0 }}</p>
+
+            <!-- Status row -->
+            <div class="flex-gap" style="flex-wrap:wrap;margin:8px 0">
+              <span :class="['badge', detailProvider.isActive ? 'badge-green' : 'badge-glass']">{{ detailProvider.isActive ? 'active' : 'disabled' }}</span>
+              <span v-if="detailProvider.data?.testStatus === 'error'" class="badge badge-red">test error</span>
+              <span v-if="detailProvider.data?.rateLimitedUntil" class="badge badge-amber">rate-limited</span>
+              <span v-if="(detailProvider.data?.backoffLevel || 0) > 0" class="badge badge-amber">backoff {{ detailProvider.data.backoffLevel }}</span>
+            </div>
+            <p v-if="detailProvider.data?.lastError" class="text-xs mono" style="color:var(--red);word-break:break-word;background:rgba(255,80,80,.08);padding:6px 8px;border-radius:6px">{{ detailProvider.data.lastError }}</p>
+
+            <!-- Connection test -->
+            <div class="form-group" style="margin-top:10px">
+              <label class="form-label">Connection Test</label>
+              <div class="flex-gap">
+                <button class="btn btn-sm btn-primary" @click="testProviderDetail" :disabled="detailTesting">
+                  <span v-if="detailTesting">Testing…</span><span v-else><i data-lucide="zap"></i>Test Connection</span>
+                </button>
+                <span v-if="detailTestResult" :class="['text-xs mono', detailTestResult.ok ? '' : '']" :style="{color: detailTestResult.ok ? 'var(--green)' : 'var(--red)'}">
+                  {{ detailTestResult.ok ? 'OK' : 'FAIL' }} · {{ detailTestResult.latency || '' }}<span v-if="detailTestResult.code"> · HTTP {{ detailTestResult.code }}</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Credential editing -->
+            <div class="form-group">
+              <label class="form-label">API Key / Access Token</label>
+              <input v-model="detailEdit.apiKey" type="password" class="input input-mono" placeholder="sk-...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Base URL</label>
+              <input v-model="detailEdit.baseUrl" class="input input-mono" placeholder="https://api.openai.com/v1">
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+              <button class="btn btn-sm btn-primary" @click="saveProviderDetail"><i data-lucide="save"></i>Save Credentials</button>
+            </div>
+
+            <!-- Models -->
+            <div class="form-group">
+              <label class="form-label">Models</label>
+              <div class="flex-gap" style="margin-bottom:8px">
+                <input v-model="newCustomModel.id" class="input input-mono" placeholder="custom-model-id" style="flex:1">
+                <input v-model="newCustomModel.name" class="input" placeholder="display name (optional)" style="flex:1">
+                <button class="btn btn-sm btn-primary shrink-0" @click="addCustomModel"><i data-lucide="plus"></i>Add</button>
+              </div>
+
+              <div v-if="detailCustomModels.length" style="margin-bottom:8px">
+                <p class="text-xs text-faint" style="margin-bottom:4px">Custom models</p>
+                <div v-for="m in detailCustomModels" :key="'c'+m.id" class="list-row" style="padding:6px 8px">
+                  <div class="min-w-0">
+                    <span class="mono" style="font-size:12px">{{ m.id }}</span>
+                    <span v-if="m.name && m.name !== m.id" class="text-xs text-faint"> · {{ m.name }}</span>
+                  </div>
+                  <button class="btn btn-danger-ghost btn-icon shrink-0" @click="removeCustomModel(m)" title="Remove"><i data-lucide="trash-2"></i></button>
+                </div>
+              </div>
+
+              <details v-if="detailRegistryModels.length">
+                <summary class="text-xs text-faint" style="cursor:pointer;margin-bottom:4px">Registry models ({{ detailRegistryModels.length }})</summary>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
+                  <span v-for="m in detailRegistryModels" :key="'r'+m.id" class="badge badge-glass mono" style="font-size:10px" :title="m.name">{{ m.id }}</span>
+                </div>
+              </details>
+              <p v-else class="text-xs text-faint">No registry models defined for this provider — use custom models or wildcard <code class="mono">{{ detailProvider.provider }}/*</code>.</p>
             </div>
           </div>
         </div>
@@ -1080,6 +1156,15 @@ createApp({
     const newPassword = ref('');
     const settingsSaved = ref(false);
 
+    // Provider detail dialog state
+    const detailProvider = ref(null);
+    const detailEdit = ref({ apiKey: '', baseUrl: '' });
+    const detailRegistryModels = ref([]);
+    const detailCustomModels = ref([]);
+    const newCustomModel = ref({ id: '', name: '' });
+    const detailTesting = ref(false);
+    const detailTestResult = ref(null);
+
     const pageTitles = {
       providers: ['Providers', 'Manage upstream AI provider connections and credentials.'],
       keys: ['API Keys', 'Generate and manage Bearer tokens for gateway access.'],
@@ -1163,6 +1248,60 @@ createApp({
     async function resetProvider(p) { await api(`/api/providers/${p.id}/reset`, { method: 'POST' }); loadAll(); }
     async function deleteProvider(p) { if (!confirm(`Delete provider "${p.name || p.provider}"?`)) return; await api(`/api/providers/${p.id}`, { method: 'DELETE' }); loadAll(); }
 
+    // --- Provider Detail ---
+    async function openProviderDetail(p) {
+      detailProvider.value = p;
+      detailEdit.value = { apiKey: p.data?.apiKey || '', baseUrl: p.data?.baseUrl || '' };
+      detailTestResult.value = null;
+      newCustomModel.value = { id: '', name: '' };
+      detailRegistryModels.value = [];
+      detailCustomModels.value = [];
+      refreshIcons();
+      try {
+        const res = await api(`/api/providers/${p.id}/models`);
+        detailRegistryModels.value = res?.registryModels || [];
+        detailCustomModels.value = res?.customModels || [];
+      } catch (e) { console.error('load provider models failed:', e); }
+      refreshIcons();
+    }
+    function closeProviderDetail() { detailProvider.value = null; }
+    async function saveProviderDetail() {
+      const p = detailProvider.value;
+      if (!p) return;
+      const data = { ...(p.data || {}), apiKey: detailEdit.value.apiKey, baseUrl: detailEdit.value.baseUrl };
+      await api(`/api/providers/${p.id}`, { method: 'PUT', body: JSON.stringify({ data }) });
+      await loadAll();
+      // refresh detailProvider reference from reloaded list
+      const fresh = providers.value.find(x => x.id === p.id);
+      if (fresh) detailProvider.value = fresh;
+    }
+    async function testProviderDetail() {
+      const p = detailProvider.value;
+      if (!p) return;
+      detailTesting.value = true;
+      detailTestResult.value = null;
+      try {
+        detailTestResult.value = await api(`/api/providers/${p.id}/test`, { method: 'POST' });
+      } catch (e) { detailTestResult.value = { ok: false, error: String(e) }; }
+      detailTesting.value = false;
+      await loadAll();
+      const fresh = providers.value.find(x => x.id === p.id);
+      if (fresh) detailProvider.value = fresh;
+    }
+    async function addCustomModel() {
+      const p = detailProvider.value;
+      if (!p || !newCustomModel.value.id) return;
+      const res = await api(`/api/providers/${p.id}/models`, { method: 'POST', body: JSON.stringify(newCustomModel.value) });
+      if (res?.customModels) detailCustomModels.value = res.customModels;
+      newCustomModel.value = { id: '', name: '' };
+    }
+    async function removeCustomModel(m) {
+      const p = detailProvider.value;
+      if (!p) return;
+      const res = await api(`/api/providers/${p.id}/models`, { method: 'DELETE', body: JSON.stringify({ id: m.id }) });
+      if (res?.customModels) detailCustomModels.value = res.customModels;
+    }
+
     // --- Keys ---
     async function createKey() {
       const key = await api('/api/keys', { method: 'POST', body: JSON.stringify({ name: newKeyName.value }) });
@@ -1234,6 +1373,8 @@ createApp({
       newProvider, newAlias, newCombo, newKeyName, lastCreatedKey, newProxy, newPassword, settingsSaved,
       openAddProvider, selectRegistryProvider, registryBaseUrl,
       addProvider, toggleProvider, resetProvider, deleteProvider,
+      detailProvider, detailEdit, detailRegistryModels, detailCustomModels, newCustomModel, detailTesting, detailTestResult,
+      openProviderDetail, closeProviderDetail, saveProviderDetail, testProviderDetail, addCustomModel, removeCustomModel,
       createKey, deleteKey, maskKey, copyText,
       addAlias, deleteAlias, addCombo, deleteCombo,
       addProxy, toggleProxy, deleteProxy,
