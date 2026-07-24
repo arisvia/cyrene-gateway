@@ -160,7 +160,7 @@
       "id": 12,
       "name": "OAuth Authorization Flow",
       "description": "Full OAuth connect flow for oauth-category providers: authorize redirect, callback, device code, token import",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "GET /api/oauth/{provider}/authorize - generate authorize URL (PKCE where supported)",
         "GET /api/oauth/{provider}/callback - exchange code for tokens, create connection",
@@ -216,7 +216,7 @@
       ]
     }
   ],
-  "current_phase": 12,
+  "current_phase": 13,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
