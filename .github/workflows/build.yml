@@ -40,7 +40,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          VERSION="${GITHUB_REF_NAME:-dev}"
+          # Only tag refs (v*) become the version; branch builds show "dev"
+          if [[ "${GITHUB_REF_NAME}" == v* ]]; then VERSION="${GITHUB_REF_NAME}"; else VERSION="dev"; fi
           OUTPUT="cyrene-gateway-${{ matrix.suffix }}"
           go build -ldflags="-s -w -X github.com/arisvia/cyrene-gateway/internal/handler.version=${VERSION}" -o "$OUTPUT" ./cmd/gateway/
           echo "Built: $OUTPUT (${VERSION})"
