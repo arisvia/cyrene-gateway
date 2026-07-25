@@ -220,8 +220,9 @@ go version  # 应输出 go1.26.2
 
 Node 版本（webui 构建需要）：
 ```bash
-# Vite 8 要求 Node ^20.19.0 || >=22.12.0，平台内置可能过低：
-curl -sL https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+# Vite 8 要求 Node ^20.19.0 || >=22.12.0，平台内置可能是旧版（位于 /usr/local/node）：
+rm -rf /usr/local/node && curl -sL https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+export PATH=/usr/local/bin:$PATH
 node --version  # 应输出 v22.16.0
 ```
 
