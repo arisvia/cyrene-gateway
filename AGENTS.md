@@ -55,7 +55,7 @@ schema.sql                   # 数据库 schema 参考
 - **主参考**: decolua/9router（Next.js 原版，`--depth 1` clone 到 /data/workspace/9router）
 - **增强参考**: Vanszs/VansRouter（loop guard、termination prompt 等增强，按需 clone 到 /data/workspace/VansRouter）
 - 重点参考目录：`open-sse/services/`（fallback/credential）、`open-sse/config/`（error rules）、`open-sse/handlers/`（chat core）
-- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。Phase 15 维护模式更新 hash 后，后续 session 自然拿到新版本。
+- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。Phase 23 维护模式更新 hash 后，后续 session 自然拿到新版本。
 
 ## progress.json 使用规则
 
@@ -72,12 +72,13 @@ schema.sql                   # 数据库 schema 参考
 - ...
 - Phase 9 完成 → v0.9.0
 - Phase 10-14（功能增强）→ v0.10.0 ... v0.14.0
+- Phase 15-22（面板工程化 + 功能对齐）→ v0.15.0 ... v0.22.0
 - 全部完成 → v1.0.0
-- Phase 15 为维护模式（永不 done），patch 版本 v1.0.x
+- Phase 23 为维护模式（永不 done），patch 版本 v1.0.x
 
 打 tag 会触发 GitHub Actions 创建 Release（含 5 平台二进制）。
 
-## 功能增强阶段（Phase 10-14）
+## 功能增强阶段（Phase 10-14，已完成）
 
 Phase 9 之后插入的功能增强阶段，参考 9router/VansRouter 的完整功能集：
 
@@ -86,16 +87,30 @@ Phase 9 之后插入的功能增强阶段，参考 9router/VansRouter 的完整�
 - **Phase 12**: OAuth 授权流程（authorize/callback/device-code/token import）
 - **Phase 13**: Quota Tracker & Token Saver（配额限制 + RTK token 优化）
 - **Phase 14**: Tunnel & Tailscale（入站隧道管理）
-- **Phase 15**: 维护模式（原 Phase 10，永不 done 的守护状态）
 
-面板架构说明：单 HTML + Vue 3 hash 路由，v-if 按 tab 卸载 DOM，
-15 个页面量级无性能问题。若超出承载能力，按软性约束条款拆分前端目录。
+## 面板工程化与功能对齐阶段（Phase 15-22）
 
-## Dashboard 面板设计（Phase 5）
+v0.14.0 与 9router 面板对比后确认的差距补齐计划（2026-07-25 规划）：
 
-三层降级策略：
+- **Phase 15**: WebUI 工程化基础（单 HTML → Vue 3 + Vite + TS 工程，go:embed 嵌入）
+- **Phase 16**: Provider 体验重塑（卡片网格 + 品牌 Logo + 分类分组 + Test All + 搜索 + 全页面详情）
+- **Phase 17**: Media Providers（Embedding/TTS/STT/Image/Video/Web Fetch & Search 全链路）
+- **Phase 18**: CLI Tools 集成（逐工具配置页：Claude Code/Cursor/Cline/Copilot 等）
+- **Phase 19**: Usage & Observability 增强（Request Details 表格 + SSE 实时流 + Console Log）
+- **Phase 20**: Endpoint 概览 + Chat Playground + Skills
+- **Phase 21**: i18n（10+ 语言）+ 移动端适配 + UX 打磨
+- **Phase 22**: MITM Proxy（可选，仅本地部署 -mitm flag 显式启用，服务器模式禁用）
+- **Phase 23**: 维护模式（原 Phase 15，永不 done 的守护状态）
+
+面板架构说明：Phase 15 起迁移为 webui/ 工程目录（Vue 3 + Vite + TypeScript），
+构建产物 dist/ 通过 go:embed 嵌入 Go 二进制，保持单二进制分发。
+开发时 -dashboard 指向 webui/dist 或 vite dev server。
+
+## Dashboard 面板设计（Phase 5 原始方案，Phase 15 起已被工程化方案取代）
+
+三层降级策略（保留，embed 源从单 HTML 变为 webui/dist）：
 1. `-dashboard /path/to/ui` → 用户指定的本地前端目录（最高优先级）
-2. 内置 embed `templates/index.html`（Vue3 + TailwindCSS via CDN）→ 零配置兜底
+2. 内置 embed `webui/dist/`（Vue 3 + Vite 构建产物）→ 零配置兜底
 3. `-panel-url` → 可选，拉取远程更新版面板（默认指向本仓库 raw 文件）
 
 面板是单 HTML 文件，随主仓库维护在 `templates/index.html`，不需要独立前端仓库。
@@ -111,9 +126,9 @@ CLI 参数（全部有默认值）：
 ```
 环境变量 CYRENE_HOST / CYRENE_PORT 等同样支持，flag 优先于 env。
 
-## 维护模式（Phase 15，原 Phase 10）
+## 维护模式（Phase 23，原 Phase 15）
 
-当所有开发 phase（1-14）均为 done 时，后续定时触发进入维护模式：
+当所有开发 phase（1-22）均为 done 时，后续定时触发进入维护模式：
 1. 检查 GitHub Issues（bug 报告、feature request）
 2. `go build ./... && go test ./...` 验证项目健康
 3. 审查 dependabot PRs，安全则合并
@@ -126,16 +141,16 @@ CLI 参数（全部有默认值）：
    - 更新 `upstream_commits` hash
 6. 无需操作时报告 "no pending work" 并正常退出
 
-Phase 15 永远不会被标记为 done——它是持续运行的守护状态。
+Phase 23 永远不会被标记为 done——它是持续运行的守护状态。
 
 ## 参考项目使用策略
 
-- **开发期（Phase 2-14）**：9router 和 VansRouter **都参考**
+- **开发期（Phase 2-22）**：9router 和 VansRouter **都参考**
   - 9router：核心架构、路由逻辑、provider 定义的权威来源
   - VansRouter：已做的增强（loop guard、termination prompt、bug fix）直接借鉴
   - 9router clone 到 /data/workspace/9router（若不存在则每轮 session 开头 clone）
   - VansRouter 仅在当前 phase 明确需要时按需 clone 到 /data/workspace/VansRouter
-- **维护期（Phase 15）**：只定期 diff 9router（主上游）
+- **维护期（Phase 23）**：只定期 diff 9router（主上游）
   - VansRouter 是 9router 的 fork，底层 90%+ 相同，定期 diff 会重复运算
   - 仅在 Issue 指定或其独有增强相关时按需查看
 - 上游 commit hash 记录在 `progress.json` 的 `upstream_commits` 字段

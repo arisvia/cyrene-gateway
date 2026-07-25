@@ -201,6 +201,145 @@
     },
     {
       "id": 15,
+      "name": "WebUI Engineering Foundation",
+      "description": "Migrate dashboard from single-HTML to engineered Vue 3 + Vite project with component architecture, embedded into Go binary via go:embed",
+      "status": "pending",
+      "tasks": [
+        "Initialize webui/ project: Vue 3 + Vite + TypeScript, hash router, component library structure",
+        "Design system: port existing CSS tokens (dark/light themes) into structured stylesheets",
+        "Component library: Button, Badge, Card, Modal, Switch (fix thumb alignment bug), Input, Table, Tabs, EmptyState",
+        "Layout: Sidebar (collapsible groups, mobile overlay), Header (search, user menu), ambient background",
+        "Port all existing pages to SFC components: Providers, API Keys, Aliases, Combos, Usage, Quota, Token Saver, Proxy Pools, Tunnel, Settings, Status",
+        "API client layer: typed fetch wrapper with auth handling and error toasts",
+        "Build pipeline: vite build → dist/ → go:embed into Go binary (webui/dist embedded at compile time)",
+        "Keep -dashboard flag: local dir override for development (vite dev server proxy mode)",
+        "CI: build webui before go build in GitHub Actions workflow",
+        "Remove legacy templates/index.html after full migration verified"
+      ],
+      "notes": "Single HTML (1597+ lines) no longer maintainable at 9router feature parity scale. Engineering decision approved by owner."
+    },
+    {
+      "id": 16,
+      "name": "Provider Experience Overhaul",
+      "description": "Card grid with brand logos, category grouping (Custom/OAuth/FreeTier), connection status, Test All, search, full-page provider detail",
+      "status": "pending",
+      "tasks": [
+        "Provider brand logo system: port /public/providers/ icons from 9router, serve as static assets",
+        "Providers page: card grid layout grouped by category (Custom Providers / OAuth Providers / Free Tier Providers)",
+        "Connection status badges per card: 'N Connected' (green) / 'Ready' / 'No connections'",
+        "Top search bar: filter providers by name across all categories",
+        "Test All button per category section (backend: POST /api/providers/test-batch)",
+        "Provider detail as full page (not dialog): connection list, test, credential edit, models, OAuth status",
+        "Add Provider: separate flows for 'Add OpenAI Compatible' / 'Add Anthropic Compatible' custom endpoints",
+        "OAuth connect modals: per-provider tailored flows (authorize redirect / device code / token paste)",
+        "Backend: POST /api/providers/test-batch endpoint (parallel test with timeout)",
+        "Backend: GET /api/providers/{id}/test-models (validate which models respond)"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Media Providers",
+      "description": "Embedding, Text-to-Image, TTS, STT, Video, Web Fetch & Search — backend endpoints + full management UI",
+      "status": "pending",
+      "tasks": [
+        "Backend: /v1/embeddings with provider routing (OpenRouter, NVIDIA NIM, OpenAI, Voyage, Gemini, Fireworks, Together, Nebius, Mistral, Venice, Vercel, Jina)",
+        "Backend: /v1/images/generations (image provider routing)",
+        "Backend: /v1/audio/speech + /v1/audio/transcriptions + /v1/audio/voices (TTS/STT providers)",
+        "Backend: /v1/videos/generations + /v1/videos/{id} (video providers)",
+        "Backend: /v1/web/fetch + /v1/search (web fetch & search providers)",
+        "Media provider registry: per-kind provider definitions with models/voices/capabilities",
+        "Media provider connections: CRUD + credential management (reuse provider connection infra)",
+        "Panel: Media Providers section with sub-navigation (Embedding / Text to Image / TTS / STT / Video / Web)",
+        "Panel: per-kind provider card grid with logos + connection status + 'Add Custom' button",
+        "Panel: per-provider detail page with example cards (code snippets per kind)",
+        "Panel: media combo support (fallback across media providers of same kind)"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "CLI Tools Integration",
+      "description": "Per-tool configuration pages for AI coding CLIs: endpoint presets, API key binding, one-click setup instructions",
+      "status": "pending",
+      "tasks": [
+        "CLI tool registry: Claude Code, Cursor, Cline, Copilot, Kilo, OpenCode, Codex, Grok Build, Droid, Hermes, OpenClaw, DeepSeek TUI",
+        "Backend: GET /api/cli-tools (tool list + status), GET /api/cli-tools/{id} (detail + config)",
+        "Backend: per-tool settings endpoints (write tool config files: claude settings, cline settings, copilot config, etc.)",
+        "Backend: GET /api/cli-tools/all-statuses (detect installed tools, config state)",
+        "Panel: CLI Tools page — tool card grid with status (configured/not configured/running)",
+        "Panel: tool detail page — base URL select (gateway endpoint), API key select, setup instructions, config write button",
+        "Panel: endpoint preset control (auto-detect gateway URL variants: localhost, tunnel, LAN)",
+        "Panel: MITM link card for tools requiring MITM (Antigravity) — links to MITM page when available"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Usage & Observability Enhancement",
+      "description": "Request details table, real-time SSE log stream, provider topology, console log page",
+      "status": "pending",
+      "tasks": [
+        "Backend: GET /api/usage/request-details (paginated, filterable by provider/model/status)",
+        "Backend: GET /api/usage/stream (SSE real-time request events)",
+        "Backend: GET /api/usage/logs (structured request logs with timing)",
+        "Backend: GET /api/usage/providers (per-provider aggregate with quota overlay)",
+        "Panel: Usage page tabs — Overview / Request Details / Provider Limits",
+        "Panel: Request Details table (time, provider, model, tokens, latency, status) with pagination + filters",
+        "Panel: Provider Topology view (visual connection map: provider → models → status)",
+        "Panel: Provider Limits cards (quota progress bars per connection, from 9router ProviderLimits)",
+        "Panel: Console Log page — live SSE log viewer with level filter, auto-scroll, pause/resume",
+        "Panel: real-time indicator on Usage overview (live request counter via SSE)"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Endpoint Overview, Chat Playground & Skills",
+      "description": "Endpoint & Key quick-copy page, built-in chat test UI, skills/MCP marketplace placeholder",
+      "status": "pending",
+      "tasks": [
+        "Panel: Endpoint & Key page — gateway URL display (all variants), API key quick-copy, curl examples, security warning when no auth",
+        "Panel: endpoint ping/latency check (client-side fetch to /api/health with timing)",
+        "Backend: GET /api/endpoints (list reachable endpoint URLs: local, LAN, tunnel)",
+        "Panel: Basic Chat page — model selector, streaming chat UI, token/cost display, conversation reset",
+        "Backend: chat playground uses same /v1/chat/completions path (no special endpoint needed)",
+        "Panel: Skills page — list available skill definitions (9router skills/ format), install/copy instructions",
+        "Backend: GET /api/skills (scan bundled skill manifests)"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "i18n, Mobile & Polish",
+      "description": "Internationalization (25+ languages like 9router), responsive mobile layout, UX polish to match/exceed 9router",
+      "status": "pending",
+      "tasks": [
+        "i18n framework: vue-i18n with JSON locale files (port 9router i18n literals where applicable)",
+        "Translate all UI strings: en, zh-CN, ja, ko, ru, es, fr, de, pt-BR, tr (minimum 10 languages)",
+        "Language switcher in header (persist preference)",
+        "Mobile responsive: collapsible sidebar overlay, touch-friendly cards, responsive grids",
+        "Changelog modal (show release notes on version update)",
+        "Profile page (username/avatar settings)",
+        "Keyboard shortcuts (Cmd+K search, Esc close modals)",
+        "Loading skeletons and optimistic UI updates",
+        "Toast notification system (success/error feedback for all actions)",
+        "Accessibility pass: focus states, aria labels, contrast ratios"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "MITM Proxy (optional, local mode)",
+      "description": "Man-in-the-middle proxy for tools requiring HTTPS interception — only enabled for local/self-hosted deployments via explicit flag",
+      "status": "pending",
+      "tasks": [
+        "Backend: MITM proxy core (TLS interception with generated CA cert, request rewriting)",
+        "Backend: -mitm flag (default off) + -mitm-port, explicit opt-in for local deployments only",
+        "Backend: CA certificate generation and download endpoint (GET /api/mitm/cert)",
+        "Backend: DNS override helpers for tool-specific domains",
+        "Panel: MITM page — status card, CA cert install instructions per OS, domain rules, traffic log",
+        "Panel: graceful degradation — clear 'disabled (server mode)' messaging when -mitm is off",
+        "Safety: refuse to start MITM when bound to 0.0.0.0 (require explicit localhost bind)"
+      ],
+      "notes": "Optional feature. Server deployments (0.0.0.0) should never enable this. Only for local/self-use scenarios (e.g. Antigravity token capture)."
+    },
+    {
+      "id": 23,
       "name": "Maintenance Mode (final, perpetual)",
       "description": "Perpetual: issues, deps, upstream sync (9router/VansRouter), provider registry updates",
       "status": "pending",
@@ -224,5 +363,5 @@
     "decolua/9router": "primary upstream, sync every maintenance cycle",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
-  "last_updated": "2026-07-24"
+  "last_updated": "2026-07-25"
 }
