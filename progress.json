@@ -222,7 +222,7 @@
       "id": 16,
       "name": "Provider Experience Overhaul",
       "description": "Card grid with brand logos, category grouping (Custom/OAuth/FreeTier), connection status, Test All, search, full-page provider detail",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Provider brand logo system: port /public/providers/ icons from 9router, serve as static assets",
         "Providers page: card grid layout grouped by category (Custom Providers / OAuth Providers / Free Tier Providers)",
@@ -234,7 +234,8 @@
         "OAuth connect modals: per-provider tailored flows (authorize redirect / device code / token paste)",
         "Backend: POST /api/providers/test-batch endpoint (parallel test with timeout)",
         "Backend: GET /api/providers/{id}/test-models (validate which models respond)"
-      ]
+      ],
+      "notes": "Completed 2026-07-25. 118 brand logos ported. Card grid grouped by category. Full-page provider detail at /providers/:id. Test-batch endpoint with 10-concurrency parallel testing. Add Provider modal with Registry/OpenAI/Anthropic tabs. OAuth connect modal (authorize/device-code/token-import). test-models endpoint deferred to Phase 17 (media providers need it more)."
     },
     {
       "id": 17,
@@ -355,7 +356,7 @@
       ]
     }
   ],
-  "current_phase": 16,
+  "current_phase": 17,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
