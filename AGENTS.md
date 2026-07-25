@@ -47,9 +47,13 @@ schema.sql                   # 数据库 schema 参考
 ### WebUI 构建流程
 
 ```bash
-cd webui && npm ci && npm run build   # 产出 dist/（覆盖占位 index.html）
+cd webui && npm ci && npm run build   # Vite 8 (Rolldown) 产出 dist/，覆盖占位 index.html
 go build ./cmd/gateway                # embed 自动打包 dist/
 ```
+
+技术栈：Vue 3.5 + Vite 8.1 + TypeScript 5 + Pinia + vue-router (hash) + lucide-vue-next
+设计系统：玻璃拟态 tokens（--glass-blur/--glass-sheen/--glass-depth），dark/light 双主题，
+弹簧缓动（--ease-spring），页面过渡 + 交错入场动画，prefers-reduced-motion 降级。
 
 开发模式：`cd webui && npm run dev`（vite :5173，proxy /api → :20128）
 或 `go run ./cmd/gateway -dashboard webui/dist`
@@ -119,14 +123,17 @@ v0.14.0 与 9router 面板对比后确认的差距补齐计划（2026-07-25 规�
 构建产物 dist/ 通过 go:embed 嵌入 Go 二进制，保持单二进制分发。
 开发时 -dashboard 指向 webui/dist 或 vite dev server。
 
-## Dashboard 面板设计（Phase 5 原始方案，Phase 15 起已被工程化方案取代）
+## Dashboard 面板设计（Phase 15 工程化方案）
 
-三层降级策略（保留，embed 源从单 HTML 变为 webui/dist）：
-1. `-dashboard /path/to/ui` → 用户指定的本地前端目录（最高优先级）
-2. 内置 embed `webui/dist/`（Vue 3 + Vite 构建产物）→ 零配置兜底
-3. `-panel-url` → 可选，拉取远程更新版面板（默认指向本仓库 raw 文件）
+四层降级策略：
+1. `-dashboard /path/to/ui` → 用户指定的本地前端目录（最高优先级，开发用）
+2. `-panel-url` 下载缓存：
+   - **dist.zip** → 自动下载、安全解压到版本隔离缓存目录（支持第三方面板分发）
+   - 单 HTML → 缓存为文件（legacy 兼容）
+3. 内置 embed `webui/dist/`（Vue 3 + Vite 8 构建产物）→ 零配置兜底
 
-面板是单 HTML 文件，随主仓库维护在 `templates/index.html`，不需要独立前端仓库。
+面板工程维护在 `webui/` 目录（Vue 3.5 + Vite 8 + TypeScript + Pinia），
+构建产物通过 go:embed 嵌入 Go 二进制，保持单文件分发。
 
 CLI 参数（全部有默认值）：
 ```
@@ -134,10 +141,21 @@ CLI 参数（全部有默认值）：
 -port 20128         # 端口
 -db data.sqlite     # 数据库路径
 -dashboard ""       # 本地面板路径（空=使用内置）
--panel-url https://raw.githubusercontent.com/arisvia/cyrene-gateway/main/templates/index.html
+-panel-url ""       # 远程面板 URL（dist.zip 自动解压，或单 HTML；空=使用内置）
 -secret ""          # Dashboard 访问密码
 ```
 环境变量 CYRENE_HOST / CYRENE_PORT 等同样支持，flag 优先于 env。
+
+### 第三方面板分发
+
+任何人可以构建自定义面板并打包发布：
+```bash
+cd webui && npm run build && cd dist && zip -r my-panel.zip .
+# 用户侧：
+./gateway -panel-url https://example.com/my-panel.zip
+```
+安全限制：zip-slip 防护、≤500 文件、单文件 ≤5MB、总下载 ≤20MB、必须含 index.html。
+缓存目录版本隔离（panel_dist_<version>/），二进制升级自动失效旧缓存。
 
 ## 维护模式（Phase 23，原 Phase 15）
 
@@ -198,6 +216,13 @@ Go 版本：
 # 平台内置 Go 可能低于 1.26，需升级（必须先删旧版，否则 runtime 文件冲突）：
 rm -rf /usr/local/go && curl -sL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -C /usr/local -xz
 go version  # 应输出 go1.26.2
+```
+
+Node 版本（webui 构建需要）：
+```bash
+# Vite 8 要求 Node ^20.19.0 || >=22.12.0，平台内置可能过低：
+curl -sL https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+node --version  # 应输出 v22.16.0
 ```
 
 平台内置工具（无需手动预装）：
