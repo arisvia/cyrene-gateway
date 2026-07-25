@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
-import { Route } from 'lucide-vue-next'
+import GToastHost from '@/components/ui/GToastHost.vue'
 
 const store = useGatewayStore()
 
@@ -60,12 +60,13 @@ onMounted(checkAuth)
 
 <template>
   <div class="ambient"></div>
+  <GToastHost />
 
   <!-- Login Screen -->
   <div v-if="authState === 'login'" class="login-wrap">
     <div class="login-card">
       <div class="login-brand">
-        <div class="brand-icon"><Route :size="20" /></div>
+        <img src="/icon.png" alt="Cyrene" class="brand-icon-img">
         <div>
           <p class="login-title">Cyrene Gateway</p>
           <p class="login-sub">Sign in to access the dashboard</p>
@@ -125,11 +126,10 @@ onMounted(checkAuth)
   animation: slideUp 0.25s ease;
 }
 .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
-.brand-icon {
+.brand-icon-img {
   width: 38px; height: 38px; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--gradient); color: var(--on-accent);
   box-shadow: var(--shadow-accent);
+  flex-shrink: 0;
 }
 .login-title { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
 .login-sub { font-size: 12px; color: var(--text-faint); margin-top: 2px; }

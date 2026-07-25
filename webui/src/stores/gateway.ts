@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, apiPost, apiPut, apiDelete } from '@/lib/api'
+import { useToast } from '@/lib/toast'
 
 export interface Provider {
   id: string
@@ -124,30 +125,70 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   // --- Provider actions ---
-  async function addProvider(payload: any) { await apiPost('/api/providers', payload); await loadAll() }
+  const toast = useToast()
+
+  async function addProvider(payload: any) {
+    try { await apiPost('/api/providers', payload); toast.success(`Provider "${payload.name || payload.provider}" added`); await loadAll() }
+    catch (e: any) { toast.error(`Failed to add provider: ${e.message}`) }
+  }
   async function toggleProvider(p: Provider) { await apiPut(`/api/providers/${p.id}`, { isActive: !p.isActive }); await loadAll() }
-  async function resetProvider(p: Provider) { await apiPost(`/api/providers/${p.id}/reset`); await loadAll() }
-  async function deleteProvider(p: Provider) { await apiDelete(`/api/providers/${p.id}`); await loadAll() }
+  async function resetProvider(p: Provider) {
+    try { await apiPost(`/api/providers/${p.id}/reset`); toast.success(`Cooldown reset for "${p.name || p.provider}"`); await loadAll() }
+    catch (e: any) { toast.error(`Reset failed: ${e.message}`) }
+  }
+  async function deleteProvider(p: Provider) {
+    try { await apiDelete(`/api/providers/${p.id}`); toast.success(`Provider "${p.name || p.provider}" deleted`); await loadAll() }
+    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+  }
 
   // --- Key actions ---
-  async function createKey(name: string) { const k = await apiPost('/api/keys', { name }); await loadKeys(); return k }
-  async function deleteKey(k: ApiKey) { await apiDelete(`/api/keys/${k.id}`); await loadKeys() }
+  async function createKey(name: string) {
+    const k = await apiPost('/api/keys', { name })
+    toast.success(`Key "${name || k.id?.slice(0, 8)}" generated`)
+    await loadKeys()
+    return k
+  }
+  async function deleteKey(k: ApiKey) {
+    try { await apiDelete(`/api/keys/${k.id}`); toast.success('Key deleted'); await loadKeys() }
+    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+  }
 
   // --- Alias actions ---
-  async function addAlias(alias: string, target: string) { await apiPost('/api/models/alias', { alias, target }); await loadAll() }
-  async function deleteAlias(alias: string) { await apiDelete('/api/models/alias', { alias }); await loadAll() }
+  async function addAlias(alias: string, target: string) {
+    try { await apiPost('/api/models/alias', { alias, target }); toast.success(`Alias "${alias}" → ${target}`); await loadAll() }
+    catch (e: any) { toast.error(`Failed to add alias: ${e.message}`) }
+  }
+  async function deleteAlias(alias: string) {
+    try { await apiDelete('/api/models/alias', { alias }); toast.success(`Alias "${alias}" removed`); await loadAll() }
+    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+  }
 
   // --- Combo actions ---
-  async function addCombo(name: string, kind: string, models: string[]) { await apiPost('/api/combos', { name, kind, models }); await loadAll() }
-  async function deleteCombo(c: Combo) { await apiDelete(`/api/combos/${c.id}`); await loadAll() }
+  async function addCombo(name: string, kind: string, models: string[]) {
+    try { await apiPost('/api/combos', { name, kind, models }); toast.success(`Combo "${name}" created`); await loadAll() }
+    catch (e: any) { toast.error(`Failed to create combo: ${e.message}`) }
+  }
+  async function deleteCombo(c: Combo) {
+    try { await apiDelete(`/api/combos/${c.id}`); toast.success(`Combo "${c.name}" deleted`); await loadAll() }
+    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+  }
 
   // --- Proxy actions ---
-  async function addProxy(payload: any) { await apiPost('/api/proxy-pools', payload); await loadProxies() }
+  async function addProxy(payload: any) {
+    try { await apiPost('/api/proxy-pools', payload); toast.success(`Proxy "${payload.name}" added`); await loadProxies() }
+    catch (e: any) { toast.error(`Failed to add proxy: ${e.message}`) }
+  }
   async function toggleProxy(pp: ProxyPool) { await apiPut(`/api/proxy-pools/${pp.id}`, { isActive: !pp.isActive }); await loadProxies() }
-  async function deleteProxy(pp: ProxyPool) { await apiDelete(`/api/proxy-pools/${pp.id}`); await loadProxies() }
+  async function deleteProxy(pp: ProxyPool) {
+    try { await apiDelete(`/api/proxy-pools/${pp.id}`); toast.success(`Proxy "${pp.data.name}" deleted`); await loadProxies() }
+    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+  }
 
   // --- Settings actions ---
-  async function saveSettings() { await apiPut('/api/settings', settings.value) }
+  async function saveSettings() {
+    try { await apiPut('/api/settings', settings.value); toast.success('Settings saved') }
+    catch (e: any) { toast.error(`Failed to save settings: ${e.message}`) }
+  }
   async function setPassword(password: string) { return apiPost('/api/auth/password', { password }) }
 
   return {

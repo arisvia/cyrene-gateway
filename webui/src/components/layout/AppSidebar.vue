@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
 import { formatUptime } from '@/lib/format'
-import { Route, Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity } from 'lucide-vue-next'
+import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const route = useRoute()
@@ -38,7 +38,7 @@ const emit = defineEmits<{ logout: [] }>()
 <template>
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <div class="brand-icon"><Route :size="16" /></div>
+      <img src="/icon.png" alt="Cyrene" class="brand-icon-img">
       <span class="brand-name">Cyrene</span>
       <span class="brand-ver">v{{ store.version }}</span>
     </div>
@@ -86,11 +86,10 @@ const emit = defineEmits<{ logout: [] }>()
   height: 56px; padding: 0 16px;
   border-bottom: 1px solid var(--glass-border);
 }
-.brand-icon {
+.brand-icon-img {
   width: 30px; height: 30px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--gradient); color: var(--on-accent);
   box-shadow: var(--shadow-accent);
+  flex-shrink: 0;
 }
 .brand-name { font-size: 13.5px; font-weight: 650; letter-spacing: -0.02em; }
 .brand-ver { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); margin-left: 6px; }
