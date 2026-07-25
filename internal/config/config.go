@@ -23,7 +23,7 @@ func Load() *Config {
 	flag.IntVar(&cfg.Port, "port", envIntOrDefault("CYRENE_PORT", 20128), "Port to bind the gateway")
 	flag.StringVar(&cfg.DBPath, "db", envOrDefault("CYRENE_DB", "data.sqlite"), "Path to SQLite database")
 	flag.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local dashboard directory path (empty=use embedded)")
-	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel HTML (empty=use embedded, legacy single-HTML support)")
+	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded)")
 	flag.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "Dashboard access password")
 	flag.Parse()
 

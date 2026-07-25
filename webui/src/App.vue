@@ -88,13 +88,29 @@ onMounted(checkAuth)
     <AppSidebar @logout="doLogout" />
     <main class="main">
       <div class="content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <transition name="page" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </div>
     </main>
   </div>
 </template>
 
 <style scoped>
+/* Page transition */
+.page-enter-active { animation: pageIn 0.3s var(--ease-out-expo); }
+.page-leave-active { animation: pageOut 0.15s ease; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pageOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-6px); }
+}
+
 .login-wrap {
   position: relative; z-index: 1; min-height: 100vh;
   display: flex; align-items: center; justify-content: center; padding: 20px;

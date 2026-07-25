@@ -42,6 +42,15 @@
   --sidebar-w: 232px;
   --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+  /* Glass system */
+  --glass-blur: 16px;
+  --glass-blur-heavy: 28px;
+  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 40%, transparent 60%);
+  --glass-edge: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 30%, transparent);
+  --glass-depth: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05);
+  --glass-depth-hover: 0 12px 44px rgba(0,0,0,0.45), 0 4px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.07);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ═══════════ Design Tokens — Light ═══════════ */
@@ -83,4 +92,9 @@ html.light {
   --chart-a-hover: rgba(13,148,136,0.95);
   --chart-b-hover: rgba(14,165,233,0.6);
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2355556b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  /* Glass system — light */
+  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.3) 40%, transparent 60%);
+  --glass-edge: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.4) 30%, transparent);
+  --glass-depth: 0 8px 32px rgba(15,20,40,0.08), 0 2px 8px rgba(15,20,40,0.05), inset 0 1px 0 rgba(255,255,255,0.8);
+  --glass-depth-hover: 0 12px 44px rgba(15,20,40,0.12), 0 4px 12px rgba(15,20,40,0.07), inset 0 1px 0 rgba(255,255,255,0.9);
 }

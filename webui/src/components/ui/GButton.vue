@@ -21,16 +21,17 @@ defineProps<{
   height: 34px; padding: 0 14px; border-radius: var(--radius-sm);
   font-size: 12.5px; font-weight: 550; font-family: var(--font);
   border: 1px solid transparent; cursor: pointer;
-  transition: all 0.15s ease; white-space: nowrap;
+  transition: all 0.2s var(--ease-spring); white-space: nowrap;
 }
 .btn svg { width: 13px; height: 13px; }
-.btn:active { transform: scale(0.97); }
+.btn:active { transform: scale(0.94); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary {
   background: var(--gradient); color: var(--on-accent); border: none;
   box-shadow: var(--shadow-accent);
 }
-.btn-primary:hover:not(:disabled) { box-shadow: var(--shadow-accent-hover); filter: brightness(1.1); }
+.btn-primary:hover:not(:disabled) { box-shadow: var(--shadow-accent-hover); filter: brightness(1.1); transform: translateY(-1px); }
+.btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.94); }
 .btn-ghost {
   background: transparent; color: var(--text-muted);
   border-color: var(--glass-border);
