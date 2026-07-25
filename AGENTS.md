@@ -214,16 +214,18 @@ git config user.email "$GITHUB_EMAIL"
 Go 版本：
 ```bash
 # 平台内置 Go 可能低于 1.26，需升级（必须先删旧版，否则 runtime 文件冲突）：
-rm -rf /usr/local/go && curl -sL https://go.dev/dl/go1.26.2.linux-amd64.tar.gz | tar -C /usr/local -xz
-go version  # 应输出 go1.26.2
+rm -rf /usr/local/go && curl -sL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz | tar -C /usr/local -xz
+go version  # 应输出 go1.26.5
 ```
 
 Node 版本（webui 构建需要）：
 ```bash
-# Vite 8 要求 Node ^20.19.0 || >=22.12.0，平台内置可能是旧版（位于 /usr/local/node）：
-rm -rf /usr/local/node && curl -sL https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+# Vite 8 要求 Node >=22.12.0，使用最新 LTS v24（Krypton）。
+# 旧版位于 /usr/local/node，必须先删；旧 npm 模块也要清理（否则 minipass 冲突）：
+rm -rf /usr/local/node /usr/local/lib/node_modules
+curl -sL https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
 export PATH=/usr/local/bin:$PATH
-node --version  # 应输出 v22.16.0
+node --version  # 应输出 v24.18.0
 ```
 
 平台内置工具（无需手动预装）：
