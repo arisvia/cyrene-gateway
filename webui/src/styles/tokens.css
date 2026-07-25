@@ -1,0 +1,86 @@
+/* ═══════════ Design Tokens — Dark (default) ═══════════ */
+:root {
+  --bg: #08080d;
+  --bg-elevated: #0e0e15;
+  --glass: rgba(255,255,255,0.028);
+  --glass-hover: rgba(255,255,255,0.055);
+  --glass-border: rgba(255,255,255,0.07);
+  --glass-border-hover: rgba(255,255,255,0.14);
+  --text: #ececf1;
+  --text-muted: #8b8b9e;
+  --text-faint: #55556a;
+  --accent: #2dd4bf;
+  --accent-2: #38bdf8;
+  --accent-3: #a78bfa;
+  --gradient: linear-gradient(135deg, #2dd4bf, #38bdf8, #a78bfa);
+  --on-accent: #08080d;
+  --green: #34d399;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --ring: rgba(45,212,191,0.5);
+  --ring-soft: rgba(45,212,191,0.08);
+  --shadow-accent: 0 2px 12px rgba(45,212,191,0.2);
+  --shadow-accent-hover: 0 4px 20px rgba(45,212,191,0.35);
+  --shadow-glow: 0 0 24px rgba(45,212,191,0.06);
+  --sidebar-bg: rgba(10,10,16,0.75);
+  --dialog-bg: rgba(14,14,22,0.95);
+  --overlay-bg: rgba(4,4,8,0.8);
+  --code-bg: rgba(0,0,0,0.3);
+  --row-divider: rgba(255,255,255,0.04);
+  --scrollbar: rgba(255,255,255,0.1);
+  --grid-line: rgba(255,255,255,0.018);
+  --glow-1: rgba(45,212,191,0.07);
+  --glow-2: rgba(167,139,250,0.06);
+  --glow-3: rgba(56,189,248,0.03);
+  --chart-a: rgba(45,212,191,0.75);
+  --chart-b: rgba(56,189,248,0.35);
+  --chart-a-hover: rgba(45,212,191,1);
+  --chart-b-hover: rgba(56,189,248,0.6);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b8b9e' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --radius: 10px;
+  --radius-sm: 6px;
+  --sidebar-w: 232px;
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+}
+
+/* ═══════════ Design Tokens — Light ═══════════ */
+html.light {
+  --bg: #f4f6fb;
+  --bg-elevated: #ffffff;
+  --glass: rgba(255,255,255,0.55);
+  --glass-hover: rgba(255,255,255,0.85);
+  --glass-border: rgba(15,20,40,0.08);
+  --glass-border-hover: rgba(15,20,40,0.15);
+  --text: #191927;
+  --text-muted: #55556b;
+  --text-faint: #9494a8;
+  --accent: #0d9488;
+  --accent-2: #0369a1;
+  --accent-3: #7c3aed;
+  --gradient: linear-gradient(135deg, #14b8a6, #0ea5e9, #8b5cf6);
+  --on-accent: #ffffff;
+  --green: #059669;
+  --red: #dc2626;
+  --amber: #b45309;
+  --ring: rgba(13,148,136,0.45);
+  --ring-soft: rgba(13,148,136,0.08);
+  --shadow-accent: 0 2px 12px rgba(13,148,136,0.25);
+  --shadow-accent-hover: 0 4px 20px rgba(13,148,136,0.35);
+  --shadow-glow: 0 0 24px rgba(13,148,136,0.06);
+  --sidebar-bg: rgba(255,255,255,0.72);
+  --dialog-bg: rgba(255,255,255,0.97);
+  --overlay-bg: rgba(15,18,32,0.45);
+  --code-bg: rgba(15,20,40,0.045);
+  --row-divider: rgba(15,20,40,0.055);
+  --scrollbar: rgba(15,20,40,0.14);
+  --grid-line: rgba(15,20,40,0.03);
+  --glow-1: rgba(13,148,136,0.07);
+  --glow-2: rgba(124,58,237,0.05);
+  --glow-3: rgba(14,165,233,0.05);
+  --chart-a: rgba(13,148,136,0.7);
+  --chart-b: rgba(14,165,233,0.35);
+  --chart-a-hover: rgba(13,148,136,0.95);
+  --chart-b-hover: rgba(14,165,233,0.6);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2355556b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}

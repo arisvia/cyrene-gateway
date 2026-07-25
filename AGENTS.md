@@ -36,10 +36,23 @@ internal/provider/           # Provider 注册表 + Model 解析
 internal/handler/            # HTTP handlers（API surface）
 internal/middleware/         # 中间件（预留）
 internal/usage/              # 用量追踪（预留）
-.github/workflows/build.yml  # CI 多平台构建
+webui/                       # Vue 3 + Vite + TS 面板工程（Phase 15+）
+webui/embed.go               # go:embed all:dist — 构建产物嵌入
+webui/dist/index.html        # 占位文件（committed），npm run build 后覆盖
+.github/workflows/build.yml  # CI 多平台构建（含 webui build 前置步骤）
 progress.json                # 重构进度追踪（核心文件）
 schema.sql                   # 数据库 schema 参考
 ```
+
+### WebUI 构建流程
+
+```bash
+cd webui && npm ci && npm run build   # 产出 dist/（覆盖占位 index.html）
+go build ./cmd/gateway                # embed 自动打包 dist/
+```
+
+开发模式：`cd webui && npm run dev`（vite :5173，proxy /api → :20128）
+或 `go run ./cmd/gateway -dashboard webui/dist`
 
 ## 开发规范
 

@@ -203,7 +203,7 @@
       "id": 15,
       "name": "WebUI Engineering Foundation",
       "description": "Migrate dashboard from single-HTML to engineered Vue 3 + Vite project with component architecture, embedded into Go binary via go:embed",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Initialize webui/ project: Vue 3 + Vite + TypeScript, hash router, component library structure",
         "Design system: port existing CSS tokens (dark/light themes) into structured stylesheets",
@@ -216,7 +216,7 @@
         "CI: build webui before go build in GitHub Actions workflow",
         "Remove legacy templates/index.html after full migration verified"
       ],
-      "notes": "Single HTML (1597+ lines) no longer maintainable at 9router feature parity scale. Engineering decision approved by owner."
+      "notes": "Completed 2026-07-25. Vue 3.5 + Vite 6 + TS 5 + Pinia + vue-router (hash). lucide-vue-next icons. Switch thumb bug fixed in GSwitch (uniform border). -panel-url default changed to empty (legacy single-HTML support retained). Dashboard handler serves SPA with static asset caching + fallback. CI builds webui before go build."
     },
     {
       "id": 16,
@@ -355,7 +355,7 @@
       ]
     }
   ],
-  "current_phase": 15,
+  "current_phase": 16,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

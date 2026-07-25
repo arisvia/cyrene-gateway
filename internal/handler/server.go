@@ -64,8 +64,9 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 }
 
 func (s *Server) registerRoutes() {
-	// Dashboard panel (root)
+	// Dashboard panel (root + SPA static assets/fallback; specific routes take precedence)
 	s.Router.Handle("GET /{$}", s.Dashboard)
+	s.Router.Handle("GET /{path...}", s.Dashboard)
 
 	// Health & meta
 	s.Router.HandleFunc("GET /api/health", s.handleHealth)
