@@ -23,11 +23,11 @@ const (
 )
 
 // DashboardHandler serves the panel with a four-tier fallback:
-// 1. Local directory (-dashboard flag) — file server for dev (vite dist or dev output)
-// 2. Downloaded panel from -panel-url:
-//    a. dist.zip → extracted to version-scoped cache directory
-//    b. single HTML → cached as file (legacy support)
-// 3. Embedded webui/dist (Vue 3 + Vite build output)
+//  1. Local directory (-dashboard flag) — file server for dev (vite dist or dev output)
+//  2. Downloaded panel from -panel-url:
+//     a. dist.zip → extracted to version-scoped cache directory
+//     b. single HTML → cached as file (legacy support)
+//  3. Embedded webui/dist (Vue 3 + Vite build output)
 type DashboardHandler struct {
 	cfg      *config.Config
 	embedded fs.FS

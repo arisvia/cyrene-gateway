@@ -5,6 +5,7 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/providers' },
     { path: '/providers', component: () => import('@/views/ProvidersView.vue') },
+    { path: '/providers/:id', component: () => import('@/views/ProviderDetailView.vue') },
     { path: '/keys', component: () => import('@/views/KeysView.vue') },
     { path: '/aliases', component: () => import('@/views/AliasesView.vue') },
     { path: '/combos', component: () => import('@/views/CombosView.vue') },
