@@ -9,6 +9,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -16,15 +17,16 @@ import (
 )
 
 type Server struct {
-	DB        *db.DB
-	Router    *http.ServeMux
-	Handler   http.Handler // Router wrapped with middleware
-	Combos    *provider.ComboManager
-	Proxies   *provider.ProxyManager
-	Dashboard *DashboardHandler
-	Auth      *AuthHandler
-	Tunnel    *TunnelHandler
-	startTime time.Time
+	DB          *db.DB
+	Router      *http.ServeMux
+	Handler     http.Handler // Router wrapped with middleware
+	Combos      *provider.ComboManager
+	Proxies     *provider.ProxyManager
+	MediaClient *media.Client
+	Dashboard   *DashboardHandler
+	Auth        *AuthHandler
+	Tunnel      *TunnelHandler
+	startTime   time.Time
 }
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {
@@ -41,16 +43,18 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 	tunnelMgr := tunnel.NewManager(cfg.DataDir, cfg.Port)
 
 	s := &Server{
-		DB:        database,
-		Router:    mux,
-		Combos:    provider.NewComboManager(),
-		Proxies:   proxyMgr,
-		Dashboard: NewDashboardHandler(cfg),
-		Auth:      NewAuthHandler(database),
-		Tunnel:    NewTunnelHandler(tunnelMgr),
-		startTime: time.Now(),
+		DB:          database,
+		Router:      mux,
+		Combos:      provider.NewComboManager(),
+		Proxies:     proxyMgr,
+		MediaClient: media.NewClient(),
+		Dashboard:   NewDashboardHandler(cfg),
+		Auth:        NewAuthHandler(database),
+		Tunnel:      NewTunnelHandler(tunnelMgr),
+		startTime:   time.Now(),
 	}
 	s.registerRoutes()
+	s.registerMediaRoutes()
 
 	// Wrap the mux with the middleware chain
 	s.Handler = middleware.Chain(mux,

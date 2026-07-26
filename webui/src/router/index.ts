@@ -9,6 +9,7 @@ const router = createRouter({
     { path: '/keys', component: () => import('@/views/KeysView.vue') },
     { path: '/aliases', component: () => import('@/views/AliasesView.vue') },
     { path: '/combos', component: () => import('@/views/CombosView.vue') },
+    { path: '/media', component: () => import('@/views/MediaView.vue') },
     { path: '/usage', component: () => import('@/views/UsageView.vue') },
     { path: '/quota', component: () => import('@/views/QuotaView.vue') },
     { path: '/tokensaver', component: () => import('@/views/TokenSaverView.vue') },
