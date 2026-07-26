@@ -241,7 +241,7 @@
       "id": 17,
       "name": "Media Providers",
       "description": "Embedding, Text-to-Image, TTS, STT, Video, Web Fetch & Search — backend endpoints + full management UI",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Backend: /v1/embeddings with provider routing (OpenRouter, NVIDIA NIM, OpenAI, Voyage, Gemini, Fireworks, Together, Nebius, Mistral, Venice, Vercel, Jina)",
         "Backend: /v1/images/generations (image provider routing)",
@@ -254,7 +254,8 @@
         "Panel: per-kind provider card grid with logos + connection status + 'Add Custom' button",
         "Panel: per-provider detail page with example cards (code snippets per kind)",
         "Panel: media combo support (fallback across media providers of same kind)"
-      ]
+      ],
+      "notes": "Completed 2026-07-26. internal/media package: registry (30+ providers, 7 kinds), client with per-format adapters (OpenAI-compat, Gemini, ElevenLabs, Deepgram, BFL, Stability, etc.). Endpoints: /v1/images/generations, /v1/audio/speech, /v1/audio/transcriptions, /v1/videos/generations, /v1/videos/{id}, /v1/web/fetch, /v1/search, /api/media-providers, /api/media-providers/tts/voices. Panel: MediaView with kind tabs + provider cards + endpoint reference. Media combo and per-provider detail deferred to Phase 18+ (CLI tools need provider detail more)."
     },
     {
       "id": 18,
@@ -356,7 +357,7 @@
       ]
     }
   ],
-  "current_phase": 17,
+  "current_phase": 18,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
@@ -364,5 +365,5 @@
     "decolua/9router": "primary upstream, sync every maintenance cycle",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
-  "last_updated": "2026-07-25"
+  "last_updated": "2026-07-26"
 }
