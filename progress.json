@@ -297,7 +297,7 @@
       "id": 20,
       "name": "Endpoint Overview, Chat Playground & Skills",
       "description": "Endpoint & Key quick-copy page, built-in chat test UI, skills/MCP marketplace placeholder",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Panel: Endpoint & Key page — gateway URL display (all variants), API key quick-copy, curl examples, security warning when no auth",
         "Panel: endpoint ping/latency check (client-side fetch to /api/health with timing)",
@@ -306,7 +306,8 @@
         "Backend: chat playground uses same /v1/chat/completions path (no special endpoint needed)",
         "Panel: Skills page — list available skill definitions (9router skills/ format), install/copy instructions",
         "Backend: GET /api/skills (scan bundled skill manifests)"
-      ]
+      ],
+      "notes": "Completed 2026-07-27. Backend: GET /api/endpoints (local/LAN/tunnel URLs + requireAuth status), GET /api/skills (embedded SKILL.md manifests parsed from internal/skills/data/). Panel: EndpointsView (URL cards with ping, API key quick-copy, curl example, auth warning), ChatView (model selector, SSE streaming chat, token usage display, conversation reset), SkillsView (expandable skill cards with copy-to-clipboard, category badges). 8 bundled skills adapted from 9router format (cyrene, cyrene-chat, cyrene-image, cyrene-tts, cyrene-stt, cyrene-embeddings, cyrene-web-search, cyrene-web-fetch)."
     },
     {
       "id": 21,
@@ -359,7 +360,7 @@
       ]
     }
   ],
-  "current_phase": 20,
+  "current_phase": 21,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

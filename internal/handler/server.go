@@ -28,6 +28,7 @@ type Server struct {
 	Auth        *AuthHandler
 	Tunnel      *TunnelHandler
 	CLI         *CLIHandler
+	Endpoints   *EndpointHandler
 	Events      *EventBroadcaster
 	startTime   time.Time
 }
@@ -55,6 +56,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Auth:        NewAuthHandler(database),
 		Tunnel:      NewTunnelHandler(tunnelMgr),
 		CLI:         NewCLIHandler(cli.NewManager()),
+		Endpoints:   NewEndpointHandler(cfg, database, tunnelMgr),
 		Events:      NewEventBroadcaster(),
 		startTime:   time.Now(),
 	}
@@ -168,6 +170,10 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/cli-tools/{id}", s.CLI.HandleGet)
 	s.Router.HandleFunc("POST /api/cli-tools/{id}", s.CLI.HandleApply)
 	s.Router.HandleFunc("DELETE /api/cli-tools/{id}", s.CLI.HandleReset)
+
+	// Endpoints & Skills
+	s.Router.HandleFunc("GET /api/endpoints", s.Endpoints.HandleEndpoints)
+	s.Router.HandleFunc("GET /api/skills", s.Endpoints.HandleSkills)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
