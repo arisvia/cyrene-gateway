@@ -51,6 +51,33 @@ export interface UsageStats {
   byProvider?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
 }
 
+export interface RequestDetailItem {
+  id?: string
+  timestamp?: string
+  provider?: string
+  model?: string
+  status?: string
+  promptTokens?: number
+  completionTokens?: number
+  cost?: number
+  latencyMs?: number
+  connectionId?: string
+  endpoint?: string
+}
+
+export interface ProviderUsageAggregate {
+  provider: string
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  cost: number
+  connections: number
+  activeConnections: number
+  quotaLimit?: number
+  quotaUsed?: number
+  overQuota?: boolean
+}
+
 export const useGatewayStore = defineStore('gateway', () => {
   const version = ref('...')
   const health = ref<Record<string, any>>({})
@@ -64,7 +91,10 @@ export const useGatewayStore = defineStore('gateway', () => {
   const registryCategories = ref<{ category: string; count: number }[]>([])
   const usageStats = ref<UsageStats>({})
   const usageChart = ref<{ label: string; tokens: number }[]>([])
-  const requestDetails = ref<any[]>([])
+  const requestDetails = ref<RequestDetailItem[]>([])
+  const requestDetailsPagination = ref<{ page: number; pageSize: number; totalItems: number; totalPages: number; hasNext: boolean; hasPrev: boolean }>({ page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
+  const providerUsage = ref<ProviderUsageAggregate[]>([])
+  const usageLogs = ref<any[]>([])
   const quotaEntries = ref<any[]>([])
 
   async function loadAll() {
@@ -115,6 +145,30 @@ export const useGatewayStore = defineStore('gateway', () => {
       usageChart.value = Array.isArray(chart) ? chart : []
       requestDetails.value = Array.isArray(details) ? details : (details?.details || [])
     } catch (e) { console.error('usage load failed:', e) }
+  }
+
+  async function loadRequestDetails(page = 1, pageSize = 20, filters: Record<string, string> = {}) {
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+      for (const [k, v] of Object.entries(filters)) { if (v) params.set(k, v) }
+      const res = await api(`/api/usage/request-details?${params}`)
+      requestDetails.value = res?.details || []
+      requestDetailsPagination.value = res?.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false }
+    } catch (e) { console.error('request details load failed:', e) }
+  }
+
+  async function loadProviderUsage(period = '7d') {
+    try {
+      const res = await api(`/api/usage/providers?period=${period}`)
+      providerUsage.value = res?.providers || []
+    } catch (e) { console.error('provider usage load failed:', e) }
+  }
+
+  async function loadUsageLogs(limit = 50) {
+    try {
+      const res = await api(`/api/usage/logs?limit=${limit}`)
+      usageLogs.value = res?.logs || []
+    } catch (e) { console.error('usage logs load failed:', e) }
   }
 
   async function loadQuota() {
@@ -193,8 +247,10 @@ export const useGatewayStore = defineStore('gateway', () => {
 
   return {
     version, health, providers, aliases, combos, apiKeys, proxyPools, settings,
-    registryList, registryCategories, usageStats, usageChart, requestDetails, quotaEntries,
+    registryList, registryCategories, usageStats, usageChart, requestDetails, requestDetailsPagination,
+    providerUsage, usageLogs, quotaEntries,
     loadAll, loadKeys, loadProxies, loadSettings, loadUsage, loadQuota,
+    loadRequestDetails, loadProviderUsage, loadUsageLogs,
     addProvider, toggleProvider, resetProvider, deleteProvider,
     createKey, deleteKey,
     addAlias, deleteAlias,

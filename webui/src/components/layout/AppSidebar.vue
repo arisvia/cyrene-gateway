@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
 import { formatUptime } from '@/lib/format'
-import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal } from 'lucide-vue-next'
+import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal, ScrollText } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const route = useRoute()
@@ -24,6 +24,7 @@ const navMain = [
   { path: '/aliases', label: 'Model Aliases', icon: GitBranch },
   { path: '/combos', label: 'Combos', icon: Layers },
   { path: '/usage', label: 'Usage', icon: BarChart3 },
+  { path: '/console', label: 'Console Log', icon: ScrollText },
   { path: '/quota', label: 'Quota', icon: Gauge },
   { path: '/tokensaver', label: 'Token Saver', icon: Zap },
 ]

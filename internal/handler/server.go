@@ -28,6 +28,7 @@ type Server struct {
 	Auth        *AuthHandler
 	Tunnel      *TunnelHandler
 	CLI         *CLIHandler
+	Events      *EventBroadcaster
 	startTime   time.Time
 }
 
@@ -54,6 +55,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Auth:        NewAuthHandler(database),
 		Tunnel:      NewTunnelHandler(tunnelMgr),
 		CLI:         NewCLIHandler(cli.NewManager()),
+		Events:      NewEventBroadcaster(),
 		startTime:   time.Now(),
 	}
 	s.registerRoutes()
@@ -147,6 +149,9 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/usage/chart", s.handleUsageChart)
 	s.Router.HandleFunc("GET /api/usage/request-details", s.handleUsageRequestDetails)
 	s.Router.HandleFunc("GET /api/usage/request-details/{id}", s.handleUsageRequestDetailByID)
+	s.Router.HandleFunc("GET /api/usage/stream", s.handleUsageStream)
+	s.Router.HandleFunc("GET /api/usage/logs", s.handleUsageLogs)
+	s.Router.HandleFunc("GET /api/usage/providers", s.handleUsageProviders)
 
 	// Quota tracker
 	s.Router.HandleFunc("GET /api/quota", s.handleQuota)

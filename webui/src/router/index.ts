@@ -13,6 +13,7 @@ const router = createRouter({
     { path: '/cli-tools', component: () => import('@/views/CLIToolsView.vue') },
     { path: '/cli-tools/:id', component: () => import('@/views/CLIToolDetailView.vue') },
     { path: '/usage', component: () => import('@/views/UsageView.vue') },
+    { path: '/console', component: () => import('@/views/ConsoleView.vue') },
     { path: '/quota', component: () => import('@/views/QuotaView.vue') },
     { path: '/tokensaver', component: () => import('@/views/TokenSaverView.vue') },
     { path: '/proxies', component: () => import('@/views/ProxiesView.vue') },

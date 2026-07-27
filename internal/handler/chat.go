@@ -957,7 +957,7 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
 	}
 }
 
-// recordUsage persists a usage entry to the database asynchronously-safe (called inline).
+// recordUsage persists a usage entry to the database and publishes a real-time event.
 func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if uc == nil || u.TotalTokens == 0 {
 		return
@@ -974,6 +974,20 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	}
 	if err := s.DB.SaveUsageEntry(entry); err != nil {
 		slog.Warn("Failed to record usage", "error", err, "model", uc.Model)
+	}
+
+	// Publish real-time event for SSE stream
+	if s.Events != nil {
+		s.Events.Publish(RequestEvent{
+			Type:      "request",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Provider:  uc.Provider,
+			Model:     uc.Model,
+			Status:    "ok",
+			Prompt:    u.PromptTokens,
+			Compl:     u.CompletionTokens,
+			Endpoint:  uc.Endpoint,
+		})
 	}
 }
 

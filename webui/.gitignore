@@ -2,3 +2,4 @@ node_modules/
 dist/assets/
 *.local
 tsconfig.tsbuildinfo
+dist/providers/

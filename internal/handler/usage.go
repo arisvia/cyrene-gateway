@@ -243,3 +243,160 @@ func (s *Server) handleUsageRequestDetailByID(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusOK)
 	w.Write(detail)
 }
+
+// handleUsageLogs returns structured request logs with timing (from usageHistory).
+func (s *Server) handleUsageLogs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+
+	filter := db.UsageFilter{
+		Provider: q.Get("provider"),
+		Model:    q.Get("model"),
+		Limit:    limit,
+	}
+
+	entries, err := s.DB.GetUsageHistory(filter)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get logs"})
+		return
+	}
+
+	type LogEntry struct {
+		Timestamp        string  `json:"timestamp"`
+		Provider         string  `json:"provider"`
+		Model            string  `json:"model"`
+		PromptTokens     int     `json:"promptTokens"`
+		CompletionTokens int     `json:"completionTokens"`
+		Cost             float64 `json:"cost"`
+		Status           string  `json:"status"`
+		Endpoint         string  `json:"endpoint"`
+	}
+
+	logs := make([]LogEntry, 0, len(entries))
+	for _, e := range entries {
+		logs = append(logs, LogEntry{
+			Timestamp:        e.Timestamp,
+			Provider:         e.Provider,
+			Model:            e.Model,
+			PromptTokens:     e.PromptTokens,
+			CompletionTokens: e.CompletionTokens,
+			Cost:             e.Cost,
+			Status:           e.Status,
+			Endpoint:         e.Endpoint,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "count": len(logs)})
+}
+
+// ProviderUsageAggregate represents per-provider usage with quota overlay.
+type ProviderUsageAggregate struct {
+	Provider         string  `json:"provider"`
+	Requests         int     `json:"requests"`
+	PromptTokens     int     `json:"promptTokens"`
+	CompletionTokens int     `json:"completionTokens"`
+	Cost             float64 `json:"cost"`
+	Connections      int     `json:"connections"`
+	ActiveConns      int     `json:"activeConnections"`
+	QuotaLimit       int     `json:"quotaLimit,omitempty"`
+	QuotaUsed        int     `json:"quotaUsed,omitempty"`
+	OverQuota        bool    `json:"overQuota,omitempty"`
+}
+
+// handleUsageProviders returns per-provider aggregate usage with quota overlay.
+func (s *Server) handleUsageProviders(w http.ResponseWriter, r *http.Request) {
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "7d"
+	}
+
+	var cutoffKey string
+	switch period {
+	case "24h", "today":
+		cutoffKey = time.Now().UTC().Format("2006-01-02")
+	case "7d":
+		cutoffKey = time.Now().UTC().AddDate(0, 0, -6).Format("2006-01-02")
+	case "30d":
+		cutoffKey = time.Now().UTC().AddDate(0, 0, -29).Format("2006-01-02")
+	case "60d":
+		cutoffKey = time.Now().UTC().AddDate(0, 0, -59).Format("2006-01-02")
+	default:
+		cutoffKey = time.Now().UTC().AddDate(0, 0, -6).Format("2006-01-02")
+	}
+
+	days, err := s.DB.GetUsageDailyRange(cutoffKey)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get provider usage"})
+		return
+	}
+
+	// Aggregate by provider
+	byProvider := make(map[string]*ProviderUsageAggregate)
+	for _, day := range days {
+		for name, counter := range day.ByProvider {
+			agg := byProvider[name]
+			if agg == nil {
+				agg = &ProviderUsageAggregate{Provider: name}
+				byProvider[name] = agg
+			}
+			agg.Requests += counter.Requests
+			agg.PromptTokens += counter.PromptTokens
+			agg.CompletionTokens += counter.CompletionTokens
+			agg.Cost += counter.Cost
+		}
+	}
+
+	// Overlay connection info and quota
+	conns, _ := s.DB.ListConnections()
+	connByProvider := make(map[string]int)
+	activeByProvider := make(map[string]int)
+	quotaByProvider := make(map[string]int)
+	quotaUsedByProvider := make(map[string]int)
+
+	for _, c := range conns {
+		connByProvider[c.Provider]++
+		if c.IsActive {
+			activeByProvider[c.Provider]++
+		}
+		if c.Data.QuotaLimit > 0 {
+			quotaByProvider[c.Provider] += c.Data.QuotaLimit
+			quotaPeriod := c.Data.QuotaPeriod
+			if quotaPeriod == "" {
+				quotaPeriod = "daily"
+			}
+			quotaUsedByProvider[c.Provider] += s.DB.GetConnectionUsageCount(c.ID, quotaPeriod)
+		}
+	}
+
+	for name, agg := range byProvider {
+		agg.Connections = connByProvider[name]
+		agg.ActiveConns = activeByProvider[name]
+		if ql, ok := quotaByProvider[name]; ok && ql > 0 {
+			agg.QuotaLimit = ql
+			agg.QuotaUsed = quotaUsedByProvider[name]
+			agg.OverQuota = agg.QuotaUsed >= ql
+		}
+	}
+
+	// Also include providers with connections but no usage in period
+	for provName, count := range connByProvider {
+		if _, exists := byProvider[provName]; !exists {
+			byProvider[provName] = &ProviderUsageAggregate{
+				Provider:    provName,
+				Connections: count,
+				ActiveConns: activeByProvider[provName],
+			}
+		}
+	}
+
+	result := make([]ProviderUsageAggregate, 0, len(byProvider))
+	for _, agg := range byProvider {
+		result = append(result, *agg)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"providers": result, "period": period})
+}
