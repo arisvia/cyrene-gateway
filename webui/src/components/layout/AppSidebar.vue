@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
 import { formatUptime } from '@/lib/format'
 import { LOCALES, locale, setLocale } from '@/i18n'
-import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal, ScrollText, Link2, MessageSquare, Sparkles, Languages } from 'lucide-vue-next'
+import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal, ScrollText, Link2, MessageSquare, Sparkles, Languages, ShieldAlert } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const route = useRoute()
@@ -41,6 +41,7 @@ const navMain = [
 const navSystem = [
   { path: '/proxies', label: 'Proxy Pools', icon: Globe },
   { path: '/tunnel', label: 'Tunnel', icon: Network },
+  { path: '/mitm', label: 'MITM Proxy', icon: ShieldAlert },
   { path: '/settings', label: 'Settings', icon: Settings },
   { path: '/status', label: 'Status', icon: Activity },
 ]

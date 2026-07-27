@@ -14,6 +14,8 @@ type Config struct {
 	Dashboard string
 	PanelURL  string
 	Secret    string
+	MITM      bool
+	MITMPort  int
 }
 
 func Load() *Config {
@@ -25,6 +27,8 @@ func Load() *Config {
 	flag.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local dashboard directory path (empty=use embedded)")
 	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded)")
 	flag.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "Dashboard access password")
+	flag.BoolVar(&cfg.MITM, "mitm", false, "Enable MITM proxy (local deployments only, requires localhost bind)")
+	flag.IntVar(&cfg.MITMPort, "mitm-port", envIntOrDefault("CYRENE_MITM_PORT", 443), "MITM proxy listen port")
 	flag.Parse()
 
 	cfg.DataDir = os.Getenv("DATA_DIR")

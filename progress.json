@@ -332,7 +332,7 @@
       "id": 22,
       "name": "MITM Proxy (optional, local mode)",
       "description": "Man-in-the-middle proxy for tools requiring HTTPS interception — only enabled for local/self-hosted deployments via explicit flag",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Backend: MITM proxy core (TLS interception with generated CA cert, request rewriting)",
         "Backend: -mitm flag (default off) + -mitm-port, explicit opt-in for local deployments only",
@@ -342,7 +342,7 @@
         "Panel: graceful degradation — clear 'disabled (server mode)' messaging when -mitm is off",
         "Safety: refuse to start MITM when bound to 0.0.0.0 (require explicit localhost bind)"
       ],
-      "notes": "Optional feature. Server deployments (0.0.0.0) should never enable this. Only for local/self-use scenarios (e.g. Antigravity token capture)."
+      "notes": "Completed 2026-07-27. internal/mitm package: config (tool hosts/URL patterns/host rewrite), cert (ECDSA P-256 Root CA + per-domain leaf certs via SNI, cached), dns (hosts file add/remove per tool + flush), server (in-process TLS proxy on 127.0.0.1, passthrough vs intercept to local gateway /v1/chat/completions, traffic ring buffer). Config: -mitm (default off) + -mitm-port (default 443, CYRENE_MITM_PORT). Safety: MITM only enabled when -mitm AND host is 127.0.0.1/localhost — refuses on 0.0.0.0. Endpoints: GET /api/mitm/status, POST start/stop, GET cert (PEM download), POST dns (per-tool toggle), GET traffic. Shutdown hook removes DNS entries. Panel: MitmView (status card, CA install instructions per OS, per-tool DNS toggles, live traffic log table, disabled-state messaging). Sidebar + router wired."
     },
     {
       "id": 23,
@@ -361,7 +361,7 @@
       ]
     }
   ],
-  "current_phase": 22,
+  "current_phase": 23,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

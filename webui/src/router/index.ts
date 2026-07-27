@@ -21,6 +21,7 @@ const router = createRouter({
     { path: '/tokensaver', component: () => import('@/views/TokenSaverView.vue') },
     { path: '/proxies', component: () => import('@/views/ProxiesView.vue') },
     { path: '/tunnel', component: () => import('@/views/TunnelView.vue') },
+    { path: '/mitm', component: () => import('@/views/MitmView.vue') },
     { path: '/settings', component: () => import('@/views/SettingsView.vue') },
     { path: '/status', component: () => import('@/views/StatusView.vue') },
   ],

@@ -69,6 +69,9 @@ func main() {
 	<-done
 	slog.Info("Shutting down gracefully...")
 
+	// Stop MITM proxy (removes DNS entries) if it was running
+	srv.MITM.Shutdown()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
