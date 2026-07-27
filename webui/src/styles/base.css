@@ -95,3 +95,21 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ═══════════ Mobile Responsive ═══════════ */
+@media (max-width: 768px) {
+  .main { margin-left: 0; }
+  .content { padding: 20px 16px 80px; }
+  .page-title { font-size: 17px; }
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ═══════════ Accessibility ═══════════ */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) { outline: none; }
+[role="button"] { cursor: pointer; }

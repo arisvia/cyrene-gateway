@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useGatewayStore, type Provider, type RegistryProvider } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import { useKeyboardShortcuts } from '@/lib/shortcuts'
 import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
 import GCard from '@/components/ui/GCard.vue'
@@ -17,6 +18,12 @@ const toast = useToast()
 
 // --- Search ---
 const search = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
+
+useKeyboardShortcuts({
+  onSearch: () => searchInput.value?.focus(),
+  onEscape: () => { showAdd.value = false },
+})
 
 // --- Category grouping ---
 interface CategoryGroup {
@@ -149,7 +156,7 @@ function goDetail(providerId: string) {
     <div class="toolbar">
       <div class="search-box">
         <Search :size="14" class="search-icon" />
-        <input v-model="search" class="input search-input" placeholder="Search providers...">
+        <input ref="searchInput" v-model="search" class="input search-input" placeholder="Search providers...">
       </div>
       <div class="flex-gap">
         <GBadge>{{ store.providers.length }} connections</GBadge>

@@ -4,6 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import GToastHost from '@/components/ui/GToastHost.vue'
+import ChangelogModal from '@/components/ChangelogModal.vue'
 
 const store = useGatewayStore()
 
@@ -86,6 +87,7 @@ onMounted(checkAuth)
 
   <!-- Dashboard -->
   <div v-else-if="authState === 'ready'" class="app">
+    <ChangelogModal :version="store.version" />
     <AppSidebar @logout="doLogout" />
     <main class="main">
       <div class="content">

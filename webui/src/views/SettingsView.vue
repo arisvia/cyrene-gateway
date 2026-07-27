@@ -9,11 +9,13 @@ import { Check } from 'lucide-vue-next'
 const store = useGatewayStore()
 const saved = ref(false)
 const newPassword = ref('')
+const username = ref(localStorage.getItem('cyrene-username') || '')
 
 onMounted(() => store.loadSettings())
 
 async function save() {
   await store.saveSettings()
+  localStorage.setItem('cyrene-username', username.value)
   saved.value = true
   setTimeout(() => { saved.value = false }, 2500)
 }
@@ -34,6 +36,14 @@ async function setPassword() {
       <h1 class="page-title">Settings</h1>
       <p class="page-desc">Security, authentication, and routing configuration.</p>
     </div>
+
+    <GCard pad class="section-gap">
+      <p class="card-section-title">Profile</p>
+      <div class="settings-row" style="padding-bottom:0">
+        <div><p class="settings-title">Display name</p><p class="settings-desc">Shown in the dashboard header</p></div>
+        <input v-model="username" class="input pw" style="width:160px" placeholder="Your name">
+      </div>
+    </GCard>
 
     <GCard pad class="section-gap">
       <p class="card-section-title">Security</p>

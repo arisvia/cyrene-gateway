@@ -3,7 +3,8 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
 import { formatUptime } from '@/lib/format'
-import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal, ScrollText, Link2, MessageSquare, Sparkles } from 'lucide-vue-next'
+import { LOCALES, locale, setLocale } from '@/i18n'
+import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal, ScrollText, Link2, MessageSquare, Sparkles, Languages } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const route = useRoute()
@@ -14,6 +15,12 @@ function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
   document.documentElement.classList.toggle('light', theme.value === 'light')
   localStorage.setItem('cyrene-theme', theme.value)
+}
+
+const showLangMenu = ref(false)
+function selectLang(code: string) {
+  setLocale(code)
+  showLangMenu.value = false
 }
 
 const navMain = [
@@ -39,10 +46,19 @@ const navSystem = [
 ]
 
 const emit = defineEmits<{ logout: [] }>()
+
+const mobileOpen = ref(false)
+function closeMobile() { mobileOpen.value = false }
 </script>
 
 <template>
-  <aside class="sidebar">
+  <!-- Mobile hamburger -->
+  <button class="mobile-toggle" @click="mobileOpen = true" aria-label="Open menu">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+  </button>
+  <!-- Mobile overlay -->
+  <div v-if="mobileOpen" class="mobile-overlay" @click="closeMobile"></div>
+  <aside :class="['sidebar', mobileOpen && 'mobile-open']">
     <div class="sidebar-brand">
       <img src="/icon.png" alt="Cyrene" class="brand-icon-img">
       <span class="brand-name">Cyrene</span>
@@ -53,6 +69,7 @@ const emit = defineEmits<{ logout: [] }>()
       <router-link
         v-for="item in navMain" :key="item.path" :to="item.path"
         :class="['nav-item', route.path === item.path && 'active']"
+        @click="closeMobile"
       >
         <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
       </router-link>
@@ -60,6 +77,7 @@ const emit = defineEmits<{ logout: [] }>()
       <router-link
         v-for="item in navSystem" :key="item.path" :to="item.path"
         :class="['nav-item', route.path === item.path && 'active']"
+        @click="closeMobile"
       >
         <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
       </router-link>
@@ -67,6 +85,18 @@ const emit = defineEmits<{ logout: [] }>()
     <div class="sidebar-footer">
       <span class="status-dot"></span>
       <span class="status-text">{{ store.health.status || 'online' }} · {{ formatUptime(store.health.uptimeSeconds) }}</span>
+      <div class="lang-wrap">
+        <button class="footer-btn" @click="showLangMenu = !showLangMenu" title="Language">
+          <Languages :size="14" />
+        </button>
+        <div v-if="showLangMenu" class="lang-menu">
+          <button v-for="l in LOCALES" :key="l.code"
+            :class="['lang-item', locale === l.code && 'active']"
+            @click="selectLang(l.code)">
+            <span>{{ l.flag }}</span><span>{{ l.label }}</span>
+          </button>
+        </div>
+      </div>
       <button class="footer-btn" @click="toggleTheme" :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'">
         <Sun v-if="theme === 'dark'" :size="14" />
         <Moon v-else :size="14" />
@@ -142,4 +172,45 @@ const emit = defineEmits<{ logout: [] }>()
 }
 .footer-btn + .footer-btn { margin-left: 0; }
 .footer-btn:hover { color: var(--text); background: var(--glass-hover); border-color: var(--glass-border); }
+.lang-wrap { position: relative; margin-left: auto; }
+.lang-menu {
+  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 100;
+  min-width: 150px; padding: 6px;
+  background: var(--dialog-bg); border: 1px solid var(--glass-border-hover);
+  border-radius: var(--radius); box-shadow: var(--glass-depth);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  animation: langIn 0.15s var(--ease-spring);
+}
+@keyframes langIn { from { opacity: 0; transform: translateY(4px) scale(0.96); } }
+.lang-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted); font-size: 12px;
+  font-family: var(--font); cursor: pointer; transition: all 0.12s ease;
+}
+.lang-item:hover { background: var(--glass-hover); color: var(--text); }
+.lang-item.active { color: var(--accent); font-weight: 550; }
+
+/* Mobile */
+.mobile-toggle {
+  display: none; position: fixed; top: 14px; left: 14px; z-index: 50;
+  width: 36px; height: 36px; border-radius: var(--radius-sm);
+  align-items: center; justify-content: center;
+  background: var(--glass); border: 1px solid var(--glass-border);
+  color: var(--text-muted); cursor: pointer;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.mobile-overlay {
+  display: none; position: fixed; inset: 0; z-index: 39;
+  background: var(--overlay-bg);
+}
+@media (max-width: 768px) {
+  .mobile-toggle { display: flex; }
+  .mobile-overlay { display: block; }
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s var(--ease-out-expo);
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+}
 </style>
