@@ -261,7 +261,7 @@
       "id": 18,
       "name": "CLI Tools Integration",
       "description": "Per-tool configuration pages for AI coding CLIs: endpoint presets, API key binding, one-click setup instructions",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "CLI tool registry: Claude Code, Cursor, Cline, Copilot, Kilo, OpenCode, Codex, Grok Build, Droid, Hermes, OpenClaw, DeepSeek TUI",
         "Backend: GET /api/cli-tools (tool list + status), GET /api/cli-tools/{id} (detail + config)",
@@ -271,7 +271,8 @@
         "Panel: tool detail page — base URL select (gateway endpoint), API key select, setup instructions, config write button",
         "Panel: endpoint preset control (auto-detect gateway URL variants: localhost, tunnel, LAN)",
         "Panel: MITM link card for tools requiring MITM (Antigravity) — links to MITM page when available"
-      ]
+      ],
+      "notes": "Completed 2026-07-27. internal/cli package: registry (14 tools, configType env/custom/guide/mitm), per-tool adapters for JSON (claude/cline/copilot/kilo/opencode/droid/openclaw), TOML (codex/deepseek-tui/grok-build/jcode) and YAML+env (hermes). Minimal section-aware TOML line editor + .env helpers (no third-party deps). Endpoints: GET /api/cli-tools, GET /api/cli-tools/all-statuses, GET/POST/DELETE /api/cli-tools/{id}. Panel: CLIToolsView card grid (configurable + manual/MITM sections) + CLIToolDetailView (apply form with model chips, guide renderer, MITM placeholder, notes). Adapter round-trip tests with isolated temp HOME. Endpoint preset uses window.location.origin (tunnel/LAN variant detection deferred to Phase 20 Endpoint page)."
     },
     {
       "id": 19,
@@ -357,7 +358,7 @@
       ]
     }
   ],
-  "current_phase": 18,
+  "current_phase": 19,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
@@ -365,5 +366,5 @@
     "decolua/9router": "primary upstream, sync every maintenance cycle",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
-  "last_updated": "2026-07-26"
+  "last_updated": "2026-07-27"
 }
