@@ -313,7 +313,7 @@
       "id": 21,
       "name": "i18n, Mobile & Polish",
       "description": "Internationalization (25+ languages like 9router), responsive mobile layout, UX polish to match/exceed 9router",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "i18n framework: vue-i18n with JSON locale files (port 9router i18n literals where applicable)",
         "Translate all UI strings: en, zh-CN, ja, ko, ru, es, fr, de, pt-BR, tr (minimum 10 languages)",
@@ -325,7 +325,8 @@
         "Loading skeletons and optimistic UI updates",
         "Toast notification system (success/error feedback for all actions)",
         "Accessibility pass: focus states, aria labels, contrast ratios"
-      ]
+      ],
+      "notes": "Completed 2026-07-27. DOM-based runtime i18n (MutationObserver text-node walking, same approach as 9router) with Vue plugin wrapper. 10 locale files ported from 9router literals (en, zh-CN, ja, ko, ru, es, fr, de, pt-BR, tr). Language switcher in sidebar footer with flag icons + localStorage persistence + browser language auto-detect. Mobile: collapsible sidebar with hamburger toggle + overlay at 768px breakpoint, responsive content padding. Keyboard: Cmd/Ctrl+K focuses search (ProvidersView), Esc closes all modals (GModal global listener). Changelog modal shows on version change (localStorage-seen gate). Profile section in Settings (display name persisted). GSkeleton shimmer component. Accessibility: focus-visible outlines, aria-label on mobile toggle, prefers-reduced-motion respected. Toast system already existed from Phase 15."
     },
     {
       "id": 22,
@@ -360,7 +361,7 @@
       ]
     }
   ],
-  "current_phase": 21,
+  "current_phase": 22,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
@@ -368,5 +369,5 @@
     "decolua/9router": "primary upstream, sync every maintenance cycle",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
-  "last_updated": "2026-07-27"
+  "last_updated": "2026-07-28"
 }
