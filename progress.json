@@ -278,7 +278,7 @@
       "id": 19,
       "name": "Usage & Observability Enhancement",
       "description": "Request details table, real-time SSE log stream, provider topology, console log page",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Backend: GET /api/usage/request-details (paginated, filterable by provider/model/status)",
         "Backend: GET /api/usage/stream (SSE real-time request events)",
@@ -290,7 +290,8 @@
         "Panel: Provider Limits cards (quota progress bars per connection, from 9router ProviderLimits)",
         "Panel: Console Log page — live SSE log viewer with level filter, auto-scroll, pause/resume",
         "Panel: real-time indicator on Usage overview (live request counter via SSE)"
-      ]
+      ],
+      "notes": "Completed 2026-07-27. Backend: EventBroadcaster (pub/sub SSE), /api/usage/stream (SSE with heartbeat), /api/usage/logs, /api/usage/providers (aggregate + quota overlay). recordUsage publishes events. Panel: UsageView tabs (Overview/Request Details/Provider Limits), paginated detail table with filters, provider cards with quota bars, ConsoleView (live SSE log viewer with level filter, pause/resume, auto-scroll, clear). Live indicator on Usage page. Provider Topology view deferred to Phase 20 (Endpoint page context)."
     },
     {
       "id": 20,
@@ -358,7 +359,7 @@
       ]
     }
   ],
-  "current_phase": 19,
+  "current_phase": 20,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
