@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
 import { formatUptime } from '@/lib/format'
-import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard } from 'lucide-vue-next'
+import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const route = useRoute()
@@ -19,6 +19,7 @@ function toggleTheme() {
 const navMain = [
   { path: '/providers', label: 'Providers', icon: Server },
   { path: '/media', label: 'Media', icon: Clapperboard },
+  { path: '/cli-tools', label: 'CLI Tools', icon: Terminal },
   { path: '/keys', label: 'API Keys', icon: KeyRound },
   { path: '/aliases', label: 'Model Aliases', icon: GitBranch },
   { path: '/combos', label: 'Combos', icon: Layers },

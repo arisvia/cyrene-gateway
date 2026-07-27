@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
+	"github.com/arisvia/cyrene-gateway/internal/cli"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
@@ -26,6 +27,7 @@ type Server struct {
 	Dashboard   *DashboardHandler
 	Auth        *AuthHandler
 	Tunnel      *TunnelHandler
+	CLI         *CLIHandler
 	startTime   time.Time
 }
 
@@ -51,6 +53,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Dashboard:   NewDashboardHandler(cfg),
 		Auth:        NewAuthHandler(database),
 		Tunnel:      NewTunnelHandler(tunnelMgr),
+		CLI:         NewCLIHandler(cli.NewManager()),
 		startTime:   time.Now(),
 	}
 	s.registerRoutes()
@@ -153,6 +156,13 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/tunnel/tailscale-install", s.Tunnel.HandleInstall)
 	s.Router.HandleFunc("POST /api/tunnel/tailscale-enable", s.Tunnel.HandleEnable)
 	s.Router.HandleFunc("POST /api/tunnel/tailscale-disable", s.Tunnel.HandleDisable)
+
+	// CLI tools integration
+	s.Router.HandleFunc("GET /api/cli-tools", s.CLI.HandleList)
+	s.Router.HandleFunc("GET /api/cli-tools/all-statuses", s.CLI.HandleAllStatuses)
+	s.Router.HandleFunc("GET /api/cli-tools/{id}", s.CLI.HandleGet)
+	s.Router.HandleFunc("POST /api/cli-tools/{id}", s.CLI.HandleApply)
+	s.Router.HandleFunc("DELETE /api/cli-tools/{id}", s.CLI.HandleReset)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
