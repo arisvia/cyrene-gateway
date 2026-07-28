@@ -281,3 +281,170 @@ func TestParseDataURI(t *testing.T) {
 		t.Fatalf("expected data=iVBORw0KGgo=, got %s", data)
 	}
 }
+
+func TestCleanJSONSchemaForGemini(t *testing.T) {
+	// Schema with unsupported keywords, anyOf, const, additionalProperties
+	schema := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"$schema":              "http://json-schema.org/draft-07/schema#",
+		"properties": map[string]any{
+			"name": map[string]any{
+				"type":      "string",
+				"minLength": float64(1),
+				"maxLength": float64(100),
+				"format":    "email",
+			},
+			"status": map[string]any{
+				"const": "active",
+			},
+			"value": map[string]any{
+				"anyOf": []any{
+					map[string]any{"type": "string"},
+					map[string]any{"type": "null"},
+				},
+			},
+			"nested": map[string]any{
+				"properties": map[string]any{
+					"count": map[string]any{
+						"type":    []any{"integer", "null"},
+						"default": float64(0),
+					},
+				},
+			},
+			"empty_obj": map[string]any{
+				"type": "object",
+			},
+		},
+		"required": []any{"name", "nonexistent"},
+	}
+
+	cleaned := cleanJSONSchemaForGemini(schema)
+
+	// Top-level unsupported keywords removed
+	if _, ok := cleaned["additionalProperties"]; ok {
+		t.Fatal("additionalProperties should be removed")
+	}
+	if _, ok := cleaned["$schema"]; ok {
+		t.Fatal("$schema should be removed")
+	}
+
+	props := cleaned["properties"].(map[string]any)
+
+	// name: constraints removed, type preserved
+	name := props["name"].(map[string]any)
+	if _, ok := name["minLength"]; ok {
+		t.Fatal("minLength should be removed")
+	}
+	if _, ok := name["format"]; ok {
+		t.Fatal("format should be removed")
+	}
+	if name["type"] != "string" {
+		t.Fatalf("expected name type=string, got %v", name["type"])
+	}
+
+	// status: const converted to enum
+	status := props["status"].(map[string]any)
+	if _, ok := status["const"]; ok {
+		t.Fatal("const should be removed")
+	}
+	enumArr, ok := status["enum"].([]any)
+	if !ok || len(enumArr) != 1 || enumArr[0] != "active" {
+		t.Fatalf("expected enum=[active], got %v", status["enum"])
+	}
+	if status["type"] != "string" {
+		t.Fatalf("expected status type=string (inferred for enum), got %v", status["type"])
+	}
+
+	// value: anyOf flattened to best non-null schema
+	value := props["value"].(map[string]any)
+	if _, ok := value["anyOf"]; ok {
+		t.Fatal("anyOf should be flattened")
+	}
+	if value["type"] != "string" {
+		t.Fatalf("expected value type=string (from anyOf), got %v", value["type"])
+	}
+
+	// nested.count: type array flattened, default removed
+	nested := props["nested"].(map[string]any)
+	if _, ok := nested["type"]; !ok {
+		// nested has properties, so ensureObjectType should add type=object
+		t.Fatal("nested should have type=object inferred")
+	}
+	nestedProps := nested["properties"].(map[string]any)
+	count := nestedProps["count"].(map[string]any)
+	if count["type"] != "integer" {
+		t.Fatalf("expected count type=integer (from array), got %v", count["type"])
+	}
+	if _, ok := count["default"]; ok {
+		t.Fatal("default should be removed")
+	}
+
+	// empty_obj: placeholder added
+	emptyObj := props["empty_obj"].(map[string]any)
+	emptyProps, ok := emptyObj["properties"].(map[string]any)
+	if !ok || len(emptyProps) == 0 {
+		t.Fatal("empty object should get placeholder properties")
+	}
+	if _, ok := emptyProps["reason"]; !ok {
+		t.Fatal("placeholder should have 'reason' property")
+	}
+
+	// required: nonexistent field removed
+	reqArr, ok := cleaned["required"].([]any)
+	if !ok || len(reqArr) != 1 {
+		t.Fatalf("expected required=[name], got %v", cleaned["required"])
+	}
+	if reqArr[0] != "name" {
+		t.Fatalf("expected required[0]=name, got %v", reqArr[0])
+	}
+}
+
+func TestGeminiToolSchemaSanitized(t *testing.T) {
+	body := map[string]any{
+		"model": "gpt-4",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "test"},
+		},
+		"tools": []any{
+			map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name":        "search",
+					"description": "Search the web",
+					"parameters": map[string]any{
+						"type":                 "object",
+						"additionalProperties": false,
+						"properties": map[string]any{
+							"query": map[string]any{
+								"type":      "string",
+								"minLength": float64(1),
+							},
+						},
+						"required": []any{"query"},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := openAIToGemini("gemini-pro", body, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tools := result["tools"].([]any)
+	toolGroup := tools[0].(map[string]any)
+	decls := toolGroup["functionDeclarations"].([]any)
+	decl := decls[0].(map[string]any)
+	params := decl["parameters"].(map[string]any)
+
+	if _, ok := params["additionalProperties"]; ok {
+		t.Fatal("additionalProperties should be stripped from Gemini tool schema")
+	}
+	props := params["properties"].(map[string]any)
+	query := props["query"].(map[string]any)
+	if _, ok := query["minLength"]; ok {
+		t.Fatal("minLength should be stripped from Gemini tool schema")
+	}
+}

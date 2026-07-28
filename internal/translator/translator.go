@@ -352,7 +352,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 
 	result["contents"] = contents
 
-	// Convert tools
+	// Convert tools (sanitize schemas for Gemini compatibility — 9router#2877)
 	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
 		var declarations []any
 		for _, t := range tools {
@@ -364,10 +364,14 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 			if !ok {
 				continue
 			}
+			params, _ := fn["parameters"].(map[string]any)
+			if params != nil {
+				params = cleanJSONSchemaForGemini(params)
+			}
 			declarations = append(declarations, map[string]any{
 				"name":        fn["name"],
 				"description": fn["description"],
-				"parameters":  fn["parameters"],
+				"parameters":  params,
 			})
 		}
 		if len(declarations) > 0 {

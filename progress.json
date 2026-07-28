@@ -360,7 +360,7 @@
         "If upstream has relevant changes: port to Go, commit, push",
         "If no action needed: report 'no pending work' and exit"
       ],
-      "notes": "Deferred: Phase 24-26 (WebUI overhaul) take priority. 2026-07-28 session fixed: URL double-append bug, Qoder COSY protocol port, OpenCode Free support, /v1/models free provider exposure, panel auth-type-aware forms. Commit 0b2fd52."
+      "notes": "Deferred: Phase 24-26 (WebUI overhaul) take priority. 2026-07-28 session fixed: URL double-append bug, Qoder COSY protocol port, OpenCode Free support, /v1/models free provider exposure, panel auth-type-aware forms. Commit 0b2fd52. 2026-07-28 (2nd): Gemini tool schema sanitization (9router#2877) — ported cleanJSONSchemaForAntigravity to Go (internal/translator/schema.go), strips unsupported keywords, flattens anyOf/oneOf/allOf, converts const→enum, adds placeholders for empty objects. No new upstream commits since pin. No open issues/PRs on cyrene-gateway."
     },
     {
       "id": 24,
