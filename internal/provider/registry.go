@@ -35,8 +35,29 @@ type ProviderInfo struct {
 	ClientID      string `json:"clientId,omitempty"`
 	LoginURL      string `json:"loginUrl,omitempty"` // browser-based device login page (qoder)
 
+	// Auth-mode-specific overrides (9router#2881): when a connection uses
+	// api-key auth on a provider whose primary transport is OAuth, route to
+	// a different base URL / API type.
+	ApiKeyBaseURL string `json:"apiKeyBaseUrl,omitempty"`
+	ApiKeyAPIType string `json:"apiKeyApiType,omitempty"`
+
 	// Extra headers sent on every upstream request (e.g. x-opencode-client)
 	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// EffectiveBaseURL returns the base URL to use for a connection, considering
+// auth-mode-specific overrides. If the connection uses an API key and the
+// provider defines ApiKeyBaseURL, that takes precedence over the default.
+func (p ProviderInfo) EffectiveBaseURL(connAuthType string, hasAPIKey bool) (baseURL, apiType string) {
+	baseURL = p.BaseURL
+	apiType = p.APIType
+	if hasAPIKey && p.ApiKeyBaseURL != "" {
+		baseURL = p.ApiKeyBaseURL
+		if p.ApiKeyAPIType != "" {
+			apiType = p.ApiKeyAPIType
+		}
+	}
+	return baseURL, apiType
 }
 
 // Registry is the static provider registry, populated in init() by registry_data.go

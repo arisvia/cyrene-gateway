@@ -195,9 +195,10 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		return testResult{Error: "unknown provider: " + conn.Provider}
 	}
 
-	baseURL := providerInfo.BaseURL
+	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
+		effectiveAPIType = providerInfo.APIType
 	}
 	if baseURL == "" {
 		return testResult{Error: "no base URL configured"}
@@ -208,7 +209,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	var targetURL string
 	var testBody []byte
 
-	switch providerInfo.APIType {
+	switch effectiveAPIType {
 	case "anthropic":
 		targetURL = provider.BuildChatURL(baseURL, "anthropic")
 		testBody, _ = json.Marshal(map[string]any{
@@ -240,10 +241,10 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	}
 
 	if conn.Data.APIKey != "" {
-		if providerInfo.APIType == "anthropic" {
+		if effectiveAPIType == "anthropic" {
 			req.Header.Set("x-api-key", conn.Data.APIKey)
 			req.Header.Set("anthropic-version", "2023-06-01")
-		} else if providerInfo.APIType == "gemini" {
+		} else if effectiveAPIType == "gemini" {
 			q := req.URL.Query()
 			q.Set("key", conn.Data.APIKey)
 			req.URL.RawQuery = q.Encode()

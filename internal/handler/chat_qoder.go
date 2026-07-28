@@ -19,7 +19,7 @@ import (
 )
 
 // handleQoderChat executes a chat request against Qoder's COSY-signed endpoint.
-func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, modelInfo model.ModelInfo, conn *model.ProviderConnection, providerInfo provider.ProviderInfo) {
+func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, modelInfo model.ModelInfo, conn *model.ProviderConnection, providerInfo provider.ProviderInfo) {
 	psd := conn.Data.ProviderSpecificData
 	userID := ""
 	machineID := ""
@@ -43,9 +43,8 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		MachineID: machineID,
 	}
 
-	// Build the request body map from the incoming request
+	// Build the request body map from the raw body to preserve unknown fields
 	var bodyMap map[string]any
-	rawBody, _ := json.Marshal(req)
 	json.Unmarshal(rawBody, &bodyMap)
 
 	client := s.getHTTPClient(5 * time.Minute)

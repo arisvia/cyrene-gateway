@@ -645,6 +645,10 @@ func init() {
 		DeviceCodeURL: "https://auth.kimi.com/api/oauth/device_authorization",
 		TokenURL:      "https://auth.kimi.com/api/oauth/token",
 		ClientID:      "17e5f671-d194-4dfb-9706-5516cb48c098",
+		// 9router#2881: platform API keys (platform.kimi.ai) use the general
+		// Moonshot OpenAI-compatible endpoint, not the /coding/ Anthropic one.
+		ApiKeyBaseURL: "https://api.moonshot.cn/v1",
+		ApiKeyAPIType: "openai",
 	}
 	Registry["kiro"] = ProviderInfo{
 		ID: "kiro", Name: "Kiro AI",

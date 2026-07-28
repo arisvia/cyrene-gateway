@@ -49,9 +49,10 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 
 	s.tryRefreshToken(conn)
 
-	baseURL := providerInfo.BaseURL
+	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
+		effectiveAPIType = providerInfo.APIType
 	}
 	if baseURL == "" {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "no base URL configured"})
@@ -62,7 +63,7 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	var targetURL string
 	var testBody []byte
 
-	switch providerInfo.APIType {
+	switch effectiveAPIType {
 	case "anthropic":
 		targetURL = provider.BuildChatURL(baseURL, "anthropic")
 		testBody, _ = json.Marshal(map[string]any{
@@ -76,7 +77,7 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
 	default:
-		targetURL = provider.BuildChatURL(baseURL, providerInfo.APIType)
+		targetURL = provider.BuildChatURL(baseURL, effectiveAPIType)
 		testBody, _ = json.Marshal(map[string]any{
 			"model":      modelInfo.Model,
 			"max_tokens": 5,
@@ -91,10 +92,10 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if conn.Data.APIKey != "" {
-		if providerInfo.APIType == "anthropic" {
+		if effectiveAPIType == "anthropic" {
 			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
 			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
-		} else if providerInfo.APIType == "gemini" {
+		} else if effectiveAPIType == "gemini" {
 			q := upstreamReq.URL.Query()
 			q.Set("key", conn.Data.APIKey)
 			upstreamReq.URL.RawQuery = q.Encode()

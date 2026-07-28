@@ -48,8 +48,14 @@ type Message struct {
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read body"})
+		return
+	}
+
 	var req ChatCompletionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(rawBody, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
@@ -67,12 +73,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Check if model string is a combo
 	if combo, ok := provider.ResolveCombo(req.Model, s.DB); ok {
-		s.handleComboChat(w, r, req, combo)
+		s.handleComboChat(w, r, req, rawBody, combo)
 		return
 	}
 
 	// Single model path
-	s.handleSingleModelChat(w, r, req)
+	s.handleSingleModelChat(w, r, req, rawBody)
 }
 
 // runLoopGuard analyzes messages for loop patterns and returns a hint if detected.
@@ -134,7 +140,7 @@ func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 }
 
 // handleComboChat processes a combo request with fallback/round-robin strategy.
-func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, combo *model.Combo) {
+func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, combo *model.Combo) {
 	// Determine strategy from combo kind or global settings
 	strategy := provider.StrategyFallback
 	if combo.Kind == "round-robin" {
@@ -208,9 +214,10 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		// Phase 9: Pre-check OAuth token refresh
 		s.tryRefreshToken(conn)
 
-		baseURL := providerInfo.BaseURL
+		baseURL, comboAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 		if conn.Data.BaseURL != "" {
 			baseURL = conn.Data.BaseURL
+			comboAPIType = providerInfo.APIType
 		}
 		if baseURL == "" {
 			lastError = fmt.Sprintf("no base URL for provider: %s", modelInfo.Provider)
@@ -218,17 +225,18 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		// Build and execute upstream request
-		reqCopy := req
-		reqCopy.Model = modelInfo.Model
-		bodyBytes, err := json.Marshal(reqCopy)
+		// Build and execute upstream request — use raw body to preserve unknown fields
+		var comboBody map[string]any
+		json.Unmarshal(rawBody, &comboBody)
+		comboBody["model"] = modelInfo.Model
+		bodyBytes, err := json.Marshal(comboBody)
 		if err != nil {
 			lastError = "failed to marshal request"
 			lastStatus = 500
 			continue
 		}
 
-		targetURL := provider.BuildChatURL(baseURL, providerInfo.APIType)
+		targetURL := provider.BuildChatURL(baseURL, comboAPIType)
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			lastError = "failed to create upstream request"
@@ -306,7 +314,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 }
 
 // handleSingleModelChat processes a single model request (non-combo).
-func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest) {
+func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte) {
 	// Resolve model to provider + model name
 	modelInfo, err := provider.ResolveModel(req.Model, s.DB)
 	if err != nil || modelInfo.Provider == "" {
@@ -357,10 +365,11 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// Phase 9: Pre-check OAuth token refresh
 	s.tryRefreshToken(conn)
 
-	// Determine base URL
-	baseURL := providerInfo.BaseURL
+	// Determine base URL (auth-mode-aware: 9router#2881)
+	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
+		effectiveAPIType = providerInfo.APIType // user override resets to provider default
 	}
 	if baseURL == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -371,7 +380,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// Determine target format and build upstream request
 	targetFormat := translator.FormatOpenAI
-	switch providerInfo.APIType {
+	switch effectiveAPIType {
 	case "anthropic":
 		targetFormat = translator.FormatAnthropic
 	case "gemini":
@@ -380,7 +389,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// --- Qoder special path: COSY-signed custom protocol ---
 	if modelInfo.Provider == "qoder" {
-		s.handleQoderChat(w, r, req, modelInfo, conn, providerInfo)
+		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
 		return
 	}
 
@@ -388,13 +397,11 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	var targetURL string
 
 	if targetFormat == translator.FormatOpenAI {
-		// Standard OpenAI-compatible passthrough
-		req.Model = modelInfo.Model
-
-		// Phase 9: Loop guard + termination prompt + max_tokens clamping
+		// Standard OpenAI-compatible passthrough — use raw body to preserve
+		// unknown fields (service_tier, top_p, stop, etc.) per 9router c97963c.
 		var bodyMap map[string]any
-		rawBody, _ := json.Marshal(req)
 		json.Unmarshal(rawBody, &bodyMap)
+		bodyMap["model"] = modelInfo.Model
 
 		// Loop guard detection
 		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
@@ -417,11 +424,10 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
 			return
 		}
-		targetURL = provider.BuildChatURL(baseURL, providerInfo.APIType)
+		targetURL = provider.BuildChatURL(baseURL, effectiveAPIType)
 	} else {
-		// Translate request to provider format
+		// Translate request to provider format — use raw body to preserve unknown fields
 		var bodyMap map[string]any
-		rawBody, _ := json.Marshal(req)
 		json.Unmarshal(rawBody, &bodyMap)
 
 		// Phase 9: Loop guard + termination prompt for translated formats
@@ -780,9 +786,10 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseURL := providerInfo.BaseURL
+	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
+		effectiveAPIType = providerInfo.APIType
 	}
 
 	// Set the resolved model name
@@ -791,7 +798,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Determine target URL based on provider API type
 	var targetURL string
-	switch providerInfo.APIType {
+	switch effectiveAPIType {
 	case "anthropic":
 		targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
 	default:
@@ -808,7 +815,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Set auth headers
 	if conn.Data.APIKey != "" {
-		if providerInfo.APIType == "anthropic" {
+		if effectiveAPIType == "anthropic" {
 			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
 			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
 		} else {
