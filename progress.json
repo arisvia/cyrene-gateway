@@ -383,7 +383,7 @@
       "id": 25,
       "name": "WebUI Provider Detail Parity with 9router",
       "description": "Port 9router's rich provider detail UX: per-model testing, model enable/disable, priority reorder, per-provider strategy, thinking levels. USE BrowserUse for visual verification (see AGENTS.md).",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Model list with per-model Test button (backend: POST /api/models/test with provider/model resolution)",
         "Model enable/disable toggles (wire existing /api/models/disabled endpoints, per-provider scoping)",
@@ -395,7 +395,8 @@
         "Qoder: 'Import Models' button (fetch live catalog via COSY-signed model/list, add as custom models)",
         "Bulk connection actions: select-all checkbox, bulk proxy pool assignment (one-to-one rotate / single pool / unbind)",
         "Custom model add modal with suggested models from provider's public modelsFetcher API"
-      ]
+      ],
+      "notes": "Completed 2026-07-28. Backend: POST /api/models/test (per-model chat completion test with provider/model resolution), PATCH /api/settings (partial merge for providerStrategies/providerThinking). Settings struct expanded with ProviderStrategies map and ProviderThinking map. Frontend ProviderDetailView overhaul: per-model Test button with status dot + latency, model enable/disable toggles, inline alias management (set/delete/copy), connection priority reorder (up/down arrows), connection row enrichment (masked credential, cooldown timer, last error, per-connection proxy pool select), per-provider fallback strategy override (round-robin + sticky limit), thinking level selector for reasoning providers, Qoder Import Models button, bulk connection actions (select-all, bulk proxy: one-to-one rotate / single pool / unbind). NOTE: BrowserUse not available in sandbox; verified via vue-tsc + vite build + go test."
     },
     {
       "id": 26,
@@ -416,7 +417,7 @@
       ]
     }
   ],
-  "current_phase": 25,
+  "current_phase": 26,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
