@@ -110,6 +110,7 @@ func (s *Server) registerRoutes() {
 	// Dashboard management API
 	s.Router.HandleFunc("GET /api/settings", s.handleGetSettings)
 	s.Router.HandleFunc("PUT /api/settings", s.handlePutSettings)
+	s.Router.HandleFunc("PATCH /api/settings", s.handlePatchSettings)
 	s.Router.HandleFunc("GET /api/providers", s.handleListProviders)
 	s.Router.HandleFunc("POST /api/providers", s.handleCreateProvider)
 	s.Router.HandleFunc("PUT /api/providers/{id}", s.handleUpdateProvider)
@@ -132,6 +133,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/models/disabled", s.handleListDisabledModels)
 	s.Router.HandleFunc("POST /api/models/disabled", s.handleDisableModel)
 	s.Router.HandleFunc("DELETE /api/models/disabled", s.handleEnableModel)
+	s.Router.HandleFunc("POST /api/models/test", s.handleTestModel)
 	s.Router.HandleFunc("GET /api/proxy-pools", s.handleListProxyPools)
 	s.Router.HandleFunc("POST /api/proxy-pools", s.handleCreateProxyPool)
 	s.Router.HandleFunc("GET /api/proxy-pools/{id}", s.handleGetProxyPool)
@@ -360,6 +362,43 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.DB.SaveSettings(&settings); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+// handlePatchSettings merges a partial JSON object into the existing settings.
+// This allows the frontend to update individual fields (e.g. providerStrategies)
+// without needing to send the full settings blob.
+func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
+	var patch map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	current, err := s.DB.GetSettings()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
+		return
+	}
+
+	// Marshal current settings, unmarshal patch on top, re-save
+	currentBytes, _ := json.Marshal(current)
+	var merged map[string]json.RawMessage
+	json.Unmarshal(currentBytes, &merged)
+	for k, v := range patch {
+		merged[k] = v
+	}
+	mergedBytes, _ := json.Marshal(merged)
+
+	var updated db.Settings
+	if err := json.Unmarshal(mergedBytes, &updated); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid patch data"})
+		return
+	}
+	if err := s.DB.SaveSettings(&updated); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
 	}

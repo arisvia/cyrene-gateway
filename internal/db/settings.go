@@ -10,16 +10,29 @@ var ErrNotFound = errors.New("not found")
 
 // Settings repository - single-row JSON blob store
 
+// ProviderStrategyOverride stores per-provider fallback strategy settings.
+type ProviderStrategyOverride struct {
+	FallbackStrategy      string `json:"fallbackStrategy,omitempty"`
+	StickyRoundRobinLimit int    `json:"stickyRoundRobinLimit,omitempty"`
+}
+
+// ProviderThinkingConfig stores per-provider thinking level settings.
+type ProviderThinkingConfig struct {
+	Mode string `json:"mode,omitempty"`
+}
+
 type Settings struct {
-	RequireLogin    bool   `json:"requireLogin"`
-	RequireAPIKey   bool   `json:"requireApiKey"`
-	PasswordHash    string `json:"passwordHash,omitempty"`
-	ComboStrategy   string `json:"comboStrategy,omitempty"`
-	RTKEnabled      bool   `json:"rtkEnabled"`
-	CavemanEnabled  bool   `json:"cavemanEnabled"`
-	CavemanLevel    string `json:"cavemanLevel,omitempty"`
-	PonytailEnabled bool   `json:"ponytailEnabled"`
-	PonytailLevel   string `json:"ponytailLevel,omitempty"`
+	RequireLogin       bool                                `json:"requireLogin"`
+	RequireAPIKey      bool                                `json:"requireApiKey"`
+	PasswordHash       string                              `json:"passwordHash,omitempty"`
+	ComboStrategy      string                              `json:"comboStrategy,omitempty"`
+	RTKEnabled         bool                                `json:"rtkEnabled"`
+	CavemanEnabled     bool                                `json:"cavemanEnabled"`
+	CavemanLevel       string                              `json:"cavemanLevel,omitempty"`
+	PonytailEnabled    bool                                `json:"ponytailEnabled"`
+	PonytailLevel      string                              `json:"ponytailLevel,omitempty"`
+	ProviderStrategies map[string]ProviderStrategyOverride `json:"providerStrategies,omitempty"`
+	ProviderThinking   map[string]ProviderThinkingConfig   `json:"providerThinking,omitempty"`
 }
 
 func DefaultSettings() *Settings {
