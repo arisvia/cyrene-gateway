@@ -347,7 +347,7 @@
     {
       "id": 23,
       "name": "Maintenance Mode (final, perpetual)",
-      "description": "Perpetual: issues, deps, upstream sync (9router/VansRouter), provider registry updates",
+      "description": "Perpetual: issues, deps, upstream sync (9router/VansRouter), provider registry updates. Deferred until Phase 24-26 complete.",
       "status": "pending",
       "tasks": [
         "Check GitHub Issues for bug reports or feature requests",
@@ -355,18 +355,72 @@
         "Review and merge dependabot PRs if safe",
         "Fix reported issues and push patches (tag v1.0.x)",
         "Upstream sync: compare upstream_commits hashes, analyze new commits for borrowable improvements",
+        "Upstream issue-driven hardening: scan decolua/9router open issues + merged PRs for UX bugs and protocol fixes applicable to our Go implementation (e.g. #2873 cache tokens, #2868 tool-call translation, #2767 per-provider token-saver scope, #2872 model metadata)",
         "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
         "If upstream has relevant changes: port to Go, commit, push",
         "If no action needed: report 'no pending work' and exit"
+      ],
+      "notes": "Deferred: Phase 24-26 (WebUI overhaul) take priority. 2026-07-28 session fixed: URL double-append bug, Qoder COSY protocol port, OpenCode Free support, /v1/models free provider exposure, panel auth-type-aware forms. Commit 0b2fd52."
+    },
+    {
+      "id": 24,
+      "name": "WebUI Provider Experience Overhaul",
+      "description": "Make the panel actually usable: one-click free provider enable, contextual card actions, auth-aware add flows, first-run onboarding",
+      "status": "pending",
+      "tasks": [
+        "Free providers one-click Enable: card button creates NoAuth connection instantly (zero-config, like 9router NoAuthProxyCard pattern)",
+        "Provider card contextual actions: apikey → 'Add Key' button, oauth → 'Connect' button, free → 'Enable' button, connected → status badge + quick test",
+        "Add Provider modal auth-mode adaptation: registry selection locks form fields to supported auth modes (no API key field for oauth-only, no form for NoAuth)",
+        "First-run onboarding: zero-connections state shows guided quickstart card ('Start with free providers' one-click section + API key provider walkthrough)",
+        "Provider detail: Base URL field shows stripped base as placeholder (not full endpoint path), with tooltip explaining registry default",
+        "Provider detail: NoAuth providers show 9router-style 'No authentication required' card with optional proxy pool binding",
+        "Test All feedback: per-card inline OK/FAIL badge with latency (already partially done, polish UX)",
+        "Backend: POST /api/providers/enable-free endpoint (batch-enable all NoAuth providers in one call)"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "WebUI Provider Detail Parity with 9router",
+      "description": "Port 9router's rich provider detail UX: per-model testing, model enable/disable, priority reorder, per-provider strategy, thinking levels",
+      "status": "pending",
+      "tasks": [
+        "Model list with per-model Test button (backend: POST /api/models/test with provider/model resolution)",
+        "Model enable/disable toggles (wire existing /api/models/disabled endpoints, per-provider scoping)",
+        "Model alias management inline (set/delete alias per model row, copy full model string)",
+        "Connection priority reorder: up/down buttons or drag (swap priority values via PUT)",
+        "Connection row enrichment: masked credential preview, cooldown timer countdown, last error display, per-connection proxy pool select",
+        "Per-provider fallback strategy override (round-robin toggle + sticky limit, stored in settings.providerStrategies)",
+        "Thinking level selector for reasoning-capable providers (auto/minimal/medium/high/max suffix resolution)",
+        "Qoder: 'Import Models' button (fetch live catalog via COSY-signed model/list, add as custom models)",
+        "Bulk connection actions: select-all checkbox, bulk proxy pool assignment (one-to-one rotate / single pool / unbind)",
+        "Custom model add modal with suggested models from provider's public modelsFetcher API"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "WebUI Polish & Upstream Issue Hardening",
+      "description": "UX polish to match/exceed 9router + proactive fixes from 9router's open issues and merged PRs",
+      "status": "pending",
+      "tasks": [
+        "Error UX: upstream error responses shown with actionable hints (401 → 'reconnect account', 429 → cooldown countdown, 403 → geo/IP notice)",
+        "Usage page: cache-read token tracking (9router#2873 — don't bill cached tokens at full rate)",
+        "Translator hardening: guard doubled tool-call arguments (9router#2869), preserve output indexes (9router#2747)",
+        "Per-provider token-saver scope: caveman/ponytail exclusion list for providers it breaks (9router#2767 Cursor issue)",
+        "/v1/models metadata: expose context length + capabilities per model (9router#2872)",
+        "Chat playground: model selector populated from /v1/models with provider grouping, streaming token counter",
+        "Loading states: skeleton screens on all data-heavy views (providers, usage, quota), optimistic updates on toggles",
+        "Sidebar: connection count badge on Providers item, active route highlight, collapsible groups on mobile",
+        "Dark/light theme toggle persistence + system preference detection",
+        "Accessibility: keyboard navigation for card grids, focus management on modal open/close"
       ]
     }
   ],
-  "current_phase": 23,
+  "current_phase": 24,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
   "upstream_notes": {
-    "decolua/9router": "primary upstream, sync every maintenance cycle",
+    "decolua/9router": "primary upstream, sync every maintenance cycle. ALSO scan open issues + merged PRs as optimization input — 9router has many UX bugs and protocol fixes we should proactively port (issue-driven hardening in Phase 26 and ongoing maintenance).",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
   },
   "last_updated": "2026-07-28"
