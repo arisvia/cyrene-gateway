@@ -551,7 +551,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		s.DB.UpdateConnection(conn)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		w.Write(errBody)
+		// Wrap error with actionable hint (Phase 26 Error UX)
+		hinted := wrapErrorWithHint(resp.StatusCode, errBody, modelInfo.Provider)
+		w.Write(hinted)
 		return
 	}
 
@@ -972,6 +974,19 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
 		return
 	}
 
+	// Check per-provider exclusion (9router#2767)
+	providerID, _ := bodyMap["model"].(string)
+	if providerID != "" {
+		if idx := strings.Index(providerID, "/"); idx > 0 {
+			providerID = providerID[:idx]
+		}
+	}
+	for _, excluded := range settings.TokenSaverExclude {
+		if excluded == providerID {
+			return
+		}
+	}
+
 	// RTK compression of tool results
 	if settings.RTKEnabled {
 		if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
@@ -1004,6 +1019,18 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		PromptTokens:     u.PromptTokens,
 		CompletionTokens: u.CompletionTokens,
 		Status:           "ok",
+	}
+	// Store cache/reasoning metadata (9router#2873)
+	if u.CachedTokens > 0 || u.ReasoningTokens > 0 {
+		meta := map[string]int{}
+		if u.CachedTokens > 0 {
+			meta["cached_tokens"] = u.CachedTokens
+		}
+		if u.ReasoningTokens > 0 {
+			meta["reasoning_tokens"] = u.ReasoningTokens
+		}
+		b, _ := json.Marshal(meta)
+		entry.Meta = string(b)
 	}
 	if err := s.DB.SaveUsageEntry(entry); err != nil {
 		slog.Warn("Failed to record usage", "error", err, "model", uc.Model)

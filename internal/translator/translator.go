@@ -585,13 +585,23 @@ func claudeSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 			if d["type"] == "text_delta" {
 				delta["content"] = d["text"]
 			} else if d["type"] == "input_json_delta" {
+				// Preserve the content_block index for correct tool_call ordering (9router#2747)
+				idx := 0
+				if rawIdx, ok := event["index"]; ok {
+					if f, ok := rawIdx.(float64); ok {
+						idx = int(f)
+					}
+				}
 				delta["tool_calls"] = []any{
 					map[string]any{
-						"index":    event["index"],
+						"index":    idx,
 						"function": map[string]any{"arguments": d["partial_json"]},
 					},
 				}
 			}
+		}
+		if len(delta) == 0 {
+			return nil, false, nil
 		}
 		chunk := buildOpenAIChunk(model, delta, "")
 		out, _ := json.Marshal(chunk)
@@ -600,10 +610,17 @@ func claudeSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 	case "content_block_start":
 		if cb, ok := event["content_block"].(map[string]any); ok {
 			if cb["type"] == "tool_use" {
+				// Preserve the content_block index (9router#2747)
+				idx := 0
+				if rawIdx, ok := event["index"]; ok {
+					if f, ok := rawIdx.(float64); ok {
+						idx = int(f)
+					}
+				}
 				delta := map[string]any{
 					"tool_calls": []any{
 						map[string]any{
-							"index": event["index"],
+							"index": idx,
 							"id":    cb["id"],
 							"type":  "function",
 							"function": map[string]any{

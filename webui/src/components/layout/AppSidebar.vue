@@ -73,6 +73,7 @@ function closeMobile() { mobileOpen.value = false }
         @click="closeMobile"
       >
         <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
+        <span v-if="item.path === '/providers' && store.health.activeConnections" class="nav-badge">{{ store.health.activeConnections }}</span>
       </router-link>
       <p class="nav-group-label">System</p>
       <router-link
@@ -152,6 +153,13 @@ function closeMobile() { mobileOpen.value = false }
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), var(--shadow-glow);
 }
 .nav-item.active svg { opacity: 1; color: var(--accent); }
+.nav-badge {
+  margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px; font-size: 10px; font-weight: 650;
+  background: var(--accent); color: var(--on-accent);
+  font-family: var(--font-mono);
+}
 
 .sidebar-footer {
   padding: 12px 14px; border-top: 1px solid var(--glass-border);

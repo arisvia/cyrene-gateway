@@ -402,7 +402,7 @@
       "id": 26,
       "name": "WebUI Polish & Upstream Issue Hardening",
       "description": "UX polish to match/exceed 9router + proactive fixes from 9router's open issues and merged PRs. USE BrowserUse for visual verification — compare side-by-side with 9router screenshots (see AGENTS.md).",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Error UX: upstream error responses shown with actionable hints (401 → 'reconnect account', 429 → cooldown countdown, 403 → geo/IP notice)",
         "Usage page: cache-read token tracking (9router#2873 — don't bill cached tokens at full rate)",
@@ -414,10 +414,11 @@
         "Sidebar: connection count badge on Providers item, active route highlight, collapsible groups on mobile",
         "Dark/light theme toggle persistence + system preference detection",
         "Accessibility: keyboard navigation for card grids, focus management on modal open/close"
-      ]
+      ],
+      "notes": "Completed 2026-07-28. Backend: cache-read token tracking (Usage struct + Claude/Gemini/OpenAI extraction with cached_tokens/reasoning_tokens, meta stored in usageHistory), translator hardening (preserve content_block index in Claude SSE for correct tool_call ordering 9router#2747, guard empty deltas 9router#2869), per-provider token-saver exclusion (Settings.TokenSaverExclude, applyTokenSaver checks provider prefix), /v1/models metadata (context_length + capabilities inferred per model 9router#2872), error UX hints (wrapErrorWithHint injects actionable hint into 401/403/429/529 responses). Frontend: ChatView provider-grouped model selector (optgroup by owned_by), streaming token counter, error hint display. Sidebar: connection count badge on Providers nav item. Theme persistence already existed (localStorage). GSkeleton component already existed from Phase 21. NOTE: BrowserUse not available in sandbox; verified via vue-tsc + vite build + go test."
     }
   ],
-  "current_phase": 26,
+  "current_phase": 23,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

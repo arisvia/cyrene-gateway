@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
@@ -260,9 +261,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ModelEntry struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		OwnedBy string `json:"owned_by"`
+		ID            string   `json:"id"`
+		Object        string   `json:"object"`
+		OwnedBy       string   `json:"owned_by"`
+		ContextLength int      `json:"context_length,omitempty"`
+		Capabilities  []string `json:"capabilities,omitempty"`
 	}
 
 	var models []ModelEntry
@@ -307,11 +310,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	for providerID := range seen {
 		if regModels, ok := provider.RegistryModels[providerID]; ok {
 			for _, m := range regModels {
-				models = append(models, ModelEntry{
+				entry := ModelEntry{
 					ID:      providerID + "/" + m.ID,
 					Object:  "model",
 					OwnedBy: providerID,
-				})
+				}
+				entry.ContextLength, entry.Capabilities = inferModelMetadata(m.ID)
+				models = append(models, entry)
 			}
 		}
 	}
@@ -326,11 +331,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			})
 			if regModels, ok := provider.RegistryModels[id]; ok {
 				for _, m := range regModels {
-					models = append(models, ModelEntry{
+					entry := ModelEntry{
 						ID:      id + "/" + m.ID,
 						Object:  "model",
 						OwnedBy: id,
-					})
+					}
+					entry.ContextLength, entry.Capabilities = inferModelMetadata(m.ID)
+					models = append(models, entry)
 				}
 			}
 		}
@@ -344,6 +351,78 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		"object": "list",
 		"data":   models,
 	})
+}
+
+// inferModelMetadata returns estimated context length and capabilities for a model ID (9router#2872).
+func inferModelMetadata(modelID string) (int, []string) {
+	lower := strings.ToLower(modelID)
+	caps := []string{"chat"}
+
+	// Context length heuristics
+	ctx := 128000 // default 128K
+	switch {
+	case strings.Contains(lower, "gemini-2.5") || strings.Contains(lower, "gemini-3"):
+		ctx = 1048576
+	case strings.Contains(lower, "claude"):
+		ctx = 200000
+	case strings.Contains(lower, "gpt-4o") || strings.Contains(lower, "gpt-4.1"):
+		ctx = 128000
+	case strings.Contains(lower, "gpt-5"):
+		ctx = 256000
+	case strings.Contains(lower, "deepseek"):
+		ctx = 128000
+	case strings.Contains(lower, "grok"):
+		ctx = 131072
+	case strings.Contains(lower, "llama"):
+		ctx = 128000
+	case strings.Contains(lower, "qwen"):
+		ctx = 131072
+	case strings.Contains(lower, "kimi"):
+		ctx = 131072
+	case strings.Contains(lower, "glm"):
+		ctx = 128000
+	case strings.Contains(lower, "minimax"):
+		ctx = 1000000
+	}
+
+	// Capability detection
+	if strings.Contains(lower, "image") || strings.Contains(lower, "dall") || strings.Contains(lower, "flux") {
+		caps = append(caps, "vision")
+	}
+	if strings.Contains(lower, "embed") {
+		caps = []string{"embeddings"}
+		ctx = 8192
+	}
+	if strings.Contains(lower, "tts") || strings.Contains(lower, "speech") {
+		caps = []string{"tts"}
+		ctx = 0
+	}
+	if strings.Contains(lower, "whisper") || strings.Contains(lower, "transcri") || strings.Contains(lower, "asr") {
+		caps = []string{"stt"}
+		ctx = 0
+	}
+	if strings.Contains(lower, "thinking") || strings.Contains(lower, "reason") || strings.Contains(lower, "o1") || strings.Contains(lower, "o3") || strings.Contains(lower, "o4") || strings.Contains(lower, "qwq") {
+		caps = append(caps, "reasoning")
+	}
+	if strings.Contains(lower, "vision") || strings.Contains(lower, "vl") || strings.Contains(lower, "4o") || strings.Contains(lower, "flash") {
+		if !contains(caps, "vision") {
+			caps = append(caps, "vision")
+		}
+	}
+	if strings.Contains(lower, "coder") || strings.Contains(lower, "codex") || strings.Contains(lower, "code") {
+		caps = append(caps, "code")
+	}
+
+	return ctx, caps
+}
+
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {

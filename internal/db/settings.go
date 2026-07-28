@@ -33,6 +33,8 @@ type Settings struct {
 	PonytailLevel      string                              `json:"ponytailLevel,omitempty"`
 	ProviderStrategies map[string]ProviderStrategyOverride `json:"providerStrategies,omitempty"`
 	ProviderThinking   map[string]ProviderThinkingConfig   `json:"providerThinking,omitempty"`
+	// TokenSaverExclude lists providers where caveman/ponytail breaks output (9router#2767).
+	TokenSaverExclude []string `json:"tokenSaverExclude,omitempty"`
 }
 
 func DefaultSettings() *Settings {

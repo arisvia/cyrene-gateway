@@ -12,20 +12,44 @@ interface ChatMsg {
   content: string
 }
 
-const models = ref<string[]>([])
+interface ModelMeta {
+  id: string
+  ownedBy: string
+  contextLength?: number
+  capabilities?: string[]
+}
+
+const models = ref<ModelMeta[]>([])
 const selectedModel = ref('')
 const messages = ref<ChatMsg[]>([])
 const input = ref('')
 const streaming = ref(false)
 const usage = ref<{ promptTokens: number; completionTokens: number; totalTokens: number } | null>(null)
+const streamTokens = ref(0)
 const chatRef = ref<HTMLElement>()
+
+// Group models by provider for the selector
+const groupedModels = computed(() => {
+  const groups: Record<string, ModelMeta[]> = {}
+  for (const m of models.value) {
+    const provider = m.ownedBy || 'other'
+    if (!groups[provider]) groups[provider] = []
+    groups[provider].push(m)
+  }
+  return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
+})
 
 async function loadModels() {
   try {
     const res = await api('/v1/models')
-    models.value = (res.data || []).map((m: any) => m.id).sort()
+    models.value = (res.data || []).map((m: any) => ({
+      id: m.id,
+      ownedBy: m.owned_by || 'unknown',
+      contextLength: m.context_length,
+      capabilities: m.capabilities,
+    })).sort((a: ModelMeta, b: ModelMeta) => a.id.localeCompare(b.id))
     if (models.value.length && !selectedModel.value) {
-      selectedModel.value = models.value[0]
+      selectedModel.value = models.value[0].id
     }
   } catch {
     toast.error('Failed to load models')
@@ -41,6 +65,7 @@ async function send() {
   input.value = ''
   streaming.value = true
   usage.value = null
+  streamTokens.value = 0
 
   // Add placeholder for assistant
   messages.value.push({ role: 'assistant', content: '' })
@@ -62,7 +87,8 @@ async function send() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }))
-      messages.value[idx].content = `Error: ${err.error || res.statusText}`
+      const hint = err.error?.hint || err.hint
+      messages.value[idx].content = `Error: ${typeof err.error === 'string' ? err.error : err.error?.message || res.statusText}${hint ? '\n\n💡 ' + hint : ''}`
       streaming.value = false
       return
     }
@@ -90,6 +116,8 @@ async function send() {
           const delta = parsed.choices?.[0]?.delta?.content
           if (delta) {
             messages.value[idx].content += delta
+            // Estimate streaming tokens (~4 chars per token)
+            streamTokens.value = Math.ceil(messages.value[idx].content.length / 4)
             scrollBottom()
           }
           if (parsed.usage) {
@@ -111,6 +139,7 @@ async function send() {
 function reset() {
   messages.value = []
   usage.value = null
+  streamTokens.value = 0
 }
 
 function scrollBottom() {
@@ -120,8 +149,13 @@ function scrollBottom() {
 }
 
 const tokenSummary = computed(() => {
-  if (!usage.value) return ''
-  return `${usage.value.promptTokens} prompt + ${usage.value.completionTokens} completion = ${usage.value.totalTokens} tokens`
+  if (usage.value) {
+    return `${usage.value.promptTokens} prompt + ${usage.value.completionTokens} completion = ${usage.value.totalTokens} tokens`
+  }
+  if (streaming.value && streamTokens.value > 0) {
+    return `~${streamTokens.value} tokens (streaming…)`
+  }
+  return ''
 })
 
 onMounted(loadModels)
@@ -135,8 +169,10 @@ onMounted(loadModels)
         <p class="page-sub">Test models through your gateway</p>
       </div>
       <div class="chat-controls">
-        <select v-model="selectedModel" class="model-select">
-          <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
+        <select v-model="selectedModel" class="model-select" aria-label="Select model">
+          <optgroup v-for="[provider, providerModels] in groupedModels" :key="provider" :label="provider">
+            <option v-for="m in providerModels" :key="m.id" :value="m.id">{{ m.id }}</option>
+          </optgroup>
         </select>
         <GButton variant="ghost" size="sm" @click="reset" :disabled="streaming">
           <Trash2 :size="13" /> Clear
