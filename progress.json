@@ -365,7 +365,7 @@
     {
       "id": 24,
       "name": "WebUI Provider Experience Overhaul",
-      "description": "Make the panel actually usable: one-click free provider enable, contextual card actions, auth-aware add flows, first-run onboarding",
+      "description": "Make the panel actually usable: one-click free provider enable, contextual card actions, auth-aware add flows, first-run onboarding. USE BrowserUse for visual verification (see AGENTS.md).",
       "status": "pending",
       "tasks": [
         "Free providers one-click Enable: card button creates NoAuth connection instantly (zero-config, like 9router NoAuthProxyCard pattern)",
@@ -381,7 +381,7 @@
     {
       "id": 25,
       "name": "WebUI Provider Detail Parity with 9router",
-      "description": "Port 9router's rich provider detail UX: per-model testing, model enable/disable, priority reorder, per-provider strategy, thinking levels",
+      "description": "Port 9router's rich provider detail UX: per-model testing, model enable/disable, priority reorder, per-provider strategy, thinking levels. USE BrowserUse for visual verification (see AGENTS.md).",
       "status": "pending",
       "tasks": [
         "Model list with per-model Test button (backend: POST /api/models/test with provider/model resolution)",
@@ -399,7 +399,7 @@
     {
       "id": 26,
       "name": "WebUI Polish & Upstream Issue Hardening",
-      "description": "UX polish to match/exceed 9router + proactive fixes from 9router's open issues and merged PRs",
+      "description": "UX polish to match/exceed 9router + proactive fixes from 9router's open issues and merged PRs. USE BrowserUse for visual verification — compare side-by-side with 9router screenshots (see AGENTS.md).",
       "status": "pending",
       "tasks": [
         "Error UX: upstream error responses shown with actionable hints (401 → 'reconnect account', 429 → cooldown countdown, 403 → geo/IP notice)",

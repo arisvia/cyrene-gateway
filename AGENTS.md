@@ -231,6 +231,34 @@ node --version  # 应输出 v24.18.0
 平台内置工具（无需手动预装）：
 git, curl, wget, jq, sqlite3, make, gcc, rg, tar, unzip, python3, node
 
+## BrowserUse（可视化验证工具）
+
+环境中已开通 BrowserUse 能力，可以打开浏览器访问页面、截图、交互。
+**WebUI 相关 phase（24-26）必须使用 BrowserUse 进行视觉验证**，流程：
+
+```bash
+# 1. 构建并启动网关（webui dist 已 embed）
+cd webui && npm run build && cd ..
+go build -o /tmp/gateway ./cmd/gateway
+/tmp/gateway -port 20128 -db /tmp/browseruse-test.sqlite &
+
+# 2. 用 BrowserUse 打开面板验证
+#    - 访问 http://localhost:20128/
+#    - 截图对比布局、间距、颜色、响应式
+#    - 实际操作验证交互流程（添加 provider、OAuth 连接、测试连通等）
+
+# 3. 验证完毕后清理
+pkill -f "/tmp/gateway"
+```
+
+使用原则：
+- **先跑起来看，再改代码**：不要凭想象调 UI，每次改动后用 BrowserUse 截图确认效果
+- **对标 9router 截图**：如果不确定某个布局是否合理，先描述 9router 的做法再实现
+- **验证完整用户流程**：首次访问（零连接）→ 启用免费 provider → 测试连通 → 添加 API key → chat playground 发消息
+- **检查边界状态**：空列表、加载中、错误提示、长文本溢出、移动端宽度（375px）
+- **dark/light 双主题都要看**：面板有主题切换，两种都要验证对比度
+- 完成后记得 kill 测试进程、删除临时 sqlite 文件
+
 ## 不要做的事
 
 - 不要修改 go.mod 的 module path（github.com/arisvia/cyrene-gateway）
