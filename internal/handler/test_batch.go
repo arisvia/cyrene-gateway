@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -145,19 +144,21 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 
 	switch providerInfo.APIType {
 	case "anthropic":
-		targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
+		targetURL = provider.BuildChatURL(baseURL, "anthropic")
 		testBody, _ = json.Marshal(map[string]any{
 			"model":      "claude-3-haiku-20240307",
 			"max_tokens": 5,
 			"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
 		})
 	case "gemini":
-		targetURL = strings.TrimRight(baseURL, "/") + "/v1beta/models/gemini-2.0-flash:generateContent"
+		targetURL = provider.BuildGeminiURL(baseURL, "gemini-2.0-flash", false)
 		testBody, _ = json.Marshal(map[string]any{
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
 	default:
-		targetURL = strings.TrimRight(baseURL, "/") + "/models"
+		// For OpenAI-compatible providers, test via the models endpoint.
+		// Full endpoint URLs (e.g. .../v1/chat/completions) are stripped first.
+		targetURL = provider.BuildModelsURL(baseURL)
 		testBody = nil
 	}
 
@@ -185,8 +186,13 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		}
 	} else if conn.Data.AccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+	} else if providerInfo.NoAuth {
+		req.Header.Set("Authorization", "Bearer public")
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range providerInfo.Headers {
+		req.Header.Set(k, v)
+	}
 
 	client := s.getHTTPClient(30 * time.Second)
 	start := time.Now()

@@ -33,6 +33,10 @@ type ProviderInfo struct {
 	TokenURL      string `json:"tokenUrl,omitempty"`
 	AuthorizeURL  string `json:"authorizeUrl,omitempty"`
 	ClientID      string `json:"clientId,omitempty"`
+	LoginURL      string `json:"loginUrl,omitempty"` // browser-based device login page (qoder)
+
+	// Extra headers sent on every upstream request (e.g. x-opencode-client)
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // Registry is the static provider registry, populated in init() by registry_data.go

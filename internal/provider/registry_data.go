@@ -820,7 +820,7 @@ func init() {
 	Registry["opencode"] = ProviderInfo{
 		ID: "opencode", Name: "OpenCode Free",
 		Alias: "oc", Aliases: []string{"oc"},
-		BaseURL: "https://opencode.ai",
+		BaseURL: "https://opencode.ai/zen/v1/chat/completions",
 		APIType: "openai", AuthType: "none",
 		Category: "free", AuthModes: []string{"none"}, Priority: 40,
 		Color:    "#E87040",
@@ -828,6 +828,7 @@ func init() {
 		TextIcon: "OC",
 		HasFree:  true,
 		NoAuth:   true,
+		Headers:  map[string]string{"x-opencode-client": "desktop"},
 	}
 	Registry["openrouter"] = ProviderInfo{
 		ID: "openrouter", Name: "OpenRouter",
@@ -890,11 +891,14 @@ func init() {
 		ID: "qoder", Name: "Qoder",
 		Alias: "qd", Aliases: []string{"qd"},
 		BaseURL: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
-		APIType: "openai", AuthType: "api-key",
-		Category: "free", AuthModes: []string{"api-key"}, Priority: 30,
-		Color:   "#EC4899",
-		Website: "https://qoder.com",
-		Icon:    "water_drop",
+		APIType: "openai", AuthType: "oauth",
+		Category: "free", AuthModes: []string{"oauth"}, Priority: 30,
+		Color:         "#EC4899",
+		Website:       "https://qoder.com",
+		Icon:          "water_drop",
+		HasFree:       true,
+		DeviceCodeURL: "https://openapi.qoder.sh/api/v1/deviceToken/poll",
+		LoginURL:      "https://qoder.com/device/selectAccounts",
 	}
 	Registry["qwen"] = ProviderInfo{
 		ID: "qwen", Name: "Qwen Code",

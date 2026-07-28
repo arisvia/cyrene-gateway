@@ -300,6 +300,43 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Add registry models for providers with active connections
+	for providerID := range seen {
+		if regModels, ok := provider.RegistryModels[providerID]; ok {
+			for _, m := range regModels {
+				models = append(models, ModelEntry{
+					ID:      providerID + "/" + m.ID,
+					Object:  "model",
+					OwnedBy: providerID,
+				})
+			}
+		}
+	}
+
+	// Add NoAuth (free) providers even without connections — they work out of the box
+	for id, p := range provider.Registry {
+		if p.NoAuth && !p.Hidden && !seen[id] {
+			models = append(models, ModelEntry{
+				ID:      id + "/*",
+				Object:  "model",
+				OwnedBy: id,
+			})
+			if regModels, ok := provider.RegistryModels[id]; ok {
+				for _, m := range regModels {
+					models = append(models, ModelEntry{
+						ID:      id + "/" + m.ID,
+						Object:  "model",
+						OwnedBy: id,
+					})
+				}
+			}
+		}
+	}
+
+	if models == nil {
+		models = []ModelEntry{}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"object": "list",
 		"data":   models,

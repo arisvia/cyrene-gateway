@@ -209,6 +209,21 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Qoder uses a custom device-token flow (local PKCE + browser login + GET poll)
+	if providerID == "qoder" {
+		flow := provider.InitiateQoderDeviceFlow()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"verificationUri":         flow.VerificationURI,
+			"verificationUriComplete": flow.VerificationURI,
+			"codeVerifier":            flow.CodeVerifier,
+			"nonce":                   flow.Nonce,
+			"machineId":               flow.MachineID,
+			"expiresIn":               300,
+			"interval":                2,
+		})
+		return
+	}
+
 	flowType := provider.GetProviderFlowType(providerID)
 	if flowType != provider.FlowDeviceCode {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider does not support device code flow"})
@@ -232,10 +247,68 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 	var req struct {
 		DeviceCode   string         `json:"deviceCode"`
 		CodeVerifier string         `json:"codeVerifier"`
+		Nonce        string         `json:"nonce"`
+		MachineID    string         `json:"machineId"`
 		ExtraData    map[string]any `json:"extraData"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	// Qoder custom poll: GET with nonce + verifier
+	if providerID == "qoder" {
+		result, err := provider.PollQoderDeviceToken(req.Nonce, req.CodeVerifier, nil)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		if result.Status == "ok" {
+			name, email := provider.FetchQoderUserInfo(result.AccessToken, nil)
+			expiresAt := ""
+			if result.ExpiresAt > 0 {
+				expiresAt = time.UnixMilli(result.ExpiresAt).UTC().Format(time.RFC3339)
+			}
+			conn := &model.ProviderConnection{
+				ID:       generateID(),
+				Provider: providerID,
+				AuthType: "oauth",
+				Name:     name,
+				Email:    email,
+				Priority: 0,
+				IsActive: true,
+				Data: model.ConnectionData{
+					AccessToken:  result.AccessToken,
+					RefreshToken: result.RefreshToken,
+					ExpiresAt:    expiresAt,
+					TestStatus:   "active",
+					ProviderSpecificData: map[string]any{
+						"userId":    result.UserID,
+						"machineId": req.MachineID,
+					},
+				},
+			}
+			if conn.Name == "" {
+				conn.Name = email
+			}
+			if err := s.DB.CreateConnection(conn); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"success": true,
+				"connection": map[string]any{
+					"id":       conn.ID,
+					"provider": conn.Provider,
+					"email":    conn.Email,
+				},
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": false,
+			"pending": true,
+		})
 		return
 	}
 

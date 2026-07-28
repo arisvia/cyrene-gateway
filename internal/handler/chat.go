@@ -228,7 +228,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		targetURL := strings.TrimRight(baseURL, "/") + "/chat/completions"
+		targetURL := provider.BuildChatURL(baseURL, providerInfo.APIType)
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			lastError = "failed to create upstream request"
@@ -240,8 +240,13 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
 		} else if conn.Data.AccessToken != "" {
 			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+		} else if providerInfo.NoAuth {
+			upstreamReq.Header.Set("Authorization", "Bearer public")
 		}
 		upstreamReq.Header.Set("Content-Type", "application/json")
+		for k, v := range providerInfo.Headers {
+			upstreamReq.Header.Set(k, v)
+		}
 
 		client := s.getHTTPClient(5 * time.Minute)
 		resp, err := client.Do(upstreamReq)
@@ -318,7 +323,22 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// Get credentials for this provider
 	conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
-	if err != nil || len(conns) == 0 {
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": fmt.Sprintf("failed to list credentials for provider: %s", modelInfo.Provider),
+		})
+		return
+	}
+
+	// Auto-provision a connection for NoAuth providers (e.g. OpenCode Free, MiMo Free)
+	if len(conns) == 0 && providerInfo.NoAuth {
+		conn := s.autoProvisionNoAuthConnection(providerInfo)
+		if conn != nil {
+			conns = []model.ProviderConnection{*conn}
+		}
+	}
+
+	if len(conns) == 0 {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider),
 		})
@@ -358,6 +378,12 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		targetFormat = translator.FormatGemini
 	}
 
+	// --- Qoder special path: COSY-signed custom protocol ---
+	if modelInfo.Provider == "qoder" {
+		s.handleQoderChat(w, r, req, modelInfo, conn, providerInfo)
+		return
+	}
+
 	var bodyBytes []byte
 	var targetURL string
 
@@ -391,7 +417,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
 			return
 		}
-		targetURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
+		targetURL = provider.BuildChatURL(baseURL, providerInfo.APIType)
 	} else {
 		// Translate request to provider format
 		var bodyMap map[string]any
@@ -426,13 +452,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 		switch targetFormat {
 		case translator.FormatAnthropic:
-			targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
+			targetURL = provider.BuildChatURL(baseURL, "anthropic")
 		case translator.FormatGemini:
-			if req.Stream {
-				targetURL = strings.TrimRight(baseURL, "/") + "/v1beta/models/" + modelInfo.Model + ":streamGenerateContent?alt=sse"
-			} else {
-				targetURL = strings.TrimRight(baseURL, "/") + "/v1beta/models/" + modelInfo.Model + ":generateContent"
-			}
+			targetURL = provider.BuildGeminiURL(baseURL, modelInfo.Model, req.Stream)
 		}
 	}
 
@@ -457,8 +479,19 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		}
 	} else if conn.Data.AccessToken != "" {
 		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+	} else if providerInfo.NoAuth {
+		// NoAuth providers (e.g. OpenCode Free) use a public bearer token
+		upstreamReq.Header.Set("Authorization", "Bearer public")
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
+	if req.Stream {
+		upstreamReq.Header.Set("Accept", "text/event-stream")
+	}
+
+	// Apply registry-defined extra headers (e.g. x-opencode-client)
+	for k, v := range providerInfo.Headers {
+		upstreamReq.Header.Set(k, v)
+	}
 
 	slog.Info("Proxying request",
 		slog.String("model", modelInfo.Model),

@@ -18,7 +18,14 @@ export interface RegistryProvider {
   name: string
   category: string
   authType: string
+  authModes?: string[]
   baseUrl?: string
+  noAuth?: boolean
+  hasFree?: boolean
+  deviceCodeUrl?: string
+  loginUrl?: string
+  authorizeUrl?: string
+  headers?: Record<string, string>
 }
 
 export interface Combo {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useGatewayStore, type Provider } from '@/stores/gateway'
 import { api, apiPost, apiPut, apiDelete } from '@/lib/api'
@@ -122,6 +122,27 @@ async function deleteConn(conn: Provider) {
 const showAddConn = ref(false)
 const newConn = ref({ name: '', authType: 'api-key', priority: 0, data: { apiKey: '', baseUrl: '' } })
 
+// Whether this provider is OAuth-only (no manual api-key form)
+const isOAuthOnly = computed(() => {
+  const rp = registryInfo.value
+  if (!rp) return false
+  return rp.authType === 'oauth' && !(rp.authModes || []).includes('api-key')
+})
+
+// Whether this provider is NoAuth (free, no credentials needed)
+const isNoAuth = computed(() => registryInfo.value?.authType === 'none' || registryInfo.value?.noAuth === true)
+
+function openAddConn() {
+  const rp = registryInfo.value
+  if (rp) {
+    // Lock auth type to what the registry supports
+    newConn.value.authType = rp.authType || 'api-key'
+  }
+  // Don't pre-fill full endpoint URLs into the base URL field — show as placeholder
+  newConn.value.data.baseUrl = ''
+  showAddConn.value = true
+}
+
 async function addConnection() {
   await store.addProvider({
     provider: providerId.value,
@@ -139,6 +160,21 @@ const showOAuth = ref(false)
 const oauthMode = ref<'authorize' | 'device' | 'import'>('authorize')
 const oauthDeviceCode = ref<any>(null)
 const oauthToken = ref('')
+const oauthPolling = ref(false)
+
+// Determine default OAuth mode based on provider flow
+function openOAuth() {
+  const rp = registryInfo.value
+  if (rp?.deviceCodeUrl || rp?.loginUrl || providerId.value === 'qoder') {
+    oauthMode.value = 'device'
+  } else if (rp?.authorizeUrl) {
+    oauthMode.value = 'authorize'
+  } else {
+    oauthMode.value = 'import'
+  }
+  oauthDeviceCode.value = null
+  showOAuth.value = true
+}
 
 async function startOAuthAuthorize() {
   try {
@@ -150,20 +186,58 @@ async function startOAuthAuthorize() {
 async function startDeviceCode() {
   try {
     oauthDeviceCode.value = await apiPost(`/api/oauth/${providerId.value}/device-code`)
+    // Qoder-style flow: open the browser login page immediately
+    if (oauthDeviceCode.value?.verificationUriComplete || oauthDeviceCode.value?.verificationUri) {
+      const url = oauthDeviceCode.value.verificationUriComplete || oauthDeviceCode.value.verificationUri
+      window.open(url, '_blank')
+      startAutoPoll()
+    }
   } catch (e: any) { toast.error(`Device code failed: ${e.message}`) }
+}
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function stopAutoPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  oauthPolling.value = false
+}
+
+function startAutoPoll() {
+  stopAutoPoll()
+  oauthPolling.value = true
+  const interval = (oauthDeviceCode.value?.interval || 2) * 1000
+  pollTimer = setInterval(async () => {
+    try {
+      await pollDeviceCode()
+    } catch { /* keep polling */ }
+  }, interval)
+}
+
+function reopenLoginPage() {
+  const url = oauthDeviceCode.value?.verificationUriComplete || oauthDeviceCode.value?.verificationUri
+  if (url) window.open(url, '_blank')
+  startAutoPoll()
 }
 
 async function pollDeviceCode() {
   try {
     const res = await apiPost(`/api/oauth/${providerId.value}/device-code/poll`, {
       deviceCode: oauthDeviceCode.value?.deviceCode,
+      codeVerifier: oauthDeviceCode.value?.codeVerifier,
+      nonce: oauthDeviceCode.value?.nonce,
+      machineId: oauthDeviceCode.value?.machineId,
+      extraData: oauthDeviceCode.value?.extraData,
     })
     if (res?.success) {
+      stopAutoPoll()
       toast.success('OAuth connected!')
       showOAuth.value = false
       await store.loadAll()
     }
-  } catch (e: any) { toast.error(`Poll failed: ${e.message}`) }
+  } catch (e: any) {
+    stopAutoPoll()
+    toast.error(`Poll failed: ${e.message}`)
+  }
 }
 
 async function importToken() {
@@ -195,6 +269,10 @@ onMounted(async () => {
     selectConnection(connections.value[0])
   }
 })
+
+onUnmounted(() => {
+  stopAutoPoll()
+})
 </script>
 
 <template>
@@ -222,10 +300,10 @@ onMounted(async () => {
         <div class="section-header">
           <h2 class="section-title">Connections</h2>
           <div class="flex-gap">
-            <GButton v-if="registryInfo?.authType === 'oauth'" size="sm" variant="ghost" @click="showOAuth = true">
+            <GButton v-if="registryInfo?.authType === 'oauth'" size="sm" variant="ghost" @click="openOAuth">
               <Key :size="12" />OAuth
             </GButton>
-            <GButton size="sm" @click="showAddConn = true"><Plus :size="12" />Add</GButton>
+            <GButton v-if="!isOAuthOnly" size="sm" @click="openAddConn"><Plus :size="12" />Add</GButton>
           </div>
         </div>
 
@@ -344,17 +422,18 @@ onMounted(async () => {
           </div>
           <div class="form-group">
             <label class="form-label">Auth Type</label>
-            <select v-model="newConn.authType" class="input">
-              <option value="api-key">api-key</option>
-              <option value="oauth">oauth</option>
-              <option value="none">none</option>
-            </select>
+            <input :value="newConn.authType" class="input" disabled>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">API Key / Access Token</label>
-          <input v-model="newConn.data.apiKey" type="password" class="input mono" placeholder="sk-...">
-        </div>
+        <template v-if="isNoAuth">
+          <p class="text-xs text-faint" style="margin-bottom:12px">This provider is free and requires no credentials. A connection will be created automatically.</p>
+        </template>
+        <template v-else>
+          <div class="form-group">
+            <label class="form-label">API Key / Access Token</label>
+            <input v-model="newConn.data.apiKey" type="password" class="input mono" placeholder="sk-...">
+          </div>
+        </template>
         <div class="form-group">
           <label class="form-label">Base URL <span class="text-faint">(optional, defaults to registry)</span></label>
           <input v-model="newConn.data.baseUrl" class="input mono" :placeholder="registryInfo?.baseUrl || ''">
@@ -386,11 +465,22 @@ onMounted(async () => {
         </template>
 
         <template v-if="oauthMode === 'device'">
-          <GButton size="sm" @click="startDeviceCode" style="margin-bottom:10px">Get Device Code</GButton>
+          <GButton size="sm" @click="startDeviceCode" style="margin-bottom:10px">Start Device Login</GButton>
           <div v-if="oauthDeviceCode" class="device-code-box">
-            <p class="mono" style="font-size:16px;letter-spacing:2px;text-align:center">{{ oauthDeviceCode.userCode }}</p>
-            <p class="text-xs text-faint" style="text-align:center;margin-top:6px">{{ oauthDeviceCode.verificationUrl }}</p>
-            <GButton size="sm" style="margin-top:10px;width:100%" @click="pollDeviceCode">Poll for Token</GButton>
+            <template v-if="oauthDeviceCode.userCode">
+              <p class="mono" style="font-size:16px;letter-spacing:2px;text-align:center">{{ oauthDeviceCode.userCode }}</p>
+              <p class="text-xs text-faint" style="text-align:center;margin-top:6px">{{ oauthDeviceCode.verificationUri }}</p>
+            </template>
+            <template v-else>
+              <p class="text-xs" style="text-align:center">A login page was opened in a new tab.<br>Complete the login there — this dialog polls automatically.</p>
+              <GButton v-if="!oauthPolling" size="sm" variant="ghost" style="margin-top:8px;width:100%"
+                @click="reopenLoginPage">
+                Reopen Login Page
+              </GButton>
+            </template>
+            <GButton size="sm" style="margin-top:10px;width:100%" @click="pollDeviceCode" :disabled="oauthPolling">
+              {{ oauthPolling ? 'Waiting for login…' : 'Poll for Token' }}
+            </GButton>
           </div>
         </template>
 
