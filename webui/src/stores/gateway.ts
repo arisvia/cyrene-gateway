@@ -201,6 +201,14 @@ export const useGatewayStore = defineStore('gateway', () => {
     try { await apiDelete(`/api/providers/${p.id}`); toast.success(`Provider "${p.name || p.provider}" deleted`); await loadAll() }
     catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
   }
+  async function enableFree(providers?: string[]): Promise<number> {
+    const res = await apiPost('/api/providers/enable-free', providers?.length ? { providers } : {})
+    const count = res?.count || 0
+    if (count > 0) toast.success(`Enabled ${count} free provider${count === 1 ? '' : 's'}`)
+    else toast.success('Free providers already enabled')
+    await loadAll()
+    return count
+  }
 
   // --- Key actions ---
   async function createKey(name: string) {
@@ -258,7 +266,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     providerUsage, usageLogs, quotaEntries,
     loadAll, loadKeys, loadProxies, loadSettings, loadUsage, loadQuota,
     loadRequestDetails, loadProviderUsage, loadUsageLogs,
-    addProvider, toggleProvider, resetProvider, deleteProvider,
+    addProvider, toggleProvider, resetProvider, deleteProvider, enableFree,
     createKey, deleteKey,
     addAlias, deleteAlias,
     addCombo, deleteCombo,

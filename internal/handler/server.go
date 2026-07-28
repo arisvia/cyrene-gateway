@@ -141,6 +141,7 @@ func (s *Server) registerRoutes() {
 	// Provider connection testing
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
 	s.Router.HandleFunc("POST /api/providers/test-batch", s.handleTestBatch)
+	s.Router.HandleFunc("POST /api/providers/enable-free", s.handleEnableFreeProviders)
 
 	// Provider detail: models (registry + custom)
 	s.Router.HandleFunc("GET /api/providers/{id}/models", s.handleGetProviderModels)

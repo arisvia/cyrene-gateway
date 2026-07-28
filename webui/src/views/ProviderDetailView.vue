@@ -39,6 +39,7 @@ const oauthStatus = ref<any>(null)
 async function selectConnection(conn: Provider) {
   selectedConn.value = conn
   editData.value = { apiKey: conn.data?.apiKey || '', baseUrl: conn.data?.baseUrl || '' }
+  boundPoolId.value = currentPoolId(conn)
   testResult.value = null
   registryModels.value = []
   customModels.value = []
@@ -131,6 +132,51 @@ const isOAuthOnly = computed(() => {
 
 // Whether this provider is NoAuth (free, no credentials needed)
 const isNoAuth = computed(() => registryInfo.value?.authType === 'none' || registryInfo.value?.noAuth === true)
+
+// Strip known endpoint suffixes so the Base URL placeholder shows the API
+// base (e.g. .../v1) rather than a full chat-completions path.
+const ENDPOINT_SUFFIXES = ['/chat/completions', '/v1/messages', '/messages', '/responses', '/generate']
+function stripBase(url?: string): string {
+  if (!url) return ''
+  let base = url.replace(/\/+$/, '')
+  const lower = base.toLowerCase()
+  for (const sfx of ENDPOINT_SUFFIXES) {
+    if (lower.endsWith(sfx)) { base = base.slice(0, base.length - sfx.length).replace(/\/+$/, ''); break }
+  }
+  return base
+}
+const basePlaceholder = computed(() => stripBase(registryInfo.value?.baseUrl) || 'https://api.openai.com/v1')
+
+// --- NoAuth proxy pool binding (9router-style NoAuthProxyCard) ---
+const NONE_POOL = '__none__'
+const boundPoolId = ref(NONE_POOL)
+const savingPool = ref(false)
+
+function currentPoolId(conn: Provider | null): string {
+  const id = conn?.data?.providerSpecificData?.proxyPoolId
+  return typeof id === 'string' && id ? id : NONE_POOL
+}
+
+async function bindProxyPool(poolId: string) {
+  const conn = selectedConn.value
+  if (!conn) return
+  savingPool.value = true
+  boundPoolId.value = poolId
+  const specific = { ...(conn.data?.providerSpecificData || {}) }
+  if (poolId === NONE_POOL) delete specific.proxyPoolId
+  else specific.proxyPoolId = poolId
+  const data = { ...(conn.data || {}), providerSpecificData: specific }
+  try {
+    await apiPut(`/api/providers/${conn.id}`, { data })
+    toast.success(poolId === NONE_POOL ? 'Proxy pool unbound' : 'Proxy pool bound')
+    await store.loadAll()
+    const fresh = store.providers.find(x => x.id === conn.id)
+    if (fresh) selectedConn.value = fresh
+  } catch (e: any) {
+    toast.error(`Failed to bind proxy pool: ${e.message}`)
+  }
+  savingPool.value = false
+}
 
 function openAddConn() {
   const rp = registryInfo.value
@@ -264,6 +310,9 @@ onMounted(async () => {
   if (store.providers.length === 0 && store.registryList.length === 0) {
     await store.loadAll()
   }
+  if (store.proxyPools.length === 0) {
+    await store.loadProxies()
+  }
   // Auto-select first connection if exists
   if (connections.value.length > 0) {
     selectConnection(connections.value[0])
@@ -354,16 +403,43 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Credentials -->
-          <div class="form-group">
-            <label class="form-label">API Key / Access Token</label>
-            <input v-model="editData.apiKey" type="password" class="input mono" placeholder="sk-...">
+          <!-- Credentials (hidden for NoAuth) -->
+          <template v-if="!isNoAuth">
+            <div class="form-group">
+              <label class="form-label">API Key / Access Token</label>
+              <input v-model="editData.apiKey" type="password" class="input mono" placeholder="sk-...">
+            </div>
+            <div class="form-group">
+              <label class="form-label">
+                Base URL
+                <span class="label-hint" :title="`Defaults to the registry base (${basePlaceholder}). Only override if you use a custom endpoint or mirror.`">ⓘ</span>
+              </label>
+              <input v-model="editData.baseUrl" class="input mono" :placeholder="basePlaceholder">
+            </div>
+            <GButton size="sm" @click="saveCredentials"><Save :size="13" />Save Credentials</GButton>
+          </template>
+
+          <!-- NoAuth: no credentials required (9router-style card) -->
+          <div v-else class="noauth-card">
+            <div class="noauth-head">
+              <div class="noauth-icon"><Key :size="18" /></div>
+              <div class="noauth-text">
+                <p class="noauth-title">No authentication required</p>
+                <p class="noauth-desc">This provider is ready to use. Optionally route requests through a proxy pool to bypass IP-based limits.</p>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Proxy Pool</label>
+              <select class="input" :value="currentPoolId(selectedConn)" :disabled="savingPool"
+                @change="bindProxyPool(($event.target as HTMLSelectElement).value)">
+                <option :value="NONE_POOL">None (direct)</option>
+                <option v-for="pool in store.proxyPools" :key="pool.id" :value="pool.id">{{ pool.data?.name || pool.id }}</option>
+              </select>
+              <p class="text-xs text-faint" style="margin-top:6px">
+                {{ store.proxyPools.length === 0 ? 'Add a proxy pool in the Proxies page to route this provider through it.' : 'Requests use the gateway proxy pool; binding tags this connection for pool-aware routing.' }}
+              </p>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Base URL</label>
-            <input v-model="editData.baseUrl" class="input mono" :placeholder="registryInfo?.baseUrl || 'https://api.openai.com/v1'">
-          </div>
-          <GButton size="sm" @click="saveCredentials"><Save :size="13" />Save Credentials</GButton>
 
           <!-- OAuth status -->
           <div v-if="oauthStatus" class="form-group" style="margin-top:16px">
@@ -436,7 +512,7 @@ onUnmounted(() => {
         </template>
         <div class="form-group">
           <label class="form-label">Base URL <span class="text-faint">(optional, defaults to registry)</span></label>
-          <input v-model="newConn.data.baseUrl" class="input mono" :placeholder="registryInfo?.baseUrl || ''">
+          <input v-model="newConn.data.baseUrl" class="input mono" :placeholder="basePlaceholder">
         </div>
         <div class="form-group">
           <label class="form-label">Priority</label>
@@ -546,6 +622,22 @@ onUnmounted(() => {
 }
 .form-group { margin-bottom: 14px; }
 .form-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin-bottom: 6px; }
+.label-hint { color: var(--text-faint); cursor: help; font-size: 11px; }
+
+/* NoAuth card (9router-style) */
+.noauth-card {
+  padding: 16px; border-radius: 12px; margin-bottom: 14px;
+  border: 1px solid rgba(74,222,128,.25);
+  background: rgba(74,222,128,.05);
+}
+.noauth-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.noauth-icon {
+  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(74,222,128,.12); color: var(--green);
+}
+.noauth-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.noauth-desc { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .input {
   width: 100%; height: 34px; padding: 0 12px;

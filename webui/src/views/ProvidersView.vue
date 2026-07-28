@@ -75,6 +75,57 @@ function connectionStatus(providerId: string): { count: number; active: number }
   return { count: conns.length, active: conns.filter(c => c.isActive).length }
 }
 
+// --- Contextual card action ---
+// Determines the primary quick action for a registry provider card based on
+// its auth mode and current connection state (9router-style contextual cards).
+type CardAction = 'connected' | 'enable' | 'connect' | 'add-key' | 'detail'
+
+function cardAction(rp: RegistryProvider): CardAction {
+  if (connectionStatus(rp.id).count > 0) return 'connected'
+  if (rp.noAuth || rp.authType === 'none') return 'enable'
+  if (rp.authType === 'oauth' && !(rp.authModes || []).includes('api-key')) return 'connect'
+  return 'add-key'
+}
+
+const actionLabels: Record<CardAction, string> = {
+  connected: 'Manage',
+  enable: 'Enable',
+  connect: 'Connect',
+  'add-key': 'Add Key',
+  detail: 'Open',
+}
+
+const enablingFree = ref<string | 'all' | null>(null)
+
+async function enableFreeProvider(rp: RegistryProvider) {
+  enablingFree.value = rp.id
+  try { await store.enableFree([rp.id]) }
+  catch (e: any) { toast.error(`Enable failed: ${e.message}`) }
+  enablingFree.value = null
+}
+
+// Card click: contextual action for unconnected providers, otherwise detail.
+function onRegistryCard(rp: RegistryProvider, e: Event) {
+  const action = cardAction(rp)
+  if (action === 'enable') { enableFreeProvider(rp); return }
+  if (action === 'connect') { goDetail(rp.id); return }
+  if (action === 'add-key') { openAddFor(rp); return }
+  goDetail(rp.id)
+}
+
+// --- First-run onboarding ---
+const isOnboarding = computed(() => store.providers.length === 0)
+const freeNotConnected = computed(() =>
+  store.registryList.filter(rp => (rp.noAuth || rp.authType === 'none') && connectionStatus(rp.id).count === 0)
+)
+
+async function enableAllFree() {
+  enablingFree.value = 'all'
+  try { await store.enableFree() }
+  catch (e: any) { toast.error(`Enable failed: ${e.message}`) }
+  enablingFree.value = null
+}
+
 // --- Provider logo ---
 function logoUrl(providerId: string): string {
   return `/providers/${providerId}.png`
@@ -133,7 +184,39 @@ function selectRegistry(rp: RegistryProvider) {
   if (!newProvider.value.name) newProvider.value.name = rp.name
 }
 
+// The registry provider currently selected in the Add modal (if any).
+const selectedRegistry = computed(() =>
+  store.registryList.find(p => p.id === newProvider.value.provider) || null
+)
+
+// Auth modes the selected registry provider supports (locks the form fields).
+const supportedAuthModes = computed<string[]>(() => {
+  const rp = selectedRegistry.value
+  if (!rp) return ['api-key', 'oauth', 'none']
+  if (rp.authModes && rp.authModes.length) return rp.authModes
+  return [rp.authType || 'api-key']
+})
+
+const isNoAuthSelected = computed(() => {
+  const rp = selectedRegistry.value
+  return !!rp && (rp.noAuth || rp.authType === 'none' || newProvider.value.authType === 'none')
+})
+
+// Open the Add modal pre-locked to a specific registry provider (contextual
+// "Add Key" action from a card).
+function openAddFor(rp: RegistryProvider) {
+  addMode.value = 'registry'
+  selectRegistry(rp)
+  showAdd.value = true
+}
+
 async function addProvider() {
+  if (!newProvider.value.provider) { toast.error('Select a provider first'); return }
+  // api-key auth requires a credential; NoAuth needs none.
+  if (newProvider.value.authType === 'api-key' && !newProvider.value.data.apiKey) {
+    toast.error('An API key is required for this provider')
+    return
+  }
   await store.addProvider(newProvider.value)
   newProvider.value = { provider: '', name: '', authType: 'api-key', priority: 0, data: { apiKey: '', baseUrl: '' } }
   showAdd.value = false
@@ -167,6 +250,23 @@ function goDetail(providerId: string) {
         <GButton size="sm" @click="showAdd = true"><Plus :size="13" />Add Provider</GButton>
       </div>
     </div>
+
+    <!-- First-run onboarding -->
+    <section v-if="isOnboarding" class="onboarding">
+      <div class="onboarding-hero">
+        <div class="onboarding-icon"><Zap :size="20" /></div>
+        <div>
+          <h2 class="onboarding-title">Welcome to Cyrene Gateway</h2>
+          <p class="onboarding-desc">You have no provider connections yet. Start with free providers — no API keys required — or add your own key below.</p>
+        </div>
+      </div>
+      <div class="onboarding-actions">
+        <GButton @click="enableAllFree" :disabled="enablingFree === 'all' || freeNotConnected.length === 0">
+          <Zap :size="13" />{{ enablingFree === 'all' ? 'Enabling…' : `Enable ${freeNotConnected.length} free providers` }}
+        </GButton>
+        <GButton variant="ghost" @click="showAdd = true"><Plus :size="13" />Add an API key provider</GButton>
+      </div>
+    </section>
 
     <!-- Custom Connections (already added) -->
     <section v-if="store.providers.length > 0" class="category-section">
@@ -205,7 +305,7 @@ function goDetail(providerId: string) {
         <GBadge>{{ filterProviders(group.providers).length }}</GBadge>
       </div>
       <div class="card-grid" v-if="filterProviders(group.providers).length > 0">
-        <div v-for="rp in filterProviders(group.providers)" :key="rp.id" class="provider-card" @click="goDetail(rp.id)">
+        <div v-for="rp in filterProviders(group.providers)" :key="rp.id" class="provider-card" @click="onRegistryCard(rp, $event)">
           <div class="card-top">
             <div class="card-logo">
               <img :src="logoUrl(rp.id)" :alt="rp.name" @error="onLogoError" />
@@ -225,7 +325,21 @@ function goDetail(providerId: string) {
             <GBadge :color="rp.authType === 'oauth' ? 'blue' : rp.authType === 'none' ? 'green' : 'violet'">
               {{ rp.authType === 'api-key' ? 'key' : rp.authType }}
             </GBadge>
+            <GBadge v-if="testResults[rp.id]" :color="testResults[rp.id].ok ? 'green' : 'red'">
+              {{ testResults[rp.id].ok ? 'OK' : 'FAIL' }}<span v-if="testResults[rp.id].latency"> · {{ testResults[rp.id].latency }}</span>
+            </GBadge>
           </div>
+          <!-- Contextual quick action -->
+          <button
+            v-if="cardAction(rp) !== 'connected'"
+            class="card-action"
+            :disabled="enablingFree === rp.id"
+            @click.stop="onRegistryCard(rp, $event)">
+            {{ enablingFree === rp.id ? 'Enabling…' : actionLabels[cardAction(rp)] }}
+          </button>
+          <button v-else class="card-action card-action-manage" @click.stop="goDetail(rp.id)">
+            {{ actionLabels.connected }}
+          </button>
         </div>
       </div>
       <GEmpty v-else>No providers match your search.</GEmpty>
@@ -294,21 +408,27 @@ function goDetail(providerId: string) {
           <input v-model="newProvider.name" class="input" placeholder="optional" v-if="addMode === 'registry'">
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">API Key / Access Token</label>
+
+      <!-- NoAuth: no credentials needed -->
+      <div v-if="isNoAuthSelected" class="noauth-note">
+        <Zap :size="14" />
+        <span>This provider requires no authentication. A connection will be created instantly — no API key needed.</span>
+      </div>
+      <!-- API key / token field (hidden for NoAuth) -->
+      <div class="form-group" v-else>
+        <label class="form-label">{{ newProvider.authType === 'oauth' ? 'Access Token' : 'API Key / Access Token' }}</label>
         <input v-model="newProvider.data.apiKey" type="password" class="input mono" placeholder="sk-...">
       </div>
+
       <div class="form-group" v-if="addMode === 'registry'">
         <label class="form-label">Base URL <span class="text-faint">(auto-filled from registry)</span></label>
-        <input v-model="newProvider.data.baseUrl" class="input mono" placeholder="https://api.openai.com/v1">
+        <input v-model="newProvider.data.baseUrl" class="input mono" :placeholder="selectedRegistry?.baseUrl || 'https://api.openai.com/v1'">
       </div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Auth Type</label>
-          <select v-model="newProvider.authType" class="input">
-            <option value="api-key">api-key</option>
-            <option value="oauth">oauth</option>
-            <option value="none">none</option>
+          <select v-model="newProvider.authType" class="input" :disabled="addMode === 'registry' && supportedAuthModes.length <= 1">
+            <option v-for="m in (addMode === 'registry' ? supportedAuthModes : ['api-key', 'oauth', 'none'])" :key="m" :value="m">{{ m }}</option>
           </select>
         </div>
         <div class="form-group">
@@ -372,6 +492,51 @@ function goDetail(providerId: string) {
 .card-id { display: block; font-size: 10px; color: var(--text-faint); margin-top: 2px; }
 .card-arrow { color: var(--text-faint); flex-shrink: 0; }
 .card-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* Contextual quick action */
+.card-action {
+  margin-top: 10px; width: 100%; height: 28px;
+  font-size: 11.5px; font-weight: 550; font-family: var(--font);
+  border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--gradient); color: var(--on-accent); border: none;
+  transition: all 0.18s var(--ease-spring);
+}
+.card-action:hover:not(:disabled) { filter: brightness(1.1); }
+.card-action:active:not(:disabled) { transform: scale(0.97); }
+.card-action:disabled { opacity: 0.6; cursor: not-allowed; }
+.card-action-manage {
+  background: var(--glass-hover); color: var(--text-muted);
+  border: 1px solid var(--glass-border);
+}
+.card-action-manage:hover { color: var(--text); background: var(--glass-hover); filter: none; }
+
+/* First-run onboarding */
+.onboarding {
+  margin-bottom: 24px; padding: 20px;
+  border-radius: 14px; border: 1px solid var(--glass-border);
+  background: var(--glass);
+  background-image: linear-gradient(135deg, var(--ring-soft), transparent 60%);
+}
+.onboarding-hero { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 16px; }
+.onboarding-icon {
+  width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gradient); color: var(--on-accent);
+  box-shadow: var(--shadow-accent);
+}
+.onboarding-title { font-size: 15px; font-weight: 650; margin-bottom: 4px; }
+.onboarding-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; max-width: 560px; }
+.onboarding-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* NoAuth note in Add modal */
+.noauth-note {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px; margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(74,222,128,.08); border: 1px solid rgba(74,222,128,.25);
+  color: var(--green); font-size: 12px; line-height: 1.5;
+}
+.noauth-note svg { flex-shrink: 0; margin-top: 1px; }
 
 /* Add modal */
 .add-tabs { display: flex; gap: 4px; margin-bottom: 14px; }

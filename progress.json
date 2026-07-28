@@ -366,7 +366,7 @@
       "id": 24,
       "name": "WebUI Provider Experience Overhaul",
       "description": "Make the panel actually usable: one-click free provider enable, contextual card actions, auth-aware add flows, first-run onboarding. USE BrowserUse for visual verification (see AGENTS.md).",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "Free providers one-click Enable: card button creates NoAuth connection instantly (zero-config, like 9router NoAuthProxyCard pattern)",
         "Provider card contextual actions: apikey → 'Add Key' button, oauth → 'Connect' button, free → 'Enable' button, connected → status badge + quick test",
@@ -376,7 +376,8 @@
         "Provider detail: NoAuth providers show 9router-style 'No authentication required' card with optional proxy pool binding",
         "Test All feedback: per-card inline OK/FAIL badge with latency (already partially done, polish UX)",
         "Backend: POST /api/providers/enable-free endpoint (batch-enable all NoAuth providers in one call)"
-      ]
+      ],
+      "notes": "Backend: POST /api/providers/enable-free (batch-enable NoAuth providers, idempotent, optional selective list). Frontend: contextual card actions (Enable/Connect/Add Key/Manage), first-run onboarding with one-click free enable, auth-aware Add modal (locks auth modes, hides key field for NoAuth), Test All per-card latency badge, ProviderDetailView stripped Base URL placeholder + tooltip and 9router-style NoAuth card with proxy pool binding. Verified via go test + runtime smoke test (9 free providers enabled, idempotent). NOTE: BrowserUse tooling not available in this sandbox despite AGENTS.md; visual verification done via build + HTTP smoke test instead."
     },
     {
       "id": 25,
@@ -415,7 +416,7 @@
       ]
     }
   ],
-  "current_phase": 24,
+  "current_phase": 25,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },

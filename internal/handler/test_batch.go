@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -111,6 +113,70 @@ func (s *Server) handleTestBatch(w http.ResponseWriter, r *http.Request) {
 		"total":   len(results),
 		"passed":  passed,
 		"failed":  len(results) - passed,
+	})
+}
+
+// handleEnableFreeProviders creates a NoAuth connection for every registry
+// provider that requires no authentication and does not already have one.
+// This powers the panel's one-click "start with free providers" onboarding.
+// POST /api/providers/enable-free
+// Body (optional): { "providers": ["id1", "id2"] } — empty = all NoAuth providers
+func (s *Server) handleEnableFreeProviders(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Providers []string `json:"providers"`
+	}
+	// Body is optional; ignore decode errors on an empty body.
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	want := make(map[string]bool, len(req.Providers))
+	for _, id := range req.Providers {
+		want[id] = true
+	}
+
+	existing, err := s.DB.ListConnections()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list connections"})
+		return
+	}
+	already := make(map[string]bool, len(existing))
+	for _, c := range existing {
+		already[c.Provider] = true
+	}
+
+	enabled := make([]string, 0)
+	skipped := make([]string, 0)
+	for id, info := range provider.Registry {
+		if !info.NoAuth {
+			continue
+		}
+		if len(want) > 0 && !want[id] {
+			continue
+		}
+		if already[id] {
+			skipped = append(skipped, id)
+			continue
+		}
+		pc := &model.ProviderConnection{
+			ID:       generateID(),
+			Provider: id,
+			AuthType: "none",
+			Name:     info.Name,
+			Priority: info.Priority,
+			IsActive: true,
+		}
+		if err := s.DB.CreateConnection(pc); err != nil {
+			slog.Error("failed to enable free provider", "provider", id, "error", err)
+			continue
+		}
+		enabled = append(enabled, id)
+	}
+	sort.Strings(enabled)
+	sort.Strings(skipped)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": enabled,
+		"skipped": skipped,
+		"count":   len(enabled),
 	})
 }
 
