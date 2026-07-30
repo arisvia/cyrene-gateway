@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
 import { formatUptime } from '@/lib/format'
 import { LOCALES, locale, setLocale } from '@/i18n'
-import { Sun, Moon, LogOut, Server, KeyRound, GitBranch, Layers, BarChart3, Gauge, Zap, Globe, Network, Settings, Activity, Clapperboard, Terminal, ScrollText, Link2, MessageSquare, Sparkles, Languages, ShieldAlert } from 'lucide-vue-next'
+import { Sun, Moon, LogOut, Link2, Server, Clapperboard, Layers, BarChart3, Gauge, Zap, Terminal, ScrollText, Globe, Network, ShieldAlert, Sparkles, Settings, Languages } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const route = useRoute()
-const router = useRouter()
 
 const theme = ref(document.documentElement.classList.contains('light') ? 'light' : 'dark')
 function toggleTheme() {
@@ -24,40 +23,39 @@ function selectLang(code: string) {
 }
 
 const navMain = [
+  { path: '/', label: 'Endpoint & Key', icon: Link2 },
   { path: '/providers', label: 'Providers', icon: Server },
   { path: '/media', label: 'Media', icon: Clapperboard },
-  { path: '/cli-tools', label: 'CLI Tools', icon: Terminal },
-  { path: '/endpoints', label: 'Endpoints', icon: Link2 },
-  { path: '/chat', label: 'Chat', icon: MessageSquare },
-  { path: '/skills', label: 'Skills', icon: Sparkles },
-  { path: '/keys', label: 'API Keys', icon: KeyRound },
-  { path: '/aliases', label: 'Model Aliases', icon: GitBranch },
   { path: '/combos', label: 'Combos', icon: Layers },
   { path: '/usage', label: 'Usage', icon: BarChart3 },
-  { path: '/console', label: 'Console Log', icon: ScrollText },
   { path: '/quota', label: 'Quota', icon: Gauge },
   { path: '/tokensaver', label: 'Token Saver', icon: Zap },
+  { path: '/cli-tools', label: 'CLI Tools', icon: Terminal },
+  { path: '/console', label: 'Console Log', icon: ScrollText },
 ]
 const navSystem = [
   { path: '/proxies', label: 'Proxy Pools', icon: Globe },
   { path: '/tunnel', label: 'Tunnel', icon: Network },
   { path: '/mitm', label: 'MITM Proxy', icon: ShieldAlert },
+  { path: '/skills', label: 'Skills', icon: Sparkles },
   { path: '/settings', label: 'Settings', icon: Settings },
-  { path: '/status', label: 'Status', icon: Activity },
 ]
 
 const emit = defineEmits<{ logout: [] }>()
 
 const mobileOpen = ref(false)
 function closeMobile() { mobileOpen.value = false }
+
+function isActive(path: string): boolean {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
 </script>
 
 <template>
-  <!-- Mobile hamburger -->
   <button class="mobile-toggle" @click="mobileOpen = true" aria-label="Open menu">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
   </button>
-  <!-- Mobile overlay -->
   <div v-if="mobileOpen" class="mobile-overlay" @click="closeMobile"></div>
   <aside :class="['sidebar', mobileOpen && 'mobile-open']">
     <div class="sidebar-brand">
@@ -69,7 +67,7 @@ function closeMobile() { mobileOpen.value = false }
       <p class="nav-group-label">Gateway</p>
       <router-link
         v-for="item in navMain" :key="item.path" :to="item.path"
-        :class="['nav-item', route.path === item.path && 'active']"
+        :class="['nav-item', isActive(item.path) && 'active']"
         @click="closeMobile"
       >
         <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
@@ -78,7 +76,7 @@ function closeMobile() { mobileOpen.value = false }
       <p class="nav-group-label">System</p>
       <router-link
         v-for="item in navSystem" :key="item.path" :to="item.path"
-        :class="['nav-item', route.path === item.path && 'active']"
+        :class="['nav-item', isActive(item.path) && 'active']"
         @click="closeMobile"
       >
         <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
@@ -115,7 +113,7 @@ function closeMobile() { mobileOpen.value = false }
   position: fixed; inset-block: 0; left: 0; z-index: 40;
   width: var(--sidebar-w); display: flex; flex-direction: column;
   background: var(--sidebar-bg);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(var(--glass-blur-heavy)); -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
   border-right: 1px solid var(--glass-border);
   transition: background 0.3s ease;
 }
@@ -141,12 +139,12 @@ function closeMobile() { mobileOpen.value = false }
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; border-radius: var(--radius-sm);
   font-size: 13px; font-weight: 480; color: var(--text-muted);
-  cursor: pointer; transition: all 0.15s ease; user-select: none;
+  cursor: pointer; transition: all 0.18s var(--ease-smooth); user-select: none;
   border: 1px solid transparent; margin-bottom: 1px;
   text-decoration: none;
 }
-.nav-item svg { opacity: 0.7; flex-shrink: 0; }
-.nav-item:hover { color: var(--text); background: var(--glass-hover); }
+.nav-item svg { opacity: 0.7; flex-shrink: 0; transition: all 0.18s ease; }
+.nav-item:hover { color: var(--text); background: var(--glass-hover); transform: translateX(2px); }
 .nav-item.active {
   color: var(--text); background: var(--glass-hover);
   border-color: var(--glass-border);
@@ -157,7 +155,7 @@ function closeMobile() { mobileOpen.value = false }
   margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 9px; font-size: 10px; font-weight: 650;
-  background: var(--accent); color: var(--on-accent);
+  background: var(--gradient); color: var(--on-accent);
   font-family: var(--font-mono);
 }
 

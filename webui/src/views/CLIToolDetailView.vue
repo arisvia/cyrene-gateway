@@ -98,9 +98,11 @@ async function copy(text: string, field: string) {
 }
 
 onMounted(async () => {
-  if (!store.apiKeys.length) await store.loadKeys()
-  if (store.apiKeys.length) apiKey.value = store.apiKeys[0].key
   await load()
+  // Load keys in parallel — don't block tool rendering
+  store.loadKeys().then(() => {
+    if (store.apiKeys.length && !apiKey.value) apiKey.value = store.apiKeys[0].key
+  })
 })
 </script>
 
