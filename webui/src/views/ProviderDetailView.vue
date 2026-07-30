@@ -277,6 +277,26 @@ async function removeCustomModel(m: any) {
   if (res?.customModels) customModels.value = res.customModels
 }
 
+// --- Refresh models (live fetch) ---
+const refreshingModels = ref(false)
+async function refreshModels() {
+  refreshingModels.value = true
+  try {
+    const res = await apiPost(`/api/providers/${providerId.value}/refresh-models`)
+    toast.success(`Refreshed ${res.count} models from ${providerId.value}`)
+    // Reload models
+    const conn = connections.value[0]
+    if (conn) {
+      const modelsRes = await api(`/api/providers/${conn.id}/models`)
+      registryModels.value = modelsRes?.registryModels || []
+      customModels.value = modelsRes?.customModels || []
+    }
+  } catch (e: any) {
+    toast.error(`Refresh failed: ${e.message}`)
+  }
+  refreshingModels.value = false
+}
+
 // --- Qoder model import ---
 const importingModels = ref(false)
 async function importQoderModels() {
@@ -707,6 +727,10 @@ onUnmounted(() => { stopAutoPoll() })
             <div class="flex-gap">
               <GButton v-if="disabledModels.length > 0" size="sm" variant="ghost" @click="enableAllModels">Enable All</GButton>
               <GButton v-if="enabledModels.length > 0" size="sm" variant="ghost" @click="disableAll">Disable All</GButton>
+              <GButton v-if="connections.some(c => c.isActive)" size="sm" variant="ghost"
+                @click="refreshModels" :disabled="refreshingModels">
+                <RotateCcw :size="12" :class="{ spinning: refreshingModels }" />{{ refreshingModels ? 'Refreshing…' : 'Refresh Models' }}
+              </GButton>
               <GButton v-if="providerId === 'qoder' && connections.some(c => c.isActive)" size="sm" variant="ghost"
                 @click="importQoderModels" :disabled="importingModels">
                 <Download :size="12" />{{ importingModels ? 'Importing…' : 'Import Models' }}

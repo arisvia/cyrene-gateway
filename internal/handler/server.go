@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
@@ -145,6 +144,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
 	s.Router.HandleFunc("POST /api/providers/test-batch", s.handleTestBatch)
 	s.Router.HandleFunc("POST /api/providers/enable-free", s.handleEnableFreeProviders)
+	s.Router.HandleFunc("POST /api/providers/{id}/refresh-models", s.handleRefreshModels)
 
 	// Provider detail: models (registry + custom)
 	s.Router.HandleFunc("GET /api/providers/{id}/models", s.handleGetProviderModels)
@@ -264,11 +264,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		ID            string   `json:"id"`
 		Object        string   `json:"object"`
 		OwnedBy       string   `json:"owned_by"`
+		DisplayName   string   `json:"display_name,omitempty"`
 		ContextLength int      `json:"context_length,omitempty"`
+		MaxOutput     int      `json:"max_output_tokens,omitempty"`
 		Capabilities  []string `json:"capabilities,omitempty"`
+		Modalities    []string `json:"modalities,omitempty"`
 	}
 
 	var models []ModelEntry
+
+	// Load cached model metadata for all providers
+	cacheIndex := s.loadModelCacheIndex()
 
 	// Add aliases as models
 	aliases, _ := s.DB.KVList("aliases")
@@ -306,17 +312,26 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add registry models for providers with active connections
+	// Add registry models for providers with active connections (enriched with metadata)
 	for providerID := range seen {
 		if regModels, ok := provider.RegistryModels[providerID]; ok {
 			for _, m := range regModels {
-				entry := ModelEntry{
-					ID:      providerID + "/" + m.ID,
-					Object:  "model",
-					OwnedBy: providerID,
+				fullID := providerID + "/" + m.ID
+				meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
+				// Use registry display name as fallback
+				if meta.DisplayName == m.ID && m.Name != "" {
+					meta.DisplayName = m.Name
 				}
-				entry.ContextLength, entry.Capabilities = inferModelMetadata(m.ID)
-				models = append(models, entry)
+				models = append(models, ModelEntry{
+					ID:            fullID,
+					Object:        "model",
+					OwnedBy:       providerID,
+					DisplayName:   meta.DisplayName,
+					ContextLength: meta.ContextLength,
+					MaxOutput:     meta.MaxOutput,
+					Capabilities:  meta.Capabilities,
+					Modalities:    meta.Modalities,
+				})
 			}
 		}
 	}
@@ -331,13 +346,21 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			})
 			if regModels, ok := provider.RegistryModels[id]; ok {
 				for _, m := range regModels {
-					entry := ModelEntry{
-						ID:      id + "/" + m.ID,
-						Object:  "model",
-						OwnedBy: id,
+					fullID := id + "/" + m.ID
+					meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
+					if meta.DisplayName == m.ID && m.Name != "" {
+						meta.DisplayName = m.Name
 					}
-					entry.ContextLength, entry.Capabilities = inferModelMetadata(m.ID)
-					models = append(models, entry)
+					models = append(models, ModelEntry{
+						ID:            fullID,
+						Object:        "model",
+						OwnedBy:       id,
+						DisplayName:   meta.DisplayName,
+						ContextLength: meta.ContextLength,
+						MaxOutput:     meta.MaxOutput,
+						Capabilities:  meta.Capabilities,
+						Modalities:    meta.Modalities,
+					})
 				}
 			}
 		}
@@ -353,76 +376,78 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// inferModelMetadata returns estimated context length and capabilities for a model ID (9router#2872).
-func inferModelMetadata(modelID string) (int, []string) {
-	lower := strings.ToLower(modelID)
-	caps := []string{"chat"}
-
-	// Context length heuristics
-	ctx := 128000 // default 128K
-	switch {
-	case strings.Contains(lower, "gemini-2.5") || strings.Contains(lower, "gemini-3"):
-		ctx = 1048576
-	case strings.Contains(lower, "claude"):
-		ctx = 200000
-	case strings.Contains(lower, "gpt-4o") || strings.Contains(lower, "gpt-4.1"):
-		ctx = 128000
-	case strings.Contains(lower, "gpt-5"):
-		ctx = 256000
-	case strings.Contains(lower, "deepseek"):
-		ctx = 128000
-	case strings.Contains(lower, "grok"):
-		ctx = 131072
-	case strings.Contains(lower, "llama"):
-		ctx = 128000
-	case strings.Contains(lower, "qwen"):
-		ctx = 131072
-	case strings.Contains(lower, "kimi"):
-		ctx = 131072
-	case strings.Contains(lower, "glm"):
-		ctx = 128000
-	case strings.Contains(lower, "minimax"):
-		ctx = 1000000
+// loadModelCacheIndex loads all cached provider model metadata into a lookup
+// map keyed by "providerID/modelID".
+func (s *Server) loadModelCacheIndex() map[string]*model.ModelMetadata {
+	index := make(map[string]*model.ModelMetadata)
+	caches, err := s.DB.KVList("providerModelCache")
+	if err != nil {
+		return index
 	}
-
-	// Capability detection
-	if strings.Contains(lower, "image") || strings.Contains(lower, "dall") || strings.Contains(lower, "flux") {
-		caps = append(caps, "vision")
-	}
-	if strings.Contains(lower, "embed") {
-		caps = []string{"embeddings"}
-		ctx = 8192
-	}
-	if strings.Contains(lower, "tts") || strings.Contains(lower, "speech") {
-		caps = []string{"tts"}
-		ctx = 0
-	}
-	if strings.Contains(lower, "whisper") || strings.Contains(lower, "transcri") || strings.Contains(lower, "asr") {
-		caps = []string{"stt"}
-		ctx = 0
-	}
-	if strings.Contains(lower, "thinking") || strings.Contains(lower, "reason") || strings.Contains(lower, "o1") || strings.Contains(lower, "o3") || strings.Contains(lower, "o4") || strings.Contains(lower, "qwq") {
-		caps = append(caps, "reasoning")
-	}
-	if strings.Contains(lower, "vision") || strings.Contains(lower, "vl") || strings.Contains(lower, "4o") || strings.Contains(lower, "flash") {
-		if !contains(caps, "vision") {
-			caps = append(caps, "vision")
+	for providerID, raw := range caches {
+		var cached model.CachedModels
+		if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+			continue
+		}
+		for i := range cached.Models {
+			m := &cached.Models[i]
+			index[providerID+"/"+m.ID] = m
 		}
 	}
-	if strings.Contains(lower, "coder") || strings.Contains(lower, "codex") || strings.Contains(lower, "code") {
-		caps = append(caps, "code")
-	}
-
-	return ctx, caps
+	return index
 }
 
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
+// handleRefreshModels triggers a live model fetch for a provider and caches the result.
+func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
+	providerID := r.PathValue("id")
+
+	providerInfo, ok := provider.GetProvider(providerID)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider"})
+		return
 	}
-	return false
+
+	// Find an active connection for this provider
+	conns, err := s.DB.ListConnectionsByProvider(providerID)
+	if err != nil || len(conns) == 0 {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "no active connection for provider: " + providerID,
+		})
+		return
+	}
+
+	conn := conns[0]
+	baseURL := providerInfo.BaseURL
+	if conn.Data.BaseURL != "" {
+		baseURL = conn.Data.BaseURL
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	models, err := model.FetchModels(client, providerID, baseURL, conn.Data.APIKey, conn.Data.AccessToken)
+	if err != nil {
+		slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Store in KV cache
+	cached := model.CachedModels{
+		FetchedAt: time.Now().UTC(),
+		Models:    models,
+	}
+	data, _ := json.Marshal(cached)
+	if err := s.DB.KVSet("providerModelCache", providerID, string(data)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to cache models"})
+		return
+	}
+
+	slog.Info("Models refreshed", slog.String("provider", providerID), slog.Int("count", len(models)))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":       true,
+		"provider": providerID,
+		"count":    len(models),
+		"models":   models,
+	})
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
