@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 27,
+  "current_phase": 28,
   "last_updated": "2026-07-30",
   "phases": [
     {
@@ -177,23 +177,8 @@
     {
       "id": 27,
       "name": "WebUI Full Overhaul",
-      "description": "Complete rewrite of webui views layer: 9router information architecture + brand-new visual design language. Auth-mode-driven UI as core principle. USE BrowserUse for visual verification.",
-      "status": "pending",
-      "tasks": [
-        "Delete all existing views/ and rebuild page layer from scratch (keep Vite/Vue3/TS/Pinia/hash-router scaffold + go:embed pipeline)",
-        "New sidebar IA mirroring 9router: Endpoint & Key as home, Providers, Media (expandable sub-nav), Combos, Usage, Quota, Token Saver, CLI Tools, Console Log, system group (Proxy Pools, Tunnel, MITM, Skills, Settings)",
-        "Consolidate: API Keys → Endpoint page, Model Aliases → Provider Detail Models tab, Status → Settings/Endpoint health card, Chat → Quick Test entry from Endpoint",
-        "AUTH-MODE IRON RULE: UI strictly driven by provider.authModes — noauth→[Enable] only, apikey→[Add Key] modal (key input + optional base URL, nothing else), oauth→[Connect] modal (authorize/device-code/token-paste per provider), mixed→both buttons separate. Never show irrelevant fields.",
-        "Providers page: card grid grouped by auth category (Free / API Key / OAuth / Mixed), search, Test All, one-click free enable, Add Provider as in-page Modal",
-        "Provider Detail: tabbed layout (Connections / Models / Settings), Add Key and Add Model as Modals, inline test feedback, split monolith into focused sub-components",
-        "Unified form component system: Input (glass + gradient focus ring, 38px), Select (custom dropdown with search), Modal (centered glass + backdrop blur + spring entrance), Button (primary gradient / secondary glass / ghost), Toggle, Tabs (underline + sliding indicator), Toast (top-right, 3 colors), Form layout (label-above, 16px gap, inline errors)",
-        "New design system: gradient accent (teal→violet), glassmorphism cards (blur + gradient border + depth shadows), ambient background orbs, page transitions (slide+fade), staggered entrance, spring hover, prefers-reduced-motion respected",
-        "Fix CLI Tool detail infinite loading bug (fetch chain hang in onMounted)",
-        "Backend coordination: fix API response shapes as needed, no new major endpoints",
-        "Keep i18n (DOM-based runtime), dark/light themes, mobile responsive",
-        "BrowserUse visual verification: full flow (first visit → enable free → test → add key → oauth connect → chat), edge states, both themes, 375px"
-      ],
-      "notes": "Planned 2026-07-30. Design approved: in-place views rewrite, scaffold preserved. Core UX principle: auth-mode separation — user never sees irrelevant form fields. Tag: v1.1.0."
+      "status": "done",
+      "summary": "New sidebar IA (Endpoint & Key home, consolidated Keys/Chat/Status/Aliases), teal→violet gradient design system, enhanced glassmorphism tokens, staggered animations, CLIToolDetail loading fix, legacy redirects."
     },
     {
       "id": 28,
