@@ -22,7 +22,7 @@
         "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
         "If no action needed: report 'no pending work' and exit"
       ],
-      "notes": "History: 2026-07-28 fixed URL double-append, Qoder COSY port, OpenCode Free, /v1/models free exposure, auth-aware panel forms (0b2fd52); Gemini schema sanitization (#2877); Kimi apikey routing (#2881); raw body preservation (c97963c). 2026-07-30: full pass, no pending work, upstream unchanged at 79918c7."
+      "notes": "History: 2026-07-28 fixed URL double-append, Qoder COSY port, OpenCode Free, /v1/models free exposure, auth-aware panel forms (0b2fd52); Gemini schema sanitization (#2877); Kimi apikey routing (#2881); raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix (e3e3e23), 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog entries."
     },
     {
       "id": 1,
@@ -197,10 +197,12 @@
     { "source": "9router#2767", "what": "Per-provider token-saver exclusion list (Settings.TokenSaverExclude)", "when": "2026-07-28" },
     { "source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities per model", "when": "2026-07-28" },
     { "source": "9router#2884", "what": "Schema cleaner property-name map safety: walkers thread isSchema flag, params named 'title'/'format'/'default' no longer corrupted", "when": "2026-07-30" },
+    { "source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} nodes after $ref removal to object+reason placeholder", "when": "2026-07-30" },
+    { "source": "9router@6fcd273", "what": "Registry sync: 10 new providers (api-airforce, baidu, bazaarlink, bluesminds, kilo-gateway, llm7, morph, poolside, sambanova, tencent), Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog", "when": "2026-07-30" },
     { "source": "VansRouter", "what": "Loop guard detection + termination prompt injection (Phase 9)", "when": "2026-07-23" }
   ],
   "upstream_commits": {
-    "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
+    "decolua/9router": "6fcd273830695bbca4a45c9fea4a42c3e9fd73d1"
   },
   "upstream_notes": {
     "decolua/9router": "primary upstream, sync every maintenance cycle. Scan open issues + merged PRs as hardening input; record ported items in upstream_ports.",
@@ -213,7 +215,7 @@
     "relevant_paths": ["open-sse/handlers/", "open-sse/translator/", "open-sse/services/", "open-sse/providers/registry/", "open-sse/config/"],
     "skip_paths": ["open-sse/translator/formats/kiro", "open-sse/translator/formats/codex-responses", "src/app/(dashboard)/"],
     "priority": "P0: merged PR touching handlers/translator/services → must evaluate. P1: open bug on existing feature → preventive fix. P2: registry changes → baseUrl/model updates. P3: features → record as candidate.",
-    "last_scan_result": "no pending work"
+    "last_scan_result": "synced to 6fcd273: Gemini schema fix + 10 providers + catalog updates"
   },
   "future_candidates": [
     { "what": "OpenAI Responses API adapter (Chat Completions ↔ Responses bidirectional translation)", "why": "Codex structured output (json_schema) fails without it (9router#2896). Codex API still unstable — wait.", "priority": "low" }
