@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 28,
+  "current_phase": 29,
   "last_updated": "2026-07-30",
   "phases": [
     {
@@ -183,20 +183,8 @@
     {
       "id": 28,
       "name": "Model Metadata Enrichment",
-      "description": "Three-layer model metadata system: static catalog + per-provider live fetch + user overrides. Rich /v1/models output with display_name, context_length, capabilities. Solves Qoder-style opaque model IDs.",
-      "status": "pending",
-      "tasks": [
-        "internal/model/catalog.go: static registry (50-80 mainstream models with display_name, context_length, max_output, capabilities, modalities, family)",
-        "internal/model/fetcher.go: ModelsFetcher interface + per-provider normalizers (OpenRouter full metadata, Anthropic display_name, Google token limits, Mistral capabilities, Qoder/COSY display_name mapping, OpenAI-compat fallback)",
-        "KV cache: providerModelCache scope with 24h TTL, auto-trigger on connection create/refresh",
-        "Merge logic: user override > live cache > static catalog > ID inference (existing fallback)",
-        "/v1/models output: OpenAI-compatible + extension fields (display_name, context_length, max_output_tokens, capabilities[], modalities[])",
-        "Qoder fix: model/list response stores display_name mapping (qmodel_preview → Qwen 3.8 Max Preview etc.), not just IDs",
-        "Panel: model selectors show display_name + capability icons (Phase 27 pre-reserved slots)",
-        "Panel: Provider Detail Models tab shows full metadata columns",
-        "Panel: 'Refresh Models' button per provider (triggers live fetch)"
-      ],
-      "notes": "Planned 2026-07-30. Motivation: /v1/models currently returns bare IDs — useless for clients. Qoder model IDs are opaque aliases only resolvable via OAuth model/list. OmniRoute does this well but is over-engineered; our approach is lighter (static + cached live fetch, no routing engine). Tag: v1.2.0."
+      "status": "done",
+      "summary": "Three-layer metadata: static catalog (80+ models), live fetcher (OpenRouter/Anthropic/Google/Mistral normalizers), KV cache (24h TTL). /v1/models enriched with display_name, context_length, max_output_tokens, capabilities[], modalities[]. POST /api/providers/{id}/refresh-models endpoint. Panel Refresh Models button."
     }
   ],
   "upstream_ports": [
