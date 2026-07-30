@@ -448,3 +448,82 @@ func TestGeminiToolSchemaSanitized(t *testing.T) {
 		t.Fatal("minLength should be stripped from Gemini tool schema")
 	}
 }
+
+// TestCleanJSONSchemaPropertyNameMapSafety verifies that the schema cleaner does
+// not corrupt property-name maps: parameters named "title", "format", "properties"
+// etc. must survive cleaning (9router#2884 regression test).
+func TestCleanJSONSchemaPropertyNameMapSafety(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"page_id": map[string]any{
+				"type": "string",
+			},
+			// Parameter named "properties" — must NOT get bogus type:"object" injected into name map
+			"properties": map[string]any{
+				"type":                 "object",
+				"description":          "Page property values",
+				"additionalProperties": true,
+			},
+			// Parameter named "title" — must NOT be deleted as a schema keyword
+			"title": map[string]any{
+				"type":        "string",
+				"description": "Issue title",
+			},
+			// Parameter named "format" — must NOT be deleted
+			"format": map[string]any{
+				"type":        "string",
+				"description": "Output format",
+			},
+			// Parameter named "default" — must NOT be deleted
+			"default": map[string]any{
+				"type":        "boolean",
+				"description": "Whether this is the default",
+			},
+		},
+		"required": []any{"page_id"},
+	}
+
+	cleaned := cleanJSONSchemaForGemini(schema)
+
+	props, ok := cleaned["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("properties should still be a map")
+	}
+
+	// "title" parameter must survive
+	if _, ok := props["title"]; !ok {
+		t.Fatal("parameter named 'title' was incorrectly deleted from property-name map")
+	}
+	// "format" parameter must survive
+	if _, ok := props["format"]; !ok {
+		t.Fatal("parameter named 'format' was incorrectly deleted from property-name map")
+	}
+	// "default" parameter must survive
+	if _, ok := props["default"]; !ok {
+		t.Fatal("parameter named 'default' was incorrectly deleted from property-name map")
+	}
+	// "properties" parameter must survive
+	propParam, ok := props["properties"].(map[string]any)
+	if !ok {
+		t.Fatal("parameter named 'properties' was incorrectly deleted")
+	}
+	// additionalProperties inside the "properties" parameter schema should be removed
+	if _, ok := propParam["additionalProperties"]; ok {
+		t.Fatal("additionalProperties inside a real schema node should be removed")
+	}
+	if propParam["type"] != "object" {
+		t.Fatalf("properties param should keep type=object, got %v", propParam["type"])
+	}
+
+	// The property-name map itself must NOT have a bogus "type" key injected
+	if _, ok := props["type"]; ok {
+		t.Fatal("bogus 'type' key was injected into the property-name map")
+	}
+
+	// page_id should be intact
+	pageID := props["page_id"].(map[string]any)
+	if pageID["type"] != "string" {
+		t.Fatalf("page_id type should be string, got %v", pageID["type"])
+	}
+}
