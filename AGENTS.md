@@ -72,26 +72,29 @@ go build ./cmd/gateway                # embed 自动打包 dist/
 - **主参考**: decolua/9router（Next.js 原版，`--depth 1` clone 到 /data/workspace/9router）
 - **增强参考**: Vanszs/VansRouter（loop guard、termination prompt 等增强，按需 clone 到 /data/workspace/VansRouter）
 - 重点参考目录：`open-sse/services/`（fallback/credential）、`open-sse/config/`（error rules）、`open-sse/handlers/`（chat core）
-- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。Phase 23 维护模式更新 hash 后，后续 session 自然拿到新版本。
+- **Pin commit**: clone 9router 后应 checkout 到 `progress.json` 中 `upstream_commits["decolua/9router"]` 记录的 hash，确保参考源码与记录一致。维护模式更新 hash 后，后续 session 自然拿到新版本。
 
 ## progress.json 使用规则
 
 - 位于仓库根目录，是跨 session 的唯一进度来源
 - `phases[].status`: "pending" | "done"
-- `current_phase`: 指向下一个要做的 phase ID
+- `phases[id=-1]` 是维护模式哨兵，不参与正常流转，永远 pending
+- `current_phase`: 指向下一个要做的开发 phase ID（不含 -1）
 - 每次 session 只完成一个 phase，完成后更新 status 和 current_phase
+- 无 pending 开发 phase 时自动进入维护模式（id=-1 的流程）
+- 已完成的 phase 只保留 `summary`（一行精简总结），不保留 tasks 列表（节省 token）
+- `upstream_ports`: 从上游移植的 issue/PR/commit 记录（source + what + when），维护模式每次移植后追加
 - 必须随代码一起 commit 并 push
 
 ## 版本规划
 
-- Phase 1 完成 → v0.1.0
-- Phase 2 完成 → v0.2.0
-- ...
-- Phase 9 完成 → v0.9.0
+- Phase 1-9 → v0.1.0 ... v0.9.0
 - Phase 10-14（功能增强）→ v0.10.0 ... v0.14.0
 - Phase 15-22（面板工程化 + 功能对齐）→ v0.15.0 ... v0.22.0
 - 全部完成 → v1.0.0
-- Phase 23 为维护模式（永不 done），patch 版本 v1.0.x
+- Phase 24-26（面板体验收尾）→ v0.24.0 ... v0.26.0（历史编号，已发布）
+- Phase 27+（后续开发）→ v1.1.0 起递增
+- 维护模式（id=-1）patch → v1.x.y（如 v1.0.4）
 
 打 tag 会触发 GitHub Actions 创建 Release（含 5 平台二进制）。
 
@@ -117,7 +120,7 @@ v0.14.0 与 9router 面板对比后确认的差距补齐计划（2026-07-25 规�
 - **Phase 20**: Endpoint 概览 + Chat Playground + Skills
 - **Phase 21**: i18n（10+ 语言）+ 移动端适配 + UX 打磨
 - **Phase 22**: MITM Proxy（可选，仅本地部署 -mitm flag 显式启用，服务器模式禁用）
-- **Phase 23**: 维护模式（原 Phase 15，永不 done 的守护状态）
+- **Phase 27**: WebUI Full Overhaul（9router 信息架构 + 全新视觉设计语言）
 
 面板架构说明：Phase 15 起迁移为 webui/ 工程目录（Vue 3 + Vite + TypeScript），
 构建产物 dist/ 通过 go:embed 嵌入 Go 二进制，保持单二进制分发。
@@ -157,34 +160,38 @@ cd webui && npm run build && cd dist && zip -r my-panel.zip .
 安全限制：zip-slip 防护、≤500 文件、单文件 ≤5MB、总下载 ≤20MB、必须含 index.html。
 缓存目录版本隔离（panel_dist_<version>/），二进制升级自动失效旧缓存。
 
-## 维护模式（Phase 23，原 Phase 15）
+## 维护模式（Phase id=-1，哨兵状态）
 
-当所有开发 phase（1-22）均为 done 时，后续定时触发进入维护模式：
+维护模式不是开发 phase，而是 id=-1 的哨兵条目，置于 phases 数组最前面。
+触发条件：无 pending 开发 phase 时自动进入，或手动触发。
+
+流程：
 1. 检查 GitHub Issues（bug 报告、feature request）
 2. `go build ./... && go test ./...` 验证项目健康
 3. 审查 dependabot PRs，安全则合并
-4. 修复 issue → commit → push → 打 patch tag（v1.0.1 等）
+4. 修复 issue → commit → push → 打 patch tag（v1.x.y）
 5. **上游同步**：对比 `progress.json` 中 `upstream_commits` 的 hash
    - 用 GitHub API 查询新提交：`curl -s "https://api.github.com/repos/decolua/9router/commits?since=<date>"`
    - 重点关注 `open-sse/providers/registry/`（新 provider、baseUrl 变更）
    - 重点关注 `open-sse/config/`（模型映射、能力变更）
-   - 有值得借鉴的改动 → 移植到 Go → commit → push
+   - 有值得借鉴的改动 → 移植到 Go → 记录到 `upstream_ports` → commit → push
    - 更新 `upstream_commits` hash
 6. 无需操作时报告 "no pending work" 并正常退出
 
-Phase 23 永远不会被标记为 done——它是持续运行的守护状态。
+维护模式永远不会被标记为 done——它是持续运行的守护状态。
 
 ## 参考项目使用策略
 
-- **开发期（Phase 2-22）**：9router 和 VansRouter **都参考**
+- **开发期**：9router 和 VansRouter **都参考**
   - 9router：核心架构、路由逻辑、provider 定义的权威来源
   - VansRouter：已做的增强（loop guard、termination prompt、bug fix）直接借鉴
   - 9router clone 到 /data/workspace/9router（若不存在则每轮 session 开头 clone）
   - VansRouter 仅在当前 phase 明确需要时按需 clone 到 /data/workspace/VansRouter
-- **维护期（Phase 23）**：只定期 diff 9router（主上游）
+- **维护期（id=-1）**：只定期 diff 9router（主上游）
   - VansRouter 是 9router 的 fork，底层 90%+ 相同，定期 diff 会重复运算
   - 仅在 Issue 指定或其独有增强相关时按需查看
 - 上游 commit hash 记录在 `progress.json` 的 `upstream_commits` 字段
+- 移植记录追加到 `upstream_ports` 数组（source/what/when）
 - 新增上游参考：往 `upstream_commits` map 加一条即可
 
 ## Issue 驱动开发

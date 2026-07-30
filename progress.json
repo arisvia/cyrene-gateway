@@ -3,421 +3,177 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
+  "current_phase": 27,
+  "last_updated": "2026-07-30",
   "phases": [
     {
-      "id": 1,
-      "name": "Core Infrastructure & Database Layer",
-      "description": "Project structure, SQLite persistence, config management, graceful shutdown",
-      "status": "done",
-      "tasks": [
-        "Restructure Go project layout (cmd/, internal/)",
-        "Implement SQLite database layer with migrations (schema.sql tables)",
-        "Implement settings repository (JSON blob store)",
-        "Implement KV store",
-        "Implement graceful shutdown with signal handling",
-        "Add structured logging (slog) with request context"
-      ]
-    },
-    {
-      "id": 2,
-      "name": "Provider & Connection Management",
-      "description": "Provider registry, connection CRUD, account fallback with exponential backoff",
-      "status": "done",
-      "tasks": [
-        "Implement provider nodes repository (custom compatible endpoints)",
-        "Implement account fallback logic (cooldown, exponential backoff, model locks)",
-        "Implement credential selection (priority-based, exclude set, cooldown-aware)",
-        "Implement connection status management (active/error/rate-limited)",
-        "Implement provider CRUD API endpoints (update/delete)"
-      ]
-    },
-    {
-      "id": 3,
-      "name": "Model Resolution & Combos",
-      "description": "Model string parsing, alias resolution, combo fallback strategies",
-      "status": "done",
-      "tasks": [
-        "Implement combo system (fallback + round-robin strategies)",
-        "Implement combo sticky round-robin limit",
-        "Implement model availability and disabled models",
-        "Implement combo CRUD API enhancements (update)",
-        "Add unit tests for model parsing and combo logic"
-      ]
-    },
-    {
-      "id": 4,
-      "name": "OpenAI-Compatible API Surface",
-      "description": "/v1/chat/completions, /v1/models, /v1/embeddings endpoints with streaming",
-      "status": "done",
-      "tasks": [
-        "Implement middleware chain (logging, recovery, CORS)",
-        "Implement /v1/messages endpoint (Anthropic-compatible passthrough)",
-        "Enhance SSE streaming proxy (disconnect-aware, [DONE] handling)",
-        "Implement request/response format translation (OpenAI<->Claude<->Gemini)",
-        "Implement usage extraction from upstream responses",
-        "Add integration tests with mock upstream"
-      ]
-    },
-    {
-      "id": 5,
-      "name": "Dashboard Panel System",
-      "description": "Embedded single-HTML panel (Vue3+Tailwind CDN), local mount, runtime download, CLI params",
-      "status": "done",
-      "tasks": [
-        "Implement CLI params: -host, -port, -db, -dashboard, -panel-url, -secret (all with defaults)",
-        "Implement env var support (CYRENE_HOST, CYRENE_PORT, etc.), flag takes priority",
-        "Implement embedded single-HTML dashboard (Vue3 + TailwindCSS via CDN, go:embed)",
-        "Implement panel serving: local dir (-dashboard) > downloaded cache > embedded fallback",
-        "Implement runtime panel download from -panel-url with cache in data dir",
-        "Implement panel routes (GET / serves dashboard, static file serving)",
-        "Panel features: provider list, connection status, alias management, basic usage view"
-      ]
-    },
-    {
-      "id": 6,
-      "name": "Authentication & API Keys",
-      "description": "Local API key management, Bearer token validation, dashboard auth",
-      "status": "done",
-      "tasks": [
-        "Implement API key generation (HMAC-signed)",
-        "Implement API key validation middleware for /v1/* routes",
-        "Implement dashboard session auth (cookie-based, -secret param)",
-        "Implement login/logout endpoints",
-        "Implement requireApiKey setting enforcement"
-      ]
-    },
-    {
-      "id": 7,
-      "name": "Usage Tracking & Observability",
-      "description": "Token usage recording, daily aggregation, request details logging",
-      "status": "done",
-      "tasks": [
-        "Implement usage history repository",
-        "Implement usage extraction from provider responses (stream + non-stream)",
-        "Implement daily usage aggregation (usageDaily table)",
-        "Implement request details logging (requestDetails table)",
-        "Implement /api/usage/* dashboard endpoints"
-      ]
-    },
-    {
-      "id": 8,
-      "name": "Dashboard Management API",
-      "description": "Complete REST API for all management operations",
-      "status": "done",
-      "tasks": [
-        "Implement /api/providers update/delete endpoints",
-        "Implement /api/provider-nodes CRUD endpoints",
-        "Implement /api/combos update endpoint",
-        "Implement /api/proxy-pools CRUD endpoints",
-        "Implement /api/health enhanced (db status, uptime, connection count)"
-      ]
-    },
-    {
-      "id": 9,
-      "name": "Advanced Features & Enhancements",
-      "description": "Token refresh, loop guard (VansRouter), proxy pools, provider testing",
-      "status": "done",
-      "tasks": [
-        "Implement OAuth token refresh (pre-check + on-401 retry)",
-        "Implement loop guard detection (VansRouter enhancement)",
-        "Implement termination prompt injection",
-        "Implement proxy pool support (outbound proxy rotation)",
-        "Implement provider connection testing endpoint",
-        "Implement max_tokens clamping for specific providers (NVIDIA Kimi)"
-      ]
-    },
-    {
-      "id": 10,
-      "name": "Provider Registry Expansion & Categorization",
-      "description": "Port full provider registry from 9router (~100 providers) with category metadata and auth modes",
-      "status": "done",
-      "tasks": [
-        "Add Category and AuthModes fields to ProviderInfo struct",
-        "Port all 64 apikey-category providers from 9router registry (baseUrl, apiType, aliases)",
-        "Port 16 oauth-category providers with OAuth config (tokenUrl, authorizeUrl, deviceCodeUrl)",
-        "Port 13 freeTier + 5 free + 2 webCookie providers",
-        "Extend GET /api/registry to return category grouping and counts",
-        "Panel: category filter tabs + search in Add Provider registry picker",
-        "Unit tests for registry completeness (all 9router providers present)"
-      ]
-    },
-    {
-      "id": 11,
-      "name": "Provider Detail Management",
-      "description": "Per-provider detail page: connection testing, credential editing, custom model management",
-      "status": "done",
-      "tasks": [
-        "Panel: provider detail view (click provider row to drill in)",
-        "Panel: connection test button with latency/status feedback (existing POST /api/providers/{id}/test)",
-        "Panel: edit API key / access token / base URL inline",
-        "Add custom models per provider (KV store: providerModels scope)",
-        "GET /api/providers/{id}/models endpoint (custom + registry models)",
-        "Panel: model list with add/remove custom models",
-        "Display cooldown state and error status per connection"
-      ]
-    },
-    {
-      "id": 12,
-      "name": "OAuth Authorization Flow",
-      "description": "Full OAuth connect flow for oauth-category providers: authorize redirect, callback, device code, token import",
-      "status": "done",
-      "tasks": [
-        "GET /api/oauth/{provider}/authorize - generate authorize URL (PKCE where supported)",
-        "GET /api/oauth/{provider}/callback - exchange code for tokens, create connection",
-        "POST /api/oauth/{provider}/device-code - initiate device code flow (qwen, kimi)",
-        "POST /api/oauth/{provider}/device-code/poll - poll for token",
-        "POST /api/oauth/{provider}/import - manual token paste import (codex, cursor, kiro patterns)",
-        "Panel: OAuth connect modal per provider (authorize / device code display / token paste)",
-        "Panel: OAuth connection status (expiry, refresh state)",
-        "Wire token refresh (existing oauth.go) into chat request path with dedup lock"
-      ]
-    },
-    {
-      "id": 13,
-      "name": "Quota Tracker & Token Saver",
-      "description": "Per-connection quota limits with usage tracking, and RTK token optimization UI (caveman/ponytail)",
-      "status": "done",
-      "tasks": [
-        "Add quota fields to connection data (quotaLimit, quotaPeriod)",
-        "Quota check in fallback selection (skip connections over quota)",
-        "GET /api/quota endpoint (per-connection usage vs limit)",
-        "Panel: Quota Tracker page (progress bars, period selector, over-quota alerts)",
-        "Panel: Token Saver page (RTK/caveman/ponytail toggles + levels, wired to existing settings fields)",
-        "Apply caveman/ponytail compression in request path when enabled"
-      ]
-    },
-    {
-      "id": 14,
-      "name": "Tunnel & Tailscale",
-      "description": "Inbound tunnel management: Tailscale install/enable/status, tunnel UI with graceful degradation",
-      "status": "done",
-      "tasks": [
-        "Tailscale detection (binary presence, daemon status)",
-        "POST /api/tunnel/tailscale-install, enable, disable endpoints",
-        "GET /api/tunnel/status endpoint",
-        "Panel: Tunnel page (Tailscale status card, install/enable controls, funnel URL display)",
-        "Graceful degradation when tailscale unavailable (clear UI messaging)"
-      ]
-    },
-    {
-      "id": 15,
-      "name": "WebUI Engineering Foundation",
-      "description": "Migrate dashboard from single-HTML to engineered Vue 3 + Vite project with component architecture, embedded into Go binary via go:embed",
-      "status": "done",
-      "tasks": [
-        "Initialize webui/ project: Vue 3 + Vite + TypeScript, hash router, component library structure",
-        "Design system: port existing CSS tokens (dark/light themes) into structured stylesheets",
-        "Component library: Button, Badge, Card, Modal, Switch (fix thumb alignment bug), Input, Table, Tabs, EmptyState",
-        "Layout: Sidebar (collapsible groups, mobile overlay), Header (search, user menu), ambient background",
-        "Port all existing pages to SFC components: Providers, API Keys, Aliases, Combos, Usage, Quota, Token Saver, Proxy Pools, Tunnel, Settings, Status",
-        "API client layer: typed fetch wrapper with auth handling and error toasts",
-        "Build pipeline: vite build → dist/ → go:embed into Go binary (webui/dist embedded at compile time)",
-        "Keep -dashboard flag: local dir override for development (vite dev server proxy mode)",
-        "CI: build webui before go build in GitHub Actions workflow",
-        "Remove legacy templates/index.html after full migration verified"
-      ],
-      "notes": "Completed 2026-07-25. Vue 3.5 + Vite 6 + TS 5 + Pinia + vue-router (hash). lucide-vue-next icons. Switch thumb bug fixed in GSwitch (uniform border). -panel-url default changed to empty (legacy single-HTML support retained). Dashboard handler serves SPA with static asset caching + fallback. CI builds webui before go build."
-    },
-    {
-      "id": 16,
-      "name": "Provider Experience Overhaul",
-      "description": "Card grid with brand logos, category grouping (Custom/OAuth/FreeTier), connection status, Test All, search, full-page provider detail",
-      "status": "done",
-      "tasks": [
-        "Provider brand logo system: port /public/providers/ icons from 9router, serve as static assets",
-        "Providers page: card grid layout grouped by category (Custom Providers / OAuth Providers / Free Tier Providers)",
-        "Connection status badges per card: 'N Connected' (green) / 'Ready' / 'No connections'",
-        "Top search bar: filter providers by name across all categories",
-        "Test All button per category section (backend: POST /api/providers/test-batch)",
-        "Provider detail as full page (not dialog): connection list, test, credential edit, models, OAuth status",
-        "Add Provider: separate flows for 'Add OpenAI Compatible' / 'Add Anthropic Compatible' custom endpoints",
-        "OAuth connect modals: per-provider tailored flows (authorize redirect / device code / token paste)",
-        "Backend: POST /api/providers/test-batch endpoint (parallel test with timeout)",
-        "Backend: GET /api/providers/{id}/test-models (validate which models respond)"
-      ],
-      "notes": "Completed 2026-07-25. 118 brand logos ported. Card grid grouped by category. Full-page provider detail at /providers/:id. Test-batch endpoint with 10-concurrency parallel testing. Add Provider modal with Registry/OpenAI/Anthropic tabs. OAuth connect modal (authorize/device-code/token-import). test-models endpoint deferred to Phase 17 (media providers need it more)."
-    },
-    {
-      "id": 17,
-      "name": "Media Providers",
-      "description": "Embedding, Text-to-Image, TTS, STT, Video, Web Fetch & Search — backend endpoints + full management UI",
-      "status": "done",
-      "tasks": [
-        "Backend: /v1/embeddings with provider routing (OpenRouter, NVIDIA NIM, OpenAI, Voyage, Gemini, Fireworks, Together, Nebius, Mistral, Venice, Vercel, Jina)",
-        "Backend: /v1/images/generations (image provider routing)",
-        "Backend: /v1/audio/speech + /v1/audio/transcriptions + /v1/audio/voices (TTS/STT providers)",
-        "Backend: /v1/videos/generations + /v1/videos/{id} (video providers)",
-        "Backend: /v1/web/fetch + /v1/search (web fetch & search providers)",
-        "Media provider registry: per-kind provider definitions with models/voices/capabilities",
-        "Media provider connections: CRUD + credential management (reuse provider connection infra)",
-        "Panel: Media Providers section with sub-navigation (Embedding / Text to Image / TTS / STT / Video / Web)",
-        "Panel: per-kind provider card grid with logos + connection status + 'Add Custom' button",
-        "Panel: per-provider detail page with example cards (code snippets per kind)",
-        "Panel: media combo support (fallback across media providers of same kind)"
-      ],
-      "notes": "Completed 2026-07-26. internal/media package: registry (30+ providers, 7 kinds), client with per-format adapters (OpenAI-compat, Gemini, ElevenLabs, Deepgram, BFL, Stability, etc.). Endpoints: /v1/images/generations, /v1/audio/speech, /v1/audio/transcriptions, /v1/videos/generations, /v1/videos/{id}, /v1/web/fetch, /v1/search, /api/media-providers, /api/media-providers/tts/voices. Panel: MediaView with kind tabs + provider cards + endpoint reference. Media combo and per-provider detail deferred to Phase 18+ (CLI tools need provider detail more)."
-    },
-    {
-      "id": 18,
-      "name": "CLI Tools Integration",
-      "description": "Per-tool configuration pages for AI coding CLIs: endpoint presets, API key binding, one-click setup instructions",
-      "status": "done",
-      "tasks": [
-        "CLI tool registry: Claude Code, Cursor, Cline, Copilot, Kilo, OpenCode, Codex, Grok Build, Droid, Hermes, OpenClaw, DeepSeek TUI",
-        "Backend: GET /api/cli-tools (tool list + status), GET /api/cli-tools/{id} (detail + config)",
-        "Backend: per-tool settings endpoints (write tool config files: claude settings, cline settings, copilot config, etc.)",
-        "Backend: GET /api/cli-tools/all-statuses (detect installed tools, config state)",
-        "Panel: CLI Tools page — tool card grid with status (configured/not configured/running)",
-        "Panel: tool detail page — base URL select (gateway endpoint), API key select, setup instructions, config write button",
-        "Panel: endpoint preset control (auto-detect gateway URL variants: localhost, tunnel, LAN)",
-        "Panel: MITM link card for tools requiring MITM (Antigravity) — links to MITM page when available"
-      ],
-      "notes": "Completed 2026-07-27. internal/cli package: registry (14 tools, configType env/custom/guide/mitm), per-tool adapters for JSON (claude/cline/copilot/kilo/opencode/droid/openclaw), TOML (codex/deepseek-tui/grok-build/jcode) and YAML+env (hermes). Minimal section-aware TOML line editor + .env helpers (no third-party deps). Endpoints: GET /api/cli-tools, GET /api/cli-tools/all-statuses, GET/POST/DELETE /api/cli-tools/{id}. Panel: CLIToolsView card grid (configurable + manual/MITM sections) + CLIToolDetailView (apply form with model chips, guide renderer, MITM placeholder, notes). Adapter round-trip tests with isolated temp HOME. Endpoint preset uses window.location.origin (tunnel/LAN variant detection deferred to Phase 20 Endpoint page)."
-    },
-    {
-      "id": 19,
-      "name": "Usage & Observability Enhancement",
-      "description": "Request details table, real-time SSE log stream, provider topology, console log page",
-      "status": "done",
-      "tasks": [
-        "Backend: GET /api/usage/request-details (paginated, filterable by provider/model/status)",
-        "Backend: GET /api/usage/stream (SSE real-time request events)",
-        "Backend: GET /api/usage/logs (structured request logs with timing)",
-        "Backend: GET /api/usage/providers (per-provider aggregate with quota overlay)",
-        "Panel: Usage page tabs — Overview / Request Details / Provider Limits",
-        "Panel: Request Details table (time, provider, model, tokens, latency, status) with pagination + filters",
-        "Panel: Provider Topology view (visual connection map: provider → models → status)",
-        "Panel: Provider Limits cards (quota progress bars per connection, from 9router ProviderLimits)",
-        "Panel: Console Log page — live SSE log viewer with level filter, auto-scroll, pause/resume",
-        "Panel: real-time indicator on Usage overview (live request counter via SSE)"
-      ],
-      "notes": "Completed 2026-07-27. Backend: EventBroadcaster (pub/sub SSE), /api/usage/stream (SSE with heartbeat), /api/usage/logs, /api/usage/providers (aggregate + quota overlay). recordUsage publishes events. Panel: UsageView tabs (Overview/Request Details/Provider Limits), paginated detail table with filters, provider cards with quota bars, ConsoleView (live SSE log viewer with level filter, pause/resume, auto-scroll, clear). Live indicator on Usage page. Provider Topology view deferred to Phase 20 (Endpoint page context)."
-    },
-    {
-      "id": 20,
-      "name": "Endpoint Overview, Chat Playground & Skills",
-      "description": "Endpoint & Key quick-copy page, built-in chat test UI, skills/MCP marketplace placeholder",
-      "status": "done",
-      "tasks": [
-        "Panel: Endpoint & Key page — gateway URL display (all variants), API key quick-copy, curl examples, security warning when no auth",
-        "Panel: endpoint ping/latency check (client-side fetch to /api/health with timing)",
-        "Backend: GET /api/endpoints (list reachable endpoint URLs: local, LAN, tunnel)",
-        "Panel: Basic Chat page — model selector, streaming chat UI, token/cost display, conversation reset",
-        "Backend: chat playground uses same /v1/chat/completions path (no special endpoint needed)",
-        "Panel: Skills page — list available skill definitions (9router skills/ format), install/copy instructions",
-        "Backend: GET /api/skills (scan bundled skill manifests)"
-      ],
-      "notes": "Completed 2026-07-27. Backend: GET /api/endpoints (local/LAN/tunnel URLs + requireAuth status), GET /api/skills (embedded SKILL.md manifests parsed from internal/skills/data/). Panel: EndpointsView (URL cards with ping, API key quick-copy, curl example, auth warning), ChatView (model selector, SSE streaming chat, token usage display, conversation reset), SkillsView (expandable skill cards with copy-to-clipboard, category badges). 8 bundled skills adapted from 9router format (cyrene, cyrene-chat, cyrene-image, cyrene-tts, cyrene-stt, cyrene-embeddings, cyrene-web-search, cyrene-web-fetch)."
-    },
-    {
-      "id": 21,
-      "name": "i18n, Mobile & Polish",
-      "description": "Internationalization (25+ languages like 9router), responsive mobile layout, UX polish to match/exceed 9router",
-      "status": "done",
-      "tasks": [
-        "i18n framework: vue-i18n with JSON locale files (port 9router i18n literals where applicable)",
-        "Translate all UI strings: en, zh-CN, ja, ko, ru, es, fr, de, pt-BR, tr (minimum 10 languages)",
-        "Language switcher in header (persist preference)",
-        "Mobile responsive: collapsible sidebar overlay, touch-friendly cards, responsive grids",
-        "Changelog modal (show release notes on version update)",
-        "Profile page (username/avatar settings)",
-        "Keyboard shortcuts (Cmd+K search, Esc close modals)",
-        "Loading skeletons and optimistic UI updates",
-        "Toast notification system (success/error feedback for all actions)",
-        "Accessibility pass: focus states, aria labels, contrast ratios"
-      ],
-      "notes": "Completed 2026-07-27. DOM-based runtime i18n (MutationObserver text-node walking, same approach as 9router) with Vue plugin wrapper. 10 locale files ported from 9router literals (en, zh-CN, ja, ko, ru, es, fr, de, pt-BR, tr). Language switcher in sidebar footer with flag icons + localStorage persistence + browser language auto-detect. Mobile: collapsible sidebar with hamburger toggle + overlay at 768px breakpoint, responsive content padding. Keyboard: Cmd/Ctrl+K focuses search (ProvidersView), Esc closes all modals (GModal global listener). Changelog modal shows on version change (localStorage-seen gate). Profile section in Settings (display name persisted). GSkeleton shimmer component. Accessibility: focus-visible outlines, aria-label on mobile toggle, prefers-reduced-motion respected. Toast system already existed from Phase 15."
-    },
-    {
-      "id": 22,
-      "name": "MITM Proxy (optional, local mode)",
-      "description": "Man-in-the-middle proxy for tools requiring HTTPS interception — only enabled for local/self-hosted deployments via explicit flag",
-      "status": "done",
-      "tasks": [
-        "Backend: MITM proxy core (TLS interception with generated CA cert, request rewriting)",
-        "Backend: -mitm flag (default off) + -mitm-port, explicit opt-in for local deployments only",
-        "Backend: CA certificate generation and download endpoint (GET /api/mitm/cert)",
-        "Backend: DNS override helpers for tool-specific domains",
-        "Panel: MITM page — status card, CA cert install instructions per OS, domain rules, traffic log",
-        "Panel: graceful degradation — clear 'disabled (server mode)' messaging when -mitm is off",
-        "Safety: refuse to start MITM when bound to 0.0.0.0 (require explicit localhost bind)"
-      ],
-      "notes": "Completed 2026-07-27. internal/mitm package: config (tool hosts/URL patterns/host rewrite), cert (ECDSA P-256 Root CA + per-domain leaf certs via SNI, cached), dns (hosts file add/remove per tool + flush), server (in-process TLS proxy on 127.0.0.1, passthrough vs intercept to local gateway /v1/chat/completions, traffic ring buffer). Config: -mitm (default off) + -mitm-port (default 443, CYRENE_MITM_PORT). Safety: MITM only enabled when -mitm AND host is 127.0.0.1/localhost — refuses on 0.0.0.0. Endpoints: GET /api/mitm/status, POST start/stop, GET cert (PEM download), POST dns (per-tool toggle), GET traffic. Shutdown hook removes DNS entries. Panel: MitmView (status card, CA install instructions per OS, per-tool DNS toggles, live traffic log table, disabled-state messaging). Sidebar + router wired."
-    },
-    {
-      "id": 23,
-      "name": "Maintenance Mode (final, perpetual)",
-      "description": "Perpetual: issues, deps, upstream sync (9router/VansRouter), provider registry updates. Deferred until Phase 24-26 complete.",
+      "id": -1,
+      "name": "Maintenance Mode (perpetual sentinel)",
+      "description": "Not a development phase. Sentinel state (-1) that activates when no pending dev phase exists or when manually triggered. Never marked done.",
       "status": "pending",
+      "trigger": "auto when current_phase has no pending target, or manual invocation",
       "tasks": [
         "Check GitHub Issues for bug reports or feature requests",
         "Run go build ./... && go test ./... to verify project health",
         "Review and merge dependabot PRs if safe",
-        "Fix reported issues and push patches (tag v1.0.x)",
-        "Upstream sync: compare upstream_commits hashes, analyze new commits for borrowable improvements",
-        "Upstream issue-driven hardening: scan decolua/9router open issues + merged PRs for UX bugs and protocol fixes applicable to our Go implementation (e.g. #2873 cache tokens, #2868 tool-call translation, #2767 per-provider token-saver scope, #2872 model metadata)",
+        "Fix reported issues and push patches (tag v1.0.x or v1.N.x)",
+        "Upstream sync: compare upstream_commits hashes, port relevant changes",
+        "Scan 9router open issues + merged PRs for applicable fixes (record in upstream_ports)",
         "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
-        "If upstream has relevant changes: port to Go, commit, push",
         "If no action needed: report 'no pending work' and exit"
       ],
-      "notes": "Deferred: Phase 24-26 (WebUI overhaul) take priority. 2026-07-28 session fixed: URL double-append bug, Qoder COSY protocol port, OpenCode Free support, /v1/models free provider exposure, panel auth-type-aware forms. Commit 0b2fd52. 2026-07-28 (2nd): Gemini tool schema sanitization (9router#2877) — ported cleanJSONSchemaForAntigravity to Go (internal/translator/schema.go), strips unsupported keywords, flattens anyOf/oneOf/allOf, converts const→enum, adds placeholders for empty objects. 2026-07-28 (3rd): Kimi apikey routing fix (9router#2881) — added ApiKeyBaseURL/ApiKeyAPIType to ProviderInfo with EffectiveBaseURL() method; platform API keys now route to api.moonshot.cn/v1 (OpenAI format) instead of /coding/ (Anthropic). Raw body preservation — handleChatCompletions reads full body and passes rawBody through to sub-handlers, preserving unknown fields (service_tier, top_p, stop, etc.) per 9router c97963c. Applied auth-mode-aware URL resolution across chat, combo, test-batch, test-model, and /v1/messages handlers. No new upstream commits since pin. No open issues/PRs on cyrene-gateway. 2026-07-30: Maintenance cycle — go build/test all pass, no open issues/PRs on cyrene-gateway, upstream 9router HEAD still 79918c7 (no new commits since pin). Scanned 9router open issues: #2904 Kiro model ID (N/A, no Kiro translator), #2894 adaptive thinking (N/A, no thinking normalization layer), #2896 Codex json_schema (N/A, no Codex Responses path), #2902 Gemini schema value:object (N/A, our cleanJSONSchemaForGemini handles correctly), #2895 per-provider retry-delay (enhancement PR, future optimization candidate). 2026-07-30 (2nd): Schema cleaner property-name map safety fix (9router#2884) — all walkers in internal/translator/schema.go now thread an isSchema flag via childSchema()/walkChildren() helpers, distinguishing schema nodes from property-name maps. Parameters named 'title', 'format', 'default', 'properties' etc. are no longer incorrectly deleted or corrupted. Regression test added (TestCleanJSONSchemaPropertyNameMapSafety)."
+      "notes": "History: 2026-07-28 fixed URL double-append, Qoder COSY port, OpenCode Free, /v1/models free exposure, auth-aware panel forms (0b2fd52); Gemini schema sanitization (#2877); Kimi apikey routing (#2881); raw body preservation (c97963c). 2026-07-30: full pass, no pending work, upstream unchanged at 79918c7."
+    },
+    {
+      "id": 1,
+      "name": "Core Infrastructure & Database Layer",
+      "status": "done",
+      "summary": "Project layout (cmd/gateway + internal/), SQLite via modernc.org/sqlite, settings repo, KV store, graceful shutdown, slog JSON logging."
+    },
+    {
+      "id": 2,
+      "name": "Provider & Connection Management",
+      "status": "done",
+      "summary": "Provider nodes repo, account fallback (cooldown + exponential backoff + model locks), priority-based credential selection, connection status, provider CRUD."
+    },
+    {
+      "id": 3,
+      "name": "Model Resolution & Combos",
+      "status": "done",
+      "summary": "Model string parsing, alias resolution, combo system (fallback + round-robin + sticky limit), model availability, combo CRUD, unit tests."
+    },
+    {
+      "id": 4,
+      "name": "OpenAI-Compatible API Surface",
+      "status": "done",
+      "summary": "/v1/chat/completions + /v1/messages + /v1/models + /v1/embeddings, middleware chain, SSE streaming proxy (disconnect-aware), format translation (OpenAI/Claude/Gemini), usage extraction, integration tests."
+    },
+    {
+      "id": 5,
+      "name": "Dashboard Panel System",
+      "status": "done",
+      "summary": "CLI params + env vars, embedded single-HTML dashboard (go:embed), panel serving (local dir > downloaded cache > embedded), runtime panel download with dist.zip support."
+    },
+    {
+      "id": 6,
+      "name": "Authentication & API Keys",
+      "status": "done",
+      "summary": "HMAC-signed API key generation/validation, Bearer middleware for /v1/*, cookie-based dashboard session auth, login/logout, requireApiKey enforcement."
+    },
+    {
+      "id": 7,
+      "name": "Usage Tracking & Observability",
+      "status": "done",
+      "summary": "Usage history repo, token extraction (stream + non-stream), daily aggregation, request details logging, /api/usage/* endpoints."
+    },
+    {
+      "id": 8,
+      "name": "Dashboard Management API",
+      "status": "done",
+      "summary": "Full REST API: providers CRUD, provider-nodes CRUD, combos update, proxy-pools CRUD, enhanced /api/health."
+    },
+    {
+      "id": 9,
+      "name": "Advanced Features & Enhancements",
+      "status": "done",
+      "summary": "OAuth token refresh (pre-check + on-401 retry), loop guard (VansRouter), termination prompt injection, proxy pool rotation, provider test endpoint, max_tokens clamping (NVIDIA Kimi)."
+    },
+    {
+      "id": 10,
+      "name": "Provider Registry Expansion & Categorization",
+      "status": "done",
+      "summary": "Full 9router registry port: 64 apikey + 16 oauth + 13 freeTier + 5 free + 2 webCookie providers, category/authModes metadata, grouped /api/registry, registry completeness tests."
+    },
+    {
+      "id": 11,
+      "name": "Provider Detail Management",
+      "status": "done",
+      "summary": "Per-provider detail: connection test with latency, credential editing, custom models (KV providerModels scope), /api/providers/{id}/models, cooldown/error display."
+    },
+    {
+      "id": 12,
+      "name": "OAuth Authorization Flow",
+      "status": "done",
+      "summary": "Authorize URL (PKCE), callback code exchange, device code flow (qwen/kimi), manual token import (codex/cursor/kiro), panel OAuth modals, token refresh wired into chat path with dedup lock."
+    },
+    {
+      "id": 13,
+      "name": "Quota Tracker & Token Saver",
+      "status": "done",
+      "summary": "Per-connection quota limits + usage tracking, quota-aware fallback selection, /api/quota, panel quota page, RTK caveman/ponytail compression in request path."
+    },
+    {
+      "id": 14,
+      "name": "Tunnel & Tailscale",
+      "status": "done",
+      "summary": "Tailscale detection/install/enable/disable endpoints, /api/tunnel/status, panel tunnel page, graceful degradation."
+    },
+    {
+      "id": 15,
+      "name": "WebUI Engineering Foundation",
+      "status": "done",
+      "summary": "Single-HTML → Vue 3.5 + Vite + TS + Pinia + hash router, design tokens (dark/light), component library, SPA layout, typed API client, go:embed dist pipeline, CI webui build step."
+    },
+    {
+      "id": 16,
+      "name": "Provider Experience Overhaul",
+      "status": "done",
+      "summary": "118 brand logos, card grid by category, connection status badges, search, Test All (parallel, 10-concurrency), full-page provider detail, Add Provider modal (Registry/OpenAI/Anthropic tabs), OAuth connect modals."
+    },
+    {
+      "id": 17,
+      "name": "Media Providers",
+      "status": "done",
+      "summary": "internal/media package: 30+ providers across 7 kinds (embedding/image/TTS/STT/video/web-fetch/search), per-format adapters, /v1/images|audio|videos|web|search endpoints, panel MediaView with kind tabs."
+    },
+    {
+      "id": 18,
+      "name": "CLI Tools Integration",
+      "status": "done",
+      "summary": "internal/cli: 14 tools, configType env/custom/guide/mitm, JSON/TOML/YAML adapters, /api/cli-tools endpoints, panel card grid + detail with apply form and guide renderer."
+    },
+    {
+      "id": 19,
+      "name": "Usage & Observability Enhancement",
+      "status": "done",
+      "summary": "EventBroadcaster pub/sub SSE, /api/usage/stream + logs + providers (aggregate + quota overlay), panel Usage tabs (overview/details/limits), ConsoleView live log viewer."
+    },
+    {
+      "id": 20,
+      "name": "Endpoint Overview, Chat Playground & Skills",
+      "status": "done",
+      "summary": "GET /api/endpoints (local/LAN/tunnel), GET /api/skills (8 embedded skill manifests), panel EndpointsView (ping + key copy + curl), ChatView (SSE streaming), SkillsView."
+    },
+    {
+      "id": 21,
+      "name": "i18n, Mobile & Polish",
+      "status": "done",
+      "summary": "DOM-based runtime i18n (MutationObserver, 10 locales from 9router), language switcher + auto-detect, mobile collapsible sidebar, Cmd+K search, Esc modals, changelog modal, skeletons, a11y pass."
+    },
+    {
+      "id": 22,
+      "name": "MITM Proxy (optional, local mode)",
+      "status": "done",
+      "summary": "internal/mitm: ECDSA CA + per-domain leaf certs, in-process TLS proxy (127.0.0.1 only), DNS hosts toggle, traffic ring buffer, -mitm/-mitm-port flags, panel MitmView, refuses 0.0.0.0 bind."
     },
     {
       "id": 24,
       "name": "WebUI Provider Experience Overhaul",
-      "description": "Make the panel actually usable: one-click free provider enable, contextual card actions, auth-aware add flows, first-run onboarding. USE BrowserUse for visual verification (see AGENTS.md).",
       "status": "done",
-      "tasks": [
-        "Free providers one-click Enable: card button creates NoAuth connection instantly (zero-config, like 9router NoAuthProxyCard pattern)",
-        "Provider card contextual actions: apikey → 'Add Key' button, oauth → 'Connect' button, free → 'Enable' button, connected → status badge + quick test",
-        "Add Provider modal auth-mode adaptation: registry selection locks form fields to supported auth modes (no API key field for oauth-only, no form for NoAuth)",
-        "First-run onboarding: zero-connections state shows guided quickstart card ('Start with free providers' one-click section + API key provider walkthrough)",
-        "Provider detail: Base URL field shows stripped base as placeholder (not full endpoint path), with tooltip explaining registry default",
-        "Provider detail: NoAuth providers show 9router-style 'No authentication required' card with optional proxy pool binding",
-        "Test All feedback: per-card inline OK/FAIL badge with latency (already partially done, polish UX)",
-        "Backend: POST /api/providers/enable-free endpoint (batch-enable all NoAuth providers in one call)"
-      ],
-      "notes": "Backend: POST /api/providers/enable-free (batch-enable NoAuth providers, idempotent, optional selective list). Frontend: contextual card actions (Enable/Connect/Add Key/Manage), first-run onboarding with one-click free enable, auth-aware Add modal (locks auth modes, hides key field for NoAuth), Test All per-card latency badge, ProviderDetailView stripped Base URL placeholder + tooltip and 9router-style NoAuth card with proxy pool binding. Verified via go test + runtime smoke test (9 free providers enabled, idempotent). NOTE: BrowserUse tooling not available in this sandbox despite AGENTS.md; visual verification done via build + HTTP smoke test instead."
+      "summary": "Free providers one-click enable (POST /api/providers/enable-free, idempotent), contextual card actions (Enable/Connect/Add Key/Manage), first-run onboarding, auth-aware Add modal, per-card test latency badge, NoAuth card with proxy pool binding."
     },
     {
       "id": 25,
       "name": "WebUI Provider Detail Parity with 9router",
-      "description": "Port 9router's rich provider detail UX: per-model testing, model enable/disable, priority reorder, per-provider strategy, thinking levels. USE BrowserUse for visual verification (see AGENTS.md).",
       "status": "done",
-      "tasks": [
-        "Model list with per-model Test button (backend: POST /api/models/test with provider/model resolution)",
-        "Model enable/disable toggles (wire existing /api/models/disabled endpoints, per-provider scoping)",
-        "Model alias management inline (set/delete alias per model row, copy full model string)",
-        "Connection priority reorder: up/down buttons or drag (swap priority values via PUT)",
-        "Connection row enrichment: masked credential preview, cooldown timer countdown, last error display, per-connection proxy pool select",
-        "Per-provider fallback strategy override (round-robin toggle + sticky limit, stored in settings.providerStrategies)",
-        "Thinking level selector for reasoning-capable providers (auto/minimal/medium/high/max suffix resolution)",
-        "Qoder: 'Import Models' button (fetch live catalog via COSY-signed model/list, add as custom models)",
-        "Bulk connection actions: select-all checkbox, bulk proxy pool assignment (one-to-one rotate / single pool / unbind)",
-        "Custom model add modal with suggested models from provider's public modelsFetcher API"
-      ],
-      "notes": "Completed 2026-07-28. Backend: POST /api/models/test (per-model chat completion test with provider/model resolution), PATCH /api/settings (partial merge for providerStrategies/providerThinking). Settings struct expanded with ProviderStrategies map and ProviderThinking map. Frontend ProviderDetailView overhaul: per-model Test button with status dot + latency, model enable/disable toggles, inline alias management (set/delete/copy), connection priority reorder (up/down arrows), connection row enrichment (masked credential, cooldown timer, last error, per-connection proxy pool select), per-provider fallback strategy override (round-robin + sticky limit), thinking level selector for reasoning providers, Qoder Import Models button, bulk connection actions (select-all, bulk proxy: one-to-one rotate / single pool / unbind). NOTE: BrowserUse not available in sandbox; verified via vue-tsc + vite build + go test."
+      "summary": "POST /api/models/test, PATCH /api/settings partial merge, per-model test/enable/disable/alias, connection priority reorder, cooldown timer, per-provider strategy override, thinking level selector, Qoder model import, bulk proxy actions."
     },
     {
       "id": 26,
       "name": "WebUI Polish & Upstream Issue Hardening",
-      "description": "UX polish to match/exceed 9router + proactive fixes from 9router's open issues and merged PRs. USE BrowserUse for visual verification — compare side-by-side with 9router screenshots (see AGENTS.md).",
       "status": "done",
-      "tasks": [
-        "Error UX: upstream error responses shown with actionable hints (401 → 'reconnect account', 429 → cooldown countdown, 403 → geo/IP notice)",
-        "Usage page: cache-read token tracking (9router#2873 — don't bill cached tokens at full rate)",
-        "Translator hardening: guard doubled tool-call arguments (9router#2869), preserve output indexes (9router#2747)",
-        "Per-provider token-saver scope: caveman/ponytail exclusion list for providers it breaks (9router#2767 Cursor issue)",
-        "/v1/models metadata: expose context length + capabilities per model (9router#2872)",
-        "Chat playground: model selector populated from /v1/models with provider grouping, streaming token counter",
-        "Loading states: skeleton screens on all data-heavy views (providers, usage, quota), optimistic updates on toggles",
-        "Sidebar: connection count badge on Providers item, active route highlight, collapsible groups on mobile",
-        "Dark/light theme toggle persistence + system preference detection",
-        "Accessibility: keyboard navigation for card grids, focus management on modal open/close"
-      ],
-      "notes": "Completed 2026-07-28. Backend: cache-read token tracking (Usage struct + Claude/Gemini/OpenAI extraction with cached_tokens/reasoning_tokens, meta stored in usageHistory), translator hardening (preserve content_block index in Claude SSE for correct tool_call ordering 9router#2747, guard empty deltas 9router#2869), per-provider token-saver exclusion (Settings.TokenSaverExclude, applyTokenSaver checks provider prefix), /v1/models metadata (context_length + capabilities inferred per model 9router#2872), error UX hints (wrapErrorWithHint injects actionable hint into 401/403/429/529 responses). Frontend: ChatView provider-grouped model selector (optgroup by owned_by), streaming token counter, error hint display. Sidebar: connection count badge on Providers nav item. Theme persistence already existed (localStorage). GSkeleton component already existed from Phase 21. NOTE: BrowserUse not available in sandbox; verified via vue-tsc + vite build + go test."
-    }
-    ,
+      "summary": "Cache-read token tracking (#2873), translator hardening (#2747 index preservation, #2869 empty delta guard), token-saver exclusion (#2767), /v1/models metadata (#2872), error UX hints (401/403/429/529), chat provider-grouped selector, sidebar connection badge."
+    },
     {
       "id": 27,
       "name": "WebUI Full Overhaul",
@@ -435,16 +191,26 @@
         "Keep i18n (DOM-based runtime approach), dark/light themes, mobile responsive",
         "BrowserUse visual verification: full user flow (first visit → enable free → test → add key → chat), edge states, both themes, 375px mobile width"
       ],
-      "notes": "Planned 2026-07-30. Design approved: Option A (in-place views rewrite, scaffold preserved). Visual: 9router layout + entirely new design language. Scope: frontend-primary + backend micro-adjustments allowed. Tag: v1.1.0 (project already past v1.0.0, v0.27.0 would conflict with v1.0.x series)."
+      "notes": "Planned 2026-07-30. Design approved: Option A (in-place views rewrite, scaffold preserved). Visual: 9router layout + entirely new design language. Scope: frontend-primary + backend micro-adjustments allowed. Tag: v1.1.0."
     }
   ],
-  "current_phase": 27,
+  "upstream_ports": [
+    { "source": "9router#2877", "what": "Gemini tool schema sanitization (cleanJSONSchemaForAntigravity → internal/translator/schema.go)", "when": "2026-07-28" },
+    { "source": "9router#2881", "what": "Kimi apikey routing: ApiKeyBaseURL/ApiKeyAPIType + EffectiveBaseURL(), platform keys → api.moonshot.cn/v1", "when": "2026-07-28" },
+    { "source": "9router@c97963c", "what": "Raw body preservation: unknown fields (service_tier, top_p, stop) pass through to upstream", "when": "2026-07-28" },
+    { "source": "9router#2873", "what": "Cache-read token tracking (cached_tokens/reasoning_tokens in usage extraction + meta)", "when": "2026-07-28" },
+    { "source": "9router#2747", "what": "Preserve content_block index in Claude SSE for correct tool_call ordering", "when": "2026-07-28" },
+    { "source": "9router#2869", "what": "Guard empty deltas / doubled tool-call arguments", "when": "2026-07-28" },
+    { "source": "9router#2767", "what": "Per-provider token-saver exclusion list (Settings.TokenSaverExclude)", "when": "2026-07-28" },
+    { "source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities per model", "when": "2026-07-28" },
+    { "source": "9router#2884", "what": "Schema cleaner property-name map safety: walkers thread isSchema flag, params named 'title'/'format'/'default' no longer corrupted", "when": "2026-07-30" },
+    { "source": "VansRouter", "what": "Loop guard detection + termination prompt injection (Phase 9)", "when": "2026-07-23" }
+  ],
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
   "upstream_notes": {
-    "decolua/9router": "primary upstream, sync every maintenance cycle. ALSO scan open issues + merged PRs as optimization input — 9router has many UX bugs and protocol fixes we should proactively port (issue-driven hardening in Phase 26 and ongoing maintenance).",
-    "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff — would duplicate 9router analysis."
-  },
-  "last_updated": "2026-07-30"
+    "decolua/9router": "primary upstream, sync every maintenance cycle. Scan open issues + merged PRs as hardening input; record ported items in upstream_ports.",
+    "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff."
+  }
 }
