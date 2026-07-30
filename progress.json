@@ -177,21 +177,41 @@
     {
       "id": 27,
       "name": "WebUI Full Overhaul",
-      "description": "Complete rewrite of webui views layer: 9router information architecture + brand-new visual design language (gradient themes, glassmorphism, spring animations). Frontend-primary with backend coordination allowed. USE BrowserUse for visual verification (see AGENTS.md).",
+      "description": "Complete rewrite of webui views layer: 9router information architecture + brand-new visual design language. Auth-mode-driven UI as core principle. USE BrowserUse for visual verification.",
       "status": "pending",
       "tasks": [
         "Delete all existing views/ and rebuild page layer from scratch (keep Vite/Vue3/TS/Pinia/hash-router scaffold + go:embed pipeline)",
-        "New sidebar IA mirroring 9router: Endpoint & Key as home page, Providers, Media (expandable sub-nav by kind), Combos, Usage, Quota, Token Saver, CLI Tools, Console Log, then system group (Proxy Pools, Tunnel, MITM, Skills, Settings)",
-        "Consolidate: API Keys into Endpoint page, Model Aliases into Provider Detail Models tab, Status into Settings/Endpoint health card, Chat as Quick Test entry from Endpoint page",
-        "Providers page: card grid grouped by category, search, Test All, one-click free enable, Add Provider as in-page Modal (not full page)",
-        "Provider Detail: tabbed layout (Connections / Models / Settings), Add Key and Add Model as Modals, inline test feedback, split 1111-line monolith into focused sub-components",
-        "New design system: gradient accent theme (teal→violet), glassmorphism cards (blur + gradient border + depth shadows), ambient background orbs, page transitions (slide+fade), staggered list entrance, spring hover effects, prefers-reduced-motion respected",
+        "New sidebar IA mirroring 9router: Endpoint & Key as home, Providers, Media (expandable sub-nav), Combos, Usage, Quota, Token Saver, CLI Tools, Console Log, system group (Proxy Pools, Tunnel, MITM, Skills, Settings)",
+        "Consolidate: API Keys → Endpoint page, Model Aliases → Provider Detail Models tab, Status → Settings/Endpoint health card, Chat → Quick Test entry from Endpoint",
+        "AUTH-MODE IRON RULE: UI strictly driven by provider.authModes — noauth→[Enable] only, apikey→[Add Key] modal (key input + optional base URL, nothing else), oauth→[Connect] modal (authorize/device-code/token-paste per provider), mixed→both buttons separate. Never show irrelevant fields.",
+        "Providers page: card grid grouped by auth category (Free / API Key / OAuth / Mixed), search, Test All, one-click free enable, Add Provider as in-page Modal",
+        "Provider Detail: tabbed layout (Connections / Models / Settings), Add Key and Add Model as Modals, inline test feedback, split monolith into focused sub-components",
+        "Unified form component system: Input (glass + gradient focus ring, 38px), Select (custom dropdown with search), Modal (centered glass + backdrop blur + spring entrance), Button (primary gradient / secondary glass / ghost), Toggle, Tabs (underline + sliding indicator), Toast (top-right, 3 colors), Form layout (label-above, 16px gap, inline errors)",
+        "New design system: gradient accent (teal→violet), glassmorphism cards (blur + gradient border + depth shadows), ambient background orbs, page transitions (slide+fade), staggered entrance, spring hover, prefers-reduced-motion respected",
         "Fix CLI Tool detail infinite loading bug (fetch chain hang in onMounted)",
-        "Backend coordination: fix API response shapes as needed for new UI, no new major endpoints",
-        "Keep i18n (DOM-based runtime approach), dark/light themes, mobile responsive",
-        "BrowserUse visual verification: full user flow (first visit → enable free → test → add key → chat), edge states, both themes, 375px mobile width"
+        "Backend coordination: fix API response shapes as needed, no new major endpoints",
+        "Keep i18n (DOM-based runtime), dark/light themes, mobile responsive",
+        "BrowserUse visual verification: full flow (first visit → enable free → test → add key → oauth connect → chat), edge states, both themes, 375px"
       ],
-      "notes": "Planned 2026-07-30. Design approved: Option A (in-place views rewrite, scaffold preserved). Visual: 9router layout + entirely new design language. Scope: frontend-primary + backend micro-adjustments allowed. Tag: v1.1.0."
+      "notes": "Planned 2026-07-30. Design approved: in-place views rewrite, scaffold preserved. Core UX principle: auth-mode separation — user never sees irrelevant form fields. Tag: v1.1.0."
+    },
+    {
+      "id": 28,
+      "name": "Model Metadata Enrichment",
+      "description": "Three-layer model metadata system: static catalog + per-provider live fetch + user overrides. Rich /v1/models output with display_name, context_length, capabilities. Solves Qoder-style opaque model IDs.",
+      "status": "pending",
+      "tasks": [
+        "internal/model/catalog.go: static registry (50-80 mainstream models with display_name, context_length, max_output, capabilities, modalities, family)",
+        "internal/model/fetcher.go: ModelsFetcher interface + per-provider normalizers (OpenRouter full metadata, Anthropic display_name, Google token limits, Mistral capabilities, Qoder/COSY display_name mapping, OpenAI-compat fallback)",
+        "KV cache: providerModelCache scope with 24h TTL, auto-trigger on connection create/refresh",
+        "Merge logic: user override > live cache > static catalog > ID inference (existing fallback)",
+        "/v1/models output: OpenAI-compatible + extension fields (display_name, context_length, max_output_tokens, capabilities[], modalities[])",
+        "Qoder fix: model/list response stores display_name mapping (qmodel_preview → Qwen 3.8 Max Preview etc.), not just IDs",
+        "Panel: model selectors show display_name + capability icons (Phase 27 pre-reserved slots)",
+        "Panel: Provider Detail Models tab shows full metadata columns",
+        "Panel: 'Refresh Models' button per provider (triggers live fetch)"
+      ],
+      "notes": "Planned 2026-07-30. Motivation: /v1/models currently returns bare IDs — useless for clients. Qoder model IDs are opaque aliases only resolvable via OAuth model/list. OmniRoute does this well but is over-engineered; our approach is lighter (static + cached live fetch, no routing engine). Tag: v1.2.0."
     }
   ],
   "upstream_ports": [
@@ -212,5 +232,17 @@
   "upstream_notes": {
     "decolua/9router": "primary upstream, sync every maintenance cycle. Scan open issues + merged PRs as hardening input; record ported items in upstream_ports.",
     "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff."
-  }
+  },
+  "maintenance_config": {
+    "scan_since": "2026-07-30",
+    "max_items_per_cycle": 50,
+    "sort": "updated desc",
+    "relevant_paths": ["open-sse/handlers/", "open-sse/translator/", "open-sse/services/", "open-sse/providers/registry/", "open-sse/config/"],
+    "skip_paths": ["open-sse/translator/formats/kiro", "open-sse/translator/formats/codex-responses", "src/app/(dashboard)/"],
+    "priority": "P0: merged PR touching handlers/translator/services → must evaluate. P1: open bug on existing feature → preventive fix. P2: registry changes → baseUrl/model updates. P3: features → record as candidate.",
+    "last_scan_result": "no pending work"
+  },
+  "future_candidates": [
+    { "what": "OpenAI Responses API adapter (Chat Completions ↔ Responses bidirectional translation)", "why": "Codex structured output (json_schema) fails without it (9router#2896). Codex API still unstable — wait.", "priority": "low" }
+  ]
 }
