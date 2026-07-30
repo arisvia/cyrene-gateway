@@ -417,8 +417,28 @@
       ],
       "notes": "Completed 2026-07-28. Backend: cache-read token tracking (Usage struct + Claude/Gemini/OpenAI extraction with cached_tokens/reasoning_tokens, meta stored in usageHistory), translator hardening (preserve content_block index in Claude SSE for correct tool_call ordering 9router#2747, guard empty deltas 9router#2869), per-provider token-saver exclusion (Settings.TokenSaverExclude, applyTokenSaver checks provider prefix), /v1/models metadata (context_length + capabilities inferred per model 9router#2872), error UX hints (wrapErrorWithHint injects actionable hint into 401/403/429/529 responses). Frontend: ChatView provider-grouped model selector (optgroup by owned_by), streaming token counter, error hint display. Sidebar: connection count badge on Providers nav item. Theme persistence already existed (localStorage). GSkeleton component already existed from Phase 21. NOTE: BrowserUse not available in sandbox; verified via vue-tsc + vite build + go test."
     }
+    ,
+    {
+      "id": 27,
+      "name": "WebUI Full Overhaul",
+      "description": "Complete rewrite of webui views layer: 9router information architecture + brand-new visual design language (gradient themes, glassmorphism, spring animations). Frontend-primary with backend coordination allowed. USE BrowserUse for visual verification (see AGENTS.md).",
+      "status": "pending",
+      "tasks": [
+        "Delete all existing views/ and rebuild page layer from scratch (keep Vite/Vue3/TS/Pinia/hash-router scaffold + go:embed pipeline)",
+        "New sidebar IA mirroring 9router: Endpoint & Key as home page, Providers, Media (expandable sub-nav by kind), Combos, Usage, Quota, Token Saver, CLI Tools, Console Log, then system group (Proxy Pools, Tunnel, MITM, Skills, Settings)",
+        "Consolidate: API Keys into Endpoint page, Model Aliases into Provider Detail Models tab, Status into Settings/Endpoint health card, Chat as Quick Test entry from Endpoint page",
+        "Providers page: card grid grouped by category, search, Test All, one-click free enable, Add Provider as in-page Modal (not full page)",
+        "Provider Detail: tabbed layout (Connections / Models / Settings), Add Key and Add Model as Modals, inline test feedback, split 1111-line monolith into focused sub-components",
+        "New design system: gradient accent theme (teal→violet), glassmorphism cards (blur + gradient border + depth shadows), ambient background orbs, page transitions (slide+fade), staggered list entrance, spring hover effects, prefers-reduced-motion respected",
+        "Fix CLI Tool detail infinite loading bug (fetch chain hang in onMounted)",
+        "Backend coordination: fix API response shapes as needed for new UI, no new major endpoints",
+        "Keep i18n (DOM-based runtime approach), dark/light themes, mobile responsive",
+        "BrowserUse visual verification: full user flow (first visit → enable free → test → add key → chat), edge states, both themes, 375px mobile width"
+      ],
+      "notes": "Planned 2026-07-30. Design approved: Option A (in-place views rewrite, scaffold preserved). Visual: 9router layout + entirely new design language. Scope: frontend-primary + backend micro-adjustments allowed. Tag: v1.1.0 (project already past v1.0.0, v0.27.0 would conflict with v1.0.x series)."
+    }
   ],
-  "current_phase": 23,
+  "current_phase": 27,
   "upstream_commits": {
     "decolua/9router": "79918c7830695bbca4a45c9fea4a42c3e9fd73d1"
   },
