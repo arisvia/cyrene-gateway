@@ -400,6 +400,32 @@ func TestCleanJSONSchemaForGemini(t *testing.T) {
 	}
 }
 
+func TestCleanJSONSchemaEmptyAfterRefStrip(t *testing.T) {
+	// Simulates a schema where $ref/$defs removal left an empty {} node (9router@e3e3e23)
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"config": map[string]any{}, // empty after $ref strip
+			"name":   map[string]any{"type": "string"},
+		},
+	}
+
+	cleaned := cleanJSONSchemaForGemini(schema)
+	props := cleaned["properties"].(map[string]any)
+
+	config := props["config"].(map[string]any)
+	if config["type"] != "object" {
+		t.Fatalf("empty schema should be promoted to type=object, got %v", config["type"])
+	}
+	configProps, ok := config["properties"].(map[string]any)
+	if !ok || len(configProps) == 0 {
+		t.Fatal("empty schema should get placeholder properties")
+	}
+	if _, ok := configProps["reason"]; !ok {
+		t.Fatal("placeholder should have 'reason' property")
+	}
+}
+
 func TestGeminiToolSchemaSanitized(t *testing.T) {
 	body := map[string]any{
 		"model": "gpt-4",

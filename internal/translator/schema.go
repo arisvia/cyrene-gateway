@@ -313,6 +313,18 @@ func addPlaceholders(obj map[string]any) {
 
 func addPlaceholdersWalk(obj map[string]any, isSchema bool) {
 	if isSchema {
+		// Empty schema {} after $ref removal — promote to object with placeholder (9router@e3e3e23)
+		if len(obj) == 0 {
+			obj["type"] = "object"
+			obj["properties"] = map[string]any{
+				"reason": map[string]any{
+					"type":        "string",
+					"description": "Brief explanation of why you are calling this tool",
+				},
+			}
+			obj["required"] = []any{"reason"}
+			return
+		}
 		if t, _ := obj["type"].(string); t == "object" {
 			props, _ := obj["properties"].(map[string]any)
 			if len(props) == 0 {

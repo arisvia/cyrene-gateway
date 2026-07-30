@@ -3,26 +3,28 @@ package provider
 import "testing"
 
 func TestRegistryCompleteness(t *testing.T) {
-	// All 100 providers from 9router registry must be present
+	// All 110 providers from 9router registry must be present
 	expectedProviders := []string{
 		"alicode-intl", "alicode", "alims-intl", "anthropic", "antigravity",
-		"assemblyai", "aws-polly", "azure", "black-forest-labs", "blackbox",
-		"brave-search", "byteplus", "cartesia", "cerebras", "chutes",
-		"claude", "cline", "clinepass", "cloudflare-ai", "codebuddy-cn",
-		"codex", "cohere", "comfyui", "commandcode", "coqui",
-		"cursor", "deepgram", "deepseek", "edge-tts", "elevenlabs",
-		"exa", "fal-ai", "featherless", "firecrawl", "fireworks",
-		"gemini-cli", "gemini", "github", "gitlab", "glm-cn",
-		"glm", "google-pse", "google-tts", "grok-cli", "grok-web",
-		"groq", "huggingface", "hyperbolic", "iflow", "inworld",
-		"jina-ai", "jina-reader", "kilocode", "kimchi", "kimi",
-		"kiro", "linkup", "local-device", "mimo-free", "minimax-cn",
-		"minimax", "mistral", "mmf", "nanobanana", "nebius",
-		"nvidia", "ollama-local", "ollama", "openai", "opencode-go",
-		"opencode", "openrouter", "perplexity-agent", "perplexity-web", "perplexity",
-		"playht", "qoder", "qwen", "recraft", "runwayml",
-		"sdwebui", "searchapi", "searxng", "serper", "siliconflow",
-		"stability-ai", "tavily", "together", "topaz", "tortoise",
+		"api-airforce", "assemblyai", "aws-polly", "azure", "baidu",
+		"bazaarlink", "black-forest-labs", "blackbox", "bluesminds", "brave-search",
+		"byteplus", "cartesia", "cerebras", "chutes", "claude",
+		"cline", "clinepass", "cloudflare-ai", "codebuddy-cn", "codex",
+		"cohere", "comfyui", "commandcode", "coqui", "cursor",
+		"deepgram", "deepseek", "edge-tts", "elevenlabs", "exa",
+		"fal-ai", "featherless", "firecrawl", "fireworks", "gemini-cli",
+		"gemini", "github", "gitlab", "glm-cn", "glm",
+		"google-pse", "google-tts", "grok-cli", "grok-web", "groq",
+		"huggingface", "hyperbolic", "iflow", "inworld", "jina-ai",
+		"jina-reader", "kilo-gateway", "kilocode", "kimchi", "kimi",
+		"kiro", "linkup", "llm7", "local-device", "mimo-free",
+		"minimax-cn", "minimax", "mistral", "mmf", "morph",
+		"nanobanana", "nebius", "nvidia", "ollama-local", "ollama",
+		"openai", "opencode-go", "opencode", "openrouter", "perplexity-agent",
+		"perplexity-web", "perplexity", "playht", "poolside", "qoder",
+		"qwen", "recraft", "runwayml", "sambanova", "sdwebui",
+		"searchapi", "searxng", "serper", "siliconflow", "stability-ai",
+		"tavily", "tencent", "together", "topaz", "tortoise",
 		"venice", "vercel-ai-gateway", "vertex-partner", "vertex", "volcengine-ark",
 		"voyage-ai", "xai", "xiaomi-mimo", "xiaomi-tokenplan", "youcom",
 	}
@@ -42,9 +44,9 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":    64,
+		"apikey":    70,
 		"oauth":     16,
-		"freeTier":  13,
+		"freeTier":  17,
 		"free":      5,
 		"webCookie": 2,
 	}

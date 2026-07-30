@@ -69,6 +69,7 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "tts-1", DisplayName: "TTS-1", Capabilities: []string{"tts"}, Modalities: []string{"text", "audio"}, Family: "audio"},
 
 	// Anthropic Claude
+	{Pattern: "claude-opus-5", DisplayName: "Claude Opus 5", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-fable-5", DisplayName: "Claude Fable 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-sonnet-5", DisplayName: "Claude Sonnet 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-opus-4", DisplayName: "Claude Opus 4", ContextLength: 200000, MaxOutput: 32768, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
@@ -78,6 +79,8 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "claude", DisplayName: "Claude", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 
 	// Google Gemini
+	{Pattern: "gemini-3.6-flash", DisplayName: "Gemini 3.6 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
+	{Pattern: "gemini-3.5-flash-lite", DisplayName: "Gemini 3.5 Flash Lite", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
 	{Pattern: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
 	{Pattern: "gemini-3.1-flash-lite", DisplayName: "Gemini 3.1 Flash Lite", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
 	{Pattern: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "image-generation", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
@@ -156,6 +159,16 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "mimo-v2.5-pro", DisplayName: "MiMo V2.5 Pro", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
 	{Pattern: "mimo-v2.5", DisplayName: "MiMo V2.5", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
 	{Pattern: "mimo-v2", DisplayName: "MiMo V2", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
+
+	// Poolside Laguna
+	{Pattern: "laguna-s-2.1", DisplayName: "Laguna S 2.1", ContextLength: 1000000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
+	{Pattern: "laguna-xs-2.1", DisplayName: "Laguna XS 2.1", ContextLength: 200000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
+	{Pattern: "laguna", DisplayName: "Laguna", ContextLength: 200000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
+
+	// Tencent Hunyuan
+	{Pattern: "hunyuan-t1", DisplayName: "Hunyuan T1", ContextLength: 256000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "hunyuan"},
+	{Pattern: "hunyuan-turbos", DisplayName: "Hunyuan TurboS", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
+	{Pattern: "hunyuan", DisplayName: "Hunyuan", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
 }
 
 // LookupCatalog finds the best matching static catalog entry for a model ID.

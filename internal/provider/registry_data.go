@@ -1,7 +1,7 @@
 package provider
 
 // registry_data.go is generated from 9router provider registry.
-// Source: decolua/9router open-sse/providers/registry/ @ 79918c7
+// Source: decolua/9router open-sse/providers/registry/ @ 6fcd273
 // Do not edit manually.
 
 func init() {
@@ -51,6 +51,19 @@ func init() {
 		Icon:     "smart_toy",
 		TextIcon: "AN",
 	}
+	Registry["api-airforce"] = ProviderInfo{
+		ID: "api-airforce", Name: "API.airforce",
+		Alias: "af", Aliases: []string{"airforce"},
+		BaseURL: "https://api.airforce/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 50,
+		Color:    "#0EA5E9",
+		Website:  "https://api.airforce",
+		Icon:     "flight",
+		TextIcon: "AF",
+		HasFree:  true,
+		Headers:  map[string]string{"HTTP-Referer": "https://endpoint-proxy.local", "X-Title": "Endpoint Proxy"},
+	}
 	Registry["antigravity"] = ProviderInfo{
 		ID: "antigravity", Name: "Antigravity",
 		Alias: "ag", Aliases: []string{"ag"},
@@ -97,6 +110,29 @@ func init() {
 		Icon:     "cloud",
 		TextIcon: "AZ",
 	}
+	Registry["baidu"] = ProviderInfo{
+		ID: "baidu", Name: "Baidu Qianfan",
+		Alias: "qianfan", Aliases: []string{"qianfan", "ernie", "baidu-qianfan"},
+		BaseURL: "https://qianfan.baidubce.com/v2/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
+		Color:    "#2932E1",
+		Website:  "https://cloud.baidu.com/product/qianfan.html",
+		Icon:     "search",
+		TextIcon: "BD",
+	}
+	Registry["bazaarlink"] = ProviderInfo{
+		ID: "bazaarlink", Name: "Bazaarlink",
+		Alias: "bzl", Aliases: []string{"bazaar-link"},
+		BaseURL: "https://bazaarlink.ai/api/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 55,
+		Color:    "#DC2626",
+		Website:  "https://bazaarlink.ai",
+		Icon:     "storefront",
+		TextIcon: "BZ",
+		HasFree:  true,
+	}
 	Registry["black-forest-labs"] = ProviderInfo{
 		ID: "black-forest-labs", Name: "Black Forest Labs",
 		Alias: "black-forest-labs", Aliases: []string{"black-forest-labs", "bfl"},
@@ -118,6 +154,18 @@ func init() {
 		Website:  "https://blackbox.ai",
 		Icon:     "smart_toy",
 		TextIcon: "BB",
+	}
+	Registry["bluesminds"] = ProviderInfo{
+		ID: "bluesminds", Name: "BluesMinds",
+		Alias: "bm", Aliases: []string{"blue-sminds"},
+		BaseURL: "https://api.bluesminds.com/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
+		Color:    "#2563EB",
+		Website:  "https://bluesminds.com",
+		Icon:     "psychology",
+		TextIcon: "BM",
+		Hidden:   true,
 	}
 	Registry["brave-search"] = ProviderInfo{
 		ID: "brave-search", Name: "Brave Search",
@@ -610,6 +658,18 @@ func init() {
 		Icon:     "menu_book",
 		TextIcon: "JR",
 	}
+	Registry["kilo-gateway"] = ProviderInfo{
+		ID: "kilo-gateway", Name: "Kilo Gateway",
+		Alias: "kgw", Aliases: []string{"kilogateway"},
+		BaseURL: "https://api.kilo.ai/api/gateway/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 55,
+		Color:    "#8B5CF6",
+		Website:  "https://kilo.ai",
+		Icon:     "login",
+		TextIcon: "KG",
+		HasFree:  true,
+	}
 	Registry["kilocode"] = ProviderInfo{
 		ID: "kilocode", Name: "Kilo Code",
 		Alias: "kc", Aliases: []string{"kc"},
@@ -671,6 +731,17 @@ func init() {
 		Website:  "https://linkup.so",
 		Icon:     "link",
 		TextIcon: "LK",
+	}
+	Registry["llm7"] = ProviderInfo{
+		ID: "llm7", Name: "LLM7",
+		Alias: "llm7", Aliases: []string{"llm-7"},
+		BaseURL: "https://api.llm7.io/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
+		Color:    "#7C3AED",
+		Website:  "https://llm7.io",
+		Icon:     "pool",
+		TextIcon: "L7",
 	}
 	Registry["local-device"] = ProviderInfo{
 		ID: "local-device", Name: "Local Device",
@@ -739,6 +810,17 @@ func init() {
 		TextIcon: "MF",
 		Hidden:   true,
 		NoAuth:   true,
+	}
+	Registry["morph"] = ProviderInfo{
+		ID: "morph", Name: "Morph",
+		Alias: "morph", Aliases: []string{"morphllm"},
+		BaseURL: "https://api.morphllm.com/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
+		Color:    "#14B8A6",
+		Website:  "https://morphllm.com",
+		Icon:     "change_history",
+		TextIcon: "MP",
 	}
 	Registry["nanobanana"] = ProviderInfo{
 		ID: "nanobanana", Name: "NanoBanana API",
@@ -891,6 +973,18 @@ func init() {
 		TextIcon: "PH",
 		Hidden:   true,
 	}
+	Registry["poolside"] = ProviderInfo{
+		ID: "poolside", Name: "Poolside",
+		Alias: "poolside", Aliases: []string{"ps"},
+		BaseURL: "https://inference.poolside.ai/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 60,
+		Color:    "#0EA5E9",
+		Website:  "https://poolside.ai",
+		Icon:     "water_drop",
+		TextIcon: "PS",
+		HasFree:  true,
+	}
 	Registry["qoder"] = ProviderInfo{
 		ID: "qoder", Name: "Qoder",
 		Alias: "qd", Aliases: []string{"qd"},
@@ -939,6 +1033,18 @@ func init() {
 		Website:  "https://runwayml.com",
 		Icon:     "movie",
 		TextIcon: "RW",
+	}
+	Registry["sambanova"] = ProviderInfo{
+		ID: "sambanova", Name: "SambaNova",
+		Alias: "samba", Aliases: []string{"sambanova-ai"},
+		BaseURL: "https://api.sambanova.ai/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
+		Color:    "#F97316",
+		Website:  "https://sambanova.ai",
+		Icon:     "memory",
+		TextIcon: "SN",
+		Hidden:   true,
 	}
 	Registry["sdwebui"] = ProviderInfo{
 		ID: "sdwebui", Name: "SD WebUI",
@@ -1017,6 +1123,17 @@ func init() {
 		Website:  "https://tavily.com",
 		Icon:     "search",
 		TextIcon: "TV",
+	}
+	Registry["tencent"] = ProviderInfo{
+		ID: "tencent", Name: "Tencent Hunyuan",
+		Alias: "hunyuan", Aliases: []string{"hunyuan", "tencent-hunyuan"},
+		BaseURL: "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
+		Color:    "#0052D9",
+		Website:  "https://cloud.tencent.com/product/hunyuan",
+		Icon:     "cloud",
+		TextIcon: "HY",
 	}
 	Registry["together"] = ProviderInfo{
 		ID: "together", Name: "Together AI",
