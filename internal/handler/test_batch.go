@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,19 +207,23 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 
 	s.tryRefreshToken(conn)
 
+	// Phase 30: resolve the provider transport and use it for both URL building
+	// and auth injection so connection tests exercise the real upstream path.
+	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+
 	var targetURL string
 	var testBody []byte
 
 	switch effectiveAPIType {
 	case "anthropic":
-		targetURL = provider.BuildChatURL(baseURL, "anthropic")
+		targetURL = provider.BuildTransportURL(transport, "claude-3-haiku-20240307", false)
 		testBody, _ = json.Marshal(map[string]any{
 			"model":      "claude-3-haiku-20240307",
 			"max_tokens": 5,
 			"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
 		})
 	case "gemini":
-		targetURL = provider.BuildGeminiURL(baseURL, "gemini-2.0-flash", false)
+		targetURL = provider.BuildTransportURL(transport, "gemini-2.0-flash", false)
 		testBody, _ = json.Marshal(map[string]any{
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
@@ -226,6 +231,9 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		// For OpenAI-compatible providers, test via the models endpoint.
 		// Full endpoint URLs (e.g. .../v1/chat/completions) are stripped first.
 		targetURL = provider.BuildModelsURL(baseURL)
+		if transport.URLSuffix != "" {
+			targetURL = strings.TrimRight(baseURL, "/") + transport.URLSuffix
+		}
 		testBody = nil
 	}
 
@@ -240,26 +248,19 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		return testResult{Error: "failed to create test request"}
 	}
 
-	if conn.Data.APIKey != "" {
-		if effectiveAPIType == "anthropic" {
-			req.Header.Set("x-api-key", conn.Data.APIKey)
-			req.Header.Set("anthropic-version", "2023-06-01")
-		} else if effectiveAPIType == "gemini" {
-			q := req.URL.Query()
-			q.Set("key", conn.Data.APIKey)
-			req.URL.RawQuery = q.Encode()
-		} else {
-			req.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
-		}
-	} else if conn.Data.AccessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
-	} else if providerInfo.NoAuth {
+	for k, v := range transport.Headers {
+		req.Header.Set(k, v)
+	}
+	creds := provider.Credentials{
+		APIKey:               conn.Data.APIKey,
+		AccessToken:          conn.Data.AccessToken,
+		ProviderSpecificData: conn.Data.ProviderSpecificData,
+	}
+	provider.ApplyAuth(req, transport, creds)
+	if providerInfo.NoAuth && creds.APIKey == "" && creds.AccessToken == "" {
 		req.Header.Set("Authorization", "Bearer public")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	for k, v := range providerInfo.Headers {
-		req.Header.Set(k, v)
-	}
 
 	client := s.getHTTPClient(30 * time.Second)
 	start := time.Now()

@@ -43,6 +43,14 @@ type ProviderInfo struct {
 
 	// Extra headers sent on every upstream request (e.g. x-opencode-client)
 	Headers map[string]string `json:"headers,omitempty"`
+
+	// Transport config (Phase 30): explicit upstream adaptation ported from
+	// 9router registry transport blocks. When set, these override the
+	// format-derived defaults in ResolveTransport.
+	URLSuffix  string   `json:"urlSuffix,omitempty"`  // appended to base URL (e.g. "?beta=true")
+	AuthHeader string   `json:"authHeader,omitempty"` // header carrying the token (e.g. "x-api-key")
+	AuthScheme string   `json:"authScheme,omitempty"` // "bearer" | "raw" | "query"
+	AuthHooks  []string `json:"authHooks,omitempty"`  // provider header overlays (e.g. "kimiHeaders")
 }
 
 // EffectiveBaseURL returns the base URL to use for a connection, considering

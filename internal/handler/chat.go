@@ -236,7 +236,8 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		targetURL := provider.BuildChatURL(baseURL, comboAPIType)
+		comboTransport := provider.ResolveTransport(providerInfo, baseURL, comboAPIType, conn)
+		targetURL := provider.BuildTransportURL(comboTransport, modelInfo.Model, req.Stream)
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			lastError = "failed to create upstream request"
@@ -244,16 +245,21 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		if conn.Data.APIKey != "" {
-			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
-		} else if conn.Data.AccessToken != "" {
-			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
-		} else if providerInfo.NoAuth {
+		for k, v := range comboTransport.Headers {
+			upstreamReq.Header.Set(k, v)
+		}
+		comboCreds := provider.Credentials{
+			APIKey:               conn.Data.APIKey,
+			AccessToken:          conn.Data.AccessToken,
+			ProviderSpecificData: conn.Data.ProviderSpecificData,
+		}
+		provider.ApplyAuth(upstreamReq, comboTransport, comboCreds)
+		if providerInfo.NoAuth && comboCreds.APIKey == "" && comboCreds.AccessToken == "" {
 			upstreamReq.Header.Set("Authorization", "Bearer public")
 		}
 		upstreamReq.Header.Set("Content-Type", "application/json")
-		for k, v := range providerInfo.Headers {
-			upstreamReq.Header.Set(k, v)
+		if req.Stream {
+			upstreamReq.Header.Set("Accept", "text/event-stream")
 		}
 
 		client := s.getHTTPClient(5 * time.Minute)
@@ -387,6 +393,10 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		targetFormat = translator.FormatGemini
 	}
 
+	// Phase 30: resolve the provider transport (base URL, format, auth scheme,
+	// hooks) once and use it for both URL building and auth injection.
+	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+
 	// --- Qoder special path: COSY-signed custom protocol ---
 	if modelInfo.Provider == "qoder" {
 		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
@@ -424,7 +434,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
 			return
 		}
-		targetURL = provider.BuildChatURL(baseURL, effectiveAPIType)
+		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, req.Stream)
 	} else {
 		// Translate request to provider format — use raw body to preserve unknown fields
 		var bodyMap map[string]any
@@ -456,12 +466,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			return
 		}
 
-		switch targetFormat {
-		case translator.FormatAnthropic:
-			targetURL = provider.BuildChatURL(baseURL, "anthropic")
-		case translator.FormatGemini:
-			targetURL = provider.BuildGeminiURL(baseURL, modelInfo.Model, req.Stream)
-		}
+		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, req.Stream)
 	}
 
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
@@ -470,33 +475,25 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	// Set auth headers
-	if conn.Data.APIKey != "" {
-		if targetFormat == translator.FormatAnthropic {
-			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
-			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
-		} else if targetFormat == translator.FormatGemini {
-			// Gemini uses query param for API key
-			q := upstreamReq.URL.Query()
-			q.Set("key", conn.Data.APIKey)
-			upstreamReq.URL.RawQuery = q.Encode()
-		} else {
-			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
-		}
-	} else if conn.Data.AccessToken != "" {
-		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
-	} else if providerInfo.NoAuth {
+	// Phase 30: apply transport headers + auth (scheme-aware injection + hooks).
+	// Headers first (matches 9router: config.headers spread before applyAuth) so
+	// the AnthropicVersion guard in ApplyAuth sees any pre-set anthropic-version.
+	for k, v := range transport.Headers {
+		upstreamReq.Header.Set(k, v)
+	}
+	creds := provider.Credentials{
+		APIKey:               conn.Data.APIKey,
+		AccessToken:          conn.Data.AccessToken,
+		ProviderSpecificData: conn.Data.ProviderSpecificData,
+	}
+	provider.ApplyAuth(upstreamReq, transport, creds)
+	if providerInfo.NoAuth && creds.APIKey == "" && creds.AccessToken == "" {
 		// NoAuth providers (e.g. OpenCode Free) use a public bearer token
 		upstreamReq.Header.Set("Authorization", "Bearer public")
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	if req.Stream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")
-	}
-
-	// Apply registry-defined extra headers (e.g. x-opencode-client)
-	for k, v := range providerInfo.Headers {
-		upstreamReq.Header.Set(k, v)
 	}
 
 	slog.Info("Proxying request",
@@ -530,13 +527,18 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			// Retry the request with new token
 			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 			if retryErr == nil {
-				if conn.Data.AccessToken != "" {
-					retryReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+				for k, v := range transport.Headers {
+					retryReq.Header.Set(k, v)
 				}
+				retryCreds := provider.Credentials{
+					APIKey:               conn.Data.APIKey,
+					AccessToken:          conn.Data.AccessToken,
+					ProviderSpecificData: conn.Data.ProviderSpecificData,
+				}
+				provider.ApplyAuth(retryReq, transport, retryCreds)
 				retryReq.Header.Set("Content-Type", "application/json")
-				if targetFormat == translator.FormatAnthropic {
-					retryReq.Header.Set("x-api-key", conn.Data.AccessToken)
-					retryReq.Header.Set("anthropic-version", "2023-06-01")
+				if req.Stream {
+					retryReq.Header.Set("Accept", "text/event-stream")
 				}
 
 				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))
@@ -796,15 +798,17 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	reqBody["model"] = modelInfo.Model
 	translatedBody, _ := json.Marshal(reqBody)
 
-	// Determine target URL based on provider API type
-	var targetURL string
-	switch effectiveAPIType {
-	case "anthropic":
-		targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
-	default:
-		// For OpenAI-compatible providers, translate Claude format to OpenAI
-		targetURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
-		// TODO: translate Claude request to OpenAI format for non-Anthropic providers
+	// Phase 30: resolve transport for URL building + auth injection.
+	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+	targetURL := provider.BuildTransportURL(transport, modelInfo.Model, stream)
+	if targetURL == "" {
+		// Fallback for providers without a usable base URL.
+		switch effectiveAPIType {
+		case "anthropic":
+			targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
+		default:
+			targetURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
+		}
 	}
 
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(translatedBody))
@@ -813,17 +817,15 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set auth headers
-	if conn.Data.APIKey != "" {
-		if effectiveAPIType == "anthropic" {
-			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
-			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
-		} else {
-			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
-		}
-	} else if conn.Data.AccessToken != "" {
-		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+	for k, v := range transport.Headers {
+		upstreamReq.Header.Set(k, v)
 	}
+	creds := provider.Credentials{
+		APIKey:               conn.Data.APIKey,
+		AccessToken:          conn.Data.AccessToken,
+		ProviderSpecificData: conn.Data.ProviderSpecificData,
+	}
+	provider.ApplyAuth(upstreamReq, transport, creds)
 	upstreamReq.Header.Set("Content-Type", "application/json")
 
 	slog.Info("Messages passthrough",

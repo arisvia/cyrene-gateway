@@ -50,6 +50,12 @@ func init() {
 		Website:  "https://console.anthropic.com",
 		Icon:     "smart_toy",
 		TextIcon: "AN",
+		Headers: map[string]string{
+			"anthropic-version": "2023-06-01",
+			"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14",
+		},
+		AuthHeader: "x-api-key",
+		AuthScheme: "raw",
 	}
 	Registry["api-airforce"] = ProviderInfo{
 		ID: "api-airforce", Name: "API.airforce",
@@ -709,6 +715,13 @@ func init() {
 		// Moonshot OpenAI-compatible endpoint, not the /coding/ Anthropic one.
 		ApiKeyBaseURL: "https://api.moonshot.cn/v1",
 		ApiKeyAPIType: "openai",
+		// Primary (OAuth) transport: claude /coding endpoint, x-api-key raw auth
+		// + X-Msh-* fingerprint headers (9router kimi.js transport block).
+		URLSuffix:  "?beta=true",
+		Headers:    map[string]string{"anthropic-version": "2023-06-01", "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"},
+		AuthHeader: "x-api-key",
+		AuthScheme: "raw",
+		AuthHooks:  []string{"kimiHeaders"},
 	}
 	Registry["kiro"] = ProviderInfo{
 		ID: "kiro", Name: "Kiro AI",

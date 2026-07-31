@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 30,
+  "current_phase": 31,
   "last_updated": "2026-07-31",
   "phases": [
     {
@@ -121,16 +121,8 @@
     {
       "id": 30,
       "name": "Provider Transport Layer",
-      "status": "pending",
-      "description": "Core infrastructure for real provider adaptation: per-provider transport config (baseUrl, format, headers, urlSuffix, auth scheme/hooks), request pipeline resolves transport from registry at proxy time, auth header injection (bearer/x-api-key/raw/combined), dual-auth mode support. Port from 9router registry/*.js transport blocks + shared.js auth hooks. Go integration tests with mock upstream.",
-      "tasks": [
-        "Extend registry entry struct: transport{baseUrl, format, headers, urlSuffix, authHeader, authScheme, hooks}",
-        "Request pipeline: resolve transport by provider ID at proxy time, inject headers/auth per scheme",
-        "Auth hook framework (kimiHeaders X-Msh-*, copilot token headers, etc.)",
-        "Dual-auth: apikey uses ApiKeyBaseURL override, oauth uses transport.baseUrl",
-        "Connection test endpoint uses real transport (not generic ping)",
-        "Go tests: mock upstream validating header injection for 5+ formats"
-      ]
+      "status": "done",
+      "summary": "Unified transport layer (internal/provider/transport.go): per-provider Transport{baseUrl,format,headers,urlSuffix,auth} resolved at proxy time, scheme-aware auth injection (bearer/raw/query) + hook framework (kimiHeaders X-Msh-*), dual-auth (kimi OAuth x-api-key vs apikey Bearer). Refactored chat (single+combo+messages) + connection test to use it. 15 transport tests incl. mock-upstream header validation for 6 auth shapes."
     },
     {
       "id": 31,
