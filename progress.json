@@ -191,6 +191,83 @@
       "name": "WebUI Ground-Up Rebuild",
       "status": "done",
       "summary": "Full src/ rewrite from scratch: new design token system (teal→violet gradient, glassmorphism, dark/light), expandable Media Providers sub-nav, Tab-based Provider Detail (Connections/Models/Settings), 17 routes, typed Pinia store with null-safe API layer, pure-CSS animations (stagger/spring/ambient orbs, prefers-reduced-motion), mobile collapsible sidebar. Zero new dependencies beyond existing stack."
+    },
+    {
+      "id": 30,
+      "name": "Provider Transport Layer",
+      "status": "pending",
+      "description": "Core infrastructure for real provider adaptation: per-provider transport config (baseUrl, format, headers, urlSuffix, auth scheme/hooks), request pipeline that resolves transport from registry at proxy time, auth header injection (bearer/x-api-key/raw/combined), dual-auth mode support (oauth+apikey on same provider). Port from 9router open-sse/providers/registry/*.js transport blocks + shared.js auth hooks. Include Go integration tests with mock upstream.",
+      "tasks": [
+        "Extend registry entry struct: transport{baseUrl, format, headers, urlSuffix, authHeader, authScheme, hooks}",
+        "Request pipeline: resolve transport by provider ID at proxy time, inject headers/auth per scheme",
+        "Auth hook framework (kimiHeaders X-Msh-*, copilot token headers, etc.)",
+        "Dual-auth: apikey requests use ApiKeyBaseURL override (9router#2881 pattern), oauth uses transport.baseUrl",
+        "Connection test endpoint uses real transport (not generic ping)",
+        "Go tests: mock upstream server validating header injection for 5+ formats"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "API Key Providers — Batch 1 (25)",
+      "status": "pending",
+      "description": "First 25 apikey providers fully adapted: transport verified against real endpoints (connectivity test passes), quota/usage extraction where API supports it. Priority order: openai, anthropic, google/gemini, openrouter, azure, deepseek, groq, mistral, together, fireworks, cerebras, xai, nvidia, nebius, cohere, perplexity, moonshot/kimi-apikey, qwen-apikey, zhipu, baichuan, minimax, stepfun, zero-one, volcengine, siliconflow.",
+      "tasks": [
+        "Port transport config from each provider's registry .js (baseUrl/format/headers)",
+        "Verify format translation coverage (openai/claude/gemini formats already exist; add missing ones)",
+        "Per-provider test: connectivity via POST /api/providers/{id}/test with real key format validation",
+        "Quota endpoints where available (openai /dashboard/billing, gemini quotas, etc.)",
+        "Panel: per-provider 'Get API Key' link from registry display.notice.apiKeyUrl"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "API Key Providers — Batch 2 (45)",
+      "status": "pending",
+      "description": "Remaining 45 apikey providers: alibaba/alicode, aws-polly, baidu, black-forest-labs, cartesia, chutes, hyperbolic, inference-net, jina-ai, keyless, linkup, llm7, morph, playht, recraft, sambanova, tencent, bazaarlink, bluesminds, api-airforce, poolside, kilo-gateway, etc. Same adaptation standard as Batch 1. Add Vitest unit tests for webui store/lib layer.",
+      "tasks": [
+        "Port remaining registry transport configs",
+        "Media-kind providers: validate embedding/image/tts/stt/video endpoint paths",
+        "Vitest setup for webui: store null-safety + api lib + format utils",
+        "Registry completeness test: every registry entry has transport.baseUrl + format"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "OAuth Framework + Batch 1 (8 providers)",
+      "status": "pending",
+      "description": "Port 9router's token refresh framework: pre-expiry refresh (5min buffer), dedup lock, unrecoverable error classification, per-provider refresh implementations. Batch 1: kimi (device code + X-Msh headers), xai, claude (PKCE), google, qwen, codex, kiro, iflow. Each must: authorize → callback/device-poll → token store → auto-refresh → chat request succeeds.",
+      "tasks": [
+        "Token refresh engine: expiry check (5min lead), singleflight dedup, error classification (recoverable vs unrecoverable)",
+        "Port refresh implementations: refreshKimiToken, refreshXaiToken, refreshClaudeOAuthToken, refreshGoogleToken, refreshQwenToken, refreshCodexToken, refreshKiroToken, refreshIflowToken",
+        "Device code flow UI: poll status display in panel OAuth modal",
+        "Integration tests: mock OAuth server (authorize/token/refresh endpoints) per flow type",
+        "Panel: connection status shows token expiry countdown, refresh-now button"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "OAuth Batch 2 + Dual-Auth (12+24)",
+      "status": "pending",
+      "description": "Remaining OAuth providers: github, copilot (GitHub token exchange chain), codebuddy, codebuddy-intl, trae, zed, windsurf, grok-cli, gitlab, kilocode, cursor, cline. Plus wire dual-auth (authModes: [oauth, apikey]) for all 24 dual providers: panel shows both connect paths, request path picks credential by auth mode.",
+      "tasks": [
+        "Port remaining refresh implementations (copilot's multi-step exchange is the complex one)",
+        "Dual-auth panel UX: 'Connect via OAuth' + 'Add API Key' both available per provider card",
+        "Request routing: prefer active OAuth token, fall back to apikey credential (9router accountFallback parity)",
+        "webCookie providers (2): session cookie capture flow"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Free/FreeTier Providers + E2E Verification",
+      "status": "pending",
+      "description": "18 freeTier + 5 free providers fully working (these need no key — must work out of the box after 'Enable'). E2E verification pass: for every category, pick representative providers and verify full chat completion through the gateway. Final quota dashboard polish.",
+      "tasks": [
+        "freeTier providers: verify no-auth transport works (some need implicit session/token bootstrap)",
+        "free providers: one-click enable → immediate chat success (zero-config promise)",
+        "E2E test suite: scripted chat completion through gateway for 10+ representative providers",
+        "Panel quota page: real quota data for providers that expose usage APIs",
+        "Documentation: provider support matrix (auth modes, formats, quota support) in README"
+      ]
     }
   ],
   "upstream_ports": [
