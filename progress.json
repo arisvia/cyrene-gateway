@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 33,
+  "current_phase": 34,
   "last_updated": "2026-07-31",
   "phases": [
     {
@@ -139,15 +139,8 @@
     {
       "id": 33,
       "name": "OAuth Framework + Batch 1 (8 providers)",
-      "status": "pending",
-      "description": "Token refresh framework (pre-expiry 5min buffer, singleflight dedup, unrecoverable error classification) + 8 providers: kimi, xai, claude, google, qwen, codex, kiro, iflow. Full flow: authorize → callback/device-poll → token store → auto-refresh → chat succeeds.",
-      "tasks": [
-        "Token refresh engine: expiry check, singleflight dedup, error classification",
-        "Port: refreshKimiToken, refreshXaiToken, refreshClaudeOAuthToken, refreshGoogleToken, refreshQwenToken, refreshCodexToken, refreshKiroToken, refreshIflowToken",
-        "Device code flow UI: poll status in panel OAuth modal",
-        "Integration tests: mock OAuth server per flow type",
-        "Panel: token expiry countdown, refresh-now button"
-      ]
+      "status": "done",
+      "summary": "Token refresh engine: per-provider profiles (form/json, extra headers, error classification), singleflight dedup, per-provider lead times (codex 5d, iflow 24h). 8 providers: kimi (X-Msh-*), xai (OIDC discovery), claude (JSON), google (client_secret), qwen (resource_url), codex (unrecoverable detection), kiro (multi-path IDC/social), iflow (Basic auth). POST /api/oauth/{provider}/refresh, panel token countdown + refresh button. 12 tests."
     },
     {
       "id": 34,
