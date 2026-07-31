@@ -1,44 +1,77 @@
 <script setup lang="ts">
 defineProps<{
-  variant?: 'primary' | 'ghost' | 'danger-ghost'
-  size?: 'sm' | 'icon'
+  variant?: 'primary' | 'ghost' | 'danger' | 'outline'
+  size?: 'sm' | 'md'
   disabled?: boolean
+  loading?: boolean
 }>()
 </script>
 
 <template>
   <button
-    :class="['btn', `btn-${variant || 'primary'}`, size === 'sm' && 'btn-sm', size === 'icon' && 'btn-icon']"
-    :disabled="disabled"
+    class="gbtn"
+    :class="[variant || 'primary', size || 'md']"
+    :disabled="disabled || loading"
   >
+    <span v-if="loading" class="spinner"></span>
     <slot />
   </button>
 </template>
 
 <style scoped>
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  height: 34px; padding: 0 14px; border-radius: var(--radius-sm);
-  font-size: 12.5px; font-weight: 550; font-family: var(--font);
-  border: 1px solid transparent; cursor: pointer;
-  transition: all 0.2s var(--ease-spring); white-space: nowrap;
+.gbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  font-weight: 560; font-size: 13px; cursor: pointer;
+  transition: all var(--duration) ease;
+  white-space: nowrap; user-select: none;
 }
-.btn svg { width: 13px; height: 13px; }
-.btn:active { transform: scale(0.94); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary {
-  background: var(--gradient); color: var(--on-accent); border: none;
+.gbtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.gbtn.md { height: 34px; padding: 0 14px; }
+.gbtn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+
+.gbtn.primary {
+  background: var(--gradient); color: var(--on-accent);
   box-shadow: var(--shadow-accent);
 }
-.btn-primary:hover:not(:disabled) { box-shadow: var(--shadow-accent-hover); filter: brightness(1.1); transform: translateY(-1px); }
-.btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.94); }
-.btn-ghost {
-  background: transparent; color: var(--text-muted);
+.gbtn.primary:hover:not(:disabled) {
+  box-shadow: var(--shadow-accent-hover);
+  transform: translateY(-1px);
+}
+
+.gbtn.ghost {
+  background: var(--glass); color: var(--text-muted);
   border-color: var(--glass-border);
 }
-.btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--glass-hover); border-color: var(--glass-border-hover); }
-.btn-danger-ghost { background: transparent; color: var(--text-faint); border-color: transparent; }
-.btn-danger-ghost:hover:not(:disabled) { color: var(--red); background: rgba(248,113,113,0.08); }
-.btn-sm { height: 29px; padding: 0 11px; font-size: 12px; }
-.btn-icon { width: 29px; height: 29px; padding: 0; }
+.gbtn.ghost:hover:not(:disabled) {
+  background: var(--glass-hover); color: var(--text);
+  border-color: var(--glass-border-hover);
+}
+
+.gbtn.outline {
+  background: transparent; color: var(--accent);
+  border-color: rgba(45,212,191,0.3);
+}
+.gbtn.outline:hover:not(:disabled) {
+  background: rgba(45,212,191,0.08);
+  border-color: rgba(45,212,191,0.5);
+}
+
+.gbtn.danger {
+  background: rgba(248,113,113,0.1); color: var(--red);
+  border-color: rgba(248,113,113,0.25);
+}
+.gbtn.danger:hover:not(:disabled) {
+  background: rgba(248,113,113,0.18);
+}
+
+.gbtn:active:not(:disabled) { transform: scale(0.97); }
+
+.spinner {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

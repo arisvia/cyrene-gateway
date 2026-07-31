@@ -1,108 +1,115 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useGatewayStore, type Combo } from '@/stores/gateway'
+import { ref, onMounted } from 'vue'
+import { useGatewayStore } from '@/stores/gateway'
+import { useToast } from '@/lib/toast'
+import GCard from '@/components/ui/GCard.vue'
 import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
-import GCard from '@/components/ui/GCard.vue'
 import GModal from '@/components/ui/GModal.vue'
 import GEmpty from '@/components/ui/GEmpty.vue'
-import { Plus, Trash2 } from 'lucide-vue-next'
+import { Plus, Trash2, Combine } from 'lucide-vue-next'
 
 const store = useGatewayStore()
-const showAdd = ref(false)
-const newCombo = ref({ name: '', kind: 'fallback', modelsStr: '' })
+const toast = useToast()
 
-async function add() {
-  const models = newCombo.value.modelsStr.split(',').map(s => s.trim()).filter(Boolean)
-  if (!newCombo.value.name || models.length === 0) return
-  await store.addCombo(newCombo.value.name, newCombo.value.kind, models)
-  newCombo.value = { name: '', kind: 'fallback', modelsStr: '' }
-  showAdd.value = false
-}
+const showCreate = ref(false)
+const name = ref('')
+const kind = ref('fallback')
+const models = ref('')
+const saving = ref(false)
 
-async function remove(c: Combo) {
-  if (!confirm(`Delete combo "${c.name}"?`)) return
-  await store.deleteCombo(c)
+onMounted(() => { if (!store.combos.length && !store.registryCategories.length) store.loadCore() })
+
+async function create() {
+  if (!name.value || saving.value) return
+  saving.value = true
+  try {
+    await store.saveCombo({ name: name.value, kind: kind.value, models: models.value.split(',').map(s => s.trim()).filter(Boolean) })
+    showCreate.value = false
+    name.value = ''; models.value = ''
+  } catch (e: any) { toast.error(e.message) }
+  saving.value = false
 }
 </script>
 
 <template>
-  <div>
-    <div class="page-header">
-      <h1 class="page-title">Combos</h1>
-      <p class="page-desc">Fallback and round-robin model groups for resilient routing.</p>
-    </div>
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">Combos</h1>
+        <p class="page-desc">Model routing combos — fallback chains, round-robin pools, sticky groups</p>
+      </div>
+      <GButton size="sm" @click="showCreate = true"><Plus :size="13" /> New Combo</GButton>
+    </header>
 
-    <div class="flex-between section-gap">
-      <GBadge>{{ store.combos.length }} combos</GBadge>
-      <GButton size="sm" @click="showAdd = true"><Plus :size="13" />Add Combo</GButton>
-    </div>
+    <GEmpty v-if="!store.combos.length" title="No combos yet" desc="Combos let you route a single model name across multiple upstreams with fallback or round-robin strategies.">
+      <GButton size="sm" style="margin-top:14px" @click="showCreate = true"><Plus :size="13" /> Create your first combo</GButton>
+    </GEmpty>
 
-    <GCard>
-      <div v-for="c in store.combos" :key="c.id" class="combo-row">
-        <div class="flex-between">
-          <div class="flex-gap">
-            <span style="font-size:13.5px;font-weight:550">{{ c.name }}</span>
-            <GBadge :color="c.kind === 'round-robin' ? 'blue' : 'glass'">{{ c.kind }}</GBadge>
+    <div v-else class="combo-list stagger">
+      <GCard v-for="c in store.combos" :key="c.id" class="combo-card">
+        <div class="combo-left">
+          <Combine :size="15" class="combo-icon" />
+          <div>
+            <p class="combo-name">{{ c.name }}</p>
+            <p class="combo-models">{{ c.models.join(' → ') }}</p>
           </div>
-          <GButton variant="danger-ghost" size="icon" @click="remove(c)"><Trash2 :size="14" /></GButton>
         </div>
-        <div class="model-chips">
-          <span v-for="m in c.models" :key="m" class="model-chip">{{ m }}</span>
+        <div class="combo-right">
+          <GBadge :color="c.kind === 'fallback' ? 'teal' : c.kind === 'round-robin' ? 'violet' : 'blue'">{{ c.kind }}</GBadge>
+          <button class="icon-btn danger" @click="store.deleteCombo(c.id)" title="Delete combo">
+            <Trash2 :size="13" />
+          </button>
         </div>
-      </div>
-      <GEmpty v-if="store.combos.length === 0">No combos. Create fallback groups for resilient model routing.</GEmpty>
-    </GCard>
+      </GCard>
+    </div>
 
-    <GModal v-if="showAdd" title="Create Combo" desc="Route a virtual model name across multiple upstreams." width="420px" @close="showAdd = false">
-      <div class="form-group">
-        <label class="form-label">Combo Name</label>
-        <input v-model="newCombo.name" class="input" placeholder="e.g. reliable-chat">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Strategy</label>
-        <select v-model="newCombo.kind" class="input">
-          <option value="fallback">Fallback — try in order until success</option>
-          <option value="round-robin">Round Robin — distribute evenly</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Models (comma-separated, priority order)</label>
-        <input v-model="newCombo.modelsStr" class="input mono" placeholder="openai/gpt-4o, anthropic/claude-sonnet-4-20250514">
-      </div>
+    <GModal v-if="showCreate" title="Create Combo" @close="showCreate = false">
+      <label class="field-label">Name (model alias)</label>
+      <input v-model="name" class="field" placeholder="my-smart-route">
+      <label class="field-label">Strategy</label>
+      <select v-model="kind" class="field select">
+        <option value="fallback">fallback</option>
+        <option value="round-robin">round-robin</option>
+        <option value="sticky">sticky</option>
+      </select>
+      <label class="field-label">Models (comma-separated, in priority order)</label>
+      <input v-model="models" class="field" placeholder="anthropic/claude-sonnet-4, openai/gpt-4o">
       <div class="modal-actions">
-        <GButton variant="ghost" @click="showAdd = false">Cancel</GButton>
-        <GButton @click="add">Create</GButton>
+        <GButton variant="ghost" @click="showCreate = false">Cancel</GButton>
+        <GButton :loading="saving" @click="create">Create</GButton>
       </div>
     </GModal>
   </div>
 </template>
 
 <style scoped>
-.combo-row { padding: 14px 16px; border-bottom: 1px solid var(--row-divider); }
-.combo-row:last-child { border-bottom: none; }
-.model-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.model-chip {
-  font-family: var(--font-mono); font-size: 10px; padding: 3px 8px;
-  border-radius: 4px; background: var(--glass-hover);
-  border: 1px solid var(--glass-border); color: var(--text-muted);
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+.page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; }
+.page-desc { font-size: 12.5px; color: var(--text-faint); margin-top: 3px; }
+.combo-list { display: flex; flex-direction: column; gap: 8px; max-width: 700px; }
+.combo-card { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; }
+.combo-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.combo-icon { color: var(--accent); flex-shrink: 0; }
+.combo-name { font-size: 13px; font-weight: 600; }
+.combo-models { font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; }
+.combo-right { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  width: 26px; height: 26px; border-radius: var(--radius-xs);
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-muted); cursor: pointer; transition: all 0.12s ease;
 }
-.form-group { margin-bottom: 14px; }
-.form-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin-bottom: 6px; }
-.input {
+.icon-btn.danger:hover { color: var(--red); background: rgba(248,113,113,0.08); }
+.field-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin: 12px 0 5px; }
+.field {
   width: 100%; height: 34px; padding: 0 12px;
   background: var(--code-bg); color: var(--text);
   border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
-  font-size: 13px; font-family: var(--font); outline: none; transition: all 0.15s ease;
+  font-size: 13px; outline: none; transition: all 0.15s ease;
 }
-.input.mono { font-family: var(--font-mono); font-size: 12px; }
-.input::placeholder { color: var(--text-faint); }
-.input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
-select.input {
-  appearance: none; background-image: var(--select-arrow);
-  background-repeat: no-repeat; background-position: right 10px center;
-  background-size: 14px; padding-right: 34px; cursor: pointer;
-}
-select.input option { background-color: var(--bg-elevated); color: var(--text); }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.field::placeholder { color: var(--text-faint); }
+.field:focus { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
+.select { appearance: auto; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 </style>

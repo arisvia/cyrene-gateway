@@ -1,108 +1,149 @@
-/* ═══════════ Design Tokens — Dark (default) ═══════════ */
+/* ═══════════════════════════════════════════════
+   Cyrene Gateway — Design System Tokens
+   Teal→Violet gradient · Glassmorphism · Dual theme
+   ═══════════════════════════════════════════════ */
+
 :root {
-  --bg: #06060b;
-  --bg-elevated: #0c0c14;
+  /* Typography */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Core palette */
+  --accent: #2dd4bf;
+  --accent-2: #8b5cf6;
+  --gradient: linear-gradient(135deg, #2dd4bf 0%, #818cf8 50%, #8b5cf6 100%);
+  --gradient-soft: linear-gradient(135deg, rgba(45,212,191,0.12), rgba(139,92,246,0.12));
+  --on-accent: #042f2e;
+
+  /* Semantic */
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --blue: #60a5fa;
+
+  /* Radii & shadows */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+
+  /* Glass system */
+  --glass-blur: 20px;
   --glass: rgba(255,255,255,0.03);
   --glass-hover: rgba(255,255,255,0.06);
   --glass-border: rgba(255,255,255,0.07);
-  --glass-border-hover: rgba(255,255,255,0.15);
-  --text: #ededf2;
-  --text-muted: #8e8ea2;
-  --text-faint: #55556a;
-  --accent: #2dd4bf;
-  --accent-2: #818cf8;
-  --accent-3: #c084fc;
-  --gradient: linear-gradient(135deg, #2dd4bf 0%, #818cf8 50%, #c084fc 100%);
-  --gradient-subtle: linear-gradient(135deg, rgba(45,212,191,0.12), rgba(129,140,248,0.08), rgba(192,132,252,0.06));
-  --on-accent: #06060b;
-  --green: #34d399;
-  --red: #f87171;
-  --amber: #fbbf24;
-  --blue: #60a5fa;
-  --ring: rgba(45,212,191,0.5);
-  --ring-soft: rgba(45,212,191,0.08);
-  --shadow-accent: 0 2px 16px rgba(45,212,191,0.2);
-  --shadow-accent-hover: 0 4px 24px rgba(45,212,191,0.35);
-  --shadow-glow: 0 0 32px rgba(45,212,191,0.05);
-  --sidebar-bg: rgba(8,8,14,0.82);
-  --dialog-bg: rgba(12,12,20,0.96);
-  --overlay-bg: rgba(3,3,6,0.82);
+  --glass-border-hover: rgba(255,255,255,0.14);
+  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 50%);
+  --glass-depth: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+
+  /* Surfaces */
+  --bg: #0a0a10;
+  --bg-elevated: #12121a;
   --code-bg: rgba(0,0,0,0.35);
-  --row-divider: rgba(255,255,255,0.04);
-  --scrollbar: rgba(255,255,255,0.1);
-  --grid-line: rgba(255,255,255,0.015);
-  --glow-1: rgba(45,212,191,0.08);
-  --glow-2: rgba(192,132,252,0.06);
-  --glow-3: rgba(129,140,248,0.04);
-  --chart-a: rgba(45,212,191,0.75);
-  --chart-b: rgba(129,140,248,0.4);
-  --chart-a-hover: rgba(45,212,191,1);
-  --chart-b-hover: rgba(129,140,248,0.65);
-  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238e8ea2' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-lg: 16px;
-  --sidebar-w: 240px;
-  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
-  /* Glass system */
-  --glass-blur: 18px;
-  --glass-blur-heavy: 32px;
-  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 40%, transparent 60%);
-  --glass-edge: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 30%, transparent);
-  --glass-depth: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.05);
-  --glass-depth-hover: 0 14px 48px rgba(0,0,0,0.5), 0 4px 14px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07);
-  --glass-gradient-border: linear-gradient(135deg, rgba(45,212,191,0.2), rgba(129,140,248,0.15), rgba(192,132,252,0.1));
+
+  /* Text */
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-faint: #64748b;
+
+  /* Focus ring */
+  --ring: rgba(45,212,191,0.5);
+  --ring-soft: rgba(45,212,191,0.15);
+
+  /* Shadows */
+  --shadow-accent: 0 4px 16px rgba(45,212,191,0.2);
+  --shadow-accent-hover: 0 6px 24px rgba(45,212,191,0.3);
+  --shadow-glow: 0 0 40px rgba(139,92,246,0.06);
+
+  /* Motion */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration: 0.2s;
+
+  /* Layout */
+  --sidebar-w: 220px;
 }
 
-/* ═══════════ Design Tokens — Light ═══════════ */
-html.light {
-  --bg: #f5f7fc;
+/* ─── Light theme ─── */
+.light {
+  --glass: rgba(255,255,255,0.65);
+  --glass-hover: rgba(255,255,255,0.85);
+  --glass-border: rgba(15,23,42,0.08);
+  --glass-border-hover: rgba(15,23,42,0.15);
+  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, transparent 50%);
+  --glass-depth: 0 8px 32px rgba(15,23,42,0.08), 0 2px 8px rgba(15,23,42,0.04);
+  --bg: #f1f5f9;
   --bg-elevated: #ffffff;
-  --glass: rgba(255,255,255,0.6);
-  --glass-hover: rgba(255,255,255,0.9);
-  --glass-border: rgba(15,20,40,0.08);
-  --glass-border-hover: rgba(15,20,40,0.16);
-  --text: #181826;
-  --text-muted: #52526a;
-  --text-faint: #9494aa;
-  --accent: #0d9488;
-  --accent-2: #6366f1;
-  --accent-3: #9333ea;
-  --gradient: linear-gradient(135deg, #14b8a6 0%, #6366f1 50%, #a855f7 100%);
-  --gradient-subtle: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(99,102,241,0.06), rgba(168,85,247,0.04));
+  --code-bg: rgba(15,23,42,0.04);
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-faint: #94a3b8;
   --on-accent: #ffffff;
-  --green: #059669;
-  --red: #dc2626;
-  --amber: #b45309;
-  --blue: #2563eb;
-  --ring: rgba(13,148,136,0.45);
-  --ring-soft: rgba(13,148,136,0.08);
-  --shadow-accent: 0 2px 14px rgba(13,148,136,0.25);
-  --shadow-accent-hover: 0 4px 22px rgba(13,148,136,0.35);
-  --shadow-glow: 0 0 28px rgba(13,148,136,0.05);
-  --sidebar-bg: rgba(255,255,255,0.78);
-  --dialog-bg: rgba(255,255,255,0.97);
-  --overlay-bg: rgba(15,18,32,0.45);
-  --code-bg: rgba(15,20,40,0.04);
-  --row-divider: rgba(15,20,40,0.055);
-  --scrollbar: rgba(15,20,40,0.14);
-  --grid-line: rgba(15,20,40,0.025);
-  --glow-1: rgba(13,148,136,0.07);
-  --glow-2: rgba(147,51,234,0.05);
-  --glow-3: rgba(99,102,241,0.04);
-  --chart-a: rgba(13,148,136,0.7);
-  --chart-b: rgba(99,102,241,0.4);
-  --chart-a-hover: rgba(13,148,136,0.95);
-  --chart-b-hover: rgba(99,102,241,0.65);
-  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2352526a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  /* Glass system — light */
-  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0.35) 40%, transparent 60%);
-  --glass-edge: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.4) 30%, transparent);
-  --glass-depth: 0 8px 32px rgba(15,20,40,0.07), 0 2px 8px rgba(15,20,40,0.04), inset 0 1px 0 rgba(255,255,255,0.85);
-  --glass-depth-hover: 0 14px 48px rgba(15,20,40,0.11), 0 4px 14px rgba(15,20,40,0.06), inset 0 1px 0 rgba(255,255,255,0.95);
-  --glass-gradient-border: linear-gradient(135deg, rgba(13,148,136,0.18), rgba(99,102,241,0.12), rgba(147,51,234,0.08));
+  --shadow-accent: 0 4px 16px rgba(45,212,191,0.25);
+  --shadow-accent-hover: 0 6px 24px rgba(45,212,191,0.35);
+  --shadow-glow: 0 0 40px rgba(139,92,246,0.04);
+}
+
+/* ─── Base reset ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 15px; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection { background: rgba(45,212,191,0.25); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.35); }
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+code, pre { font-family: var(--font-mono); }
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ─── Shared animation keyframes ─── */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 15px) scale(0.97); }
+}
+
+/* Staggered entrance utility */
+.stagger > * { animation: slideUp 0.35s var(--ease-out-expo) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 240ms; }
+.stagger > *:nth-child(8) { animation-delay: 280ms; }
+.stagger > *:nth-child(9) { animation-delay: 320ms; }
+.stagger > *:nth-child(10) { animation-delay: 360ms; }
+.stagger > *:nth-child(n+11) { animation-delay: 400ms; }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

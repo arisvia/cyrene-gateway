@@ -1,25 +1,29 @@
-export function formatNum(n: number | null | undefined): string {
-  return n == null ? '0' : n.toLocaleString()
+export function formatNumber(n: number | undefined | null): string {
+  if (n == null) return '0'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
 }
 
-export function formatDate(ts: string | null | undefined): string {
-  if (!ts) return '—'
-  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+export function formatCost(cost: number | undefined | null): string {
+  if (cost == null) return '$0'
+  if (cost < 0.01) return '$' + cost.toFixed(4)
+  return '$' + cost.toFixed(2)
 }
 
-export function formatUptime(s: number | null | undefined): string {
-  if (s == null) return '—'
-  const d = Math.floor(s / 86400)
-  const h = Math.floor((s % 86400) / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`
+export function timeAgo(dateStr: string | undefined | null): string {
+  if (!dateStr) return '—'
+  const diff = Date.now() - new Date(dateStr).getTime()
+  if (Number.isNaN(diff)) return '—'
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
-export function maskKey(key: string | null | undefined): string {
-  if (!key || key.length <= 12) return key || ''
-  return key.slice(0, 8) + '····' + key.slice(-4)
-}
-
-export function copyText(text: string) {
-  navigator.clipboard?.writeText(text).catch(() => {})
+export function maskKey(key: string): string {
+  if (!key || key.length < 12) return key || ''
+  return key.slice(0, 8) + '…' + key.slice(-4)
 }

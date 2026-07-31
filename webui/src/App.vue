@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import GToastHost from '@/components/ui/GToastHost.vue'
-import ChangelogModal from '@/components/ChangelogModal.vue'
+import GButton from '@/components/ui/GButton.vue'
 
 const store = useGatewayStore()
 
@@ -18,13 +18,13 @@ async function checkAuth() {
     const st = await api('/api/auth/status')
     if (st.authenticated) {
       authState.value = 'ready'
-      store.loadAll()
+      store.loadCore()
     } else {
       authState.value = 'login'
     }
   } catch {
     authState.value = 'ready'
-    store.loadAll()
+    store.loadCore()
   }
 }
 
@@ -34,14 +34,12 @@ async function doLogin() {
   loginError.value = ''
   try {
     const res = await apiPost('/api/auth/login', { password: loginPassword.value })
-    if (res.error) {
-      loginError.value = res.error === 'too many failed attempts'
-        ? `Too many attempts — retry in ${Math.ceil((res.retryAfter || 30000) / 1000)}s`
-        : 'Invalid password'
+    if (res?.error) {
+      loginError.value = res.error === 'too many failed attempts' ? 'Too many attempts — try again later' : 'Invalid password'
     } else {
       loginPassword.value = ''
       authState.value = 'ready'
-      store.loadAll()
+      store.loadCore()
     }
   } catch {
     loginError.value = 'Connection failed'
@@ -52,42 +50,42 @@ async function doLogin() {
 async function doLogout() {
   await apiPost('/api/auth/logout')
   authState.value = 'login'
-  loginPassword.value = ''
-  loginError.value = ''
 }
 
 onMounted(checkAuth)
 </script>
 
 <template>
-  <div class="ambient"></div>
+  <!-- Ambient gradient orbs -->
+  <div class="ambient" aria-hidden="true">
+    <div class="orb orb-1" />
+    <div class="orb orb-2" />
+  </div>
+
   <GToastHost />
 
-  <!-- Login Screen -->
+  <!-- Login -->
   <div v-if="authState === 'login'" class="login-wrap">
     <div class="login-card">
       <div class="login-brand">
-        <img src="/icon.png" alt="Cyrene" class="brand-icon-img">
+        <img src="/icon.png" alt="Cyrene" class="login-icon">
         <div>
           <p class="login-title">Cyrene Gateway</p>
           <p class="login-sub">Sign in to access the dashboard</p>
         </div>
       </div>
-      <div v-if="loginError" class="login-error">{{ loginError }}</div>
-      <div class="form-group">
-        <label class="form-label">Password</label>
-        <input v-model="loginPassword" type="password" class="input" placeholder="Enter dashboard password"
-          @keyup.enter="doLogin" autofocus>
-      </div>
-      <button class="btn-login" @click="doLogin" :disabled="loginLoading">
-        <span v-if="loginLoading">Signing in…</span><span v-else>Sign In</span>
-      </button>
+      <p v-if="loginError" class="login-error">{{ loginError }}</p>
+      <label class="field-label" for="pw">Password</label>
+      <input
+        id="pw" v-model="loginPassword" type="password" class="field"
+        placeholder="Enter dashboard password" @keyup.enter="doLogin" autofocus
+      >
+      <GButton class="login-btn" :loading="loginLoading" @click="doLogin">Sign In</GButton>
     </div>
   </div>
 
-  <!-- Dashboard -->
+  <!-- Dashboard shell -->
   <div v-else-if="authState === 'ready'" class="app">
-    <ChangelogModal :version="store.version" />
     <AppSidebar @logout="doLogout" />
     <main class="main">
       <div class="content">
@@ -102,63 +100,67 @@ onMounted(checkAuth)
 </template>
 
 <style scoped>
-/* Page transition */
-.page-enter-active { animation: pageIn 0.3s var(--ease-out-expo); }
-.page-leave-active { animation: pageOut 0.15s ease; }
-@keyframes pageIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Ambient background */
+.ambient { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.orb {
+  position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35;
+  animation: orbFloat 20s ease-in-out infinite;
 }
-@keyframes pageOut {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-6px); }
+.orb-1 {
+  width: 500px; height: 500px; top: -15%; right: -10%;
+  background: radial-gradient(circle, rgba(45,212,191,0.2), transparent 70%);
+}
+.orb-2 {
+  width: 450px; height: 450px; bottom: -10%; left: -5%;
+  background: radial-gradient(circle, rgba(139,92,246,0.18), transparent 70%);
+  animation-delay: -10s;
 }
 
+/* Page transition */
+.page-enter-active { animation: slideUp 0.25s var(--ease-out-expo); }
+.page-leave-active { animation: fadeIn 0.12s ease reverse; }
+
+/* Layout */
+.app { min-height: 100vh; }
+.main { margin-left: var(--sidebar-w); min-height: 100vh; }
+.content { max-width: 1080px; margin: 0 auto; padding: 32px 36px 80px; }
+
+@media (max-width: 768px) {
+  .main { margin-left: 0; }
+  .content { padding: 64px 16px 80px; }
+}
+
+/* Login */
 .login-wrap {
-  position: relative; z-index: 1; min-height: 100vh;
-  display: flex; align-items: center; justify-content: center; padding: 20px;
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
 }
 .login-card {
   width: 100%; max-width: 360px;
   background: var(--glass);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border-hover);
-  border-radius: 16px; padding: 36px 32px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.3), var(--shadow-glow);
-  animation: slideUp 0.25s ease;
+  border-radius: 16px; padding: 34px 30px;
+  box-shadow: var(--glass-depth), var(--shadow-glow);
+  animation: slideUp 0.3s var(--ease-out-expo);
 }
-.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
-.brand-icon-img {
-  width: 38px; height: 38px; border-radius: 10px;
-  box-shadow: var(--shadow-accent);
-  flex-shrink: 0;
-}
-.login-title { font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.login-icon { width: 38px; height: 38px; border-radius: 10px; box-shadow: var(--shadow-accent); }
+.login-title { font-size: 16.5px; font-weight: 700; letter-spacing: -0.02em; }
 .login-sub { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
 .login-error {
   background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25);
   border-radius: var(--radius-sm); padding: 8px 12px;
   font-size: 12px; color: var(--red); margin-bottom: 14px;
-  animation: fadeIn 0.15s ease;
 }
-.form-group { margin-bottom: 14px; }
-.form-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin-bottom: 6px; }
-.input {
-  width: 100%; height: 34px; padding: 0 12px;
+.field-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin-bottom: 6px; }
+.field {
+  width: 100%; height: 36px; padding: 0 12px; margin-bottom: 16px;
   background: var(--code-bg); color: var(--text);
   border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
-  font-size: 13px; font-family: var(--font);
-  transition: all 0.15s ease; outline: none;
-}
-.input::placeholder { color: var(--text-faint); }
-.input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
-.btn-login {
-  width: 100%; height: 38px; border: none; border-radius: var(--radius-sm);
-  background: var(--gradient); color: var(--on-accent);
-  font-size: 13px; font-weight: 600; font-family: var(--font);
-  cursor: pointer; box-shadow: var(--shadow-accent);
+  font-size: 13px; font-family: var(--font); outline: none;
   transition: all 0.15s ease;
 }
-.btn-login:hover:not(:disabled) { box-shadow: var(--shadow-accent-hover); filter: brightness(1.1); }
-.btn-login:disabled { opacity: 0.6; }
+.field::placeholder { color: var(--text-faint); }
+.field:focus { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
+.login-btn { width: 100%; justify-content: center; height: 38px !important; }
 </style>

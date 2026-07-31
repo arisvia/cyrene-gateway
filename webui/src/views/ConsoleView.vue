@@ -1,200 +1,100 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { useGatewayStore } from '@/stores/gateway'
-import { formatNum } from '@/lib/format'
-import GCard from '@/components/ui/GCard.vue'
-import { Pause, Play, Trash2, ArrowDown } from 'lucide-vue-next'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
-const store = useGatewayStore()
+interface LogLine { time: string; level: string; msg: string; raw: string }
 
-interface LogLine {
-  id: number
-  timestamp: string
-  provider: string
-  model: string
-  status: string
-  promptTokens: number
-  completionTokens: number
-  endpoint: string
-}
-
-const logs = ref<LogLine[]>([])
-const paused = ref(false)
-const autoScroll = ref(true)
+const lines = ref<LogLine[]>([])
 const connected = ref(false)
-const filterLevel = ref<'all' | 'ok' | 'error'>('all')
-
-let eventSource: EventSource | null = null
-let logId = 0
-const logContainer = ref<HTMLElement | null>(null)
-
-function connectSSE() {
-  eventSource = new EventSource('/api/usage/stream')
-  eventSource.addEventListener('connected', () => { connected.value = true })
-  eventSource.addEventListener('request', (e: MessageEvent) => {
-    if (paused.value) return
-    try {
-      const data = JSON.parse(e.data)
-      const line: LogLine = {
-        id: ++logId,
-        timestamp: data.timestamp || new Date().toISOString(),
-        provider: data.provider || '',
-        model: data.model || '',
-        status: data.status || 'ok',
-        promptTokens: data.promptTokens || 0,
-        completionTokens: data.completionTokens || 0,
-        endpoint: data.endpoint || '',
-      }
-      logs.value.push(line)
-      // Keep max 500 lines
-      if (logs.value.length > 500) logs.value.splice(0, logs.value.length - 500)
-      if (autoScroll.value) nextTick(() => scrollToBottom())
-    } catch { /* ignore parse errors */ }
-  })
-  eventSource.onerror = () => { connected.value = false }
-}
-
-function scrollToBottom() {
-  if (logContainer.value) {
-    logContainer.value.scrollTop = logContainer.value.scrollHeight
-  }
-}
-
-function togglePause() {
-  paused.value = !paused.value
-}
-
-function clearLogs() {
-  logs.value = []
-}
-
-function fmtTime(ts: string) {
-  const d = new Date(ts)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-const filteredLogs = ref<LogLine[]>([])
-const displayLogs = computed(() => {
-  if (filterLevel.value === 'all') return logs.value
-  return logs.value.filter(l => l.status === filterLevel.value)
-})
+const autoScroll = ref(true)
+const logBox = ref<HTMLElement | null>(null)
+let es: EventSource | null = null
 
 onMounted(() => {
-  connectSSE()
-  // Also load recent logs from API as initial data
-  store.loadUsageLogs(50).then(() => {
-    const initial = store.usageLogs.map((l: any) => ({
-      id: ++logId,
-      timestamp: l.timestamp || '',
-      provider: l.provider || '',
-      model: l.model || '',
-      status: l.status || 'ok',
-      promptTokens: l.promptTokens || 0,
-      completionTokens: l.completionTokens || 0,
-      endpoint: l.endpoint || '',
-    }))
-    logs.value = initial.reverse()
-    nextTick(() => scrollToBottom())
-  })
+  es = new EventSource('/api/usage/stream')
+  es.onopen = () => { connected.value = true }
+  es.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data)
+      lines.value.push({
+        time: d.time || d.timestamp || new Date().toISOString(),
+        level: d.level || 'info',
+        msg: d.msg || d.message || ev.data,
+        raw: ev.data,
+      })
+      if (lines.value.length > 500) lines.value = lines.value.slice(-400)
+      if (autoScroll.value) nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight })
+    } catch {
+      lines.value.push({ time: new Date().toISOString(), level: 'info', msg: ev.data, raw: ev.data })
+    }
+  }
+  es.onerror = () => { connected.value = false }
 })
 
-onUnmounted(() => {
-  eventSource?.close()
-})
+onBeforeUnmount(() => { es?.close() })
+
+function clear() { lines.value = [] }
+
+function levelColor(l: string) {
+  if (l === 'ERROR' || l === 'error') return 'var(--red)'
+  if (l === 'WARN' || l === 'warn') return 'var(--amber)'
+  return 'var(--text-faint)'
+}
 </script>
 
 <template>
-  <div>
-    <div class="page-header">
-      <h1 class="page-title">Console Log</h1>
-      <p class="page-desc">Live request stream with real-time SSE events.</p>
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <h1 class="page-title">Console Log</h1>
+        <p class="page-desc">
+          Live gateway event stream
+          <span class="conn-badge" :class="{ ok: connected }">{{ connected ? 'connected' : 'disconnected' }}</span>
+        </p>
+      </div>
+      <div class="head-actions">
+        <label class="autoscroll"><input type="checkbox" v-model="autoScroll"> Auto-scroll</label>
+        <button class="clear-btn" @click="clear">Clear</button>
+      </div>
+    </header>
+
+    <div class="log-box" ref="logBox">
+      <p v-if="!lines.length" class="log-empty">Waiting for events…</p>
+      <div v-for="(l, i) in lines" :key="i" class="log-line">
+        <span class="log-time">{{ l.time.slice(11, 19) }}</span>
+        <span class="log-level" :style="{ color: levelColor(l.level) }">{{ l.level.toUpperCase().padEnd(5) }}</span>
+        <span class="log-msg">{{ l.msg }}</span>
+      </div>
     </div>
-
-    <GCard class="section-gap console-card">
-      <div class="console-toolbar">
-        <div class="toolbar-left">
-          <span :class="['conn-dot', connected && 'on']"></span>
-          <span class="conn-label">{{ connected ? 'Connected' : 'Disconnected' }}</span>
-          <span class="log-count">{{ displayLogs.length }} events</span>
-        </div>
-        <div class="toolbar-right">
-          <select v-model="filterLevel" class="level-select">
-            <option value="all">All</option>
-            <option value="ok">OK</option>
-            <option value="error">Error</option>
-          </select>
-          <button class="tool-btn" @click="togglePause" :title="paused ? 'Resume' : 'Pause'">
-            <Play v-if="paused" :size="13" />
-            <Pause v-else :size="13" />
-          </button>
-          <button class="tool-btn" @click="scrollToBottom" title="Scroll to bottom">
-            <ArrowDown :size="13" />
-          </button>
-          <button class="tool-btn" @click="clearLogs" title="Clear">
-            <Trash2 :size="13" />
-          </button>
-        </div>
-      </div>
-
-      <div ref="logContainer" class="log-container">
-        <div v-for="line in displayLogs" :key="line.id" :class="['log-line', line.status === 'error' && 'err']">
-          <span class="log-time">{{ fmtTime(line.timestamp) }}</span>
-          <span :class="['log-status', line.status === 'error' ? 'err' : 'ok']">{{ line.status.toUpperCase() }}</span>
-          <span class="log-provider">{{ line.provider || '—' }}</span>
-          <span class="log-model">{{ line.model || '—' }}</span>
-          <span class="log-tokens">{{ formatNum(line.promptTokens + line.completionTokens) }} tok</span>
-          <span class="log-endpoint">{{ line.endpoint }}</span>
-        </div>
-        <div v-if="displayLogs.length === 0" class="log-empty">
-          Waiting for events...
-        </div>
-      </div>
-    </GCard>
   </div>
 </template>
 
 <style scoped>
-.console-card { padding: 0; overflow: hidden; }
-.console-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-bottom: 1px solid var(--glass-border);
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; }
+.page-desc { font-size: 12.5px; color: var(--text-faint); margin-top: 3px; display: flex; align-items: center; gap: 8px; }
+.conn-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+  background: rgba(248,113,113,0.1); color: var(--red); border: 1px solid rgba(248,113,113,0.2);
 }
-.toolbar-left { display: flex; align-items: center; gap: 8px; }
-.toolbar-right { display: flex; align-items: center; gap: 6px; }
-.conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); transition: background 0.2s; }
-.conn-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.conn-label { font-size: 11px; color: var(--text-muted); font-weight: 550; }
-.log-count { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); }
-
-.level-select {
-  padding: 3px 8px; border-radius: 5px; font-size: 11px;
+.conn-badge.ok { background: rgba(52,211,153,0.1); color: var(--green); border-color: rgba(52,211,153,0.2); }
+.head-actions { display: flex; align-items: center; gap: 12px; }
+.autoscroll { font-size: 11.5px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.clear-btn {
+  padding: 5px 12px; border-radius: var(--radius-sm);
   background: var(--glass); border: 1px solid var(--glass-border);
-  color: var(--text-muted); font-family: var(--font); cursor: pointer;
+  color: var(--text-muted); font-size: 11.5px; cursor: pointer; transition: all 0.15s ease;
 }
-.tool-btn {
-  width: 26px; height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
-  background: transparent; border: 1px solid var(--glass-border); color: var(--text-muted);
-  cursor: pointer; transition: all 0.15s;
-}
-.tool-btn:hover { color: var(--text); background: var(--glass-hover); }
+.clear-btn:hover { color: var(--text); border-color: var(--glass-border-hover); }
 
-.log-container {
-  height: 480px; overflow-y: auto; padding: 8px 0;
-  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.7;
+.log-box {
+  background: var(--code-bg); border: 1px solid var(--glass-border);
+  border-radius: var(--radius); padding: 14px 16px;
+  height: calc(100vh - 220px); min-height: 300px; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.8;
 }
-.log-line {
-  display: flex; align-items: center; gap: 10px; padding: 2px 14px;
-  transition: background 0.1s;
-}
-.log-line:hover { background: var(--glass-hover); }
-.log-line.err { background: color-mix(in srgb, var(--red, #ef4444) 5%, transparent); }
-.log-time { color: var(--text-faint); font-size: 10.5px; flex-shrink: 0; }
-.log-status { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
-.log-status.ok { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
-.log-status.err { color: var(--red, #ef4444); background: color-mix(in srgb, var(--red, #ef4444) 12%, transparent); }
-.log-provider { color: var(--accent); font-weight: 550; min-width: 80px; }
-.log-model { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.log-tokens { color: var(--text-faint); flex-shrink: 0; }
-.log-endpoint { color: var(--text-faint); font-size: 10px; flex-shrink: 0; opacity: 0.7; }
-.log-empty { padding: 40px; text-align: center; color: var(--text-faint); font-size: 12px; }
+.log-empty { color: var(--text-faint); }
+.log-line { display: flex; gap: 10px; white-space: pre-wrap; word-break: break-all; }
+.log-time { color: var(--text-faint); flex-shrink: 0; }
+.log-level { flex-shrink: 0; font-weight: 600; }
+.log-msg { color: var(--text-muted); }
 </style>

@@ -1,7 +1,7 @@
 {
-  "name": "cyrene-gateway-webui",
+  "name": "cyrene-webui",
   "private": true,
-  "version": "0.15.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

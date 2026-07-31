@@ -1,223 +1,262 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useGatewayStore } from '@/stores/gateway'
-import { formatUptime } from '@/lib/format'
-import { LOCALES, locale, setLocale } from '@/i18n'
-import { Sun, Moon, LogOut, Link2, Server, Clapperboard, Layers, BarChart3, Gauge, Zap, Terminal, ScrollText, Globe, Network, ShieldAlert, Sparkles, Settings, Languages } from 'lucide-vue-next'
+import {
+  Link2, Layers, Clapperboard, Combine, BarChart3, RefreshCw, Zap,
+  TerminalSquare, ScrollText, Globe, Cable, ShieldHalf, Sparkles,
+  Settings, Sun, Moon, Languages, LogOut, ChevronDown,
+  Braces, ImageIcon, AudioLines, Mic, Video, SearchCode,
+} from 'lucide-vue-next'
 
-const store = useGatewayStore()
+defineEmits<{ logout: [] }>()
+
 const route = useRoute()
+const store = useGatewayStore()
 
-const theme = ref(document.documentElement.classList.contains('light') ? 'light' : 'dark')
+const mediaExpanded = ref(route.path.startsWith('/media'))
+const mobileOpen = ref(false)
+
+const theme = ref<'dark' | 'light'>(document.documentElement.classList.contains('light') ? 'light' : 'dark')
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark'
   document.documentElement.classList.toggle('light', theme.value === 'light')
   localStorage.setItem('cyrene-theme', theme.value)
 }
 
-const showLangMenu = ref(false)
-function selectLang(code: string) {
-  setLocale(code)
-  showLangMenu.value = false
+const lang = ref(localStorage.getItem('cyrene-lang') || 'en')
+const langs = ['en', 'zh', 'ja', 'ko', 'ru', 'es', 'fr', 'de', 'pt-BR', 'tr']
+function cycleLang() {
+  const idx = langs.indexOf(lang.value)
+  lang.value = langs[(idx + 1) % langs.length]
+  localStorage.setItem('cyrene-lang', lang.value)
+  document.documentElement.setAttribute('lang', lang.value)
 }
 
-const navMain = [
-  { path: '/', label: 'Endpoint & Key', icon: Link2 },
-  { path: '/providers', label: 'Providers', icon: Server },
-  { path: '/media', label: 'Media', icon: Clapperboard },
-  { path: '/combos', label: 'Combos', icon: Layers },
-  { path: '/usage', label: 'Usage', icon: BarChart3 },
-  { path: '/quota', label: 'Quota', icon: Gauge },
-  { path: '/tokensaver', label: 'Token Saver', icon: Zap },
-  { path: '/cli-tools', label: 'CLI Tools', icon: Terminal },
-  { path: '/console', label: 'Console Log', icon: ScrollText },
+const mediaKinds = [
+  { kind: 'embedding', label: 'Embedding', icon: Braces },
+  { kind: 'image', label: 'Text to Image', icon: ImageIcon },
+  { kind: 'tts', label: 'TTS', icon: AudioLines },
+  { kind: 'stt', label: 'STT', icon: Mic },
+  { kind: 'video', label: 'Video', icon: Video },
+  { kind: 'web-fetch', label: 'Web Fetch & Search', icon: SearchCode },
 ]
+
+const navGateway = [
+  { to: '/', label: 'Endpoint & Key', icon: Link2, exact: true },
+  { to: '/providers', label: 'Providers', icon: Layers },
+]
+
+const navGatewayAfter = [
+  { to: '/combos', label: 'Combos', icon: Combine },
+  { to: '/usage', label: 'Usage', icon: BarChart3 },
+  { to: '/quota', label: 'Quota Tracker', icon: RefreshCw },
+  { to: '/token-saver', label: 'Token Saver', icon: Zap },
+  { to: '/cli-tools', label: 'CLI Tools', icon: TerminalSquare },
+  { to: '/console', label: 'Console Log', icon: ScrollText },
+]
+
 const navSystem = [
-  { path: '/proxies', label: 'Proxy Pools', icon: Globe },
-  { path: '/tunnel', label: 'Tunnel', icon: Network },
-  { path: '/mitm', label: 'MITM Proxy', icon: ShieldAlert },
-  { path: '/skills', label: 'Skills', icon: Sparkles },
-  { path: '/settings', label: 'Settings', icon: Settings },
+  { to: '/proxy-pools', label: 'Proxy Pools', icon: Globe },
+  { to: '/tunnel', label: 'Tunnel', icon: Cable },
+  { to: '/mitm', label: 'MITM Proxy', icon: ShieldHalf },
+  { to: '/skills', label: 'Skills', icon: Sparkles },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
-const emit = defineEmits<{ logout: [] }>()
-
-const mobileOpen = ref(false)
-function closeMobile() { mobileOpen.value = false }
-
-function isActive(path: string): boolean {
-  if (path === '/') return route.path === '/'
-  return route.path.startsWith(path)
+function isActive(item: { to: string; exact?: boolean }) {
+  if (item.exact) return route.path === item.to
+  return route.path === item.to || route.path.startsWith(item.to + '/')
 }
+
+const isMediaActive = computed(() => route.path.startsWith('/media'))
+
+function closeMobile() { mobileOpen.value = false }
 </script>
 
 <template>
-  <button class="mobile-toggle" @click="mobileOpen = true" aria-label="Open menu">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+  <!-- Mobile hamburger -->
+  <button class="hamburger" :class="{ open: mobileOpen }" @click="mobileOpen = !mobileOpen" aria-label="Toggle menu">
+    <span /><span /><span />
   </button>
-  <div v-if="mobileOpen" class="mobile-overlay" @click="closeMobile"></div>
-  <aside :class="['sidebar', mobileOpen && 'mobile-open']">
-    <div class="sidebar-brand">
-      <img src="/icon.png" alt="Cyrene" class="brand-icon-img">
+  <div v-if="mobileOpen" class="mobile-backdrop" @click="closeMobile" />
+
+  <aside class="sidebar" :class="{ open: mobileOpen }">
+    <!-- Brand -->
+    <div class="brand">
+      <img src="/icon.png" alt="Cyrene" class="brand-icon">
       <span class="brand-name">Cyrene</span>
       <span class="brand-ver">v{{ store.version }}</span>
     </div>
-    <nav class="sidebar-nav">
-      <p class="nav-group-label">Gateway</p>
-      <router-link
-        v-for="item in navMain" :key="item.path" :to="item.path"
-        :class="['nav-item', isActive(item.path) && 'active']"
-        @click="closeMobile"
-      >
-        <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
-        <span v-if="item.path === '/providers' && store.health.activeConnections" class="nav-badge">{{ store.health.activeConnections }}</span>
-      </router-link>
-      <p class="nav-group-label">System</p>
-      <router-link
-        v-for="item in navSystem" :key="item.path" :to="item.path"
-        :class="['nav-item', isActive(item.path) && 'active']"
-        @click="closeMobile"
-      >
-        <component :is="item.icon" :size="15" /><span>{{ item.label }}</span>
-      </router-link>
+
+    <nav class="nav" aria-label="Main navigation">
+      <p class="nav-group">Gateway</p>
+
+      <template v-for="item in navGateway" :key="item.to">
+        <router-link :to="item.to" class="nav-item" :class="{ active: isActive(item) }" @click="closeMobile">
+          <component :is="item.icon" :size="15" />
+          <span>{{ item.label }}</span>
+        </router-link>
+      </template>
+
+      <!-- Media expandable group -->
+      <button class="nav-item media-toggle" :class="{ active: isMediaActive }" @click="mediaExpanded = !mediaExpanded" :aria-expanded="mediaExpanded">
+        <Clapperboard :size="15" />
+        <span>Media Providers</span>
+        <ChevronDown :size="13" class="chevron" :class="{ rotated: mediaExpanded }" />
+      </button>
+      <div class="subnav" :class="{ expanded: mediaExpanded }">
+        <router-link
+          v-for="m in mediaKinds" :key="m.kind"
+          :to="`/media/${m.kind}`"
+          class="nav-item sub"
+          :class="{ active: route.path === `/media/${m.kind}` }"
+          @click="closeMobile"
+        >
+          <component :is="m.icon" :size="13" />
+          <span>{{ m.label }}</span>
+        </router-link>
+      </div>
+
+      <template v-for="item in navGatewayAfter" :key="item.to">
+        <router-link :to="item.to" class="nav-item" :class="{ active: isActive(item) }" @click="closeMobile">
+          <component :is="item.icon" :size="15" />
+          <span>{{ item.label }}</span>
+        </router-link>
+      </template>
+
+      <div class="nav-divider" />
+      <p class="nav-group">System</p>
+
+      <template v-for="item in navSystem" :key="item.to">
+        <router-link :to="item.to" class="nav-item" :class="{ active: isActive(item) }" @click="closeMobile">
+          <component :is="item.icon" :size="15" />
+          <span>{{ item.label }}</span>
+        </router-link>
+      </template>
     </nav>
-    <div class="sidebar-footer">
-      <span class="status-dot"></span>
-      <span class="status-text">{{ store.health.status || 'online' }} · {{ formatUptime(store.health.uptimeSeconds) }}</span>
-      <div class="lang-wrap">
-        <button class="footer-btn" @click="showLangMenu = !showLangMenu" title="Language">
+
+    <!-- Footer -->
+    <div class="sidebar-foot">
+      <span class="status-dot" :class="{ ok: store.health.status === 'ok' }" />
+      <span class="status-text">{{ store.health.status || '…' }}</span>
+      <div class="foot-actions">
+        <button class="foot-btn" @click="cycleLang" :title="`Language: ${lang}`" aria-label="Switch language">
           <Languages :size="14" />
         </button>
-        <div v-if="showLangMenu" class="lang-menu">
-          <button v-for="l in LOCALES" :key="l.code"
-            :class="['lang-item', locale === l.code && 'active']"
-            @click="selectLang(l.code)">
-            <span>{{ l.flag }}</span><span>{{ l.label }}</span>
-          </button>
-        </div>
+        <button class="foot-btn" @click="toggleTheme" :aria-label="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'">
+          <Sun v-if="theme === 'dark'" :size="14" />
+          <Moon v-else :size="14" />
+        </button>
+        <button class="foot-btn" @click="$emit('logout')" aria-label="Sign out">
+          <LogOut :size="14" />
+        </button>
       </div>
-      <button class="footer-btn" @click="toggleTheme" :title="theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'">
-        <Sun v-if="theme === 'dark'" :size="14" />
-        <Moon v-else :size="14" />
-      </button>
-      <button class="footer-btn" @click="$emit('logout')" title="Sign out">
-        <LogOut :size="14" />
-      </button>
     </div>
   </aside>
 </template>
 
 <style scoped>
 .sidebar {
-  position: fixed; inset-block: 0; left: 0; z-index: 40;
-  width: var(--sidebar-w); display: flex; flex-direction: column;
-  background: var(--sidebar-bg);
-  backdrop-filter: blur(var(--glass-blur-heavy)); -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-w); z-index: 50;
+  display: flex; flex-direction: column;
+  background: var(--glass);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-right: 1px solid var(--glass-border);
-  transition: background 0.3s ease;
+  transition: transform 0.25s var(--ease-out-expo);
 }
-.sidebar-brand {
-  display: flex; align-items: center; gap: 10px;
-  height: 56px; padding: 0 16px;
-  border-bottom: 1px solid var(--glass-border);
-}
-.brand-icon-img {
-  width: 30px; height: 30px; border-radius: 8px;
-  box-shadow: var(--shadow-accent);
-  flex-shrink: 0;
-}
-.brand-name { font-size: 13.5px; font-weight: 650; letter-spacing: -0.02em; }
-.brand-ver { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); margin-left: 6px; }
 
-.sidebar-nav { flex: 1; overflow-y: auto; padding: 12px 10px; }
-.nav-group-label {
-  padding: 10px 10px 5px; font-size: 10px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint);
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  padding: 18px 16px 14px;
 }
+.brand-icon { width: 26px; height: 26px; border-radius: 8px; box-shadow: var(--shadow-accent); }
+.brand-name { font-size: 14.5px; font-weight: 700; letter-spacing: -0.02em; }
+.brand-ver { font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); margin-left: auto; }
+
+.nav { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+
+.nav-group {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-faint);
+  padding: 14px 10px 6px;
+}
+
 .nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 480; color: var(--text-muted);
-  cursor: pointer; transition: all 0.18s var(--ease-smooth); user-select: none;
-  border: 1px solid transparent; margin-bottom: 1px;
-  text-decoration: none;
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 7px 10px; margin: 1px 0;
+  border-radius: var(--radius-sm); border: none;
+  background: transparent; color: var(--text-muted);
+  font-size: 12.5px; font-weight: 500; text-align: left;
+  cursor: pointer; transition: all 0.15s ease;
 }
-.nav-item svg { opacity: 0.7; flex-shrink: 0; transition: all 0.18s ease; }
-.nav-item:hover { color: var(--text); background: var(--glass-hover); transform: translateX(2px); }
+.nav-item:hover { background: var(--glass-hover); color: var(--text); }
 .nav-item.active {
-  color: var(--text); background: var(--glass-hover);
-  border-color: var(--glass-border);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), var(--shadow-glow);
+  background: var(--gradient-soft);
+  color: var(--text);
+  border: 1px solid rgba(45,212,191,0.15);
 }
-.nav-item.active svg { opacity: 1; color: var(--accent); }
-.nav-badge {
-  margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 9px; font-size: 10px; font-weight: 650;
-  background: var(--gradient); color: var(--on-accent);
-  font-family: var(--font-mono);
-}
+.nav-item.active :deep(svg) { color: var(--accent); }
 
-.sidebar-footer {
+.media-toggle { justify-content: flex-start; }
+.chevron { margin-left: auto; transition: transform 0.2s var(--ease-spring); }
+.chevron.rotated { transform: rotate(180deg); }
+
+.subnav {
+  overflow: hidden; max-height: 0;
+  transition: max-height 0.25s var(--ease-out-expo);
+  margin-left: 12px; padding-left: 8px;
+  border-left: 1px solid var(--glass-border);
+}
+.subnav.expanded { max-height: 240px; }
+.nav-item.sub { font-size: 12px; padding: 5.5px 8px; }
+
+.nav-divider { height: 1px; background: var(--glass-border); margin: 10px 10px 0; }
+
+.sidebar-foot {
+  display: flex; align-items: center; gap: 7px;
   padding: 12px 14px; border-top: 1px solid var(--glass-border);
-  display: flex; align-items: center; gap: 8px;
 }
-.status-dot { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-.status-dot::after {
-  content: ''; position: absolute; inset: -3px; border-radius: 50%;
-  background: var(--green); opacity: 0.4; animation: ping 2s cubic-bezier(0,0,0.2,1) infinite;
-}
-@keyframes ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
-.status-text { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
-.footer-btn {
-  width: 27px; height: 27px; border-radius: var(--radius-sm);
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+.status-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-text { font-size: 11px; color: var(--text-faint); }
+.foot-actions { margin-left: auto; display: flex; gap: 2px; }
+.foot-btn {
+  width: 27px; height: 27px; border-radius: var(--radius-xs);
   display: flex; align-items: center; justify-content: center;
-  background: transparent; border: 1px solid transparent;
-  color: var(--text-muted); cursor: pointer; transition: all 0.15s ease;
-  margin-left: auto;
+  background: transparent; border: none; color: var(--text-faint);
+  cursor: pointer; transition: all 0.15s ease;
 }
-.footer-btn + .footer-btn { margin-left: 0; }
-.footer-btn:hover { color: var(--text); background: var(--glass-hover); border-color: var(--glass-border); }
-.lang-wrap { position: relative; margin-left: auto; }
-.lang-menu {
-  position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 100;
-  min-width: 150px; padding: 6px;
-  background: var(--dialog-bg); border: 1px solid var(--glass-border-hover);
-  border-radius: var(--radius); box-shadow: var(--glass-depth);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  animation: langIn 0.15s var(--ease-spring);
-}
-@keyframes langIn { from { opacity: 0; transform: translateY(4px) scale(0.96); } }
-.lang-item {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 7px 10px; border: none; border-radius: var(--radius-sm);
-  background: transparent; color: var(--text-muted); font-size: 12px;
-  font-family: var(--font); cursor: pointer; transition: all 0.12s ease;
-}
-.lang-item:hover { background: var(--glass-hover); color: var(--text); }
-.lang-item.active { color: var(--accent); font-weight: 550; }
+.foot-btn:hover { background: var(--glass-hover); color: var(--text); }
 
-/* Mobile */
-.mobile-toggle {
-  display: none; position: fixed; top: 14px; left: 14px; z-index: 50;
+/* ─── Mobile ─── */
+.hamburger {
+  display: none; position: fixed; top: 12px; left: 12px; z-index: 60;
   width: 36px; height: 36px; border-radius: var(--radius-sm);
-  align-items: center; justify-content: center;
-  background: var(--glass); border: 1px solid var(--glass-border);
-  color: var(--text-muted); cursor: pointer;
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: var(--bg-elevated); border: 1px solid var(--glass-border);
+  flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  cursor: pointer;
 }
-.mobile-overlay {
-  display: none; position: fixed; inset: 0; z-index: 39;
-  background: var(--overlay-bg);
+.hamburger span {
+  display: block; width: 16px; height: 1.5px;
+  background: var(--text-muted); border-radius: 2px;
+  transition: all 0.2s ease;
 }
+.hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(3.5px, 3.5px); }
+.hamburger.open span:nth-child(2) { opacity: 0; }
+.hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+
+.mobile-backdrop {
+  display: none; position: fixed; inset: 0; z-index: 45;
+  background: rgba(0,0,0,0.4);
+}
+
 @media (max-width: 768px) {
-  .mobile-toggle { display: flex; }
-  .mobile-overlay { display: block; }
-  .sidebar {
-    transform: translateX(-100%);
-    transition: transform 0.25s var(--ease-out-expo);
-  }
-  .sidebar.mobile-open { transform: translateX(0); }
+  .hamburger { display: flex; }
+  .mobile-backdrop { display: block; }
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); box-shadow: var(--glass-depth); }
 }
 </style>

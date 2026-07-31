@@ -1,59 +1,66 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onBeforeUnmount } from 'vue'
 
-defineProps<{ title: string; desc?: string; width?: string }>()
+const props = defineProps<{
+  title?: string
+  width?: string
+}>()
+
 const emit = defineEmits<{ close: [] }>()
 
-function onKeydown(e: KeyboardEvent) {
+function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
-onMounted(() => document.addEventListener('keydown', onKeydown))
-onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+
+onMounted(() => document.addEventListener('keydown', onKey))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="dialog-overlay" @click.self="$emit('close')">
-    <div class="dialog" :style="width ? { maxWidth: width } : undefined">
-      <h3 class="dialog-title">{{ title }}</h3>
-      <p v-if="desc" class="dialog-desc">{{ desc }}</p>
-      <slot />
+  <Teleport to="body">
+    <div class="overlay" @click.self="emit('close')">
+      <div class="modal" :style="{ maxWidth: width || '480px' }" role="dialog" aria-modal="true">
+        <div class="modal-head" v-if="title">
+          <h3 class="modal-title">{{ title }}</h3>
+          <button class="close-btn" @click="emit('close')" aria-label="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <slot />
+        </div>
+      </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style scoped>
-.dialog-overlay {
+.overlay {
   position: fixed; inset: 0; z-index: 100;
-  background: var(--overlay-bg);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   display: flex; align-items: center; justify-content: center;
-  animation: overlayIn 0.2s ease;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+  padding: 20px;
 }
-.dialog {
-  position: relative;
-  width: 100%; max-width: 480px; margin: 16px;
-  background: var(--dialog-bg);
-  backdrop-filter: blur(var(--glass-blur-heavy)); -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+.modal {
+  width: 100%;
+  max-height: 85vh; overflow-y: auto;
+  background: var(--bg-elevated);
   border: 1px solid var(--glass-border-hover);
-  border-radius: 16px; padding: 24px;
-  box-shadow: var(--glass-depth-hover), var(--shadow-glow);
-  animation: dialogIn 0.3s var(--ease-spring);
-  max-height: 88vh; overflow-y: auto;
+  border-radius: 16px;
+  box-shadow: var(--glass-depth);
+  animation: scaleIn 0.2s var(--ease-spring);
 }
-/* Top-edge refraction */
-.dialog::before {
-  content: '';
-  position: absolute; inset: 0 0 auto 0; height: 1px;
-  background: var(--glass-edge);
-  border-radius: 16px 16px 0 0;
-  pointer-events: none;
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 0;
 }
-.dialog-title { font-size: 15px; font-weight: 650; margin-bottom: 4px; }
-.dialog-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
-
-@keyframes overlayIn { from { opacity: 0; } }
-@keyframes dialogIn {
-  from { opacity: 0; transform: translateY(16px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+.modal-title { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.close-btn {
+  width: 28px; height: 28px; border-radius: var(--radius-xs);
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: var(--text-faint);
+  cursor: pointer; font-size: 13px; transition: all 0.15s ease;
 }
+.close-btn:hover { background: var(--glass-hover); color: var(--text); }
+.modal-body { padding: 18px 22px 22px; }
 </style>

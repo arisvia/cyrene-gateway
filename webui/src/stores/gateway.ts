@@ -1,16 +1,21 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { api, apiPost, apiPut, apiDelete } from '@/lib/api'
+import { ref, computed } from 'vue'
+import { api, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+
+/* ─── Domain types ─── */
 
 export interface Provider {
   id: string
   provider: string
   name?: string
   authType: string
+  email?: string
   priority: number
   isActive: boolean
   data?: Record<string, any>
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface RegistryProvider {
@@ -26,6 +31,13 @@ export interface RegistryProvider {
   loginUrl?: string
   authorizeUrl?: string
   headers?: Record<string, string>
+  models?: string[]
+}
+
+export interface RegistryCategory {
+  category: string
+  count: number
+  providers: RegistryProvider[]
 }
 
 export interface Combo {
@@ -33,6 +45,7 @@ export interface Combo {
   name: string
   kind: string
   models: string[]
+  createdAt?: string
 }
 
 export interface ApiKey {
@@ -49,6 +62,24 @@ export interface ProxyPool {
   data: { name: string; type: string; proxyUrl: string; noProxy?: string; strictProxy?: boolean }
 }
 
+export interface Endpoint {
+  label: string
+  url: string
+  type: string
+}
+
+export interface ProviderModel {
+  name: string
+  enabled?: boolean
+  alias?: string
+  contextLength?: number
+  maxOutputTokens?: number
+  capabilities?: string[]
+  modalities?: string[]
+  displayName?: string
+  source?: string
+}
+
 export interface UsageStats {
   totalRequests?: number
   totalPromptTokens?: number
@@ -58,7 +89,7 @@ export interface UsageStats {
   byProvider?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
 }
 
-export interface RequestDetailItem {
+export interface RequestDetail {
   id?: string
   timestamp?: string
   provider?: string
@@ -72,7 +103,16 @@ export interface RequestDetailItem {
   endpoint?: string
 }
 
-export interface ProviderUsageAggregate {
+export interface Pagination {
+  page: number
+  pageSize: number
+  totalItems: number
+  totalPages: number
+  hasNext: boolean
+  hasPrev: boolean
+}
+
+export interface ProviderUsage {
   provider: string
   requests: number
   promptTokens: number
@@ -85,60 +125,97 @@ export interface ProviderUsageAggregate {
   overQuota?: boolean
 }
 
+export interface CLITool {
+  id: string
+  name: string
+  description?: string
+  icon?: string
+  configType?: string
+  configured?: boolean
+}
+
+export interface Skill {
+  id: string
+  name: string
+  description?: string
+  content?: string
+}
+
+/* ─── Store ─── */
+
 export const useGatewayStore = defineStore('gateway', () => {
-  const version = ref('...')
+  const toast = useToast()
+
+  // Core state
+  const version = ref('…')
   const health = ref<Record<string, any>>({})
   const providers = ref<Provider[]>([])
-  const aliases = ref<Record<string, string>>({})
   const combos = ref<Combo[]>([])
   const apiKeys = ref<ApiKey[]>([])
   const proxyPools = ref<ProxyPool[]>([])
+  const endpoints = ref<Endpoint[]>([])
+  const registryCategories = ref<RegistryCategory[]>([])
   const settings = ref<Record<string, any>>({})
-  const registryList = ref<RegistryProvider[]>([])
-  const registryCategories = ref<{ category: string; count: number }[]>([])
+  const aliases = ref<Record<string, string>>({})
+
+  // Usage state
   const usageStats = ref<UsageStats>({})
   const usageChart = ref<{ label: string; tokens: number }[]>([])
-  const requestDetails = ref<RequestDetailItem[]>([])
-  const requestDetailsPagination = ref<{ page: number; pageSize: number; totalItems: number; totalPages: number; hasNext: boolean; hasPrev: boolean }>({ page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
-  const providerUsage = ref<ProviderUsageAggregate[]>([])
+  const requestDetails = ref<RequestDetail[]>([])
+  const requestDetailsPagination = ref<Pagination>({ page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
+  const providerUsage = ref<ProviderUsage[]>([])
   const usageLogs = ref<any[]>([])
   const quotaEntries = ref<any[]>([])
 
-  async function loadAll() {
+  // Derived
+  const registryList = computed(() =>
+    registryCategories.value.flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name))
+  )
+  const activeConnections = computed(() => providers.value.filter(p => p.isActive).length)
+
+  /* ─── Loaders ─── */
+
+  async function loadCore() {
     try {
-      const [v, h, p, a, c, reg] = await Promise.all([
-        api('/api/version'), api('/api/health'), api('/api/providers'),
-        api('/api/models/alias'), api('/api/combos'), api('/api/registry'),
+      const [v, h, p, c, reg, ep, a] = await Promise.all([
+        api('/api/version'),
+        api('/api/health'),
+        api('/api/providers'),
+        api('/api/combos'),
+        api('/api/registry'),
+        api('/api/endpoints'),
+        api('/api/models/alias'),
       ])
-      version.value = v.version || 'dev'
-      health.value = h
+      version.value = v?.version || 'dev'
+      health.value = h || {}
       providers.value = Array.isArray(p) ? p : []
-      aliases.value = a || {}
       combos.value = Array.isArray(c) ? c : []
-      const all: RegistryProvider[] = []
-      ;(reg?.categories || []).forEach((cat: any) => { (cat.providers || []).forEach((rp: any) => all.push(rp)) })
-      registryList.value = all.sort((x, y) => x.name.localeCompare(y.name))
-      registryCategories.value = (reg?.categories || []).map((c: any) => ({ category: c.category, count: c.count }))
+      registryCategories.value = Array.isArray(reg?.categories) ? reg.categories : []
+      endpoints.value = Array.isArray(ep?.endpoints) ? ep.endpoints : []
+      aliases.value = a || {}
     } catch (e) {
-      console.error('load failed:', e)
+      console.error('[store] loadCore failed:', e)
     }
     loadKeys()
-    loadProxies()
+    loadProxyPools()
   }
 
   async function loadKeys() {
-    try { const r = await api('/api/keys'); apiKeys.value = Array.isArray(r) ? r : [] } catch { apiKeys.value = [] }
+    try {
+      const r = await api('/api/keys')
+      apiKeys.value = Array.isArray(r) ? r : []
+    } catch { apiKeys.value = [] }
   }
 
-  async function loadProxies() {
+  async function loadProxyPools() {
     try {
       const r = await api('/api/proxy-pools')
-      proxyPools.value = r?.proxyPools || (Array.isArray(r) ? r : [])
+      proxyPools.value = Array.isArray(r?.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : [])
     } catch { proxyPools.value = [] }
   }
 
   async function loadSettings() {
-    try { settings.value = await api('/api/settings') } catch { settings.value = {} }
+    try { settings.value = (await api('/api/settings')) || {} } catch { settings.value = {} }
   }
 
   async function loadUsage(period: string) {
@@ -150,8 +227,8 @@ export const useGatewayStore = defineStore('gateway', () => {
       ])
       usageStats.value = stats || {}
       usageChart.value = Array.isArray(chart) ? chart : []
-      requestDetails.value = Array.isArray(details) ? details : (details?.details || [])
-    } catch (e) { console.error('usage load failed:', e) }
+      requestDetails.value = Array.isArray(details?.details) ? details.details : (Array.isArray(details) ? details : [])
+    } catch (e) { console.error('[store] loadUsage failed:', e) }
   }
 
   async function loadRequestDetails(page = 1, pageSize = 20, filters: Record<string, string> = {}) {
@@ -159,118 +236,168 @@ export const useGatewayStore = defineStore('gateway', () => {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       for (const [k, v] of Object.entries(filters)) { if (v) params.set(k, v) }
       const res = await api(`/api/usage/request-details?${params}`)
-      requestDetails.value = res?.details || []
+      requestDetails.value = Array.isArray(res?.details) ? res.details : []
       requestDetailsPagination.value = res?.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false }
-    } catch (e) { console.error('request details load failed:', e) }
+    } catch (e) { console.error('[store] loadRequestDetails failed:', e) }
   }
 
   async function loadProviderUsage(period = '7d') {
     try {
       const res = await api(`/api/usage/providers?period=${period}`)
-      providerUsage.value = res?.providers || []
-    } catch (e) { console.error('provider usage load failed:', e) }
+      providerUsage.value = Array.isArray(res?.providers) ? res.providers : []
+    } catch { providerUsage.value = [] }
   }
 
   async function loadUsageLogs(limit = 50) {
     try {
       const res = await api(`/api/usage/logs?limit=${limit}`)
-      usageLogs.value = res?.logs || []
-    } catch (e) { console.error('usage logs load failed:', e) }
+      usageLogs.value = Array.isArray(res?.logs) ? res.logs : []
+    } catch { usageLogs.value = [] }
   }
 
   async function loadQuota() {
     try {
       const res = await api('/api/quota')
-      quotaEntries.value = Array.isArray(res.entries) ? res.entries : []
+      quotaEntries.value = Array.isArray(res?.entries) ? res.entries : []
     } catch { quotaEntries.value = [] }
   }
 
-  // --- Provider actions ---
-  const toast = useToast()
+  /* ─── Provider actions ─── */
 
-  async function addProvider(payload: any) {
-    try { await apiPost('/api/providers', payload); toast.success(`Provider "${payload.name || payload.provider}" added`); await loadAll() }
-    catch (e: any) { toast.error(`Failed to add provider: ${e.message}`) }
+  async function addProvider(payload: Record<string, any>) {
+    await apiPost('/api/providers', payload)
+    toast.success(`Provider "${payload.name || payload.provider}" added`)
+    await loadCore()
   }
-  async function toggleProvider(p: Provider) { await apiPut(`/api/providers/${p.id}`, { isActive: !p.isActive }); await loadAll() }
-  async function resetProvider(p: Provider) {
-    try { await apiPost(`/api/providers/${p.id}/reset`); toast.success(`Cooldown reset for "${p.name || p.provider}"`); await loadAll() }
-    catch (e: any) { toast.error(`Reset failed: ${e.message}`) }
+
+  async function toggleProvider(p: Provider) {
+    await apiPut(`/api/providers/${p.id}`, { isActive: !p.isActive })
+    await loadCore()
   }
+
+  async function resetCooldown(p: Provider) {
+    await apiPost(`/api/providers/${p.id}/reset`)
+    toast.success(`Cooldown reset — ${p.name || p.provider}`)
+    await loadCore()
+  }
+
   async function deleteProvider(p: Provider) {
-    try { await apiDelete(`/api/providers/${p.id}`); toast.success(`Provider "${p.name || p.provider}" deleted`); await loadAll() }
-    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+    await apiDelete(`/api/providers/${p.id}`)
+    toast.success(`Deleted "${p.name || p.provider}"`)
+    await loadCore()
   }
-  async function enableFree(providers?: string[]): Promise<number> {
-    const res = await apiPost('/api/providers/enable-free', providers?.length ? { providers } : {})
+
+  async function enableFree(ids?: string[]): Promise<number> {
+    const res = await apiPost('/api/providers/enable-free', ids?.length ? { providers: ids } : {})
     const count = res?.count || 0
-    if (count > 0) toast.success(`Enabled ${count} free provider${count === 1 ? '' : 's'}`)
-    else toast.success('Free providers already enabled')
-    await loadAll()
+    toast.success(count > 0 ? `Enabled ${count} free provider${count === 1 ? '' : 's'}` : 'Free providers already enabled')
+    await loadCore()
     return count
   }
 
-  // --- Key actions ---
+  async function testProvider(id: string): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+    return apiPost(`/api/providers/${id}/test`)
+  }
+
+  /* ─── Key actions ─── */
+
   async function createKey(name: string) {
     const k = await apiPost('/api/keys', { name })
-    toast.success(`Key "${name || k.id?.slice(0, 8)}" generated`)
+    toast.success(`Key "${name || k?.id?.slice(0, 8)}" created`)
     await loadKeys()
     return k
   }
-  async function deleteKey(k: ApiKey) {
-    try { await apiDelete(`/api/keys/${k.id}`); toast.success('Key deleted'); await loadKeys() }
-    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+
+  async function deleteKey(id: string) {
+    await apiDelete(`/api/keys/${id}`)
+    toast.success('Key deleted')
+    await loadKeys()
   }
 
-  // --- Alias actions ---
+  /* ─── Combo actions ─── */
+
+  async function saveCombo(payload: { id?: string; name: string; kind: string; models: string[] }) {
+    if (payload.id) {
+      await apiPut(`/api/combos/${payload.id}`, payload)
+    } else {
+      await apiPost('/api/combos', payload)
+    }
+    toast.success(`Combo "${payload.name}" saved`)
+    await loadCore()
+  }
+
+  async function deleteCombo(id: string) {
+    await apiDelete(`/api/combos/${id}`)
+    toast.success('Combo deleted')
+    await loadCore()
+  }
+
+  /* ─── Proxy pool actions ─── */
+
+  async function saveProxyPool(payload: { id?: string; name: string; type: string; proxyUrl: string; noProxy?: string; strictProxy?: boolean }) {
+    if (payload.id) {
+      await apiPut(`/api/proxy-pools/${payload.id}`, payload)
+    } else {
+      await apiPost('/api/proxy-pools', payload)
+    }
+    toast.success(`Proxy pool "${payload.name}" saved`)
+    await loadProxyPools()
+  }
+
+  async function toggleProxyPool(pp: ProxyPool) {
+    await apiPut(`/api/proxy-pools/${pp.id}`, { isActive: !pp.isActive })
+    await loadProxyPools()
+  }
+
+  async function deleteProxyPool(id: string) {
+    await apiDelete(`/api/proxy-pools/${id}`)
+    toast.success('Proxy pool deleted')
+    await loadProxyPools()
+  }
+
+  /* ─── Alias actions ─── */
+
   async function addAlias(alias: string, target: string) {
-    try { await apiPost('/api/models/alias', { alias, target }); toast.success(`Alias "${alias}" → ${target}`); await loadAll() }
-    catch (e: any) { toast.error(`Failed to add alias: ${e.message}`) }
+    await apiPost('/api/models/alias', { alias, target })
+    toast.success(`Alias "${alias}" → ${target}`)
+    aliases.value = { ...aliases.value, [alias]: target }
   }
+
   async function deleteAlias(alias: string) {
-    try { await apiDelete('/api/models/alias', { alias }); toast.success(`Alias "${alias}" removed`); await loadAll() }
-    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+    await apiDelete('/api/models/alias', { alias })
+    toast.success(`Alias "${alias}" removed`)
+    const next = { ...aliases.value }
+    delete next[alias]
+    aliases.value = next
   }
 
-  // --- Combo actions ---
-  async function addCombo(name: string, kind: string, models: string[]) {
-    try { await apiPost('/api/combos', { name, kind, models }); toast.success(`Combo "${name}" created`); await loadAll() }
-    catch (e: any) { toast.error(`Failed to create combo: ${e.message}`) }
-  }
-  async function deleteCombo(c: Combo) {
-    try { await apiDelete(`/api/combos/${c.id}`); toast.success(`Combo "${c.name}" deleted`); await loadAll() }
-    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
+  /* ─── Settings actions ─── */
+
+  async function saveSettings(patch: Record<string, any>) {
+    await apiPatch('/api/settings', patch)
+    toast.success('Settings saved')
+    await loadSettings()
   }
 
-  // --- Proxy actions ---
-  async function addProxy(payload: any) {
-    try { await apiPost('/api/proxy-pools', payload); toast.success(`Proxy "${payload.name}" added`); await loadProxies() }
-    catch (e: any) { toast.error(`Failed to add proxy: ${e.message}`) }
+  async function setPassword(password: string) {
+    return apiPost('/api/auth/password', { password })
   }
-  async function toggleProxy(pp: ProxyPool) { await apiPut(`/api/proxy-pools/${pp.id}`, { isActive: !pp.isActive }); await loadProxies() }
-  async function deleteProxy(pp: ProxyPool) {
-    try { await apiDelete(`/api/proxy-pools/${pp.id}`); toast.success(`Proxy "${pp.data.name}" deleted`); await loadProxies() }
-    catch (e: any) { toast.error(`Delete failed: ${e.message}`) }
-  }
-
-  // --- Settings actions ---
-  async function saveSettings() {
-    try { await apiPut('/api/settings', settings.value); toast.success('Settings saved') }
-    catch (e: any) { toast.error(`Failed to save settings: ${e.message}`) }
-  }
-  async function setPassword(password: string) { return apiPost('/api/auth/password', { password }) }
 
   return {
-    version, health, providers, aliases, combos, apiKeys, proxyPools, settings,
-    registryList, registryCategories, usageStats, usageChart, requestDetails, requestDetailsPagination,
-    providerUsage, usageLogs, quotaEntries,
-    loadAll, loadKeys, loadProxies, loadSettings, loadUsage, loadQuota,
-    loadRequestDetails, loadProviderUsage, loadUsageLogs,
-    addProvider, toggleProvider, resetProvider, deleteProvider, enableFree,
+    // State
+    version, health, providers, combos, apiKeys, proxyPools, endpoints,
+    registryCategories, registryList, settings, aliases,
+    usageStats, usageChart, requestDetails, requestDetailsPagination,
+    providerUsage, usageLogs, quotaEntries, activeConnections,
+    // Loaders
+    loadCore, loadKeys, loadProxyPools, loadSettings, loadUsage,
+    loadRequestDetails, loadProviderUsage, loadUsageLogs, loadQuota,
+    // Actions
+    addProvider, toggleProvider, resetCooldown, deleteProvider, enableFree, testProvider,
     createKey, deleteKey,
+    saveCombo, deleteCombo,
+    saveProxyPool, toggleProxyPool, deleteProxyPool,
     addAlias, deleteAlias,
-    addCombo, deleteCombo,
-    addProxy, toggleProxy, deleteProxy,
     saveSettings, setPassword,
   }
 })

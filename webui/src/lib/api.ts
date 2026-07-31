@@ -1,34 +1,27 @@
-export class ApiError extends Error {
-  status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
+const BASE = ''
+
+async function request<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+  const opts: RequestInit = { method, headers: {} }
+  if (body !== undefined) {
+    ;(opts.headers as Record<string, string>)['Content-Type'] = 'application/json'
+    opts.body = JSON.stringify(body)
   }
-}
-
-export async function api<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  })
-  if (!res.ok && res.status !== 429) {
-    throw new ApiError(res.status, `HTTP ${res.status}`)
+  const res = await fetch(BASE + path, opts)
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`
+    try {
+      const j = await res.json()
+      if (j.error) msg = j.error
+    } catch { /* non-JSON error body */ }
+    throw new Error(msg)
   }
-  return res.json()
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  return text ? JSON.parse(text) : undefined as T
 }
 
-export function apiPost<T = any>(path: string, body?: unknown): Promise<T> {
-  return api(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined })
-}
-
-export function apiPut<T = any>(path: string, body?: unknown): Promise<T> {
-  return api(path, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined })
-}
-
-export function apiDelete<T = any>(path: string, body?: unknown): Promise<T> {
-  return api(path, { method: 'DELETE', body: body !== undefined ? JSON.stringify(body) : undefined })
-}
-
-export function apiPatch<T = any>(path: string, body?: unknown): Promise<T> {
-  return api(path, { method: 'PATCH', body: body !== undefined ? JSON.stringify(body) : undefined })
-}
+export const api = <T = any>(path: string) => request<T>('GET', path)
+export const apiPost = <T = any>(path: string, body?: unknown) => request<T>('POST', path, body)
+export const apiPut = <T = any>(path: string, body?: unknown) => request<T>('PUT', path, body)
+export const apiPatch = <T = any>(path: string, body?: unknown) => request<T>('PATCH', path, body)
+export const apiDelete = <T = any>(path: string, body?: unknown) => request<T>('DELETE', path, body)

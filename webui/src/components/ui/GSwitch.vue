@@ -1,34 +1,39 @@
 <script setup lang="ts">
-defineProps<{ modelValue: boolean }>()
-defineEmits<{ 'update:modelValue': [value: boolean] }>()
+defineProps<{
+  modelValue: boolean
+  disabled?: boolean
+}>()
+
+const emit = defineEmits<{ 'update:modelValue': [v: boolean] }>()
 </script>
 
 <template>
   <button
-    :class="['switch', modelValue ? 'switch-on' : 'switch-off']"
-    type="button"
-    @click="$emit('update:modelValue', !modelValue)"
+    class="gswitch"
+    :class="{ on: modelValue }"
+    :disabled="disabled"
+    role="switch"
+    :aria-checked="modelValue"
+    @click="emit('update:modelValue', !modelValue)"
   >
-    <span class="switch-thumb"></span>
+    <span class="knob" />
   </button>
 </template>
 
 <style scoped>
-.switch {
-  position: relative; width: 36px; height: 20px; border-radius: 20px;
-  border: 1px solid transparent; cursor: pointer;
-  transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-  flex-shrink: 0;
+.gswitch {
+  position: relative; width: 36px; height: 20px;
+  border-radius: 99px; border: 1px solid var(--glass-border);
+  background: var(--glass-hover); cursor: pointer;
+  transition: all 0.2s ease; flex-shrink: 0;
 }
-.switch:active .switch-thumb { width: 17px; }
-.switch-on { background: var(--accent); box-shadow: 0 0 12px var(--ring-soft); }
-.switch-off { background: var(--glass-hover); border-color: var(--glass-border); }
-.switch-thumb {
-  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
-  border-radius: 8px; background: white;
-  transition: transform 0.25s var(--ease-spring), width 0.15s ease;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+.gswitch:disabled { opacity: 0.4; cursor: not-allowed; }
+.gswitch.on { background: rgba(45,212,191,0.25); border-color: rgba(45,212,191,0.4); }
+.knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--text-faint);
+  transition: all 0.2s var(--ease-spring);
 }
-.switch-on .switch-thumb { transform: translateX(16px); }
-.switch-on:active .switch-thumb { transform: translateX(13px); }
+.gswitch.on .knob { left: 18px; background: var(--accent); box-shadow: 0 0 8px rgba(45,212,191,0.4); }
 </style>

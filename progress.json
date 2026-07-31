@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 29,
+  "current_phase": 30,
   "last_updated": "2026-07-31",
   "phases": [
     {
@@ -185,6 +185,12 @@
       "name": "Model Metadata Enrichment",
       "status": "done",
       "summary": "Three-layer metadata: static catalog (80+ models), live fetcher (OpenRouter/Anthropic/Google/Mistral normalizers), KV cache (24h TTL). /v1/models enriched with display_name, context_length, max_output_tokens, capabilities[], modalities[]. POST /api/providers/{id}/refresh-models endpoint. Panel Refresh Models button."
+    },
+    {
+      "id": 29,
+      "name": "WebUI Ground-Up Rebuild",
+      "status": "done",
+      "summary": "Full src/ rewrite from scratch: new design token system (teal→violet gradient, glassmorphism, dark/light), expandable Media Providers sub-nav, Tab-based Provider Detail (Connections/Models/Settings), 17 routes, typed Pinia store with null-safe API layer, pure-CSS animations (stagger/spring/ambient orbs, prefers-reduced-motion), mobile collapsible sidebar. Zero new dependencies beyond existing stack."
     }
   ],
   "upstream_ports": [

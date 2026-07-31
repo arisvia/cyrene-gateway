@@ -1,120 +1,85 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api, apiPost } from '@/lib/api'
+import { useToast } from '@/lib/toast'
+import GCard from '@/components/ui/GCard.vue'
 import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
-import GCard from '@/components/ui/GCard.vue'
-import { Download, Play, Square, RefreshCw } from 'lucide-vue-next'
+import { Cable } from 'lucide-vue-next'
 
-const status = ref<Record<string, any>>({})
-const busy = ref(false)
-const msg = ref('')
-const authUrl = ref('')
-const installing = ref(false)
-const installMsg = ref('')
+const toast = useToast()
+const loading = ref(true)
+const status = ref<any>({})
+const acting = ref(false)
 
 async function load() {
-  try { status.value = await api('/api/tunnel/status') } catch { status.value = {} }
+  try { status.value = (await api('/api/tunnel/status')) || {} } catch { status.value = {} }
+  loading.value = false
 }
 
-async function enable() {
-  busy.value = true; msg.value = 'Enabling tunnel...'; authUrl.value = ''
+async function action(act: string) {
+  acting.value = true
   try {
-    const res = await apiPost('/api/tunnel/tailscale-enable')
-    if (res.error) msg.value = res.error
-    else if (res.needsLogin) { msg.value = 'Login required. '; authUrl.value = res.authUrl || '' }
-    else if (res.success) msg.value = 'Tunnel active: ' + (res.tunnelUrl || '')
-    else msg.value = JSON.stringify(res)
-  } catch { msg.value = 'Request failed' }
-  busy.value = false
-  load()
-}
-
-async function disable() {
-  busy.value = true; msg.value = 'Disabling...'; authUrl.value = ''
-  try { await apiPost('/api/tunnel/tailscale-disable'); msg.value = 'Tunnel disabled.' }
-  catch { msg.value = 'Failed to disable' }
-  busy.value = false
-  load()
-}
-
-async function install() {
-  installing.value = true; installMsg.value = 'Starting installation...'
-  try {
-    const res = await fetch('/api/tunnel/tailscale-install', { method: 'POST' })
-    const reader = res.body!.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop()!
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const d = JSON.parse(line.slice(6))
-            if (d.message) installMsg.value = d.message
-            if (d.error) installMsg.value = 'Error: ' + d.error
-            if (d.success) installMsg.value = 'Installation complete!'
-          } catch {}
-        }
-      }
-    }
-  } catch { installMsg.value = 'Install request failed' }
-  installing.value = false
-  load()
+    await apiPost(`/api/tunnel/tailscale-${act}`)
+    toast.success(`Tailscale ${act} initiated`)
+    setTimeout(load, 1500)
+  } catch (e: any) { toast.error(e.message) }
+  acting.value = false
 }
 
 onMounted(load)
 </script>
 
 <template>
-  <div style="max-width:640px;margin:0 auto">
-    <div class="page-header">
+  <div class="page">
+    <header class="page-head">
       <h1 class="page-title">Tunnel</h1>
-      <p class="page-desc">Tailscale inbound tunnel for secure remote access.</p>
-    </div>
+      <p class="page-desc">Inbound tunnel management via Tailscale</p>
+    </header>
 
-    <GCard pad>
-      <p class="card-section-title">Tailscale Status</p>
-      <div v-if="!status.installed" style="text-align:center;padding:24px 0">
-        <p style="color:var(--text-muted);margin-bottom:12px">Tailscale is not installed on this system.</p>
-        <GButton size="sm" @click="install" :disabled="installing">
-          <Download :size="13" />{{ installing ? 'Installing...' : 'Install Tailscale' }}
-        </GButton>
-        <p v-if="installMsg" style="margin-top:8px;font-size:0.82rem;color:var(--text-faint)">{{ installMsg }}</p>
+    <GCard class="tunnel-card">
+      <div class="tunnel-top">
+        <div class="tunnel-icon"><Cable :size="18" /></div>
+        <div class="tunnel-info">
+          <p class="tunnel-name">Tailscale</p>
+          <p class="tunnel-desc">
+            <template v-if="status.installed">Installed · {{ status.running ? 'running' : 'stopped' }}</template>
+            <template v-else>Not installed</template>
+          </p>
+        </div>
+        <GBadge :color="status.running ? 'green' : 'gray'">{{ status.running ? 'active' : 'inactive' }}</GBadge>
       </div>
-      <template v-else>
-        <div class="kv-row"><span class="kv-label">Installed</span><GBadge color="green">Yes</GBadge></div>
-        <div class="kv-row"><span class="kv-label">Daemon</span><GBadge :color="status.daemonRunning ? 'green' : 'red'">{{ status.daemonRunning ? 'Running' : 'Stopped' }}</GBadge></div>
-        <div class="kv-row"><span class="kv-label">Logged In</span><GBadge :color="status.loggedIn ? 'green' : 'red'">{{ status.loggedIn ? 'Yes' : 'No' }}</GBadge></div>
-        <div class="kv-row"><span class="kv-label">Funnel</span><GBadge :color="status.funnelRunning ? 'green' : 'red'">{{ status.funnelRunning ? 'Active' : 'Inactive' }}</GBadge></div>
-        <div v-if="status.tunnelUrl" class="kv-row"><span class="kv-label">Tunnel URL</span><span class="kv-value mono">{{ status.tunnelUrl }}</span></div>
-        <div v-if="status.binPath" class="kv-row"><span class="kv-label">Binary</span><span class="kv-value mono" style="font-size:0.78rem;color:var(--text-faint)">{{ status.binPath }}</span></div>
-        <div style="display:flex;gap:8px;margin-top:16px">
-          <GButton size="sm" @click="enable" :disabled="busy"><Play :size="13" />{{ busy ? 'Working...' : 'Enable Funnel' }}</GButton>
-          <GButton variant="ghost" size="sm" @click="disable" :disabled="busy"><Square :size="13" />Disable</GButton>
-          <GButton variant="ghost" size="sm" @click="load" style="margin-left:auto"><RefreshCw :size="13" />Refresh</GButton>
-        </div>
-        <div v-if="msg" class="msg-box">
-          {{ msg }}
-          <a v-if="authUrl" :href="authUrl" target="_blank" style="color:var(--accent);text-decoration:underline">Open login page</a>
-        </div>
-      </template>
+
+      <p v-if="status.dnsName" class="tunnel-url">{{ status.dnsName }}</p>
+
+      <div class="tunnel-actions">
+        <GButton v-if="!status.installed" size="sm" :loading="acting" @click="action('install')">Install Tailscale</GButton>
+        <template v-else>
+          <GButton v-if="!status.running" size="sm" :loading="acting" @click="action('enable')">Enable</GButton>
+          <GButton v-else variant="ghost" size="sm" :loading="acting" @click="action('disable')">Disable</GButton>
+        </template>
+      </div>
     </GCard>
   </div>
 </template>
 
 <style scoped>
-.card-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin-bottom: 12px; }
-.kv-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; font-size: 13px; }
-.kv-row + .kv-row { border-top: 1px solid var(--row-divider); }
-.kv-label { color: var(--text-muted); }
-.kv-value { font-family: var(--font-mono); font-size: 0.82rem; }
-.msg-box {
-  margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-sm);
-  background: var(--code-bg); font-size: 0.82rem; color: var(--text-muted);
+.page-head { margin-bottom: 22px; }
+.page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; }
+.page-desc { font-size: 12.5px; color: var(--text-faint); margin-top: 3px; }
+.tunnel-card { max-width: 480px; }
+.tunnel-top { display: flex; align-items: center; gap: 12px; }
+.tunnel-icon {
+  width: 40px; height: 40px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gradient-soft); border: 1px solid var(--glass-border); color: var(--accent);
 }
+.tunnel-info { flex: 1; }
+.tunnel-name { font-size: 13.5px; font-weight: 650; }
+.tunnel-desc { font-size: 11.5px; color: var(--text-faint); }
+.tunnel-url {
+  margin-top: 12px; padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--code-bg); font-family: var(--font-mono); font-size: 12px; color: var(--accent);
+}
+.tunnel-actions { margin-top: 16px; display: flex; gap: 8px; }
 </style>
