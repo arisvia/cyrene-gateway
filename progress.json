@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 31,
+  "current_phase": 32,
   "last_updated": "2026-07-31",
   "phases": [
     {
@@ -127,15 +127,8 @@
     {
       "id": 31,
       "name": "API Key Providers — Batch 1 (25)",
-      "status": "pending",
-      "description": "Top 25 apikey providers fully adapted: transport verified, quota extraction where available. Priority: openai, anthropic, google, openrouter, azure, deepseek, groq, mistral, together, fireworks, cerebras, xai, nvidia, nebius, cohere, perplexity, moonshot, qwen, zhipu, baichuan, minimax, stepfun, zero-one, volcengine, siliconflow.",
-      "tasks": [
-        "Port transport config from each provider's registry .js",
-        "Verify format translation coverage (openai/claude/gemini; add missing)",
-        "Per-provider connectivity test with key format validation",
-        "Quota endpoints where available (openai billing, gemini quotas, etc.)",
-        "Panel: 'Get API Key' link from registry display.notice.apiKeyUrl"
-      ]
+      "status": "done",
+      "summary": "Transport correctness fixes vs 9router: gemini apikey→x-goog-api-key header (raw), glm/minimax/minimax-cn→?beta=true + x-api-key raw + CLAUDE_API_HEADERS. Added ProviderInfo.APIKeyURL (display.notice.apiKeyUrl) for 22 batch-1 providers + panel 'Get API Key' link in Add modal. New internal/usage quota framework (port of 9router services/usage): deepseek/glm/glm-cn/minimax/minimax-cn fetchers + GET /api/usage/connection/{id}. 6 transport tests + 8 quota tests (mock upstream). NOTE: baichuan/stepfun/zero-one have NO standalone 9router registry entry (only appear as models inside aggregators e.g. commandcode/siliconflow) — not added; revisit if upstream adds them. OAuth-path quota (gemini CLI/claude/codex/kimi) deferred to Phase 33-34."
     },
     {
       "id": 32,

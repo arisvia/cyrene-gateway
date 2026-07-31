@@ -23,6 +23,10 @@ type ProviderInfo struct {
 	Icon     string `json:"icon,omitempty"`
 	TextIcon string `json:"textIcon,omitempty"`
 
+	// APIKeyURL is the "Get API Key" link surfaced in the panel, ported from
+	// 9router registry display.notice.apiKeyUrl (Phase 31).
+	APIKeyURL string `json:"apiKeyUrl,omitempty"`
+
 	// Flags
 	Hidden  bool `json:"hidden,omitempty"`
 	HasFree bool `json:"hasFree,omitempty"`

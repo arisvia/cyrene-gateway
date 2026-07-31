@@ -172,6 +172,8 @@ func (s *Server) registerRoutes() {
 
 	// Quota tracker
 	s.Router.HandleFunc("GET /api/quota", s.handleQuota)
+	// Per-connection real usage/quota from provider APIs (Phase 31)
+	s.Router.HandleFunc("GET /api/usage/connection/{id}", s.handleConnectionUsage)
 
 	// Tunnel management
 	s.Router.HandleFunc("GET /api/tunnel/status", s.Tunnel.HandleStatus)

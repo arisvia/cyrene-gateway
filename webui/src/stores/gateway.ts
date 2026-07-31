@@ -32,6 +32,7 @@ export interface RegistryProvider {
   authorizeUrl?: string
   headers?: Record<string, string>
   models?: string[]
+  apiKeyUrl?: string
 }
 
 export interface RegistryCategory {

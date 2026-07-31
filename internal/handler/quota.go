@@ -2,8 +2,10 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
 
 // QuotaEntry represents per-connection quota status.
@@ -72,4 +74,30 @@ func (s *Server) quotaChecker() provider.QuotaChecker {
 	return func(connectionID string, period string) int {
 		return s.DB.GetConnectionUsageCount(connectionID, period)
 	}
+}
+
+// handleConnectionUsage fetches real quota/usage data from a provider's own
+// API (Phase 31). Port of 9router GET /api/usage/[connectionId]. Providers
+// without an upstream quota endpoint return an informational message.
+func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	conn, err := s.DB.GetConnection(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+
+	if !usage.QuotaSupported(conn.Provider) {
+		writeJSON(w, http.StatusOK, usage.QuotaResult{
+			Message: "Usage API not implemented for " + conn.Provider,
+		})
+		return
+	}
+
+	res := usage.FetchQuota(r.Context(), s.getHTTPClient(15*time.Second), usage.QuotaCredentials{
+		Provider:    conn.Provider,
+		APIKey:      conn.Data.APIKey,
+		AccessToken: conn.Data.AccessToken,
+	})
+	writeJSON(w, http.StatusOK, res)
 }

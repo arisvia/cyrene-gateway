@@ -9,7 +9,7 @@ import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
 import GModal from '@/components/ui/GModal.vue'
 import GEmpty from '@/components/ui/GEmpty.vue'
-import { Plus, Search, Zap, KeyRound, Layers } from 'lucide-vue-next'
+import { Plus, Search, Zap, KeyRound, Layers, ExternalLink } from 'lucide-vue-next'
 
 const store = useGatewayStore()
 const toast = useToast()
@@ -210,6 +210,15 @@ function connectionsFor(rpId: string) {
       </template>
 
       <template v-else-if="addTab === 'registry' && addSelected">
+        <a
+          v-if="addSelected.apiKeyUrl"
+          :href="addSelected.apiKeyUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="get-key-link"
+        >
+          <ExternalLink :size="12" /> Get API Key
+        </a>
         <label class="field-label">API Key</label>
         <input v-model="addKey" class="field" type="password" placeholder="sk-…" @keyup.enter="submitAdd">
       </template>
@@ -297,6 +306,12 @@ function connectionsFor(rpId: string) {
 .tab.active { background: var(--gradient-soft); color: var(--text); border-color: rgba(45,212,191,0.2); }
 
 .modal-hint { font-size: 12.5px; color: var(--text-faint); }
+.get-key-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 550; color: var(--accent);
+  text-decoration: none; margin-bottom: 4px;
+}
+.get-key-link:hover { text-decoration: underline; }
 .field-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin: 12px 0 5px; }
 .field {
   width: 100%; height: 34px; padding: 0 12px;

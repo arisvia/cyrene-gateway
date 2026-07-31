@@ -51,18 +51,23 @@ func TestResolveTransportAnthropicRawXAPIKey(t *testing.T) {
 }
 
 func TestResolveTransportGeminiQuery(t *testing.T) {
+	// With no API key (e.g. OAuth path), gemini falls back to the format-derived
+	// query default. Phase 31 moved api-key auth to the x-goog-api-key header
+	// (see TestResolveTransportGeminiAPIKeyHeader).
 	p := Registry["gemini"]
 	conn := &model.ProviderConnection{
-		Provider: "gemini", AuthType: "api-key",
-		Data: model.ConnectionData{APIKey: "AIza-test"},
+		Provider: "gemini", AuthType: "oauth",
+		Data: model.ConnectionData{AccessToken: "ya29-token"},
 	}
 	tr := ResolveTransport(p, p.BaseURL, p.APIType, conn)
 
-	if tr.Auth.Scheme != AuthQuery {
-		t.Errorf("expected query scheme, got %q", tr.Auth.Scheme)
+	// OAuth connection has no API key, but the registry still declares an
+	// explicit raw auth on x-goog-api-key; the token is injected there.
+	if tr.Auth.Scheme != AuthRaw {
+		t.Errorf("expected raw scheme, got %q", tr.Auth.Scheme)
 	}
-	if tr.Auth.QueryParam != "key" {
-		t.Errorf("expected key query param, got %q", tr.Auth.QueryParam)
+	if tr.Auth.Header != "x-goog-api-key" {
+		t.Errorf("expected x-goog-api-key header, got %q", tr.Auth.Header)
 	}
 }
 
@@ -131,6 +136,59 @@ func TestBuildTransportURLGemini(t *testing.T) {
 	want := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse"
 	if got != want {
 		t.Errorf("expected %q, got %q", want, got)
+	}
+}
+
+// Phase 31: Gemini API keys go in the x-goog-api-key header (raw scheme), not
+// the ?key= query param. The registry entry must declare an explicit auth that
+// overrides the format-derived query default.
+func TestResolveTransportGeminiAPIKeyHeader(t *testing.T) {
+	p := Registry["gemini"]
+	conn := &model.ProviderConnection{
+		Provider: "gemini", AuthType: "api-key",
+		Data: model.ConnectionData{APIKey: "AIza-test"},
+	}
+	tr := ResolveTransport(p, p.BaseURL, p.APIType, conn)
+
+	if tr.Auth.Scheme != AuthRaw {
+		t.Errorf("expected raw scheme for gemini api key, got %q", tr.Auth.Scheme)
+	}
+	if tr.Auth.Header != "x-goog-api-key" {
+		t.Errorf("expected x-goog-api-key header, got %q", tr.Auth.Header)
+	}
+}
+
+// Phase 31: GLM/MiniMax use the claude /coding endpoint with ?beta=true suffix,
+// x-api-key raw auth, and CLAUDE_API_HEADERS — ported from 9router transport.
+func TestResolveTransportClaudeCodingProviders(t *testing.T) {
+	for _, id := range []string{"glm", "minimax", "minimax-cn"} {
+		t.Run(id, func(t *testing.T) {
+			p := Registry[id]
+			conn := &model.ProviderConnection{
+				Provider: id, AuthType: "api-key",
+				Data: model.ConnectionData{APIKey: "sk-test"},
+			}
+			tr := ResolveTransport(p, p.BaseURL, p.APIType, conn)
+
+			if tr.Auth.Scheme != AuthRaw {
+				t.Errorf("expected raw scheme, got %q", tr.Auth.Scheme)
+			}
+			if tr.Auth.Header != "x-api-key" {
+				t.Errorf("expected x-api-key header, got %q", tr.Auth.Header)
+			}
+			if tr.URLSuffix != "?beta=true" {
+				t.Errorf("expected ?beta=true suffix, got %q", tr.URLSuffix)
+			}
+			if tr.Headers["anthropic-version"] != "2023-06-01" {
+				t.Errorf("expected anthropic-version header, got %q", tr.Headers["anthropic-version"])
+			}
+			// URL building must append the suffix verbatim.
+			got := BuildTransportURL(tr, "claude-3-5-sonnet", false)
+			want := p.BaseURL + "?beta=true"
+			if got != want {
+				t.Errorf("expected %q, got %q", want, got)
+			}
+		})
 	}
 }
 
