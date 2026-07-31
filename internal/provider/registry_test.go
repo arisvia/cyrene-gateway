@@ -3,15 +3,15 @@ package provider
 import "testing"
 
 func TestRegistryCompleteness(t *testing.T) {
-	// All 110 providers from 9router registry must be present
+	// All 112 providers from 9router registry must be present
 	expectedProviders := []string{
 		"alicode-intl", "alicode", "alims-intl", "anthropic", "antigravity",
 		"api-airforce", "assemblyai", "aws-polly", "azure", "baidu",
 		"bazaarlink", "black-forest-labs", "blackbox", "bluesminds", "brave-search",
 		"byteplus", "cartesia", "cerebras", "chutes", "claude",
-		"cline", "clinepass", "cloudflare-ai", "codebuddy-cn", "codex",
+		"cline", "clinepass", "cloudflare-ai", "codebuddy-cn", "codebuddy-intl", "codex",
 		"cohere", "comfyui", "commandcode", "coqui", "cursor",
-		"deepgram", "deepseek", "edge-tts", "elevenlabs", "exa",
+		"deepgram", "deepseek", "devin-cli", "edge-tts", "elevenlabs", "exa",
 		"fal-ai", "featherless", "firecrawl", "fireworks", "gemini-cli",
 		"gemini", "github", "gitlab", "glm-cn", "glm",
 		"google-pse", "google-tts", "grok-cli", "grok-web", "groq",
@@ -45,9 +45,9 @@ func TestRegistryCategories(t *testing.T) {
 
 	expectedCats := map[string]int{
 		"apikey":    70,
-		"oauth":     16,
+		"oauth":     17,
 		"freeTier":  17,
-		"free":      5,
+		"free":      6,
 		"webCookie": 2,
 	}
 
@@ -119,5 +119,30 @@ func TestRegistryOAuthProviders(t *testing.T) {
 	}
 	if p.Category != "oauth" {
 		t.Errorf("cursor should be oauth category, got %q", p.Category)
+	}
+}
+
+// TestRegistryTransportCompleteness verifies every registry entry has a
+// non-empty BaseURL and a valid APIType (format). Providers with special
+// local/sentinel URLs (e.g. "edge-tts", "local-device") are exempt from
+// the HTTP URL check but must still have a format.
+func TestRegistryTransportCompleteness(t *testing.T) {
+	// Providers with empty or sentinel BaseURL that are still valid.
+	exempt := map[string]bool{
+		"azure":       true, // user-supplied resource URL
+		"antigravity": true, // resolved at runtime via OAuth
+		"searxng":     true, // user-supplied instance URL
+		"topaz":       true, // local desktop app
+		"grok-cli":    true, // resolved at runtime via OAuth
+	}
+
+	for id, p := range Registry {
+		if p.BaseURL == "" && !exempt[id] {
+			t.Errorf("Provider %q has empty BaseURL and is not exempt", id)
+		}
+		validFormats := map[string]bool{"openai": true, "anthropic": true, "gemini": true}
+		if !validFormats[p.APIType] {
+			t.Errorf("Provider %q has invalid APIType/format %q", id, p.APIType)
+		}
 	}
 }

@@ -42,8 +42,11 @@ func registerImageProviders() {
 	// Stability AI
 	mergeProvider("stability-ai", "Stability AI", KindImage,
 		[]ModelEntry{
-			{ID: "stable-diffusion-xl-1024-v1-0", Name: "SDXL 1.0", Kind: KindImage},
-			{ID: "sd3-medium", Name: "SD3 Medium", Kind: KindImage},
+			{ID: "stable-image-ultra", Name: "Stable Image Ultra", Kind: KindImage},
+			{ID: "stable-image-core", Name: "Stable Image Core", Kind: KindImage},
+			{ID: "sd3.5-large", Name: "Stable Diffusion 3.5 Large", Kind: KindImage},
+			{ID: "sd3.5-large-turbo", Name: "Stable Diffusion 3.5 Large Turbo", Kind: KindImage},
+			{ID: "sd3.5-medium", Name: "Stable Diffusion 3.5 Medium", Kind: KindImage},
 		},
 		ProviderConfig{
 			Provider:   "stability-ai",
@@ -58,14 +61,17 @@ func registerImageProviders() {
 	// Black Forest Labs (FLUX)
 	mergeProvider("black-forest-labs", "Black Forest Labs", KindImage,
 		[]ModelEntry{
+			{ID: "flux-pro-1.1", Name: "FLUX Pro 1.1", Kind: KindImage},
+			{ID: "flux-pro-1.1-ultra", Name: "FLUX Pro 1.1 Ultra", Kind: KindImage},
 			{ID: "flux-pro", Name: "FLUX Pro", Kind: KindImage},
 			{ID: "flux-dev", Name: "FLUX Dev", Kind: KindImage},
-			{ID: "flux-schnell", Name: "FLUX Schnell", Kind: KindImage},
+			{ID: "flux-kontext-pro", Name: "FLUX Kontext Pro (Edit)", Kind: KindImage},
+			{ID: "flux-kontext-max", Name: "FLUX Kontext Max (Edit)", Kind: KindImage},
 		},
 		ProviderConfig{
 			Provider:   "black-forest-labs",
 			Kind:       KindImage,
-			BaseURL:    "https://api.bfl.ml/v1",
+			BaseURL:    "https://api.bfl.ai/v1",
 			AuthType:   "apikey",
 			AuthHeader: "x-api-key",
 			Format:     "bfl",
@@ -73,14 +79,24 @@ func registerImageProviders() {
 	)
 
 	// Fal.ai
-	mergeProvider("fal-ai", "Fal.ai", KindImage, nil, ProviderConfig{
-		Provider:   "fal-ai",
-		Kind:       KindImage,
-		BaseURL:    "https://fal.run",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "fal",
-	})
+	mergeProvider("fal-ai", "Fal.ai", KindImage,
+		[]ModelEntry{
+			{ID: "fal-ai/flux/schnell", Name: "FLUX Schnell", Kind: KindImage},
+			{ID: "fal-ai/flux/dev", Name: "FLUX Dev", Kind: KindImage},
+			{ID: "fal-ai/flux-pro/v1.1", Name: "FLUX Pro v1.1", Kind: KindImage},
+			{ID: "fal-ai/flux-pro/v1.1-ultra", Name: "FLUX Pro v1.1 Ultra", Kind: KindImage},
+			{ID: "fal-ai/recraft-v3", Name: "Recraft V3", Kind: KindImage},
+			{ID: "fal-ai/ideogram/v2", Name: "Ideogram V2", Kind: KindImage},
+			{ID: "fal-ai/stable-diffusion-v35-large", Name: "SD 3.5 Large", Kind: KindImage},
+		},
+		ProviderConfig{
+			Provider:   "fal-ai",
+			Kind:       KindImage,
+			BaseURL:    "https://queue.fal.run",
+			AuthType:   "apikey",
+			AuthHeader: "bearer",
+			Format:     "fal",
+		})
 
 	// HuggingFace Inference
 	mergeProvider("huggingface", "HuggingFace", KindImage, nil, ProviderConfig{

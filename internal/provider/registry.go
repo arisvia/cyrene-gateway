@@ -55,6 +55,13 @@ type ProviderInfo struct {
 	AuthHeader string   `json:"authHeader,omitempty"` // header carrying the token (e.g. "x-api-key")
 	AuthScheme string   `json:"authScheme,omitempty"` // "bearer" | "raw" | "query"
 	AuthHooks  []string `json:"authHooks,omitempty"`  // provider header overlays (e.g. "kimiHeaders")
+
+	// ValidateURL is the endpoint used for connection testing (9router transport.validateUrl).
+	ValidateURL string `json:"validateUrl,omitempty"`
+	// ThinkingFormat indicates how reasoning tokens are surfaced ("openai" = reasoning_content field).
+	ThinkingFormat string `json:"thinkingFormat,omitempty"`
+	// ForceStream forces streaming even when the client requests non-stream (9router transport.forceStream).
+	ForceStream bool `json:"forceStream,omitempty"`
 }
 
 // EffectiveBaseURL returns the base URL to use for a connection, considering

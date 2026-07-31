@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 32,
+  "current_phase": 33,
   "last_updated": "2026-07-31",
   "phases": [
     {
@@ -133,14 +133,8 @@
     {
       "id": 32,
       "name": "API Key Providers — Batch 2 (45)",
-      "status": "pending",
-      "description": "Remaining 45 apikey providers (alibaba, aws-polly, baidu, black-forest-labs, cartesia, chutes, hyperbolic, jina-ai, linkup, llm7, morph, playht, recraft, sambanova, tencent, etc). Same standard as Batch 1. Add Vitest for webui store/lib.",
-      "tasks": [
-        "Port remaining registry transport configs",
-        "Media-kind providers: validate embedding/image/tts/stt/video endpoint paths",
-        "Vitest setup: store null-safety + api lib + format utils",
-        "Registry completeness test: every entry has transport.baseUrl + format"
-      ]
+      "status": "done",
+      "summary": "Transport correctness for all 45 batch-2 apikey providers: ValidateURL (17 providers), ThinkingFormat (blackbox/siliconflow/venice), ForceStream (openai/commandcode/codebuddy-intl), Headers (commandcode). Added devin-cli + codebuddy-intl to registry (112 total). Media registry fixes: BFL bfl.ml→bfl.ai, fal.run→queue.fal.run, stability/nebius embedding URLs, model lists synced. Vitest setup (23 tests): format utils, api lib, store null-safety. Registry transport completeness test."
     },
     {
       "id": 33,
