@@ -142,11 +142,12 @@ CLI 参数（全部有默认值）：
 ```
 -host 0.0.0.0       # 监听地址
 -port 20128         # 端口
--db data.sqlite     # 数据库路径
 -dashboard ""       # 本地面板路径（空=使用内置）
 -panel-url ""       # 远程面板 URL（dist.zip 自动解压，或单 HTML；空=使用内置）
 -secret ""          # Dashboard 访问密码
 ```
+数据目录：统一为 ~/.cyrene-gateway/（CYRENE_DATA_DIR 可覆盖），
+DB 固定位于 <dataDir>/data.sqlite，面板缓存、MITM 证书等也在此目录下。
 环境变量 CYRENE_HOST / CYRENE_PORT 等同样支持，flag 优先于 env。
 
 ### 第三方面板分发
@@ -252,7 +253,7 @@ git, curl, wget, jq, sqlite3, make, gcc, rg, tar, unzip, python3, node
 # 1. 构建并启动网关（webui dist 已 embed）
 cd webui && npm run build && cd ..
 go build -o /tmp/gateway ./cmd/gateway
-/tmp/gateway -port 20128 -db /tmp/browseruse-test.sqlite &
+/tmp/gateway -port 20128 &
 
 # 2. 用 BrowserUse 打开面板验证
 #    - 访问 http://localhost:20128/

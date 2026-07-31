@@ -22,6 +22,10 @@ const endpointMap: Record<string, string> = {
   video: 'POST /v1/videos/generations', 'web-fetch': 'POST /v1/web/fetch', 'web-search': 'POST /v1/web/search',
 }
 
+function cfg(p: any) {
+  return p.configs?.[props.kind] || Object.values(p.configs || {})[0] || null
+}
+
 async function load() {
   loading.value = true
   try {
@@ -45,16 +49,16 @@ watch(() => props.kind, load)
     <GSkeleton v-if="loading" height="200px" />
     <GEmpty v-else-if="!providers.length" title="No providers" desc="No media providers registered for this kind yet." />
     <div v-else class="grid stagger">
-      <GCard v-for="p in providers" :key="p.id" class="p-card">
+      <GCard v-for="p in providers" :key="p.provider" class="p-card">
         <div class="p-top">
-          <span class="p-name">{{ p.name || p.id }}</span>
-          <GBadge v-if="p.authType" color="violet">{{ p.authType }}</GBadge>
+          <span class="p-name">{{ p.name || p.provider }}</span>
+          <GBadge v-if="cfg(p)?.authType" color="violet">{{ cfg(p).authType }}</GBadge>
         </div>
-        <p class="p-id">{{ p.id }}</p>
-        <p v-if="p.baseUrl" class="p-url">{{ p.baseUrl }}</p>
-        <div v-if="p.models?.length" class="p-models">
-          <GBadge v-for="m in p.models.slice(0, 4)" :key="m" color="gray">{{ m }}</GBadge>
-          <span v-if="p.models.length > 4" class="more">+{{ p.models.length - 4 }}</span>
+        <p class="p-id">{{ p.provider }}</p>
+        <p v-if="cfg(p)?.baseUrl" class="p-url">{{ cfg(p).baseUrl }}</p>
+        <div class="p-models">
+          <GBadge v-if="cfg(p)?.format" color="gray">{{ cfg(p).format }}</GBadge>
+          <GBadge v-for="k in (p.kinds || []).filter((x: string) => x !== kind)" :key="k" color="teal">{{ k }}</GBadge>
         </div>
       </GCard>
     </div>

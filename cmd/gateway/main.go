@@ -29,10 +29,14 @@ func main() {
 	slog.Info("Starting cyrene-gateway",
 		slog.String("host", cfg.Host),
 		slog.Int("port", cfg.Port),
-		slog.String("db", cfg.DBPath),
+		slog.String("dataDir", cfg.DataDir),
 	)
 
-	// Initialize database
+	// Ensure data directory exists, then initialize database
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		slog.Error("Failed to create data directory", "error", err)
+		os.Exit(1)
+	}
 	database, err := db.Open(cfg.DBPath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "error", err)

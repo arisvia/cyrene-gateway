@@ -30,7 +30,7 @@ Go 1.26+ 高性能 AI 代理网关，从 [9router](https://github.com/decolua/9r
 ### 运行
 
 ```bash
-./cyrene-gateway -port 20128 -db data.sqlite
+./cyrene-gateway -port 20128
 ```
 
 浏览器打开 `http://localhost:20128` 即可进入管理面板。
@@ -64,13 +64,14 @@ curl -X POST http://localhost:20128/api/models/alias \
 ```
 -host 0.0.0.0       # 监听地址
 -port 20128         # 端口
--db data.sqlite     # 数据库路径
 -dashboard ""       # 本地面板路径（开发用，空=使用内置）
 -panel-url ""       # 远程面板 URL（dist.zip 自动解压，或单 HTML）
 -secret ""          # Dashboard 访问密码
 ```
 
-环境变量 `CYRENE_HOST` / `CYRENE_PORT` / `CYRENE_DB` / `CYRENE_DASHBOARD` / `CYRENE_PANEL_URL` / `CYRENE_SECRET` 同样支持，flag 优先于 env。
+数据统一存放在 `~/.cyrene-gateway/`（数据库、面板缓存等），可通过 `CYRENE_DATA_DIR` 覆盖。
+
+环境变量 `CYRENE_HOST` / `CYRENE_PORT` / `CYRENE_DATA_DIR` / `CYRENE_DASHBOARD` / `CYRENE_PANEL_URL` / `CYRENE_SECRET` 同样支持，flag 优先于 env。
 
 ## 开发
 
@@ -96,7 +97,7 @@ go build ./cmd/gateway/
 cd webui && npm run dev
 
 # 后端
-go run ./cmd/gateway/ -port 20128 -db data.sqlite
+go run ./cmd/gateway/ -port 20128
 ```
 
 ### 测试
