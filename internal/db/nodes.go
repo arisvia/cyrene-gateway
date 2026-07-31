@@ -20,7 +20,7 @@ func (d *DB) ListNodes() ([]model.ProviderNode, error) {
 	}
 	defer rows.Close()
 
-	var nodes []model.ProviderNode
+	nodes := []model.ProviderNode{}
 	for rows.Next() {
 		var n model.ProviderNode
 		var data string

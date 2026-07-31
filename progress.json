@@ -4,7 +4,7 @@
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
   "current_phase": 29,
-  "last_updated": "2026-07-30",
+  "last_updated": "2026-07-31",
   "phases": [
     {
       "id": -1,
@@ -22,7 +22,7 @@
         "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
         "If no action needed: report 'no pending work' and exit"
       ],
-      "notes": "History: 2026-07-28 fixed URL double-append, Qoder COSY port, OpenCode Free, /v1/models free exposure, auth-aware panel forms (0b2fd52); Gemini schema sanitization (#2877); Kimi apikey routing (#2881); raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix (e3e3e23), 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog entries."
+      "notes": "History: 2026-07-28 fixed URL double-append, Qoder COSY port, OpenCode Free, /v1/models free exposure, auth-aware panel forms (0b2fd52); Gemini schema sanitization (#2877); Kimi apikey routing (#2881); raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix (e3e3e23), 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog entries. 2026-07-31: fixed nil-slice JSON null on empty list endpoints (/api/keys, /api/providers, /api/combos, /api/proxy-pools) crashing EndpointsView render; frontend loadKeys null guard."
     },
     {
       "id": 1,

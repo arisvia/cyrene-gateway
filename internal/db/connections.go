@@ -20,7 +20,7 @@ func (d *DB) ListConnections() ([]model.ProviderConnection, error) {
 	}
 	defer rows.Close()
 
-	var conns []model.ProviderConnection
+	conns := []model.ProviderConnection{}
 	for rows.Next() {
 		var c model.ProviderConnection
 		var data string
@@ -58,7 +58,7 @@ func (d *DB) ListConnectionsByProvider(provider string) ([]model.ProviderConnect
 	}
 	defer rows.Close()
 
-	var conns []model.ProviderConnection
+	conns := []model.ProviderConnection{}
 	for rows.Next() {
 		var c model.ProviderConnection
 		var data string

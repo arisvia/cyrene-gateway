@@ -18,7 +18,7 @@ func (d *DB) ListCombos() ([]model.Combo, error) {
 	}
 	defer rows.Close()
 
-	var combos []model.Combo
+	combos := []model.Combo{}
 	for rows.Next() {
 		var c model.Combo
 		var models string
@@ -109,7 +109,7 @@ func (d *DB) ListAPIKeys() ([]model.APIKey, error) {
 	}
 	defer rows.Close()
 
-	var keys []model.APIKey
+	keys := []model.APIKey{}
 	for rows.Next() {
 		var k model.APIKey
 		var name, machineID sql.NullString

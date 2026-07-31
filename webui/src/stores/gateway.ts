@@ -127,7 +127,7 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   async function loadKeys() {
-    try { apiKeys.value = await api('/api/keys') } catch { apiKeys.value = [] }
+    try { const r = await api('/api/keys'); apiKeys.value = Array.isArray(r) ? r : [] } catch { apiKeys.value = [] }
   }
 
   async function loadProxies() {

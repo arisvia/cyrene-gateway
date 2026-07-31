@@ -20,7 +20,7 @@ func (d *DB) ListProxyPools() ([]model.ProxyPool, error) {
 	}
 	defer rows.Close()
 
-	var pools []model.ProxyPool
+	pools := []model.ProxyPool{}
 	for rows.Next() {
 		var p model.ProxyPool
 		var data string
