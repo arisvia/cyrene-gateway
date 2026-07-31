@@ -10,7 +10,7 @@ import GBadge from '@/components/ui/GBadge.vue'
 import GModal from '@/components/ui/GModal.vue'
 import GSwitch from '@/components/ui/GSwitch.vue'
 import GSkeleton from '@/components/ui/GSkeleton.vue'
-import { ArrowLeft, Plus, Trash2, Zap, RefreshCw, KeyRound } from 'lucide-vue-next'
+import { ArrowLeft, Plus, Trash2, Zap, RefreshCw, KeyRound, Clock } from 'lucide-vue-next'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -38,6 +38,34 @@ const strategy = ref('')
 const saving = ref(false)
 
 const conn = computed(() => store.providers.find(p => p.id === props.id))
+
+// Token refresh
+const refreshing = ref(false)
+const tokenExpiry = computed(() => {
+  const exp = conn.value?.data?.expiresAt
+  if (!exp) return null
+  const d = new Date(exp)
+  const diff = d.getTime() - Date.now()
+  if (diff <= 0) return { text: 'Expired', expired: true }
+  const hours = Math.floor(diff / 3600000)
+  const mins = Math.floor((diff % 3600000) / 60000)
+  if (hours > 48) return { text: `${Math.floor(hours / 24)}d ${hours % 24}h`, expired: false }
+  if (hours > 0) return { text: `${hours}h ${mins}m`, expired: false }
+  return { text: `${mins}m`, expired: false }
+})
+
+async function refreshToken() {
+  if (!conn.value) return
+  refreshing.value = true
+  try {
+    await apiPost(`/api/oauth/${conn.value.provider}/refresh`, { connectionId: conn.value.id })
+    toast.success('Token refreshed successfully')
+    await store.loadCore()
+  } catch (e: any) {
+    toast.error(e.message || 'Token refresh failed')
+  }
+  refreshing.value = false
+}
 
 onMounted(async () => {
   if (!store.providers.length) await store.loadCore()
@@ -173,6 +201,17 @@ async function doDelete() {
           <div class="info-item"><span class="info-label">Priority</span><span>{{ conn?.priority }}</span></div>
           <div class="info-item"><span class="info-label">Auth</span><span>{{ conn?.authType }}</span></div>
           <div class="info-item"><span class="info-label">Email</span><span>{{ conn?.email || '—' }}</span></div>
+          <div class="info-item" v-if="tokenExpiry">
+            <span class="info-label">Token Expiry</span>
+            <span :class="tokenExpiry.expired ? 'token-expired' : ''">
+              <Clock :size="11" style="vertical-align: -1px" /> {{ tokenExpiry.text }}
+            </span>
+          </div>
+        </div>
+        <div class="token-actions" v-if="conn?.data?.refreshToken">
+          <GButton variant="ghost" size="sm" :loading="refreshing" @click="refreshToken">
+            <RefreshCw :size="13" /> Refresh Token
+          </GButton>
         </div>
       </GCard>
     </div>
@@ -332,4 +371,6 @@ async function doDelete() {
 }
 .icon-btn.danger:hover { color: var(--red); background: rgba(248,113,113,0.08); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.token-actions { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border); }
+.token-expired { color: var(--red); font-weight: 600; }
 </style>

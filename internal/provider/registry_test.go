@@ -45,9 +45,9 @@ func TestRegistryCategories(t *testing.T) {
 
 	expectedCats := map[string]int{
 		"apikey":    70,
-		"oauth":     17,
+		"oauth":     18,
 		"freeTier":  17,
-		"free":      6,
+		"free":      5,
 		"webCookie": 2,
 	}
 

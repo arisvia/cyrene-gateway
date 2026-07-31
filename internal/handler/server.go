@@ -159,6 +159,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/oauth/{provider}/device-code/poll", s.handleOAuthDeviceCodePoll)
 	s.Router.HandleFunc("POST /api/oauth/{provider}/import", s.handleOAuthImport)
 	s.Router.HandleFunc("GET /api/oauth/{provider}/status", s.handleOAuthStatus)
+	s.Router.HandleFunc("POST /api/oauth/{provider}/refresh", s.handleOAuthRefresh)
 
 	// Usage & observability API
 	s.Router.HandleFunc("GET /api/usage/stats", s.handleUsageStats)

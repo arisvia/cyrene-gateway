@@ -132,6 +132,11 @@ func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 	})
 	if err != nil {
 		slog.Warn("Token refresh failed", slog.String("provider", conn.Provider), "error", err)
+		if provider.IsUnrecoverableRefreshError(err) {
+			conn.Data.TestStatus = "expired"
+			conn.Data.LastError = err.Error()
+			s.DB.UpdateConnection(conn)
+		}
 		return true
 	}
 	provider.ApplyRefreshResult(conn, result)

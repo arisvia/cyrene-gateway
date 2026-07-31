@@ -148,6 +148,16 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 		params.Set("state", pkce.State)
 		params.Set("access_type", "offline")
 		params.Set("prompt", "consent")
+	case "xai", "grok-cli":
+		params.Set("response_type", "code")
+		params.Set("client_id", info.ClientID)
+		params.Set("redirect_uri", redirectURI)
+		params.Set("scope", "openid profile email offline_access grok-cli:access api:access")
+		params.Set("code_challenge", pkce.CodeChallenge)
+		params.Set("code_challenge_method", "S256")
+		params.Set("state", pkce.State)
+		params.Set("plan", "generic")
+		params.Set("referrer", "cyrene-gateway")
 	case "cline", "clinepass":
 		params.Set("client_type", "extension")
 		params.Set("callback_url", redirectURI)
@@ -789,91 +799,4 @@ func getString(m map[string]any, key string) string {
 		return v
 	}
 	return ""
-}
-
-// --- Token Refresh Dedup Lock ---
-
-type refreshEntry struct {
-	mu        sync.Mutex
-	result    *RefreshResult
-	err       error
-	expiresAt time.Time
-	done      bool
-}
-
-var refreshDedupMap sync.Map
-
-const refreshResultTTL = 10 * time.Second
-
-// DedupRefresh ensures only one refresh runs per provider+token combination.
-// Concurrent callers with the same key will wait for the first refresh to complete.
-func DedupRefresh(providerID string, oldToken string, fn func() (*RefreshResult, error)) (*RefreshResult, error) {
-	if oldToken == "" {
-		return fn()
-	}
-	key := providerID + ":" + oldToken
-
-	// Check for cached result
-	if v, ok := refreshDedupMap.Load(key); ok {
-		entry := v.(*refreshEntry)
-		entry.mu.Lock()
-		if entry.done {
-			if time.Now().Before(entry.expiresAt) {
-				result, err := entry.result, entry.err
-				entry.mu.Unlock()
-				return result, err
-			}
-			// Expired, delete and proceed
-			entry.mu.Unlock()
-			refreshDedupMap.Delete(key)
-		} else {
-			// Wait for in-flight refresh
-			entry.mu.Unlock()
-			// Spin-wait briefly (refresh should be fast)
-			for i := 0; i < 100; i++ {
-				time.Sleep(100 * time.Millisecond)
-				entry.mu.Lock()
-				if entry.done {
-					result, err := entry.result, entry.err
-					entry.mu.Unlock()
-					return result, err
-				}
-				entry.mu.Unlock()
-			}
-			// Timeout waiting, do our own refresh
-		}
-	}
-
-	// Create new entry
-	entry := &refreshEntry{}
-	entry.mu.Lock()
-	actual, loaded := refreshDedupMap.LoadOrStore(key, entry)
-	if loaded {
-		// Another goroutine beat us, wait on their entry
-		existing := actual.(*refreshEntry)
-		entry.mu.Unlock()
-		existing.mu.Lock()
-		if existing.done {
-			result, err := existing.result, existing.err
-			existing.mu.Unlock()
-			return result, err
-		}
-		existing.mu.Unlock()
-		// Fall through to do our own refresh
-	}
-
-	// Execute the refresh
-	result, err := fn()
-
-	entry.result = result
-	entry.err = err
-	entry.expiresAt = time.Now().Add(refreshResultTTL)
-	entry.done = true
-	entry.mu.Unlock()
-
-	if err != nil {
-		refreshDedupMap.Delete(key)
-	}
-
-	return result, err
 }

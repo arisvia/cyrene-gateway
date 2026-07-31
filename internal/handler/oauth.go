@@ -449,6 +449,62 @@ func (s *Server) handleOAuthStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleOAuthRefresh manually triggers a token refresh for a connection.
+// POST /api/oauth/{provider}/refresh
+func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
+	providerID := r.PathValue("provider")
+
+	var req struct {
+		ConnectionID string `json:"connectionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if req.ConnectionID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "connectionId is required"})
+		return
+	}
+
+	conn, err := s.DB.GetConnection(req.ConnectionID)
+	if err != nil || conn == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+	if conn.Provider != providerID {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "connection provider mismatch"})
+		return
+	}
+	if conn.Data.RefreshToken == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no refresh token available"})
+		return
+	}
+
+	result, refreshErr := provider.DedupRefresh(providerID, conn.Data.AccessToken, func() (*provider.RefreshResult, error) {
+		return provider.RefreshCredentials(providerID, conn, nil)
+	})
+	if refreshErr != nil {
+		status := http.StatusBadGateway
+		if provider.IsUnrecoverableRefreshError(refreshErr) {
+			status = http.StatusGone
+			// Mark connection as needing re-auth.
+			conn.Data.TestStatus = "expired"
+			conn.Data.LastError = refreshErr.Error()
+			s.DB.UpdateConnection(conn)
+		}
+		writeJSON(w, status, map[string]string{"error": refreshErr.Error()})
+		return
+	}
+
+	provider.ApplyRefreshResult(conn, result)
+	s.DB.UpdateConnection(conn)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":   true,
+		"expiresAt": conn.Data.ExpiresAt,
+	})
+}
+
 // createOAuthConnection creates a provider connection from OAuth token exchange results.
 func (s *Server) createOAuthConnection(providerID string, tokens *provider.TokenExchangeResult) *model.ProviderConnection {
 	authType := "oauth"
