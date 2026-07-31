@@ -9,20 +9,18 @@
     {
       "id": -1,
       "name": "Maintenance Mode (perpetual sentinel)",
-      "description": "Not a development phase. Sentinel state (-1) that activates when no pending dev phase exists or when manually triggered. Never marked done.",
+      "description": "Not a development phase. Activates when no pending dev phase exists or when manually triggered. Never marked done.",
       "status": "pending",
-      "trigger": "auto when current_phase has no pending target, or manual invocation",
       "tasks": [
         "Check GitHub Issues for bug reports or feature requests",
         "Run go build ./... && go test ./... to verify project health",
         "Review and merge dependabot PRs if safe",
-        "Fix reported issues and push patches (tag v1.0.x or v1.N.x)",
+        "Fix reported issues and push patches (tag v1.x.y)",
         "Upstream sync: compare upstream_commits hashes, port relevant changes",
-        "Scan 9router open issues + merged PRs for applicable fixes (record in upstream_ports)",
         "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
         "If no action needed: report 'no pending work' and exit"
       ],
-      "notes": "History: 2026-07-28 fixed URL double-append, Qoder COSY port, OpenCode Free, /v1/models free exposure, auth-aware panel forms (0b2fd52); Gemini schema sanitization (#2877); Kimi apikey routing (#2881); raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix (e3e3e23), 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog entries. 2026-07-31: fixed nil-slice JSON null on empty list endpoints (/api/keys, /api/providers, /api/combos, /api/proxy-pools) crashing EndpointsView render; frontend loadKeys null guard."
+      "notes": "2026-07-28: URL double-append fix, Qoder COSY port, OpenCode Free, /v1/models free exposure, Gemini schema sanitization (#2877), Kimi apikey routing (#2881), raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix, 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog. 2026-07-31: nil-slice JSON null fix (all list endpoints), Media card field mapping fix, data dir unified to ~/.cyrene-gateway."
     },
     {
       "id": 1,
@@ -40,219 +38,147 @@
       "id": 3,
       "name": "Model Resolution & Combos",
       "status": "done",
-      "summary": "Model string parsing, alias resolution, combo system (fallback + round-robin + sticky limit), model availability, combo CRUD, unit tests."
+      "summary": "Model string parsing, alias resolution, combo system (fallback + round-robin + sticky), model availability, combo CRUD, unit tests."
     },
     {
       "id": 4,
       "name": "OpenAI-Compatible API Surface",
       "status": "done",
-      "summary": "/v1/chat/completions + /v1/messages + /v1/models + /v1/embeddings, middleware chain, SSE streaming proxy (disconnect-aware), format translation (OpenAI/Claude/Gemini), usage extraction, integration tests."
+      "summary": "/v1/chat/completions + /v1/messages + /v1/models + /v1/embeddings, middleware chain, SSE streaming proxy, format translation (OpenAI/Claude/Gemini), usage extraction, integration tests."
     },
     {
       "id": 5,
       "name": "Dashboard Panel System",
       "status": "done",
-      "summary": "CLI params + env vars, embedded single-HTML dashboard (go:embed), panel serving (local dir > downloaded cache > embedded), runtime panel download with dist.zip support."
+      "summary": "CLI params + env vars, go:embed panel serving (local dir > downloaded cache > embedded), dist.zip support."
     },
     {
       "id": 6,
       "name": "Authentication & API Keys",
       "status": "done",
-      "summary": "HMAC-signed API key generation/validation, Bearer middleware for /v1/*, cookie-based dashboard session auth, login/logout, requireApiKey enforcement."
+      "summary": "HMAC-signed API key generation/validation, Bearer middleware, cookie-based dashboard session auth, login/logout."
     },
     {
       "id": 7,
       "name": "Usage Tracking & Observability",
       "status": "done",
-      "summary": "Usage history repo, token extraction (stream + non-stream), daily aggregation, request details logging, /api/usage/* endpoints."
+      "summary": "Usage history repo, token extraction (stream + non-stream), daily aggregation, request details, /api/usage/* endpoints."
     },
     {
       "id": 8,
       "name": "Dashboard Management API",
       "status": "done",
-      "summary": "Full REST API: providers CRUD, provider-nodes CRUD, combos update, proxy-pools CRUD, enhanced /api/health."
+      "summary": "Full REST API: providers CRUD, provider-nodes CRUD, combos, proxy-pools CRUD, /api/health."
     },
     {
       "id": 9,
       "name": "Advanced Features & Enhancements",
       "status": "done",
-      "summary": "OAuth token refresh (pre-check + on-401 retry), loop guard (VansRouter), termination prompt injection, proxy pool rotation, provider test endpoint, max_tokens clamping (NVIDIA Kimi)."
+      "summary": "OAuth token refresh (pre-check + on-401 retry), loop guard, termination prompt, proxy pool rotation, provider test, max_tokens clamping."
     },
     {
       "id": 10,
       "name": "Provider Registry Expansion & Categorization",
       "status": "done",
-      "summary": "Full 9router registry port: 64 apikey + 16 oauth + 13 freeTier + 5 free + 2 webCookie providers, category/authModes metadata, grouped /api/registry, registry completeness tests."
+      "summary": "Full 9router registry port: 70 apikey + 20 oauth + 18 freeTier + 5 free + 2 webCookie, category/authModes metadata, grouped /api/registry."
     },
     {
       "id": 11,
       "name": "Provider Detail Management",
       "status": "done",
-      "summary": "Per-provider detail: connection test with latency, credential editing, custom models (KV providerModels scope), /api/providers/{id}/models, cooldown/error display."
+      "summary": "Connection test with latency, credential editing, custom models, /api/providers/{id}/models, cooldown display."
     },
     {
       "id": 12,
       "name": "OAuth Authorization Flow",
       "status": "done",
-      "summary": "Authorize URL (PKCE), callback code exchange, device code flow (qwen/kimi), manual token import (codex/cursor/kiro), panel OAuth modals, token refresh wired into chat path with dedup lock."
+      "summary": "Authorize URL (PKCE), callback code exchange, device code flow, manual token import, panel OAuth modals, token refresh in chat path. NOTE: scaffold only — real per-provider refresh comes in Phase 33-34."
     },
     {
       "id": 13,
       "name": "Quota Tracker & Token Saver",
       "status": "done",
-      "summary": "Per-connection quota limits + usage tracking, quota-aware fallback selection, /api/quota, panel quota page, RTK caveman/ponytail compression in request path."
+      "summary": "Per-connection quota limits, quota-aware fallback, /api/quota, RTK caveman/ponytail compression."
     },
     {
       "id": 14,
       "name": "Tunnel & Tailscale",
       "status": "done",
-      "summary": "Tailscale detection/install/enable/disable endpoints, /api/tunnel/status, panel tunnel page, graceful degradation."
+      "summary": "Tailscale detection/install/enable/disable, /api/tunnel/status, graceful degradation."
     },
     {
-      "id": 15,
-      "name": "WebUI Engineering Foundation",
+      "id": "15-28",
+      "name": "WebUI Iterations (superseded by Phase 29)",
       "status": "done",
-      "summary": "Single-HTML → Vue 3.5 + Vite + TS + Pinia + hash router, design tokens (dark/light), component library, SPA layout, typed API client, go:embed dist pipeline, CI webui build step."
-    },
-    {
-      "id": 16,
-      "name": "Provider Experience Overhaul",
-      "status": "done",
-      "summary": "118 brand logos, card grid by category, connection status badges, search, Test All (parallel, 10-concurrency), full-page provider detail, Add Provider modal (Registry/OpenAI/Anthropic tabs), OAuth connect modals."
-    },
-    {
-      "id": 17,
-      "name": "Media Providers",
-      "status": "done",
-      "summary": "internal/media package: 30+ providers across 7 kinds (embedding/image/TTS/STT/video/web-fetch/search), per-format adapters, /v1/images|audio|videos|web|search endpoints, panel MediaView with kind tabs."
-    },
-    {
-      "id": 18,
-      "name": "CLI Tools Integration",
-      "status": "done",
-      "summary": "internal/cli: 14 tools, configType env/custom/guide/mitm, JSON/TOML/YAML adapters, /api/cli-tools endpoints, panel card grid + detail with apply form and guide renderer."
-    },
-    {
-      "id": 19,
-      "name": "Usage & Observability Enhancement",
-      "status": "done",
-      "summary": "EventBroadcaster pub/sub SSE, /api/usage/stream + logs + providers (aggregate + quota overlay), panel Usage tabs (overview/details/limits), ConsoleView live log viewer."
-    },
-    {
-      "id": 20,
-      "name": "Endpoint Overview, Chat Playground & Skills",
-      "status": "done",
-      "summary": "GET /api/endpoints (local/LAN/tunnel), GET /api/skills (8 embedded skill manifests), panel EndpointsView (ping + key copy + curl), ChatView (SSE streaming), SkillsView."
-    },
-    {
-      "id": 21,
-      "name": "i18n, Mobile & Polish",
-      "status": "done",
-      "summary": "DOM-based runtime i18n (MutationObserver, 10 locales from 9router), language switcher + auto-detect, mobile collapsible sidebar, Cmd+K search, Esc modals, changelog modal, skeletons, a11y pass."
-    },
-    {
-      "id": 22,
-      "name": "MITM Proxy (optional, local mode)",
-      "status": "done",
-      "summary": "internal/mitm: ECDSA CA + per-domain leaf certs, in-process TLS proxy (127.0.0.1 only), DNS hosts toggle, traffic ring buffer, -mitm/-mitm-port flags, panel MitmView, refuses 0.0.0.0 bind."
-    },
-    {
-      "id": 24,
-      "name": "WebUI Provider Experience Overhaul",
-      "status": "done",
-      "summary": "Free providers one-click enable (POST /api/providers/enable-free, idempotent), contextual card actions (Enable/Connect/Add Key/Manage), first-run onboarding, auth-aware Add modal, per-card test latency badge, NoAuth card with proxy pool binding."
-    },
-    {
-      "id": 25,
-      "name": "WebUI Provider Detail Parity with 9router",
-      "status": "done",
-      "summary": "POST /api/models/test, PATCH /api/settings partial merge, per-model test/enable/disable/alias, connection priority reorder, cooldown timer, per-provider strategy override, thinking level selector, Qoder model import, bulk proxy actions."
-    },
-    {
-      "id": 26,
-      "name": "WebUI Polish & Upstream Issue Hardening",
-      "status": "done",
-      "summary": "Cache-read token tracking (#2873), translator hardening (#2747 index preservation, #2869 empty delta guard), token-saver exclusion (#2767), /v1/models metadata (#2872), error UX hints (401/403/429/529), chat provider-grouped selector, sidebar connection badge."
-    },
-    {
-      "id": 27,
-      "name": "WebUI Full Overhaul",
-      "status": "done",
-      "summary": "New sidebar IA (Endpoint & Key home, consolidated Keys/Chat/Status/Aliases), teal→violet gradient design system, enhanced glassmorphism tokens, staggered animations, CLIToolDetail loading fix, legacy redirects."
-    },
-    {
-      "id": 28,
-      "name": "Model Metadata Enrichment",
-      "status": "done",
-      "summary": "Three-layer metadata: static catalog (80+ models), live fetcher (OpenRouter/Anthropic/Google/Mistral normalizers), KV cache (24h TTL). /v1/models enriched with display_name, context_length, max_output_tokens, capabilities[], modalities[]. POST /api/providers/{id}/refresh-models endpoint. Panel Refresh Models button."
+      "summary": "Thirteen incremental webui phases (Vue 3 scaffold, provider cards, media, CLI tools, usage, i18n, MITM, detail parity, polish, full overhaul, model metadata). All frontend code was deleted and rewritten from scratch in Phase 29. Backend endpoints created during these phases (internal/media, internal/cli, internal/mitm, /api/usage/stream, /api/skills, /api/endpoints, model metadata) remain valid and are consumed by the new UI."
     },
     {
       "id": 29,
       "name": "WebUI Ground-Up Rebuild",
       "status": "done",
-      "summary": "Full src/ rewrite from scratch: new design token system (teal→violet gradient, glassmorphism, dark/light), expandable Media Providers sub-nav, Tab-based Provider Detail (Connections/Models/Settings), 17 routes, typed Pinia store with null-safe API layer, pure-CSS animations (stagger/spring/ambient orbs, prefers-reduced-motion), mobile collapsible sidebar. Zero new dependencies beyond existing stack."
+      "summary": "Full src/ rewrite: design tokens (teal→violet, glassmorphism, dark/light), expandable Media sub-nav, Tab-based Provider Detail, 17 routes, typed Pinia store (null-safe), pure-CSS animations (stagger/spring/ambient orbs, prefers-reduced-motion), mobile collapsible sidebar. Vite 8 + Vue 3.5 + TS, zero new deps."
     },
     {
       "id": 30,
       "name": "Provider Transport Layer",
       "status": "pending",
-      "description": "Core infrastructure for real provider adaptation: per-provider transport config (baseUrl, format, headers, urlSuffix, auth scheme/hooks), request pipeline that resolves transport from registry at proxy time, auth header injection (bearer/x-api-key/raw/combined), dual-auth mode support (oauth+apikey on same provider). Port from 9router open-sse/providers/registry/*.js transport blocks + shared.js auth hooks. Include Go integration tests with mock upstream.",
+      "description": "Core infrastructure for real provider adaptation: per-provider transport config (baseUrl, format, headers, urlSuffix, auth scheme/hooks), request pipeline resolves transport from registry at proxy time, auth header injection (bearer/x-api-key/raw/combined), dual-auth mode support. Port from 9router registry/*.js transport blocks + shared.js auth hooks. Go integration tests with mock upstream.",
       "tasks": [
         "Extend registry entry struct: transport{baseUrl, format, headers, urlSuffix, authHeader, authScheme, hooks}",
         "Request pipeline: resolve transport by provider ID at proxy time, inject headers/auth per scheme",
         "Auth hook framework (kimiHeaders X-Msh-*, copilot token headers, etc.)",
-        "Dual-auth: apikey requests use ApiKeyBaseURL override (9router#2881 pattern), oauth uses transport.baseUrl",
+        "Dual-auth: apikey uses ApiKeyBaseURL override, oauth uses transport.baseUrl",
         "Connection test endpoint uses real transport (not generic ping)",
-        "Go tests: mock upstream server validating header injection for 5+ formats"
+        "Go tests: mock upstream validating header injection for 5+ formats"
       ]
     },
     {
       "id": 31,
       "name": "API Key Providers — Batch 1 (25)",
       "status": "pending",
-      "description": "First 25 apikey providers fully adapted: transport verified against real endpoints (connectivity test passes), quota/usage extraction where API supports it. Priority order: openai, anthropic, google/gemini, openrouter, azure, deepseek, groq, mistral, together, fireworks, cerebras, xai, nvidia, nebius, cohere, perplexity, moonshot/kimi-apikey, qwen-apikey, zhipu, baichuan, minimax, stepfun, zero-one, volcengine, siliconflow.",
+      "description": "Top 25 apikey providers fully adapted: transport verified, quota extraction where available. Priority: openai, anthropic, google, openrouter, azure, deepseek, groq, mistral, together, fireworks, cerebras, xai, nvidia, nebius, cohere, perplexity, moonshot, qwen, zhipu, baichuan, minimax, stepfun, zero-one, volcengine, siliconflow.",
       "tasks": [
-        "Port transport config from each provider's registry .js (baseUrl/format/headers)",
-        "Verify format translation coverage (openai/claude/gemini formats already exist; add missing ones)",
-        "Per-provider test: connectivity via POST /api/providers/{id}/test with real key format validation",
-        "Quota endpoints where available (openai /dashboard/billing, gemini quotas, etc.)",
-        "Panel: per-provider 'Get API Key' link from registry display.notice.apiKeyUrl"
+        "Port transport config from each provider's registry .js",
+        "Verify format translation coverage (openai/claude/gemini; add missing)",
+        "Per-provider connectivity test with key format validation",
+        "Quota endpoints where available (openai billing, gemini quotas, etc.)",
+        "Panel: 'Get API Key' link from registry display.notice.apiKeyUrl"
       ]
     },
     {
       "id": 32,
       "name": "API Key Providers — Batch 2 (45)",
       "status": "pending",
-      "description": "Remaining 45 apikey providers: alibaba/alicode, aws-polly, baidu, black-forest-labs, cartesia, chutes, hyperbolic, inference-net, jina-ai, keyless, linkup, llm7, morph, playht, recraft, sambanova, tencent, bazaarlink, bluesminds, api-airforce, poolside, kilo-gateway, etc. Same adaptation standard as Batch 1. Add Vitest unit tests for webui store/lib layer.",
+      "description": "Remaining 45 apikey providers (alibaba, aws-polly, baidu, black-forest-labs, cartesia, chutes, hyperbolic, jina-ai, linkup, llm7, morph, playht, recraft, sambanova, tencent, etc). Same standard as Batch 1. Add Vitest for webui store/lib.",
       "tasks": [
         "Port remaining registry transport configs",
         "Media-kind providers: validate embedding/image/tts/stt/video endpoint paths",
-        "Vitest setup for webui: store null-safety + api lib + format utils",
-        "Registry completeness test: every registry entry has transport.baseUrl + format"
+        "Vitest setup: store null-safety + api lib + format utils",
+        "Registry completeness test: every entry has transport.baseUrl + format"
       ]
     },
     {
       "id": 33,
       "name": "OAuth Framework + Batch 1 (8 providers)",
       "status": "pending",
-      "description": "Port 9router's token refresh framework: pre-expiry refresh (5min buffer), dedup lock, unrecoverable error classification, per-provider refresh implementations. Batch 1: kimi (device code + X-Msh headers), xai, claude (PKCE), google, qwen, codex, kiro, iflow. Each must: authorize → callback/device-poll → token store → auto-refresh → chat request succeeds.",
+      "description": "Token refresh framework (pre-expiry 5min buffer, singleflight dedup, unrecoverable error classification) + 8 providers: kimi, xai, claude, google, qwen, codex, kiro, iflow. Full flow: authorize → callback/device-poll → token store → auto-refresh → chat succeeds.",
       "tasks": [
-        "Token refresh engine: expiry check (5min lead), singleflight dedup, error classification (recoverable vs unrecoverable)",
-        "Port refresh implementations: refreshKimiToken, refreshXaiToken, refreshClaudeOAuthToken, refreshGoogleToken, refreshQwenToken, refreshCodexToken, refreshKiroToken, refreshIflowToken",
-        "Device code flow UI: poll status display in panel OAuth modal",
-        "Integration tests: mock OAuth server (authorize/token/refresh endpoints) per flow type",
-        "Panel: connection status shows token expiry countdown, refresh-now button"
+        "Token refresh engine: expiry check, singleflight dedup, error classification",
+        "Port: refreshKimiToken, refreshXaiToken, refreshClaudeOAuthToken, refreshGoogleToken, refreshQwenToken, refreshCodexToken, refreshKiroToken, refreshIflowToken",
+        "Device code flow UI: poll status in panel OAuth modal",
+        "Integration tests: mock OAuth server per flow type",
+        "Panel: token expiry countdown, refresh-now button"
       ]
     },
     {
       "id": 34,
       "name": "OAuth Batch 2 + Dual-Auth (12+24)",
       "status": "pending",
-      "description": "Remaining OAuth providers: github, copilot (GitHub token exchange chain), codebuddy, codebuddy-intl, trae, zed, windsurf, grok-cli, gitlab, kilocode, cursor, cline. Plus wire dual-auth (authModes: [oauth, apikey]) for all 24 dual providers: panel shows both connect paths, request path picks credential by auth mode.",
+      "description": "Remaining OAuth: github, copilot (multi-step exchange), codebuddy, codebuddy-intl, trae, zed, windsurf, grok-cli, gitlab, kilocode, cursor, cline. Wire dual-auth for 24 providers: panel shows both paths, request picks credential by mode.",
       "tasks": [
-        "Port remaining refresh implementations (copilot's multi-step exchange is the complex one)",
-        "Dual-auth panel UX: 'Connect via OAuth' + 'Add API Key' both available per provider card",
-        "Request routing: prefer active OAuth token, fall back to apikey credential (9router accountFallback parity)",
+        "Port remaining refresh implementations (copilot multi-step is complex)",
+        "Dual-auth panel UX: OAuth + API Key both available per card",
+        "Request routing: prefer OAuth token, fall back to apikey (accountFallback parity)",
         "webCookie providers (2): session cookie capture flow"
       ]
     },
@@ -260,47 +186,45 @@
       "id": 35,
       "name": "Free/FreeTier Providers + E2E Verification",
       "status": "pending",
-      "description": "18 freeTier + 5 free providers fully working (these need no key — must work out of the box after 'Enable'). E2E verification pass: for every category, pick representative providers and verify full chat completion through the gateway. Final quota dashboard polish.",
+      "description": "18 freeTier + 5 free providers working out-of-box after Enable. E2E pass: representative providers from every category verified for full chat completion. Quota dashboard polish.",
       "tasks": [
-        "freeTier providers: verify no-auth transport works (some need implicit session/token bootstrap)",
-        "free providers: one-click enable → immediate chat success (zero-config promise)",
-        "E2E test suite: scripted chat completion through gateway for 10+ representative providers",
-        "Panel quota page: real quota data for providers that expose usage APIs",
-        "Documentation: provider support matrix (auth modes, formats, quota support) in README"
+        "freeTier: verify no-auth transport (some need implicit session bootstrap)",
+        "free: one-click enable → immediate chat success (zero-config)",
+        "E2E test suite: scripted chat completion for 10+ providers",
+        "Panel quota page: real quota data where APIs expose it",
+        "README: provider support matrix (auth modes, formats, quota)"
       ]
     }
   ],
   "upstream_ports": [
-    { "source": "9router#2877", "what": "Gemini tool schema sanitization (cleanJSONSchemaForAntigravity → internal/translator/schema.go)", "when": "2026-07-28" },
-    { "source": "9router#2881", "what": "Kimi apikey routing: ApiKeyBaseURL/ApiKeyAPIType + EffectiveBaseURL(), platform keys → api.moonshot.cn/v1", "when": "2026-07-28" },
-    { "source": "9router@c97963c", "what": "Raw body preservation: unknown fields (service_tier, top_p, stop) pass through to upstream", "when": "2026-07-28" },
-    { "source": "9router#2873", "what": "Cache-read token tracking (cached_tokens/reasoning_tokens in usage extraction + meta)", "when": "2026-07-28" },
-    { "source": "9router#2747", "what": "Preserve content_block index in Claude SSE for correct tool_call ordering", "when": "2026-07-28" },
+    { "source": "9router#2877", "what": "Gemini tool schema sanitization → internal/translator/schema.go", "when": "2026-07-28" },
+    { "source": "9router#2881", "what": "Kimi apikey routing: ApiKeyBaseURL + EffectiveBaseURL()", "when": "2026-07-28" },
+    { "source": "9router@c97963c", "what": "Raw body preservation: unknown fields pass through to upstream", "when": "2026-07-28" },
+    { "source": "9router#2873", "what": "Cache-read token tracking (cached_tokens/reasoning_tokens)", "when": "2026-07-28" },
+    { "source": "9router#2747", "what": "Preserve content_block index in Claude SSE", "when": "2026-07-28" },
     { "source": "9router#2869", "what": "Guard empty deltas / doubled tool-call arguments", "when": "2026-07-28" },
-    { "source": "9router#2767", "what": "Per-provider token-saver exclusion list (Settings.TokenSaverExclude)", "when": "2026-07-28" },
-    { "source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities per model", "when": "2026-07-28" },
-    { "source": "9router#2884", "what": "Schema cleaner property-name map safety: walkers thread isSchema flag, params named 'title'/'format'/'default' no longer corrupted", "when": "2026-07-30" },
-    { "source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} nodes after $ref removal to object+reason placeholder", "when": "2026-07-30" },
-    { "source": "9router@6fcd273", "what": "Registry sync: 10 new providers (api-airforce, baidu, bazaarlink, bluesminds, kilo-gateway, llm7, morph, poolside, sambanova, tencent), Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog", "when": "2026-07-30" },
-    { "source": "VansRouter", "what": "Loop guard detection + termination prompt injection (Phase 9)", "when": "2026-07-23" }
+    { "source": "9router#2767", "what": "Per-provider token-saver exclusion list", "when": "2026-07-28" },
+    { "source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities", "when": "2026-07-28" },
+    { "source": "9router#2884", "what": "Schema cleaner property-name map safety", "when": "2026-07-30" },
+    { "source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} after $ref removal", "when": "2026-07-30" },
+    { "source": "9router@6fcd273", "what": "Registry sync: 10 new providers + Claude Opus 5 + Gemini 3.6 Flash + Laguna", "when": "2026-07-30" },
+    { "source": "VansRouter", "what": "Loop guard + termination prompt (Phase 9)", "when": "2026-07-23" }
   ],
   "upstream_commits": {
     "decolua/9router": "6fcd273830695bbca4a45c9fea4a42c3e9fd73d1"
   },
   "upstream_notes": {
-    "decolua/9router": "primary upstream, sync every maintenance cycle. Scan open issues + merged PRs as hardening input; record ported items in upstream_ports.",
-    "Vanszs/VansRouter": "fork of 9router, reference only for unique enhancements (loop guard, termination prompt). Do NOT regular-diff."
+    "decolua/9router": "primary upstream, sync every maintenance cycle",
+    "Vanszs/VansRouter": "fork, reference only for unique enhancements. Do NOT regular-diff."
   },
   "maintenance_config": {
-    "scan_since": "2026-07-30",
+    "scan_since": "2026-07-31",
     "max_items_per_cycle": 50,
-    "sort": "updated desc",
     "relevant_paths": ["open-sse/handlers/", "open-sse/translator/", "open-sse/services/", "open-sse/providers/registry/", "open-sse/config/"],
     "skip_paths": ["open-sse/translator/formats/kiro", "open-sse/translator/formats/codex-responses", "src/app/(dashboard)/"],
-    "priority": "P0: merged PR touching handlers/translator/services → must evaluate. P1: open bug on existing feature → preventive fix. P2: registry changes → baseUrl/model updates. P3: features → record as candidate.",
-    "last_scan_result": "synced to 6fcd273: Gemini schema fix + 10 providers + catalog updates"
+    "priority": "P0: merged PR touching handlers/translator/services. P1: open bug on existing feature. P2: registry changes. P3: features → candidate."
   },
   "future_candidates": [
-    { "what": "OpenAI Responses API adapter (Chat Completions ↔ Responses bidirectional translation)", "why": "Codex structured output (json_schema) fails without it (9router#2896). Codex API still unstable — wait.", "priority": "low" }
+    { "what": "OpenAI Responses API adapter", "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.", "priority": "low" }
   ]
 }
