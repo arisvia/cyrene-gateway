@@ -3,8 +3,8 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 34,
-  "last_updated": "2026-07-31",
+  "current_phase": 35,
+  "last_updated": "2026-08-01",
   "phases": [
     {
       "id": -1,
@@ -145,14 +145,8 @@
     {
       "id": 34,
       "name": "OAuth Batch 2 + Dual-Auth (12+24)",
-      "status": "pending",
-      "description": "Remaining OAuth: github, copilot (multi-step exchange), codebuddy, codebuddy-intl, trae, zed, windsurf, grok-cli, gitlab, kilocode, cursor, cline. Wire dual-auth for 24 providers: panel shows both paths, request picks credential by mode.",
-      "tasks": [
-        "Port remaining refresh implementations (copilot multi-step is complex)",
-        "Dual-auth panel UX: OAuth + API Key both available per card",
-        "Request routing: prefer OAuth token, fall back to apikey (accountFallback parity)",
-        "webCookie providers (2): session cookie capture flow"
-      ]
+      "status": "done",
+      "summary": "Refresh profiles: github, cline/clinepass (workos:), codebuddy-cn/intl (X-Refresh-Token), trae (ExchangeToken), copilot multi-step (GitHub→Copilot token). No-refresh: kilocode/cursor/zed/windsurf. Auth hooks: clineHeaders, kilocodeOrg. Dual-auth: OAuth-preferred selection with apikey fallback. Cookie auth scheme for webCookie providers. Registry metadata: github copilot headers, codebuddy transport, cline/kilocode hooks. 12 tests."
     },
     {
       "id": 35,
