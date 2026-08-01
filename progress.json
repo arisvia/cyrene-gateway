@@ -3,7 +3,7 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 35,
+  "current_phase": 36,
   "last_updated": "2026-08-01",
   "phases": [
     {
@@ -151,15 +151,8 @@
     {
       "id": 35,
       "name": "Free/FreeTier Providers + E2E Verification",
-      "status": "pending",
-      "description": "18 freeTier + 5 free providers working out-of-box after Enable. E2E pass: representative providers from every category verified for full chat completion. Quota dashboard polish.",
-      "tasks": [
-        "freeTier: verify no-auth transport (some need implicit session bootstrap)",
-        "free: one-click enable → immediate chat success (zero-config)",
-        "E2E test suite: scripted chat completion for 10+ providers",
-        "Panel quota page: real quota data where APIs expose it",
-        "README: provider support matrix (auth modes, formats, quota)"
-      ]
+      "status": "done",
+      "summary": "mimo-free marked Hidden (service ended). E2E test suite: 11 providers across all categories (openai/deepseek/openrouter/cerebras/groq/nvidia/opencode/api-airforce/github/anthropic/gemini), NoAuth auto-provision, SSE streaming, registry completeness, category consistency. README provider support matrix."
     }
   ],
   "upstream_ports": [
