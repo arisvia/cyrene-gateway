@@ -262,6 +262,11 @@ func init() {
 		TextIcon:     "CL",
 		TokenURL:     "https://api.cline.bot/api/v1/auth/token",
 		AuthorizeURL: "https://api.cline.bot/api/v1/auth/authorize",
+		Headers: map[string]string{
+			"HTTP-Referer": "https://cline.bot",
+			"X-Title":      "Cline",
+		},
+		AuthHooks: []string{"clineHeaders"},
 	}
 	Registry["clinepass"] = ProviderInfo{
 		ID: "clinepass", Name: "ClinePass",
@@ -298,6 +303,16 @@ func init() {
 		Website:  "https://copilot.tencent.com",
 		Icon:     "smart_toy",
 		TokenURL: "https://copilot.tencent.com/v2/plugin/auth/token",
+		Headers: map[string]string{
+			"User-Agent":          "CLI/2.108.1 CodeBuddy/2.108.1",
+			"X-Product":           "SaaS",
+			"X-IDE-Type":          "CLI",
+			"X-IDE-Name":          "CLI",
+			"x-requested-with":    "XMLHttpRequest",
+			"x-codebuddy-request": "1",
+		},
+		ForceStream:    true,
+		ThinkingFormat: "openai",
 	}
 	Registry["codex"] = ProviderInfo{
 		ID: "codex", Name: "OpenAI Codex",
@@ -558,6 +573,16 @@ func init() {
 		TokenURL:      "https://github.com/login/oauth/access_token",
 		AuthorizeURL:  "https://github.com/login/oauth/authorize",
 		ClientID:      "Iv1.b507a08c87ecfe98",
+		Headers: map[string]string{
+			"copilot-integration-id":              "vscode-chat",
+			"editor-version":                      "vscode/1.110.0",
+			"editor-plugin-version":               "copilot-chat/0.38.0",
+			"user-agent":                          "GitHubCopilotChat/0.38.0",
+			"openai-intent":                       "conversation-panel",
+			"x-github-api-version":                "2025-04-01",
+			"x-vscode-user-agent-library-version": "electron-fetch",
+			"X-Initiator":                         "user",
+		},
 	}
 	Registry["gitlab"] = ProviderInfo{
 		ID: "gitlab", Name: "GitLab Duo",
@@ -642,10 +667,11 @@ func init() {
 		BaseURL: "https://grok.com/rest/app-chat/conversations/new",
 		APIType: "openai", AuthType: "cookie",
 		Category: "webCookie", AuthModes: []string{"cookie"}, Priority: 150,
-		Color:    "#1DA1F2",
-		Website:  "https://grok.com",
-		Icon:     "auto_awesome",
-		TextIcon: "GW",
+		Color:      "#1DA1F2",
+		Website:    "https://grok.com",
+		Icon:       "auto_awesome",
+		TextIcon:   "GW",
+		AuthScheme: "cookie",
 	}
 	Registry["groq"] = ProviderInfo{
 		ID: "groq", Name: "Groq",
@@ -750,10 +776,11 @@ func init() {
 		BaseURL: "https://api.kilo.ai/api/openrouter/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 70,
-		Color:    "#FF6B35",
-		Website:  "https://kilocode.ai",
-		Icon:     "code",
-		TextIcon: "KC",
+		Color:     "#FF6B35",
+		Website:   "https://kilocode.ai",
+		Icon:      "code",
+		TextIcon:  "KC",
+		AuthHooks: []string{"kilocodeOrg"},
 	}
 	Registry["kimchi"] = ProviderInfo{
 		ID: "kimchi", Name: "Kimchi",
@@ -1053,10 +1080,11 @@ func init() {
 		BaseURL: "https://www.perplexity.ai/rest/sse/perplexity_ask",
 		APIType: "openai", AuthType: "cookie",
 		Category: "webCookie", AuthModes: []string{"cookie"}, Priority: 220,
-		Color:    "#20808D",
-		Website:  "https://www.perplexity.ai",
-		Icon:     "search",
-		TextIcon: "PW",
+		Color:      "#20808D",
+		Website:    "https://www.perplexity.ai",
+		Icon:       "search",
+		TextIcon:   "PW",
+		AuthScheme: "cookie",
 	}
 	Registry["perplexity"] = ProviderInfo{
 		ID: "perplexity", Name: "Perplexity",

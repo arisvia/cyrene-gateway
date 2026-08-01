@@ -123,6 +123,13 @@ func (s *Server) getHTTPClient(timeout time.Duration) *http.Client {
 // Uses dedup lock to prevent concurrent refreshes for the same token.
 // Returns true if refresh was attempted (regardless of success).
 func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
+	// GitHub Copilot: multi-step exchange (GitHub OAuth token → Copilot API token).
+	// The stored access_token is the GitHub OAuth token; we exchange it for a
+	// short-lived Copilot token before each request when the cached one expires.
+	if conn.Provider == "github" {
+		return s.tryRefreshCopilotToken(conn)
+	}
+
 	if !provider.ShouldRefresh(conn) {
 		return false
 	}
@@ -140,6 +147,52 @@ func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 		return true
 	}
 	provider.ApplyRefreshResult(conn, result)
+	s.DB.UpdateConnection(conn)
+	return true
+}
+
+// tryRefreshCopilotToken exchanges the stored GitHub OAuth token for a fresh
+// Copilot API token. The GitHub token is long-lived; the Copilot token is
+// short-lived (~30 min) and cached in ProviderSpecificData.copilotToken.
+func (s *Server) tryRefreshCopilotToken(conn *model.ProviderConnection) bool {
+	psd := conn.Data.ProviderSpecificData
+	if psd == nil {
+		psd = make(map[string]any)
+		conn.Data.ProviderSpecificData = psd
+	}
+
+	// Check if cached copilot token is still valid.
+	if expAt, ok := psd["copilotTokenExpiresAt"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, expAt); err == nil && time.Now().Before(t.Add(-2*time.Minute)) {
+			if token, ok := psd["copilotToken"].(string); ok && token != "" {
+				conn.Data.AccessToken = token
+				return false
+			}
+		}
+	}
+
+	githubToken := conn.Data.AccessToken
+	if psd["githubAccessToken"] != nil {
+		if gt, ok := psd["githubAccessToken"].(string); ok && gt != "" {
+			githubToken = gt
+		}
+	}
+
+	result, err := provider.DedupRefresh("copilot", githubToken, func() (*provider.RefreshResult, error) {
+		return provider.ExchangeCopilotToken(githubToken, nil)
+	})
+	if err != nil {
+		slog.Warn("Copilot token exchange failed", "error", err)
+		return true
+	}
+
+	// Cache the copilot token; preserve the GitHub token for future exchanges.
+	psd["githubAccessToken"] = githubToken
+	psd["copilotToken"] = result.AccessToken
+	if result.ExpiresIn > 0 {
+		psd["copilotTokenExpiresAt"] = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
+	}
+	conn.Data.AccessToken = result.AccessToken
 	s.DB.UpdateConnection(conn)
 	return true
 }

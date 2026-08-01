@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -164,11 +165,25 @@ func SelectCredential(conns []model.ProviderConnection, modelName string, exclud
 }
 
 // SelectCredentialWithQuota extends SelectCredential with quota awareness.
+// For dual-auth providers (AuthModes includes both "oauth" and "apikey"),
+// OAuth connections are preferred over API key connections (9router accountFallback parity).
 func SelectCredentialWithQuota(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker) *model.ProviderConnection {
 	now := time.Now()
 
-	for i := range conns {
-		c := &conns[i]
+	// Sort: prefer OAuth connections over API key for dual-auth fallback.
+	sorted := make([]model.ProviderConnection, len(conns))
+	copy(sorted, conns)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		iOAuth := sorted[i].AuthType == "oauth" || sorted[i].AuthType == "access_token"
+		jOAuth := sorted[j].AuthType == "oauth" || sorted[j].AuthType == "access_token"
+		if iOAuth != jOAuth {
+			return iOAuth
+		}
+		return false
+	})
+
+	for i := range sorted {
+		c := &sorted[i]
 
 		// Skip excluded connections (already tried and failed)
 		if excludeIDs != nil && excludeIDs[c.ID] {

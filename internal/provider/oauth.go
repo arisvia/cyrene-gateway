@@ -22,12 +22,19 @@ const RefreshLeadTime = 5 * time.Minute
 
 // Per-provider refresh lead overrides (mirrors 9router REFRESH_LEAD_MS).
 var refreshLeadOverrides = map[string]time.Duration{
-	"codex":  5 * 24 * time.Hour, // 432000000ms — codex tokens are long-lived
-	"iflow":  24 * time.Hour,     // 86400000ms
-	"kimi":   5 * time.Minute,
-	"xai":    5 * time.Minute,
-	"qwen":   5 * time.Minute,
-	"google": 5 * time.Minute,
+	"codex":          5 * 24 * time.Hour, // 432000000ms — codex tokens are long-lived
+	"iflow":          24 * time.Hour,     // 86400000ms
+	"kimi":           5 * time.Minute,
+	"xai":            5 * time.Minute,
+	"qwen":           5 * time.Minute,
+	"google":         5 * time.Minute,
+	"grok-cli":       5 * time.Minute,
+	"github":         5 * time.Minute,
+	"cline":          5 * time.Minute,
+	"clinepass":      5 * time.Minute,
+	"codebuddy-cn":   5 * time.Minute,
+	"codebuddy-intl": 5 * time.Minute,
+	"trae":           5 * time.Minute,
 }
 
 // GetRefreshLead returns the pre-expiry buffer for a provider.
@@ -182,6 +189,27 @@ var refreshProfiles = map[string]refreshProfile{
 	"kiro": {
 		// Kiro has multi-path refresh handled separately.
 	},
+	// --- Phase 34: Batch 2 OAuth providers ---
+	"github": {
+		url: "https://github.com/login/oauth/access_token",
+	},
+	"cline": {
+		url:        "https://api.cline.bot/api/v1/auth/refresh",
+		bodyFormat: "json",
+	},
+	"clinepass": {
+		url:        "https://api.cline.bot/api/v1/auth/refresh",
+		bodyFormat: "json",
+	},
+	"codebuddy-cn": {
+		// CodeBuddy CN uses X-Refresh-Token header, handled separately.
+	},
+	"codebuddy-intl": {
+		// CodeBuddy intl uses X-Refresh-Token header, handled separately.
+	},
+	"trae": {
+		// Trae uses ExchangeToken with JSON body, handled separately.
+	},
 }
 
 // kimiRefreshHeaders builds X-Msh-* headers for kimi token refresh.
@@ -263,9 +291,30 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
 
+	// Providers with no refresh support (long-lived tokens or device-code only).
+	switch providerID {
+	case "kilocode", "cursor", "zed", "windsurf":
+		return nil, fmt.Errorf("provider %s does not support token refresh (long-lived credential)", providerID)
+	}
+
 	// Kiro has a completely different multi-path refresh.
 	if providerID == "kiro" {
 		return refreshKiro(conn, client)
+	}
+
+	// CodeBuddy CN/intl use X-Refresh-Token header (not standard OAuth2 body).
+	if providerID == "codebuddy-cn" || providerID == "codebuddy-intl" {
+		return refreshCodebuddy(providerID, conn, client)
+	}
+
+	// Trae uses ExchangeToken with a non-standard JSON body.
+	if providerID == "trae" {
+		return refreshTrae(conn, client)
+	}
+
+	// Cline uses a custom JSON refresh with workos: prefix.
+	if providerID == "cline" || providerID == "clinepass" {
+		return refreshCline(conn, client)
 	}
 
 	info, ok := Registry[providerID]
@@ -535,6 +584,286 @@ func refreshKiro(conn *model.ProviderConnection, client *http.Client) (*RefreshR
 		}
 	}
 	return result, nil
+}
+
+// --- Phase 34: Batch 2 special refresh implementations ---
+
+// refreshCodebuddy handles CodeBuddy CN/intl token refresh via X-Refresh-Token
+// header (not standard OAuth2 body). Response: { code: 0, data: { accessToken, refreshToken, expiresIn } }.
+func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
+	var refreshURL, domain, userAgent string
+	switch providerID {
+	case "codebuddy-cn":
+		refreshURL = "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
+		domain = "copilot.tencent.com"
+		userAgent = "CLI/2.63.2 CodeBuddy/2.63.2"
+	default: // codebuddy-intl
+		refreshURL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
+		domain = "www.codebuddy.ai"
+		userAgent = "IDE/2.63.2 CodeBuddy/2.63.2"
+	}
+
+	req, err := http.NewRequest("POST", refreshURL, strings.NewReader("{}"))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("X-Domain", domain)
+	req.Header.Set("X-Refresh-Token", conn.Data.RefreshToken)
+	req.Header.Set("X-Auth-Refresh-Source", "plugin")
+	req.Header.Set("X-Product", "SaaS")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("codebuddy refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
+	}
+
+	var data struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			AccessToken  string `json:"accessToken"`
+			RefreshToken string `json:"refreshToken"`
+			ExpiresIn    int    `json:"expiresIn"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &data); err != nil {
+		return nil, fmt.Errorf("codebuddy decode failed: %w", err)
+	}
+	if data.Code != 0 || data.Data.AccessToken == "" {
+		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
+	}
+
+	rt := data.Data.RefreshToken
+	if rt == "" {
+		rt = conn.Data.RefreshToken
+	}
+	return &RefreshResult{
+		AccessToken:  data.Data.AccessToken,
+		RefreshToken: rt,
+		ExpiresIn:    data.Data.ExpiresIn,
+	}, nil
+}
+
+// refreshTrae handles Trae's ExchangeToken refresh (non-standard JSON body).
+// Response: { Result: { AccessToken, RefreshToken, ExpiresAt } }.
+func refreshTrae(conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
+	exchangeURL := "https://antigravity-cockpit-tools.bytedance.com/api/v1/auth/ExchangeToken"
+
+	body, _ := json.Marshal(map[string]string{
+		"ClientID":     "ono9krqynydwx5",
+		"RefreshToken": conn.Data.RefreshToken,
+		"ClientSecret": "-",
+		"UserID":       "",
+	})
+
+	req, err := http.NewRequest("POST", exchangeURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "Trae/1.0.0 antigravity-cockpit-tools")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("trae refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
+	}
+
+	var payload struct {
+		Result struct {
+			AccessToken  string `json:"AccessToken"`
+			RefreshToken string `json:"RefreshToken"`
+			ExpiresAt    any    `json:"ExpiresAt"`
+		} `json:"Result"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return nil, fmt.Errorf("trae decode failed: %w", err)
+	}
+	if payload.Result.AccessToken == "" {
+		return nil, fmt.Errorf("trae refresh returned no AccessToken")
+	}
+
+	rt := payload.Result.RefreshToken
+	if rt == "" {
+		rt = conn.Data.RefreshToken
+	}
+
+	var expiresIn int
+	switch v := payload.Result.ExpiresAt.(type) {
+	case float64:
+		expiresIn = int(v) - int(time.Now().Unix())
+		if expiresIn < 1 {
+			expiresIn = 1
+		}
+	case string:
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			expiresIn = int(time.Until(t).Seconds())
+			if expiresIn < 1 {
+				expiresIn = 1
+			}
+		}
+	}
+
+	return &RefreshResult{
+		AccessToken:  payload.Result.AccessToken,
+		RefreshToken: rt,
+		ExpiresIn:    expiresIn,
+	}, nil
+}
+
+// refreshCline handles Cline's custom JSON refresh with workos: prefix.
+// Response: { data: { accessToken, refreshToken, expiresAt } }.
+func refreshCline(conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
+	refreshURL := "https://api.cline.bot/api/v1/auth/refresh"
+
+	body, _ := json.Marshal(map[string]string{
+		"refreshToken": conn.Data.RefreshToken,
+		"grantType":    "refresh_token",
+		"clientType":   "extension",
+	})
+
+	req, err := http.NewRequest("POST", refreshURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cline refresh request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
+	}
+
+	var payload struct {
+		Data struct {
+			AccessToken  string `json:"accessToken"`
+			RefreshToken string `json:"refreshToken"`
+			ExpiresAt    string `json:"expiresAt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return nil, fmt.Errorf("cline decode failed: %w", err)
+	}
+	if payload.Data.AccessToken == "" {
+		return nil, fmt.Errorf("cline refresh returned no accessToken")
+	}
+
+	accessToken := payload.Data.AccessToken
+	if !strings.HasPrefix(accessToken, "workos:") {
+		accessToken = "workos:" + accessToken
+	}
+
+	rt := payload.Data.RefreshToken
+	if rt == "" {
+		rt = conn.Data.RefreshToken
+	}
+
+	var expiresIn int
+	if payload.Data.ExpiresAt != "" {
+		if t, err := time.Parse(time.RFC3339, payload.Data.ExpiresAt); err == nil {
+			expiresIn = int(time.Until(t).Seconds())
+			if expiresIn < 1 {
+				expiresIn = 1
+			}
+		}
+	}
+
+	return &RefreshResult{
+		AccessToken:  accessToken,
+		RefreshToken: rt,
+		ExpiresIn:    expiresIn,
+	}, nil
+}
+
+// --- Copilot Multi-Step Token Exchange ---
+
+// CopilotTokenURL is the endpoint that exchanges a GitHub OAuth token for a
+// short-lived Copilot API token (9router PROVIDER_OAUTH.github.copilotTokenUrl).
+const CopilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
+
+// Copilot constants matching 9router GITHUB_COPILOT.
+const (
+	copilotUserAgent     = "GitHubCopilotChat/0.38.0"
+	copilotVSCodeVersion = "vscode/1.110.0"
+	copilotChatVersion   = "copilot-chat/0.38.0"
+	copilotAPIVersion    = "2025-04-01"
+)
+
+// ExchangeCopilotToken exchanges a GitHub OAuth access token for a short-lived
+// Copilot API token. This is the multi-step exchange: GitHub device code →
+// GitHub OAuth token → Copilot token.
+func ExchangeCopilotToken(githubAccessToken string, client *http.Client) (*RefreshResult, error) {
+	if githubAccessToken == "" {
+		return nil, fmt.Errorf("github access token is required")
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+
+	req, err := http.NewRequest("GET", CopilotTokenURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "token "+githubAccessToken)
+	req.Header.Set("User-Agent", copilotUserAgent)
+	req.Header.Set("Editor-Version", copilotVSCodeVersion)
+	req.Header.Set("Editor-Plugin-Version", copilotChatVersion)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("x-github-api-version", copilotAPIVersion)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("copilot token exchange failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
+	}
+
+	var data struct {
+		Token     string `json:"token"`
+		ExpiresAt int64  `json:"expires_at"`
+	}
+	if err := json.Unmarshal(respBody, &data); err != nil {
+		return nil, fmt.Errorf("copilot token decode failed: %w", err)
+	}
+	if data.Token == "" {
+		return nil, fmt.Errorf("copilot token exchange returned no token")
+	}
+
+	expiresIn := int(time.Until(time.Unix(data.ExpiresAt, 0)).Seconds())
+	if expiresIn < 1 {
+		expiresIn = 1
+	}
+
+	return &RefreshResult{
+		AccessToken: data.Token,
+		ExpiresIn:   expiresIn,
+	}, nil
 }
 
 // ApplyRefreshResult updates connection data with refreshed credentials.

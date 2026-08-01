@@ -19,6 +19,8 @@ const (
 	AuthRaw = "raw"
 	// AuthQuery sends the token as a URL query parameter (e.g. Gemini ?key=).
 	AuthQuery = "query"
+	// AuthCookie sends the token as a Cookie header (webCookie providers).
+	AuthCookie = "cookie"
 )
 
 // anthropicAPIVersion is the single source for the Anthropic API version header,
@@ -185,6 +187,8 @@ func ApplyAuth(req *http.Request, t Transport, creds Credentials) {
 		if t.Auth.AnthropicVersion && req.Header.Get("anthropic-version") == "" {
 			req.Header.Set("anthropic-version", anthropicAPIVersion)
 		}
+	case AuthCookie:
+		req.Header.Set("Cookie", token)
 	default: // AuthBearer
 		header := t.Auth.Header
 		if header == "" {
@@ -197,7 +201,9 @@ func ApplyAuth(req *http.Request, t Transport, creds Credentials) {
 // authHooks is the registry of provider-specific header overlays. Ported from
 // 9router HEADER_HOOKS (open-sse/executors/default.js).
 var authHooks = map[string]func(http.Header, Credentials){
-	"kimiHeaders": kimiHeadersHook,
+	"kimiHeaders":  kimiHeadersHook,
+	"clineHeaders": clineHeadersHook,
+	"kilocodeOrg":  kilocodeOrgHook,
 }
 
 // kimiHeadersHook injects the X-Msh-* client fingerprint headers required by the
@@ -238,4 +244,34 @@ func deviceName() string {
 		return hn
 	}
 	return "unknown"
+}
+
+// clineHeadersHook injects Cline-specific headers. The token is prefixed with
+// "workos:" per 9router shared/clineAuth.js getClineAccessToken.
+func clineHeadersHook(h http.Header, c Credentials) {
+	token := c.token()
+	if token != "" && !strings.HasPrefix(token, "workos:") {
+		token = "workos:" + token
+	}
+	if token != "" {
+		h.Set("Authorization", "Bearer "+token)
+	}
+	h.Set("HTTP-Referer", "https://cline.bot")
+	h.Set("X-Title", "Cline")
+	h.Set("User-Agent", "CyreneGateway/1.0.0")
+	h.Set("X-PLATFORM", runtime.GOOS)
+	h.Set("X-CLIENT-TYPE", "cyrene-gateway")
+	h.Set("X-CLIENT-VERSION", "1.0.0")
+	h.Set("X-CORE-VERSION", "1.0.0")
+	h.Set("X-IS-MULTIROOT", "false")
+}
+
+// kilocodeOrgHook injects the X-Kilocode-OrganizationID header when the
+// connection has an orgId in providerSpecificData (9router kilocodeOrg hook).
+func kilocodeOrgHook(h http.Header, c Credentials) {
+	if c.ProviderSpecificData != nil {
+		if orgID, ok := c.ProviderSpecificData["orgId"].(string); ok && orgID != "" {
+			h.Set("X-Kilocode-OrganizationID", orgID)
+		}
+	}
 }
