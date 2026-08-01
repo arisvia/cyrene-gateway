@@ -876,6 +876,7 @@ func init() {
 		TextIcon: "MF",
 		HasFree:  true,
 		NoAuth:   true,
+		Hidden:   true, // Xiaomi ended the free MiMo channel (9router mimo-free.js)
 	}
 	Registry["minimax-cn"] = ProviderInfo{
 		ID: "minimax-cn", Name: "Minimax (China)",

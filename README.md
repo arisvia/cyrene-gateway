@@ -136,9 +136,39 @@ webui/embed.go         # go:embed all:dist
 - lucide-vue-next（图标）
 - 玻璃拟态设计系统（dark/light 双主题）
 
+## Provider 支持矩阵
+
+| 分类 | 数量 | 认证方式 | 说明 |
+|------|------|----------|------|
+| **apikey** | ~70 | API Key (Bearer / x-api-key / query) | OpenAI, Anthropic, DeepSeek, Groq, Cerebras, Mistral, Together, Fireworks 等 |
+| **oauth** | ~20 | OAuth 2.0 (PKCE / device-code / token import) | Claude, Gemini CLI, GitHub Copilot, Kimi, Codex, Kiro, Trae 等 |
+| **freeTier** | ~18 | API Key 或 None | Gemini, OpenRouter, NVIDIA, Cloudflare AI, Poolside, Vertex AI 等 |
+| **free** | 5 | None (零配置) | OpenCode Free, Qoder, Devin CLI 等（一键启用） |
+| **webCookie** | 2 | Cookie | Grok Web, Perplexity Web |
+
+### 传输格式
+
+| 格式 | Provider 示例 |
+|------|--------------|
+| OpenAI (`/v1/chat/completions`) | OpenAI, DeepSeek, OpenRouter, Groq, Cerebras, NVIDIA |
+| Anthropic (`/v1/messages`) | Anthropic, Minimax CN, GLM (claude endpoint) |
+| Gemini (`:generateContent`) | Gemini, Gemini CLI |
+
+### 免费 Provider 快速开始
+
+```bash
+# 一键启用所有免费 Provider（零配置，无需 API Key）
+curl -X POST http://localhost:20128/api/providers/enable-free
+
+# 立即使用
+curl http://localhost:20128/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"opencode/claude-sonnet-4-20250514","messages":[{"role":"user","content":"hello"}]}'
+```
+
 ## 进度
 
-本项目正在从 9router 逐阶段重构，详见 `progress.json`。当前处于 Phase 16（Provider 体验重塑）。
+本项目正在从 9router 逐阶段重构，详见 `progress.json`。
 
 ## License
 
