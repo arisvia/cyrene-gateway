@@ -480,13 +480,32 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 		},
 	}
 
-	// Usage
+	// Usage. Claude's input_tokens EXCLUDES cached tokens, so folding only
+	// input+output under-reports prompt size on cache-capable upstreams. Fold
+	// the cache counters in (same canonical accounting as usage.ExtractFromClaude,
+	// 9router#2873) and keep them visible via prompt_tokens_details so a client
+	// can tell a cache hit from a small prompt (9router@41606a37).
 	if usage, ok := claudeResp["usage"].(map[string]any); ok {
-		openAIResp["usage"] = map[string]any{
-			"prompt_tokens":     usage["input_tokens"],
-			"completion_tokens": usage["output_tokens"],
-			"total_tokens":      addNumbers(usage["input_tokens"], usage["output_tokens"]),
+		cacheRead := usageNumber(usage["cache_read_input_tokens"])
+		cacheCreate := usageNumber(usage["cache_creation_input_tokens"])
+		inTokens := usageNumber(usage["input_tokens"]) + cacheRead + cacheCreate
+		outTokens := usageNumber(usage["output_tokens"])
+		u := map[string]any{
+			"prompt_tokens":     inTokens,
+			"completion_tokens": outTokens,
+			"total_tokens":      inTokens + outTokens,
 		}
+		details := map[string]any{}
+		if cacheRead > 0 {
+			details["cached_tokens"] = cacheRead
+		}
+		if cacheCreate > 0 {
+			details["cache_creation_tokens"] = cacheCreate
+		}
+		if len(details) > 0 {
+			u["prompt_tokens_details"] = details
+		}
+		openAIResp["usage"] = u
 	}
 
 	return json.Marshal(openAIResp)
@@ -813,11 +832,10 @@ func geminiFinishToOpenAI(reason string) string {
 	}
 }
 
-func addNumbers(a, b any) any {
-	af, aok := a.(float64)
-	bf, bok := b.(float64)
-	if aok && bok {
-		return af + bf
+// usageNumber converts a JSON-decoded usage counter to int (absent → 0).
+func usageNumber(v any) int {
+	if f, ok := v.(float64); ok {
+		return int(f)
 	}
 	return 0
 }

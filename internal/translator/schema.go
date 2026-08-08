@@ -70,7 +70,13 @@ func walkChildren(obj map[string]any, isSchema bool, fn func(map[string]any, boo
 var unsupportedSchemaKeywords = map[string]bool{
 	// Basic constraints
 	"minLength": true, "maxLength": true, "exclusiveMinimum": true, "exclusiveMaximum": true,
-	"minItems": true, "maxItems": true, "format": true,
+	"minItems": true, "maxItems": true, "format": true, "multipleOf": true,
+	// Array keywords the Gemini schema proto has no field for — agent tool
+	// schemas set these routinely and one occurrence rejects the whole request
+	// with "Unknown name ...: Cannot find field" (9router@2abe8b85)
+	"uniqueItems": true, "contains": true,
+	// 2020-12 keywords with no Gemini equivalent
+	"unevaluatedProperties": true, "unevaluatedItems": true, "contentSchema": true,
 	// Claude VALIDATED mode rejects these
 	"default": true, "examples": true,
 	// JSON Schema meta keywords

@@ -553,3 +553,115 @@ func TestCleanJSONSchemaPropertyNameMapSafety(t *testing.T) {
 		t.Fatalf("page_id type should be string, got %v", pageID["type"])
 	}
 }
+
+func TestClaudeToOpenAIUsageCacheFold(t *testing.T) {
+	// Claude's input_tokens excludes cache counters; the translated OpenAI
+	// response must fold them in so prompt_tokens matches real prompt size
+	// (9router@41606a37), matching usage.ExtractFromClaude canonical totals.
+	claudeResp := map[string]any{
+		"id": "msg_cache",
+		"content": []any{
+			map[string]any{"type": "text", "text": "ok"},
+		},
+		"stop_reason": "end_turn",
+		"usage": map[string]any{
+			"input_tokens":                float64(2012),
+			"cache_read_input_tokens":     float64(5332),
+			"cache_creation_input_tokens": float64(100),
+			"output_tokens":               float64(7),
+		},
+	}
+	data, _ := json.Marshal(claudeResp)
+
+	result, err := claudeToOpenAI(data, "claude-sonnet-4-20250514")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var resp map[string]any
+	json.Unmarshal(result, &resp)
+
+	usage, ok := resp["usage"].(map[string]any)
+	if !ok {
+		t.Fatal("usage missing from translated response")
+	}
+	if usage["prompt_tokens"] != float64(2012+5332+100) {
+		t.Errorf("prompt_tokens should fold cache counters, got %v", usage["prompt_tokens"])
+	}
+	if usage["completion_tokens"] != float64(7) {
+		t.Errorf("completion_tokens mismatch, got %v", usage["completion_tokens"])
+	}
+	if usage["total_tokens"] != float64(2012+5332+100+7) {
+		t.Errorf("total_tokens mismatch, got %v", usage["total_tokens"])
+	}
+	details, ok := usage["prompt_tokens_details"].(map[string]any)
+	if !ok {
+		t.Fatal("prompt_tokens_details missing")
+	}
+	if details["cached_tokens"] != float64(5332) {
+		t.Errorf("cached_tokens mismatch, got %v", details["cached_tokens"])
+	}
+	if details["cache_creation_tokens"] != float64(100) {
+		t.Errorf("cache_creation_tokens mismatch, got %v", details["cache_creation_tokens"])
+	}
+}
+
+func TestCleanJSONSchemaGeminiArrayKeywords(t *testing.T) {
+	// Keywords the Gemini schema proto has no field for must be stripped or the
+	// whole request fails with "Unknown name ...: Cannot find field"
+	// (9router@2abe8b85).
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"items": map[string]any{
+				"type":        "array",
+				"uniqueItems": true,
+				"contains": map[string]any{
+					"type": "string",
+				},
+				"unevaluatedItems": true,
+			},
+			"ratio": map[string]any{
+				"type":       "number",
+				"multipleOf": float64(0.5),
+			},
+			"extra": map[string]any{
+				"type":                  "object",
+				"unevaluatedProperties": false,
+				"contentSchema":         map[string]any{"type": "string"},
+			},
+		},
+	}
+
+	cleaned := cleanJSONSchemaForGemini(schema)
+
+	for _, kw := range []string{"unevaluatedProperties", "unevaluatedItems", "contentSchema"} {
+		if _, ok := cleaned[kw]; ok {
+			t.Fatalf("top-level %s should be removed", kw)
+		}
+	}
+
+	props := cleaned["properties"].(map[string]any)
+
+	items := props["items"].(map[string]any)
+	for _, kw := range []string{"uniqueItems", "contains", "unevaluatedItems"} {
+		if _, ok := items[kw]; ok {
+			t.Fatalf("items.%s should be removed", kw)
+		}
+	}
+	if items["type"] != "array" {
+		t.Fatalf("items type should remain array, got %v", items["type"])
+	}
+
+	ratio := props["ratio"].(map[string]any)
+	if _, ok := ratio["multipleOf"]; ok {
+		t.Fatal("multipleOf should be removed")
+	}
+
+	extra := props["extra"].(map[string]any)
+	for _, kw := range []string{"unevaluatedProperties", "contentSchema"} {
+		if _, ok := extra[kw]; ok {
+			t.Fatalf("extra.%s should be removed", kw)
+		}
+	}
+}

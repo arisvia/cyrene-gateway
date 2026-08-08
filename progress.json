@@ -4,7 +4,7 @@
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
   "current_phase": 36,
-  "last_updated": "2026-08-02",
+  "last_updated": "2026-08-08",
   "phases": [
     {
       "id": -1,
@@ -20,7 +20,7 @@
         "Check 9router open-sse/providers/registry/ for new providers or baseUrl changes",
         "If no action needed: report 'no pending work' and exit"
       ],
-      "notes": "2026-07-28: URL double-append fix, Qoder COSY port, OpenCode Free, /v1/models free exposure, Gemini schema sanitization (#2877), Kimi apikey routing (#2881), raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix, 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog. 2026-07-31: nil-slice JSON null fix (all list endpoints), Media card field mapping fix, data dir unified to ~/.cyrene-gateway. 2026-08-02: maintenance cycle — no open issues/PRs; upstream HEAD still 6fcd273 (fully synced); build+tests green. No pending work."
+      "notes": "2026-07-28: URL double-append fix, Qoder COSY port, OpenCode Free, /v1/models free exposure, Gemini schema sanitization (#2877), Kimi apikey routing (#2881), raw body preservation (c97963c). 2026-07-30: upstream sync to 6fcd273 — Gemini empty schema fix, 10 new providers, Claude Opus 5 + Gemini 3.6 Flash + Laguna catalog. 2026-07-31: nil-slice JSON null fix (all list endpoints), Media card field mapping fix, data dir unified to ~/.cyrene-gateway. 2026-08-02: maintenance cycle — no open issues/PRs; upstream HEAD still 6fcd273 (fully synced); build+tests green. No pending work. 2026-08-08: merged dependabot PR #7 (modernc.org/sqlite 1.54→1.55, journal-rollback data-corruption fix). Upstream sync 6fcd2733→15223724 (42 commits, v0.5.50): ported 2abe8b85 (Gemini schema keyword strip) + 41606a37 (Claude→OpenAI usage cache fold). Deferred to future_candidates: TokenRouter + selfhosted STT/TTS/embedding providers (registry+media work), qwen provider removal, capacity/vision adapters, qoder PAT."
     },
     {
       "id": 1,
@@ -167,23 +167,29 @@
     { "source": "9router#2884", "what": "Schema cleaner property-name map safety", "when": "2026-07-30" },
     { "source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} after $ref removal", "when": "2026-07-30" },
     { "source": "9router@6fcd273", "what": "Registry sync: 10 new providers + Claude Opus 5 + Gemini 3.6 Flash + Laguna", "when": "2026-07-30" },
-    { "source": "VansRouter", "what": "Loop guard + termination prompt (Phase 9)", "when": "2026-07-23" }
+    { "source": "VansRouter", "what": "Loop guard + termination prompt (Phase 9)", "when": "2026-07-23" },
+    { "source": "9router@2abe8b85", "what": "Gemini schema strip: multipleOf/uniqueItems/contains/unevaluated*/contentSchema → translator/schema.go", "when": "2026-08-08" },
+    { "source": "9router@41606a37", "what": "Claude→OpenAI translated usage folds cache_read/cache_creation into prompt_tokens + prompt_tokens_details", "when": "2026-08-08" }
   ],
   "upstream_commits": {
-    "decolua/9router": "6fcd273830695bbca4a45c9fea4a42c3e9fd73d1"
+    "decolua/9router": "15223724c3e1ad898e84ef6e0cc1686cbafc8290"
   },
   "upstream_notes": {
     "decolua/9router": "primary upstream, sync every maintenance cycle",
     "Vanszs/VansRouter": "fork, reference only for unique enhancements. Do NOT regular-diff."
   },
   "maintenance_config": {
-    "scan_since": "2026-08-02",
+    "scan_since": "2026-08-08",
     "max_items_per_cycle": 50,
     "relevant_paths": ["open-sse/handlers/", "open-sse/translator/", "open-sse/services/", "open-sse/providers/registry/", "open-sse/config/"],
     "skip_paths": ["open-sse/translator/formats/kiro", "open-sse/translator/formats/codex-responses", "src/app/(dashboard)/"],
     "priority": "P0: merged PR touching handlers/translator/services. P1: open bug on existing feature. P2: registry changes. P3: features → candidate."
   },
   "future_candidates": [
-    { "what": "OpenAI Responses API adapter", "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.", "priority": "low" }
+    { "what": "OpenAI Responses API adapter", "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.", "priority": "low" },
+    { "what": "Registry additions from v0.5.50: TokenRouter, selfhosted-stt/tts/embedding providers", "why": "Feature-level (new providers + media adapters incl. MiMo TTS chat-completions voice adapter); needs a dedicated phase, not maintenance scope.", "priority": "medium" },
+    { "what": "Qwen provider removal", "why": "Upstream dropped qwen (portal.qwen.ai OAuth unreliable, dcdd4628). Go side has qwen in registry/OAuth flows/tests — removal is a cross-cutting change, do deliberately.", "priority": "medium" },
+    { "what": "Combo capacity/vision adapters", "why": "6498b31/8e59093 add vision/audio capacity routing with mimo fallback — new subsystem, phase-level work.", "priority": "medium" },
+    { "what": "Qoder PAT auth + Ollama background refresh + codebuddy-intl usage", "why": "d433c0b2/f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work.", "priority": "medium" }
   ]
 }
