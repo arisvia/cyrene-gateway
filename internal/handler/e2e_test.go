@@ -419,17 +419,13 @@ func TestE2EGeminiFormat(t *testing.T) {
 // TestE2ERegistryCompleteness verifies that all non-hidden chat providers in
 // the registry have the minimum required fields for routing.
 func TestE2ERegistryCompleteness(t *testing.T) {
-	// Providers that are media-only, search-only, or require user-configured
-	// base URLs (azure, ollama-local) are exempt from the BaseURL requirement.
-	exempt := map[string]bool{
-		"searxng": true, "topaz": true, "azure": true,
-		"local-device": true, "ollama-local": true,
-	}
 	for id, info := range provider.Registry {
 		if info.Hidden {
 			continue
 		}
-		if info.BaseURL == "" && info.Category != "oauth" && !exempt[id] {
+		// Providers with runtime-resolved base URLs (OAuth-only) carry an
+		// empty BaseURL by design; the category check covers them.
+		if info.BaseURL == "" && info.Category != "oauth" {
 			t.Errorf("provider %s: missing BaseURL", id)
 		}
 		if info.APIType == "" {

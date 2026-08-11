@@ -33,6 +33,9 @@ export interface RegistryProvider {
   headers?: Record<string, string>
   models?: string[]
   apiKeyUrl?: string
+  brand?: string
+  region?: string
+  authHint?: string
 }
 
 export interface RegistryCategory {

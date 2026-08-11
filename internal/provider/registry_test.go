@@ -2,31 +2,22 @@ package provider
 
 import "testing"
 
+// TestRegistryCompleteness pins the curated KEEP set (Phase 36 T1): 31 chat
+// providers across curated coding agents, direct vendor APIs, E2E-verified
+// aggregators/free tiers, and brand pairs. Registry IDs are stable.
 func TestRegistryCompleteness(t *testing.T) {
-	// All 112 providers from 9router registry must be present
 	expectedProviders := []string{
-		"alicode-intl", "alicode", "alims-intl", "anthropic", "antigravity",
-		"api-airforce", "assemblyai", "aws-polly", "azure", "baidu",
-		"bazaarlink", "black-forest-labs", "blackbox", "bluesminds", "brave-search",
-		"byteplus", "cartesia", "cerebras", "chutes", "claude",
-		"cline", "clinepass", "cloudflare-ai", "codebuddy-cn", "codebuddy-intl", "codex",
-		"cohere", "comfyui", "commandcode", "coqui", "cursor",
-		"deepgram", "deepseek", "devin-cli", "edge-tts", "elevenlabs", "exa",
-		"fal-ai", "featherless", "firecrawl", "fireworks", "gemini-cli",
-		"gemini", "github", "gitlab", "glm-cn", "glm",
-		"google-pse", "google-tts", "grok-cli", "grok-web", "groq",
-		"huggingface", "hyperbolic", "iflow", "inworld", "jina-ai",
-		"jina-reader", "kilo-gateway", "kilocode", "kimchi", "kimi",
-		"kiro", "linkup", "llm7", "local-device", "mimo-free",
-		"minimax-cn", "minimax", "mistral", "mmf", "morph",
-		"nanobanana", "nebius", "nvidia", "ollama-local", "ollama",
-		"openai", "opencode-go", "opencode", "openrouter", "perplexity-agent",
-		"perplexity-web", "perplexity", "playht", "poolside", "qoder",
-		"qwen", "recraft", "runwayml", "sambanova", "sdwebui",
-		"searchapi", "searxng", "serper", "siliconflow", "stability-ai",
-		"tavily", "tencent", "together", "topaz", "tortoise",
-		"venice", "vercel-ai-gateway", "vertex-partner", "vertex", "volcengine-ark",
-		"voyage-ai", "xai", "xiaomi-mimo", "xiaomi-tokenplan", "youcom",
+		// Curated coding providers (13)
+		"claude", "codex", "github", "grok-cli", "cursor", "qoder",
+		"codebuddy-intl", "kimi", "antigravity", "opencode", "openrouter",
+		"glm", "glm-cn",
+		// Direct vendor APIs (10)
+		"anthropic", "openai", "gemini", "vertex", "tencent",
+		"xai", "alicode-intl", "alicode", "alims-intl", "github-models",
+		// E2E-verified (5)
+		"deepseek", "cerebras", "groq", "nvidia", "api-airforce",
+		// Brand pairs / quota-ported (3)
+		"codebuddy-cn", "minimax", "minimax-cn",
 	}
 
 	for _, id := range expectedProviders {
@@ -44,11 +35,10 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":    70,
-		"oauth":     18,
-		"freeTier":  17,
-		"free":      5,
-		"webCookie": 2,
+		"apikey":   14,
+		"oauth":    11,
+		"freeTier": 5,
+		"free":     1,
 	}
 
 	for _, c := range cats {
@@ -95,9 +85,92 @@ func TestRegistryProviderFields(t *testing.T) {
 	}
 }
 
+// TestRegistryBrandRegion verifies Phase 36 T3 brand grouping metadata: every
+// sibling pair carries the same Brand and a distinct Region.
+func TestRegistryBrandRegion(t *testing.T) {
+	brands := map[string][]string{
+		"GLM":       {"glm", "glm-cn"},
+		"MiniMax":   {"minimax", "minimax-cn"},
+		"CodeBuddy": {"codebuddy-intl", "codebuddy-cn"},
+		"Alibaba":   {"alicode-intl", "alicode", "alims-intl"},
+	}
+	for brand, ids := range brands {
+		for _, id := range ids {
+			p, ok := Registry[id]
+			if !ok {
+				t.Errorf("Missing provider %q", id)
+				continue
+			}
+			if p.Brand != brand {
+				t.Errorf("Provider %q has Brand %q, want %q", id, p.Brand, brand)
+			}
+			if p.Region == "" {
+				t.Errorf("Provider %q has empty Region", id)
+			}
+		}
+	}
+}
+
+// TestRegistryOfficialNames verifies Phase 36 T2 vendor-official display names.
+func TestRegistryOfficialNames(t *testing.T) {
+	names := map[string]string{
+		"grok-cli":       "Grok Build",
+		"kimi":           "Kimi Code",
+		"antigravity":    "Google Antigravity",
+		"codebuddy-intl": "Tencent Cloud CodeBuddy",
+		"codebuddy-cn":   "Tencent Cloud CodeBuddy (CN)",
+		"cursor":         "Cursor",
+		"opencode":       "opencode",
+		"claude":         "Claude Code",
+		"codex":          "OpenAI Codex",
+		"github":         "GitHub Copilot",
+		"openrouter":     "OpenRouter",
+	}
+	for id, want := range names {
+		p, ok := Registry[id]
+		if !ok {
+			t.Errorf("Missing provider %q", id)
+			continue
+		}
+		if p.Name != want {
+			t.Errorf("Provider %q Name = %q, want %q", id, p.Name, want)
+		}
+	}
+}
+
+// TestRegistryDualAuth verifies Phase 36 T4/T5 dual-auth entries: claude,
+// codex and qoder advertise [oauth, apikey]; qoder moved free→oauth.
+func TestRegistryDualAuth(t *testing.T) {
+	for _, id := range []string{"claude", "codex", "qoder"} {
+		p, ok := Registry[id]
+		if !ok {
+			t.Errorf("Missing provider %q", id)
+			continue
+		}
+		if p.Category != "oauth" {
+			t.Errorf("Provider %q Category = %q, want oauth", id, p.Category)
+		}
+		hasOAuth, hasAPIKey := false, false
+		for _, m := range p.AuthModes {
+			if m == "oauth" {
+				hasOAuth = true
+			}
+			if m == "apikey" {
+				hasAPIKey = true
+			}
+		}
+		if !hasOAuth || !hasAPIKey {
+			t.Errorf("Provider %q AuthModes = %v, want [oauth, apikey]", id, p.AuthModes)
+		}
+	}
+	if p := Registry["qoder"]; p.AuthHint == "" {
+		t.Error("qoder should carry a PAT auth hint")
+	}
+}
+
 func TestRegistryOAuthProviders(t *testing.T) {
 	// Providers with standard OAuth token endpoints
-	oauthWithToken := []string{"claude", "github", "kimi", "qwen", "codex"}
+	oauthWithToken := []string{"claude", "github", "kimi", "codex"}
 	for _, id := range oauthWithToken {
 		p, ok := Registry[id]
 		if !ok {
@@ -124,15 +197,11 @@ func TestRegistryOAuthProviders(t *testing.T) {
 
 // TestRegistryTransportCompleteness verifies every registry entry has a
 // non-empty BaseURL and a valid APIType (format). Providers with special
-// local/sentinel URLs (e.g. "edge-tts", "local-device") are exempt from
-// the HTTP URL check but must still have a format.
+// runtime-resolved URLs are exempt from the HTTP URL check but must still
+// have a format.
 func TestRegistryTransportCompleteness(t *testing.T) {
-	// Providers with empty or sentinel BaseURL that are still valid.
 	exempt := map[string]bool{
-		"azure":       true, // user-supplied resource URL
 		"antigravity": true, // resolved at runtime via OAuth
-		"searxng":     true, // user-supplied instance URL
-		"topaz":       true, // local desktop app
 		"grok-cli":    true, // resolved at runtime via OAuth
 	}
 

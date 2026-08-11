@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,18 +22,13 @@ const RefreshLeadTime = 5 * time.Minute
 // Per-provider refresh lead overrides (mirrors 9router REFRESH_LEAD_MS).
 var refreshLeadOverrides = map[string]time.Duration{
 	"codex":          5 * 24 * time.Hour, // 432000000ms — codex tokens are long-lived
-	"iflow":          24 * time.Hour,     // 86400000ms
 	"kimi":           5 * time.Minute,
 	"xai":            5 * time.Minute,
-	"qwen":           5 * time.Minute,
 	"google":         5 * time.Minute,
 	"grok-cli":       5 * time.Minute,
 	"github":         5 * time.Minute,
-	"cline":          5 * time.Minute,
-	"clinepass":      5 * time.Minute,
 	"codebuddy-cn":   5 * time.Minute,
 	"codebuddy-intl": 5 * time.Minute,
-	"trae":           5 * time.Minute,
 }
 
 // GetRefreshLead returns the pre-expiry buffer for a provider.
@@ -161,54 +155,18 @@ var refreshProfiles = map[string]refreshProfile{
 	"codex": {
 		bodyFormat: "json",
 	},
-	"qwen": {
-		parse: func(raw map[string]any) map[string]any {
-			if ru, ok := raw["resource_url"].(string); ok && ru != "" {
-				return map[string]any{"resourceUrl": ru}
-			}
-			return nil
-		},
-	},
-	"iflow": {
-		clientSecret: "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW",
-		extraHeaders: func(conn *model.ProviderConnection) map[string]string {
-			info, ok := Registry["iflow"]
-			if !ok {
-				return nil
-			}
-			creds := base64.StdEncoding.EncodeToString([]byte(info.ClientID + ":4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW"))
-			return map[string]string{"Authorization": "Basic " + creds}
-		},
-	},
 	"gemini": {
 		clientSecret: "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",
-	},
-	"gemini-cli": {
-		clientSecret: "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",
-	},
-	"kiro": {
-		// Kiro has multi-path refresh handled separately.
 	},
 	// --- Phase 34: Batch 2 OAuth providers ---
 	"github": {
 		url: "https://github.com/login/oauth/access_token",
-	},
-	"cline": {
-		url:        "https://api.cline.bot/api/v1/auth/refresh",
-		bodyFormat: "json",
-	},
-	"clinepass": {
-		url:        "https://api.cline.bot/api/v1/auth/refresh",
-		bodyFormat: "json",
 	},
 	"codebuddy-cn": {
 		// CodeBuddy CN uses X-Refresh-Token header, handled separately.
 	},
 	"codebuddy-intl": {
 		// CodeBuddy intl uses X-Refresh-Token header, handled separately.
-	},
-	"trae": {
-		// Trae uses ExchangeToken with JSON body, handled separately.
 	},
 }
 
@@ -293,28 +251,13 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 
 	// Providers with no refresh support (long-lived tokens or device-code only).
 	switch providerID {
-	case "kilocode", "cursor", "zed", "windsurf":
+	case "cursor":
 		return nil, fmt.Errorf("provider %s does not support token refresh (long-lived credential)", providerID)
-	}
-
-	// Kiro has a completely different multi-path refresh.
-	if providerID == "kiro" {
-		return refreshKiro(conn, client)
 	}
 
 	// CodeBuddy CN/intl use X-Refresh-Token header (not standard OAuth2 body).
 	if providerID == "codebuddy-cn" || providerID == "codebuddy-intl" {
 		return refreshCodebuddy(providerID, conn, client)
-	}
-
-	// Trae uses ExchangeToken with a non-standard JSON body.
-	if providerID == "trae" {
-		return refreshTrae(conn, client)
-	}
-
-	// Cline uses a custom JSON refresh with workos: prefix.
-	if providerID == "cline" || providerID == "clinepass" {
-		return refreshCline(conn, client)
 	}
 
 	info, ok := Registry[providerID]
@@ -370,7 +313,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 			params.Set("client_secret", profile.clientSecret)
 		}
 		// Google needs client_secret
-		if profile.clientSecret != "" && (providerID == "gemini" || providerID == "gemini-cli" || providerID == "antigravity") {
+		if profile.clientSecret != "" && (providerID == "gemini" || providerID == "antigravity") {
 			params.Set("client_secret", profile.clientSecret)
 		}
 		reqBody = strings.NewReader(params.Encode())
@@ -454,138 +397,6 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 	return result, nil
 }
 
-// refreshKiro handles Kiro's multi-path token refresh (social, IDC, external_idp).
-func refreshKiro(conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
-	psd := conn.Data.ProviderSpecificData
-	if psd == nil {
-		psd = map[string]any{}
-	}
-
-	authMethod, _ := psd["authMethod"].(string)
-	clientID, _ := psd["clientId"].(string)
-	clientSecret, _ := psd["clientSecret"].(string)
-	region, _ := psd["region"].(string)
-
-	// Path 1: IDC (AWS OIDC) — clientId + clientSecret in JSON body.
-	if clientID != "" && clientSecret != "" {
-		endpoint := "https://oidc.us-east-1.amazonaws.com/token"
-		if authMethod == "idc" && region != "" {
-			endpoint = fmt.Sprintf("https://oidc.%s.amazonaws.com/token", region)
-		}
-
-		body, _ := json.Marshal(map[string]string{
-			"clientId":     clientID,
-			"clientSecret": clientSecret,
-			"refreshToken": conn.Data.RefreshToken,
-			"grantType":    "refresh_token",
-		})
-
-		req, err := http.NewRequest("POST", endpoint, strings.NewReader(string(body)))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("kiro IDC refresh failed: %w", err)
-		}
-		defer resp.Body.Close()
-
-		respBody, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode != http.StatusOK {
-			return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
-		}
-
-		var data struct {
-			AccessToken  string `json:"accessToken"`
-			RefreshToken string `json:"refreshToken"`
-			ExpiresIn    int    `json:"expiresIn"`
-			ProfileArn   string `json:"profileArn"`
-		}
-		if err := json.Unmarshal(respBody, &data); err != nil {
-			return nil, fmt.Errorf("kiro IDC decode failed: %w", err)
-		}
-		if data.AccessToken == "" {
-			return nil, fmt.Errorf("kiro IDC refresh returned no accessToken")
-		}
-
-		rt := data.RefreshToken
-		if rt == "" {
-			rt = conn.Data.RefreshToken
-		}
-
-		result := &RefreshResult{
-			AccessToken:  data.AccessToken,
-			RefreshToken: rt,
-			ExpiresIn:    data.ExpiresIn,
-		}
-		// Patch profileArn if missing.
-		if data.ProfileArn != "" {
-			if _, hasArn := psd["profileArn"]; !hasArn {
-				result.Extra = map[string]any{"profileArn": data.ProfileArn}
-			}
-		}
-		return result, nil
-	}
-
-	// Path 2: Social auth (Kiro desktop) — JSON body with refreshToken only.
-	socialURL := "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken"
-	body, _ := json.Marshal(map[string]string{
-		"refreshToken": conn.Data.RefreshToken,
-	})
-
-	req, err := http.NewRequest("POST", socialURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "kiro-cli/1.0.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("kiro social refresh failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
-	}
-
-	var data struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		ExpiresIn    int    `json:"expiresIn"`
-		ProfileArn   string `json:"profileArn"`
-	}
-	if err := json.Unmarshal(respBody, &data); err != nil {
-		return nil, fmt.Errorf("kiro social decode failed: %w", err)
-	}
-	if data.AccessToken == "" {
-		return nil, fmt.Errorf("kiro social refresh returned no accessToken")
-	}
-
-	rt := data.RefreshToken
-	if rt == "" {
-		rt = conn.Data.RefreshToken
-	}
-
-	result := &RefreshResult{
-		AccessToken:  data.AccessToken,
-		RefreshToken: rt,
-		ExpiresIn:    data.ExpiresIn,
-	}
-	if data.ProfileArn != "" {
-		if _, hasArn := psd["profileArn"]; !hasArn {
-			result.Extra = map[string]any{"profileArn": data.ProfileArn}
-		}
-	}
-	return result, nil
-}
-
 // --- Phase 34: Batch 2 special refresh implementations ---
 
 // refreshCodebuddy handles CodeBuddy CN/intl token refresh via X-Refresh-Token
@@ -651,149 +462,6 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 		AccessToken:  data.Data.AccessToken,
 		RefreshToken: rt,
 		ExpiresIn:    data.Data.ExpiresIn,
-	}, nil
-}
-
-// refreshTrae handles Trae's ExchangeToken refresh (non-standard JSON body).
-// Response: { Result: { AccessToken, RefreshToken, ExpiresAt } }.
-func refreshTrae(conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
-	exchangeURL := "https://antigravity-cockpit-tools.bytedance.com/api/v1/auth/ExchangeToken"
-
-	body, _ := json.Marshal(map[string]string{
-		"ClientID":     "ono9krqynydwx5",
-		"RefreshToken": conn.Data.RefreshToken,
-		"ClientSecret": "-",
-		"UserID":       "",
-	})
-
-	req, err := http.NewRequest("POST", exchangeURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Trae/1.0.0 antigravity-cockpit-tools")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("trae refresh request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
-	}
-
-	var payload struct {
-		Result struct {
-			AccessToken  string `json:"AccessToken"`
-			RefreshToken string `json:"RefreshToken"`
-			ExpiresAt    any    `json:"ExpiresAt"`
-		} `json:"Result"`
-	}
-	if err := json.Unmarshal(respBody, &payload); err != nil {
-		return nil, fmt.Errorf("trae decode failed: %w", err)
-	}
-	if payload.Result.AccessToken == "" {
-		return nil, fmt.Errorf("trae refresh returned no AccessToken")
-	}
-
-	rt := payload.Result.RefreshToken
-	if rt == "" {
-		rt = conn.Data.RefreshToken
-	}
-
-	var expiresIn int
-	switch v := payload.Result.ExpiresAt.(type) {
-	case float64:
-		expiresIn = int(v) - int(time.Now().Unix())
-		if expiresIn < 1 {
-			expiresIn = 1
-		}
-	case string:
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			expiresIn = int(time.Until(t).Seconds())
-			if expiresIn < 1 {
-				expiresIn = 1
-			}
-		}
-	}
-
-	return &RefreshResult{
-		AccessToken:  payload.Result.AccessToken,
-		RefreshToken: rt,
-		ExpiresIn:    expiresIn,
-	}, nil
-}
-
-// refreshCline handles Cline's custom JSON refresh with workos: prefix.
-// Response: { data: { accessToken, refreshToken, expiresAt } }.
-func refreshCline(conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
-	refreshURL := "https://api.cline.bot/api/v1/auth/refresh"
-
-	body, _ := json.Marshal(map[string]string{
-		"refreshToken": conn.Data.RefreshToken,
-		"grantType":    "refresh_token",
-		"clientType":   "extension",
-	})
-
-	req, err := http.NewRequest("POST", refreshURL, strings.NewReader(string(body)))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("cline refresh request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
-	}
-
-	var payload struct {
-		Data struct {
-			AccessToken  string `json:"accessToken"`
-			RefreshToken string `json:"refreshToken"`
-			ExpiresAt    string `json:"expiresAt"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(respBody, &payload); err != nil {
-		return nil, fmt.Errorf("cline decode failed: %w", err)
-	}
-	if payload.Data.AccessToken == "" {
-		return nil, fmt.Errorf("cline refresh returned no accessToken")
-	}
-
-	accessToken := payload.Data.AccessToken
-	if !strings.HasPrefix(accessToken, "workos:") {
-		accessToken = "workos:" + accessToken
-	}
-
-	rt := payload.Data.RefreshToken
-	if rt == "" {
-		rt = conn.Data.RefreshToken
-	}
-
-	var expiresIn int
-	if payload.Data.ExpiresAt != "" {
-		if t, err := time.Parse(time.RFC3339, payload.Data.ExpiresAt); err == nil {
-			expiresIn = int(time.Until(t).Seconds())
-			if expiresIn < 1 {
-				expiresIn = 1
-			}
-		}
-	}
-
-	return &RefreshResult{
-		AccessToken:  accessToken,
-		RefreshToken: rt,
-		ExpiresIn:    expiresIn,
 	}, nil
 }
 

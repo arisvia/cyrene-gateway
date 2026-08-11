@@ -1,11 +1,13 @@
 package provider
 
-// registry_data.go is generated from 9router provider registry.
-// Source: decolua/9router open-sse/providers/registry/ @ 6fcd273
-// Do not edit manually.
+// registry_data.go holds the curated chat-provider registry.
+// Originally generated from 9router open-sse/providers/registry/; pruned to
+// the curated KEEP set in Phase 36 (registry IDs stay stable — no DB/alias
+// migration; display names are vendor-official). Media providers
+// (internal/media) are a separate registry and were out of scope.
 
 func init() {
-	Registry = make(map[string]ProviderInfo, 100)
+	Registry = make(map[string]ProviderInfo, 40)
 
 	Registry["alicode-intl"] = ProviderInfo{
 		ID: "alicode-intl", Name: "Alibaba Coding",
@@ -13,6 +15,7 @@ func init() {
 		BaseURL: "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 10,
+		Brand: "Alibaba", Region: "intl",
 		Color:    "#FF6A00",
 		Website:  "https://www.alibabacloud.com/product/coding",
 		Icon:     "cloud",
@@ -24,6 +27,7 @@ func init() {
 		BaseURL: "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 20,
+		Brand: "Alibaba", Region: "cn",
 		Color:    "#FF6A00",
 		Website:  "https://bailian.console.aliyun.com",
 		Icon:     "cloud",
@@ -35,6 +39,7 @@ func init() {
 		BaseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 11,
+		Brand: "Alibaba", Region: "intl",
 		Color:    "#FF6A00",
 		Website:  "https://modelstudio.console.alibabacloud.com",
 		Icon:     "cloud",
@@ -72,7 +77,7 @@ func init() {
 		Headers:  map[string]string{"HTTP-Referer": "https://endpoint-proxy.local", "X-Title": "Endpoint Proxy"},
 	}
 	Registry["antigravity"] = ProviderInfo{
-		ID: "antigravity", Name: "Antigravity",
+		ID: "antigravity", Name: "Google Antigravity",
 		Alias: "ag", Aliases: []string{"ag"},
 		BaseURL: "",
 		APIType: "openai", AuthType: "oauth",
@@ -83,135 +88,6 @@ func init() {
 		TokenURL:     "https://oauth2.googleapis.com/token",
 		AuthorizeURL: "https://accounts.google.com/o/oauth2/v2/auth",
 		ClientID:     "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
-	}
-	Registry["assemblyai"] = ProviderInfo{
-		ID: "assemblyai", Name: "AssemblyAI",
-		Alias: "assemblyai", Aliases: []string{"assemblyai", "aai"},
-		BaseURL: "https://api.assemblyai.com/v1/audio/transcriptions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 30,
-		Color:       "#0062FF",
-		Website:     "https://assemblyai.com",
-		Icon:        "record_voice_over",
-		TextIcon:    "AA",
-		ValidateURL: "https://api.assemblyai.com/v1/account",
-	}
-	Registry["aws-polly"] = ProviderInfo{
-		ID: "aws-polly", Name: "AWS Polly",
-		Alias: "polly", Aliases: []string{"polly"},
-		BaseURL: "https://polly.{region}.amazonaws.com/v1/speech",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#FF9900",
-		Website:  "https://aws.amazon.com/polly/",
-		Icon:     "record_voice_over",
-		TextIcon: "PL",
-	}
-	Registry["azure"] = ProviderInfo{
-		ID: "azure", Name: "Azure OpenAI",
-		Alias: "azure", Aliases: []string{"azure"},
-		BaseURL: "",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 40,
-		Color:     "#0078D4",
-		Website:   "https://azure.microsoft.com/en-us/products/ai-services/openai-service",
-		Icon:      "cloud",
-		TextIcon:  "AZ",
-		APIKeyURL: "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI",
-	}
-	Registry["baidu"] = ProviderInfo{
-		ID: "baidu", Name: "Baidu Qianfan",
-		Alias: "qianfan", Aliases: []string{"qianfan", "ernie", "baidu-qianfan"},
-		BaseURL: "https://qianfan.baidubce.com/v2/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
-		Color:       "#2932E1",
-		Website:     "https://cloud.baidu.com/product/qianfan.html",
-		Icon:        "search",
-		TextIcon:    "BD",
-		ValidateURL: "https://qianfan.baidubce.com/v2/models",
-	}
-	Registry["bazaarlink"] = ProviderInfo{
-		ID: "bazaarlink", Name: "Bazaarlink",
-		Alias: "bzl", Aliases: []string{"bazaar-link"},
-		BaseURL: "https://bazaarlink.ai/api/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 55,
-		Color:    "#DC2626",
-		Website:  "https://bazaarlink.ai",
-		Icon:     "storefront",
-		TextIcon: "BZ",
-		HasFree:  true,
-	}
-	Registry["black-forest-labs"] = ProviderInfo{
-		ID: "black-forest-labs", Name: "Black Forest Labs",
-		Alias: "black-forest-labs", Aliases: []string{"black-forest-labs", "bfl"},
-		BaseURL: "https://api.bfl.ai/v1",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 50,
-		Color:    "#111827",
-		Website:  "https://blackforestlabs.ai",
-		Icon:     "image",
-		TextIcon: "BF",
-	}
-	Registry["blackbox"] = ProviderInfo{
-		ID: "blackbox", Name: "Blackbox AI",
-		Alias: "blackbox", Aliases: []string{"blackbox", "bb"},
-		BaseURL: "https://api.blackbox.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 50,
-		Color:          "#5B5FEF",
-		Website:        "https://blackbox.ai",
-		Icon:           "smart_toy",
-		TextIcon:       "BB",
-		ThinkingFormat: "openai",
-	}
-	Registry["bluesminds"] = ProviderInfo{
-		ID: "bluesminds", Name: "BluesMinds",
-		Alias: "bm", Aliases: []string{"blue-sminds"},
-		BaseURL: "https://api.bluesminds.com/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:       "#2563EB",
-		Website:     "https://bluesminds.com",
-		Icon:        "psychology",
-		TextIcon:    "BM",
-		Hidden:      true,
-		ValidateURL: "https://api.bluesminds.com/v1/models",
-	}
-	Registry["brave-search"] = ProviderInfo{
-		ID: "brave-search", Name: "Brave Search",
-		Alias: "brave", Aliases: []string{"brave"},
-		BaseURL: "https://api.search.brave.com/res/v1",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#FB542B",
-		Website:  "https://brave.com/search/api",
-		Icon:     "travel_explore",
-		TextIcon: "BR",
-	}
-	Registry["byteplus"] = ProviderInfo{
-		ID: "byteplus", Name: "BytePlus ModelArk",
-		Alias: "byteplus", Aliases: []string{"byteplus", "bpm"},
-		BaseURL: "https://ark.ap-southeast.bytepluses.com/api/coding/v3/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 70,
-		Color:    "#2563EB",
-		Website:  "https://console.byteplus.com/ark",
-		Icon:     "cloud",
-		TextIcon: "BP",
-	}
-	Registry["cartesia"] = ProviderInfo{
-		ID: "cartesia", Name: "Cartesia",
-		Alias: "cartesia", Aliases: []string{"cartesia"},
-		BaseURL: "https://api.cartesia.ai/tts/bytes",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#FF4F8B",
-		Website:  "https://cartesia.ai",
-		Icon:     "spatial_audio",
-		TextIcon: "CA",
-		Hidden:   true,
 	}
 	Registry["cerebras"] = ProviderInfo{
 		ID: "cerebras", Name: "Cerebras",
@@ -225,80 +101,29 @@ func init() {
 		TextIcon:  "CB",
 		APIKeyURL: "https://cloud.cerebras.ai/platform",
 	}
-	Registry["chutes"] = ProviderInfo{
-		ID: "chutes", Name: "Chutes AI",
-		Alias: "chutes", Aliases: []string{"chutes", "ch"},
-		BaseURL: "https://llm.chutes.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 70,
-		Color:       "#ffffffff",
-		Website:     "https://chutes.ai",
-		Icon:        "water_drop",
-		TextIcon:    "CH",
-		ValidateURL: "https://llm.chutes.ai/v1/models",
-	}
 	Registry["claude"] = ProviderInfo{
 		ID: "claude", Name: "Claude Code",
 		Alias: "cc", Aliases: []string{"cc"},
 		BaseURL: "https://api.anthropic.com/v1/messages",
 		APIType: "anthropic", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 10,
+		// Phase 36 T4: dual-auth (OAuth preferred, API key fallback —
+		// same selection pattern as xai/kimi).
+		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 10,
 		Color:        "#D97757",
 		Website:      "https://claude.ai",
 		Icon:         "smart_toy",
+		APIKeyURL:    "https://console.anthropic.com/settings/keys",
 		TokenURL:     "https://api.anthropic.com/v1/oauth/token",
 		AuthorizeURL: "https://claude.ai/oauth/authorize",
 		ClientID:     "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 	}
-	Registry["cline"] = ProviderInfo{
-		ID: "cline", Name: "Cline",
-		Alias: "cl", Aliases: []string{"cl"},
-		BaseURL: "https://api.cline.bot/api/v1/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 80,
-		Color:        "#5B9BD5",
-		Website:      "https://cline.bot",
-		Icon:         "smart_toy",
-		TextIcon:     "CL",
-		TokenURL:     "https://api.cline.bot/api/v1/auth/token",
-		AuthorizeURL: "https://api.cline.bot/api/v1/auth/authorize",
-		Headers: map[string]string{
-			"HTTP-Referer": "https://cline.bot",
-			"X-Title":      "Cline",
-		},
-		AuthHooks: []string{"clineHeaders"},
-	}
-	Registry["clinepass"] = ProviderInfo{
-		ID: "clinepass", Name: "ClinePass",
-		Alias: "clinepass", Aliases: []string{"clinepass"},
-		BaseURL: "https://api.cline.bot/api/v1/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 85,
-		Color:        "#5B9BD5",
-		Website:      "https://cline.bot",
-		Icon:         "vpn_key",
-		TextIcon:     "CP",
-		TokenURL:     "https://api.cline.bot/api/v1/auth/token",
-		AuthorizeURL: "https://api.cline.bot/api/v1/auth/authorize",
-	}
-	Registry["cloudflare-ai"] = ProviderInfo{
-		ID: "cloudflare-ai", Name: "Cloudflare",
-		Alias: "cloudflare-ai", Aliases: []string{"cloudflare-ai", "cf"},
-		BaseURL: "https://api.cloudflare.com/client/v4/accounts/{accountId}/ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 60,
-		Color:    "#F38020",
-		Website:  "https://developers.cloudflare.com/workers-ai/",
-		Icon:     "cloud",
-		TextIcon: "CF",
-		HasFree:  true,
-	}
 	Registry["codebuddy-cn"] = ProviderInfo{
-		ID: "codebuddy-cn", Name: "CodeBuddy CN",
+		ID: "codebuddy-cn", Name: "Tencent Cloud CodeBuddy (CN)",
 		Alias: "cbcn", Aliases: []string{"cbcn"},
 		BaseURL: "https://copilot.tencent.com/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 90,
+		Brand: "CodeBuddy", Region: "cn",
 		Color:    "#006EFF",
 		Website:  "https://copilot.tencent.com",
 		Icon:     "smart_toy",
@@ -314,88 +139,13 @@ func init() {
 		ForceStream:    true,
 		ThinkingFormat: "openai",
 	}
-	Registry["codex"] = ProviderInfo{
-		ID: "codex", Name: "OpenAI Codex",
-		Alias: "cx", Aliases: []string{"cx"},
-		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 30,
-		Color:        "#3B82F6",
-		Website:      "https://chatgpt.com/codex",
-		Icon:         "code",
-		TokenURL:     "https://auth.openai.com/oauth/token",
-		AuthorizeURL: "https://auth.openai.com/oauth/authorize",
-		ClientID:     "app_EMoamEEZ73f0CkXaXp7hrann",
-	}
-	Registry["cohere"] = ProviderInfo{
-		ID: "cohere", Name: "Cohere",
-		Alias: "cohere", Aliases: []string{"cohere"},
-		BaseURL: "https://api.cohere.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 90,
-		Color:       "#39594D",
-		Website:     "https://cohere.com",
-		Icon:        "hub",
-		TextIcon:    "CO",
-		APIKeyURL:   "https://dashboard.cohere.com/api-keys",
-		ValidateURL: "https://api.cohere.ai/v1/models",
-	}
-	Registry["comfyui"] = ProviderInfo{
-		ID: "comfyui", Name: "ComfyUI",
-		Alias: "comfyui", Aliases: []string{"comfyui"},
-		BaseURL: "http://localhost:8188",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 120,
-		Color:    "#4CAF50",
-		Website:  "https://github.com/comfyanonymous/ComfyUI",
-		Icon:     "account_tree",
-		TextIcon: "CF",
-	}
-	Registry["commandcode"] = ProviderInfo{
-		ID: "commandcode", Name: "Command Code",
-		Alias: "commandcode", Aliases: []string{"commandcode", "cmc"},
-		BaseURL: "https://api.commandcode.ai/alpha/generate",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#000000",
-		Website:  "https://commandcode.ai",
-		Icon:     "smart_toy",
-		TextIcon: "CC",
-		Headers: map[string]string{
-			"x-command-code-version": "0.25.7",
-			"x-cli-environment":      "cli",
-		},
-		ForceStream: true,
-	}
-	Registry["coqui"] = ProviderInfo{
-		ID: "coqui", Name: "Coqui TTS",
-		Alias: "coqui", Aliases: []string{"coqui"},
-		BaseURL: "http://localhost:5002/api/tts",
-		APIType: "openai", AuthType: "none",
-		Category: "freeTier", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#10B981",
-		Website:  "https://github.com/coqui-ai/TTS",
-		Icon:     "record_voice_over",
-		TextIcon: "CQ",
-		Hidden:   true,
-		NoAuth:   true,
-	}
-	Registry["cursor"] = ProviderInfo{
-		ID: "cursor", Name: "Cursor IDE",
-		Alias: "cu", Aliases: []string{"cu"},
-		BaseURL: "https://api2.cursor.sh",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 50,
-		Color:   "#00D4AA",
-		Website: "https://cursor.com",
-		Icon:    "edit_note",
-	}
 	Registry["codebuddy-intl"] = ProviderInfo{
-		ID: "codebuddy-intl", Name: "CodeBuddy",
+		ID: "codebuddy-intl", Name: "Tencent Cloud CodeBuddy",
 		Alias: "cbai", Aliases: []string{"cbai"},
 		BaseURL: "https://www.codebuddy.ai/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 90,
+		Brand: "CodeBuddy", Region: "intl",
 		Color:    "#006EFF",
 		Website:  "https://www.codebuddy.ai",
 		Icon:     "smart_toy",
@@ -412,16 +162,30 @@ func init() {
 		ForceStream:    true,
 		ThinkingFormat: "openai",
 	}
-	Registry["deepgram"] = ProviderInfo{
-		ID: "deepgram", Name: "Deepgram",
-		Alias: "deepgram", Aliases: []string{"deepgram", "dg"},
-		BaseURL: "https://api.deepgram.com/v1/listen",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 20,
-		Color:    "#13EF93",
-		Website:  "https://deepgram.com",
-		Icon:     "mic",
-		TextIcon: "DG",
+	Registry["codex"] = ProviderInfo{
+		ID: "codex", Name: "OpenAI Codex",
+		Alias: "cx", Aliases: []string{"cx"},
+		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
+		APIType: "openai", AuthType: "oauth",
+		// Phase 36 T4: dual-auth (OAuth preferred, API key fallback).
+		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 30,
+		Color:        "#3B82F6",
+		Website:      "https://chatgpt.com/codex",
+		Icon:         "code",
+		APIKeyURL:    "https://platform.openai.com/api-keys",
+		TokenURL:     "https://auth.openai.com/oauth/token",
+		AuthorizeURL: "https://auth.openai.com/oauth/authorize",
+		ClientID:     "app_EMoamEEZ73f0CkXaXp7hrann",
+	}
+	Registry["cursor"] = ProviderInfo{
+		ID: "cursor", Name: "Cursor",
+		Alias: "cu", Aliases: []string{"cu"},
+		BaseURL: "https://api2.cursor.sh",
+		APIType: "openai", AuthType: "oauth",
+		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 50,
+		Color:   "#00D4AA",
+		Website: "https://cursor.com",
+		Icon:    "edit_note",
 	}
 	Registry["deepseek"] = ProviderInfo{
 		ID: "deepseek", Name: "DeepSeek",
@@ -434,113 +198,6 @@ func init() {
 		Icon:      "bolt",
 		TextIcon:  "DS",
 		APIKeyURL: "https://platform.deepseek.com/api_keys",
-	}
-	Registry["devin-cli"] = ProviderInfo{
-		ID: "devin-cli", Name: "Devin CLI",
-		Alias: "dv", Aliases: []string{"devin"},
-		BaseURL: "devin://acp/stdio",
-		APIType: "openai", AuthType: "none",
-		Category: "free", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#6366F1",
-		Website:  "https://devin.ai",
-		Icon:     "smart_toy",
-		TextIcon: "DV",
-		Hidden:   true,
-		NoAuth:   true,
-	}
-	Registry["edge-tts"] = ProviderInfo{
-		ID: "edge-tts", Name: "Edge TTS",
-		Alias: "edge-tts", Aliases: []string{"edge-tts"},
-		BaseURL: "edge-tts",
-		APIType: "openai", AuthType: "none",
-		Category: "freeTier", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#0078D4",
-		Icon:     "record_voice_over",
-		TextIcon: "ET",
-		NoAuth:   true,
-	}
-	Registry["elevenlabs"] = ProviderInfo{
-		ID: "elevenlabs", Name: "ElevenLabs",
-		Alias: "el", Aliases: []string{"el"},
-		BaseURL: "https://api.elevenlabs.io/v1/text-to-speech",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#6C47FF",
-		Website:  "https://elevenlabs.io",
-		Icon:     "record_voice_over",
-		TextIcon: "EL",
-	}
-	Registry["exa"] = ProviderInfo{
-		ID: "exa", Name: "Exa",
-		Alias: "exa", Aliases: []string{"exa"},
-		BaseURL: "https://api.exa.ai/search",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#2563EB",
-		Website:  "https://exa.ai",
-		Icon:     "manage_search",
-		TextIcon: "EX",
-	}
-	Registry["fal-ai"] = ProviderInfo{
-		ID: "fal-ai", Name: "Fal.ai",
-		Alias: "fal-ai", Aliases: []string{"fal-ai", "fal"},
-		BaseURL: "https://queue.fal.run",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 90,
-		Color:    "#2563EB",
-		Website:  "https://fal.ai",
-		Icon:     "image",
-		TextIcon: "FL",
-		HasFree:  true,
-	}
-	Registry["featherless"] = ProviderInfo{
-		ID: "featherless", Name: "Featherless",
-		Alias: "featherless", Aliases: []string{"featherless", "fl"},
-		BaseURL: "https://api.featherless.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 65,
-		Color:       "#111827",
-		Website:     "https://featherless.ai",
-		Icon:        "flutter_dash",
-		TextIcon:    "FL",
-		ValidateURL: "https://api.featherless.ai/v1/models",
-	}
-	Registry["firecrawl"] = ProviderInfo{
-		ID: "firecrawl", Name: "Firecrawl",
-		Alias: "firecrawl", Aliases: []string{"firecrawl"},
-		BaseURL: "https://api.firecrawl.dev/v1/scrape",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#F59E0B",
-		Website:  "https://firecrawl.dev",
-		Icon:     "local_fire_department",
-		TextIcon: "FC",
-	}
-	Registry["fireworks"] = ProviderInfo{
-		ID: "fireworks", Name: "Fireworks AI",
-		Alias: "fireworks", Aliases: []string{"fireworks"},
-		BaseURL: "https://api.fireworks.ai/inference/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 50,
-		Color:     "#7B2EF2",
-		Website:   "https://fireworks.ai",
-		Icon:      "local_fire_department",
-		TextIcon:  "FW",
-		APIKeyURL: "https://fireworks.ai/account/api-keys",
-	}
-	Registry["gemini-cli"] = ProviderInfo{
-		ID: "gemini-cli", Name: "Gemini CLI",
-		Alias: "gc", Aliases: []string{"gc"},
-		BaseURL: "https://cloudcode-pa.googleapis.com/v1internal",
-		APIType: "gemini", AuthType: "api-key",
-		Category: "free", AuthModes: []string{"api-key"}, Priority: 20,
-		Color:        "#4285F4",
-		Website:      "https://github.com/google-gemini/gemini-cli",
-		Icon:         "terminal",
-		HasFree:      true,
-		TokenURL:     "https://oauth2.googleapis.com/token",
-		AuthorizeURL: "https://accounts.google.com/o/oauth2/v2/auth",
-		ClientID:     "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
 	}
 	Registry["gemini"] = ProviderInfo{
 		ID: "gemini", Name: "Gemini",
@@ -559,6 +216,9 @@ func init() {
 		// x-goog-api-key header (raw), not the ?key= query param.
 		AuthHeader: "x-goog-api-key",
 		AuthScheme: "raw",
+		// Live model catalog: the base IS the models list (auth = ?key=).
+		ModelsURL:  "https://generativelanguage.googleapis.com/v1beta/models",
+		ModelsAuth: "query",
 	}
 	Registry["github"] = ProviderInfo{
 		ID: "github", Name: "GitHub Copilot",
@@ -584,17 +244,19 @@ func init() {
 			"X-Initiator":                         "user",
 		},
 	}
-	Registry["gitlab"] = ProviderInfo{
-		ID: "gitlab", Name: "GitLab Duo",
-		Alias: "", Aliases: nil,
-		BaseURL: "https://gitlab.com/api/v4/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 100,
-		Color:    "#FC6D26",
-		Website:  "https://gitlab.com",
-		Icon:     "code",
-		TextIcon: "GL",
-		Hidden:   true,
+	// Phase 36 T4: GitHub Models — models.github.com inference endpoint, PAT
+	// auth (a GitHub PAT / OAuth token is used as a plain Bearer key).
+	Registry["github-models"] = ProviderInfo{
+		ID: "github-models", Name: "GitHub Models",
+		Alias: "ghm", Aliases: []string{"gh-models"},
+		BaseURL: "https://models.inference.ai.azure.com/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 45,
+		Color:     "#333333",
+		Website:   "https://github.com/marketplace/models",
+		Icon:      "code",
+		TextIcon:  "GM",
+		APIKeyURL: "https://github.com/settings/tokens",
 	}
 	Registry["glm-cn"] = ProviderInfo{
 		ID: "glm-cn", Name: "GLM (China)",
@@ -602,6 +264,7 @@ func init() {
 		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
+		Brand: "GLM", Region: "cn",
 		Color:    "#DC2626",
 		Website:  "https://open.bigmodel.cn",
 		Icon:     "code",
@@ -613,6 +276,7 @@ func init() {
 		BaseURL: "https://api.z.ai/api/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 140,
+		Brand: "GLM", Region: "intl",
 		Color:     "#2563EB",
 		Website:   "https://open.bigmodel.cn",
 		Icon:      "code",
@@ -625,30 +289,8 @@ func init() {
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
 	}
-	Registry["google-pse"] = ProviderInfo{
-		ID: "google-pse", Name: "Google PSE",
-		Alias: "gpse", Aliases: []string{"gpse"},
-		BaseURL: "https://www.googleapis.com/customsearch/v1",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#4285F4",
-		Website:  "https://programmablesearchengine.google.com",
-		Icon:     "search",
-		TextIcon: "GP",
-	}
-	Registry["google-tts"] = ProviderInfo{
-		ID: "google-tts", Name: "Google TTS",
-		Alias: "google-tts", Aliases: []string{"google-tts"},
-		BaseURL: "google-tts",
-		APIType: "openai", AuthType: "none",
-		Category: "freeTier", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#4285F4",
-		Icon:     "record_voice_over",
-		TextIcon: "GT",
-		NoAuth:   true,
-	}
 	Registry["grok-cli"] = ProviderInfo{
-		ID: "grok-cli", Name: "Grok CLI (Grok Build)",
+		ID: "grok-cli", Name: "Grok Build",
 		Alias: "gcli", Aliases: []string{"gcli", "grok-build", "gb"},
 		BaseURL: "",
 		APIType: "openai", AuthType: "oauth",
@@ -660,18 +302,6 @@ func init() {
 		DeviceCodeURL: "https://auth.x.ai/oauth2/device/code",
 		TokenURL:      "https://auth.x.ai/oauth2/token",
 		ClientID:      "b1a00492-073a-47ea-816f-4c329264a828",
-	}
-	Registry["grok-web"] = ProviderInfo{
-		ID: "grok-web", Name: "Grok Web (Subscription)",
-		Alias: "grok-web", Aliases: []string{"grok-web", "gw"},
-		BaseURL: "https://grok.com/rest/app-chat/conversations/new",
-		APIType: "openai", AuthType: "cookie",
-		Category: "webCookie", AuthModes: []string{"cookie"}, Priority: 150,
-		Color:      "#1DA1F2",
-		Website:    "https://grok.com",
-		Icon:       "auto_awesome",
-		TextIcon:   "GW",
-		AuthScheme: "cookie",
 	}
 	Registry["groq"] = ProviderInfo{
 		ID: "groq", Name: "Groq",
@@ -687,114 +317,8 @@ func init() {
 		APIKeyURL:   "https://console.groq.com/keys",
 		ValidateURL: "https://api.groq.com/openai/v1/models",
 	}
-	Registry["huggingface"] = ProviderInfo{
-		ID: "huggingface", Name: "HuggingFace",
-		Alias: "huggingface", Aliases: []string{"huggingface", "hf"},
-		BaseURL: "https://api-inference.huggingface.co/models",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 70,
-		Color:    "#FFD21E",
-		Website:  "https://huggingface.co",
-		Icon:     "face",
-		TextIcon: "HF",
-		HasFree:  true,
-	}
-	Registry["hyperbolic"] = ProviderInfo{
-		ID: "hyperbolic", Name: "Hyperbolic",
-		Alias: "hyperbolic", Aliases: []string{"hyperbolic", "hyp"},
-		BaseURL: "https://api.hyperbolic.xyz/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 160,
-		Color:       "#00D4FF",
-		Website:     "https://hyperbolic.xyz",
-		Icon:        "bolt",
-		TextIcon:    "HY",
-		ValidateURL: "https://api.hyperbolic.xyz/v1/models",
-	}
-	Registry["iflow"] = ProviderInfo{
-		ID: "iflow", Name: "iFlow AI",
-		Alias: "if", Aliases: []string{"if"},
-		BaseURL: "https://apis.iflow.cn/v1/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 110,
-		Color:        "#6366F1",
-		Website:      "https://iflow.cn",
-		Icon:         "water_drop",
-		Hidden:       true,
-		TokenURL:     "https://iflow.cn/oauth/token",
-		AuthorizeURL: "https://iflow.cn/oauth",
-		ClientID:     "10009311001",
-	}
-	Registry["inworld"] = ProviderInfo{
-		ID: "inworld", Name: "Inworld TTS",
-		Alias: "inworld", Aliases: []string{"inworld"},
-		BaseURL: "https://api.inworld.ai/tts/v1/voice",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#FF6B6B",
-		Website:  "https://inworld.ai",
-		Icon:     "record_voice_over",
-		TextIcon: "IW",
-	}
-	Registry["jina-ai"] = ProviderInfo{
-		ID: "jina-ai", Name: "Jina AI",
-		Alias: "jina", Aliases: []string{"jina"},
-		BaseURL: "https://api.jina.ai/v1/embeddings",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#2563EB",
-		Website:  "https://jina.ai",
-		Icon:     "blur_on",
-		TextIcon: "JA",
-	}
-	Registry["jina-reader"] = ProviderInfo{
-		ID: "jina-reader", Name: "Jina Reader",
-		Alias: "jina-reader", Aliases: []string{"jina-reader"},
-		BaseURL: "https://r.jina.ai",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#000000",
-		Website:  "https://jina.ai/reader",
-		Icon:     "menu_book",
-		TextIcon: "JR",
-	}
-	Registry["kilo-gateway"] = ProviderInfo{
-		ID: "kilo-gateway", Name: "Kilo Gateway",
-		Alias: "kgw", Aliases: []string{"kilogateway"},
-		BaseURL: "https://api.kilo.ai/api/gateway/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 55,
-		Color:    "#8B5CF6",
-		Website:  "https://kilo.ai",
-		Icon:     "login",
-		TextIcon: "KG",
-		HasFree:  true,
-	}
-	Registry["kilocode"] = ProviderInfo{
-		ID: "kilocode", Name: "Kilo Code",
-		Alias: "kc", Aliases: []string{"kc"},
-		BaseURL: "https://api.kilo.ai/api/openrouter/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 70,
-		Color:     "#FF6B35",
-		Website:   "https://kilocode.ai",
-		Icon:      "code",
-		TextIcon:  "KC",
-		AuthHooks: []string{"kilocodeOrg"},
-	}
-	Registry["kimchi"] = ProviderInfo{
-		ID: "kimchi", Name: "Kimchi",
-		Alias: "kimchi", Aliases: []string{"kimchi"},
-		BaseURL: "https://llm.kimchi.dev/openai/v1/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 95,
-		Color:    "#FF521D",
-		Website:  "https://kimchi.dev",
-		Icon:     "restaurant",
-		TextIcon: "KC",
-	}
 	Registry["kimi"] = ProviderInfo{
-		ID: "kimi", Name: "Kimi",
+		ID: "kimi", Name: "Kimi Code",
 		Alias: "kimi", Aliases: []string{"kimi", "kimi-coding", "kmc"},
 		BaseURL: "https://api.kimi.com/coding/v1/messages",
 		APIType: "anthropic", AuthType: "oauth",
@@ -819,71 +343,13 @@ func init() {
 		AuthScheme: "raw",
 		AuthHooks:  []string{"kimiHeaders"},
 	}
-	Registry["kiro"] = ProviderInfo{
-		ID: "kiro", Name: "Kiro AI",
-		Alias: "kr", Aliases: []string{"kr"},
-		BaseURL: "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 10,
-		Color:         "#FF6B35",
-		Website:       "https://kiro.dev",
-		Icon:          "psychology_alt",
-		DeviceCodeURL: "https://oidc.us-east-1.amazonaws.com/device_authorization",
-		TokenURL:      "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken",
-	}
-	Registry["linkup"] = ProviderInfo{
-		ID: "linkup", Name: "Linkup",
-		Alias: "linkup", Aliases: []string{"linkup"},
-		BaseURL: "https://api.linkup.so/v1/search",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#0EA5E9",
-		Website:  "https://linkup.so",
-		Icon:     "link",
-		TextIcon: "LK",
-	}
-	Registry["llm7"] = ProviderInfo{
-		ID: "llm7", Name: "LLM7",
-		Alias: "llm7", Aliases: []string{"llm-7"},
-		BaseURL: "https://api.llm7.io/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
-		Color:       "#7C3AED",
-		Website:     "https://llm7.io",
-		Icon:        "pool",
-		TextIcon:    "L7",
-		ValidateURL: "https://api.llm7.io/v1/models",
-	}
-	Registry["local-device"] = ProviderInfo{
-		ID: "local-device", Name: "Local Device",
-		Alias: "local-device", Aliases: []string{"local-device"},
-		BaseURL: "local-device",
-		APIType: "openai", AuthType: "none",
-		Category: "freeTier", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#64748B",
-		Icon:     "speaker",
-		TextIcon: "LD",
-		NoAuth:   true,
-	}
-	Registry["mimo-free"] = ProviderInfo{
-		ID: "mimo-free", Name: "MiMo Code Free",
-		Alias: "mmf", Aliases: []string{"mmf"},
-		BaseURL: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
-		APIType: "openai", AuthType: "none",
-		Category: "free", AuthModes: []string{"none"}, Priority: 50,
-		Color:    "#FF6900",
-		Icon:     "smart_toy",
-		TextIcon: "MF",
-		HasFree:  true,
-		NoAuth:   true,
-		Hidden:   true, // Xiaomi ended the free MiMo channel (9router mimo-free.js)
-	}
 	Registry["minimax-cn"] = ProviderInfo{
 		ID: "minimax-cn", Name: "Minimax (China)",
 		Alias: "minimax-cn", Aliases: []string{"minimax-cn"},
 		BaseURL: "https://api.minimaxi.com/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 190,
+		Brand: "MiniMax", Region: "cn",
 		Color:     "#DC2626",
 		Website:   "https://www.minimaxi.com",
 		Icon:      "memory",
@@ -902,6 +368,7 @@ func init() {
 		BaseURL: "https://api.minimax.io/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 90,
+		Brand: "MiniMax", Region: "intl",
 		Color:     "#7C3AED",
 		Website:   "https://www.minimaxi.com",
 		Icon:      "memory",
@@ -913,69 +380,6 @@ func init() {
 		Headers:    map[string]string{"anthropic-version": "2023-06-01", "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"},
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
-	}
-	Registry["mistral"] = ProviderInfo{
-		ID: "mistral", Name: "Mistral",
-		Alias: "mistral", Aliases: []string{"mistral"},
-		BaseURL: "https://api.mistral.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
-		Color:       "#FF7000",
-		Website:     "https://mistral.ai",
-		Icon:        "air",
-		TextIcon:    "MI",
-		APIKeyURL:   "https://console.mistral.ai/api-keys",
-		ValidateURL: "https://api.mistral.ai/v1/models",
-	}
-	Registry["mmf"] = ProviderInfo{
-		ID: "mmf", Name: "MMF",
-		Alias: "", Aliases: nil,
-		BaseURL: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
-		APIType: "openai", AuthType: "none",
-		Category: "apikey", AuthModes: []string{"none"}, Priority: 200,
-		Color:    "#6366F1",
-		Icon:     "hub",
-		TextIcon: "MF",
-		Hidden:   true,
-		NoAuth:   true,
-	}
-	Registry["morph"] = ProviderInfo{
-		ID: "morph", Name: "Morph",
-		Alias: "morph", Aliases: []string{"morphllm"},
-		BaseURL: "https://api.morphllm.com/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
-		Color:       "#14B8A6",
-		Website:     "https://morphllm.com",
-		Icon:        "change_history",
-		TextIcon:    "MP",
-		ValidateURL: "https://api.morphllm.com/v1/models",
-	}
-	Registry["nanobanana"] = ProviderInfo{
-		ID: "nanobanana", Name: "NanoBanana API",
-		Alias: "nanobanana", Aliases: []string{"nanobanana", "nb"},
-		BaseURL: "https://api.nanobananaapi.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
-		Color:       "#FFD700",
-		Website:     "https://nanobananaapi.ai",
-		Icon:        "extension",
-		TextIcon:    "🍌",
-		HasFree:     true,
-		ValidateURL: "https://api.nanobananaapi.ai/v1/models",
-	}
-	Registry["nebius"] = ProviderInfo{
-		ID: "nebius", Name: "Nebius AI",
-		Alias: "nebius", Aliases: []string{"nebius"},
-		BaseURL: "https://api.studio.nebius.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 70,
-		Color:       "#6C5CE7",
-		Website:     "https://nebius.com",
-		Icon:        "cloud",
-		TextIcon:    "NB",
-		APIKeyURL:   "https://studio.nebius.com/settings/api-keys",
-		ValidateURL: "https://api.studio.nebius.ai/v1/models",
 	}
 	Registry["nvidia"] = ProviderInfo{
 		ID: "nvidia", Name: "NVIDIA NIM",
@@ -990,30 +394,6 @@ func init() {
 		HasFree:   true,
 		APIKeyURL: "https://build.nvidia.com/settings/api-keys",
 	}
-	Registry["ollama-local"] = ProviderInfo{
-		ID: "ollama-local", Name: "Ollama Local",
-		Alias: "ollama-local", Aliases: []string{"ollama-local"},
-		BaseURL: "http://localhost:11434/api/chat",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 50,
-		Color:    "#ffffffff",
-		Website:  "https://ollama.com",
-		Icon:     "cloud",
-		TextIcon: "OL",
-		HasFree:  true,
-	}
-	Registry["ollama"] = ProviderInfo{
-		ID: "ollama", Name: "Ollama Cloud",
-		Alias: "ollama", Aliases: []string{"ollama"},
-		BaseURL: "https://ollama.com/api/chat",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 30,
-		Color:    "#ffffffff",
-		Website:  "https://ollama.com",
-		Icon:     "cloud",
-		TextIcon: "OL",
-		HasFree:  true,
-	}
 	Registry["openai"] = ProviderInfo{
 		ID: "openai", Name: "OpenAI",
 		Alias: "openai", Aliases: []string{"openai"},
@@ -1027,20 +407,9 @@ func init() {
 		APIKeyURL:   "https://platform.openai.com/api-keys",
 		ForceStream: true,
 	}
-	Registry["opencode-go"] = ProviderInfo{
-		ID: "opencode-go", Name: "OpenCode Go",
-		Alias: "opencode-go", Aliases: []string{"opencode-go", "ocg"},
-		BaseURL: "https://opencode.ai/zen/go/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 210,
-		Color:    "#E87040",
-		Website:  "https://opencode.ai/auth",
-		Icon:     "terminal",
-		TextIcon: "OC",
-	}
 	Registry["opencode"] = ProviderInfo{
-		ID: "opencode", Name: "OpenCode Free",
-		Alias: "oc", Aliases: []string{"oc"},
+		ID: "opencode", Name: "opencode",
+		Alias: "oc", Aliases: []string{"oc", "opencode-go", "ocg"},
 		BaseURL: "https://opencode.ai/zen/v1/chat/completions",
 		APIType: "openai", AuthType: "none",
 		Category: "free", AuthModes: []string{"none"}, Priority: 40,
@@ -1050,6 +419,9 @@ func init() {
 		HasFree:  true,
 		NoAuth:   true,
 		Headers:  map[string]string{"x-opencode-client": "desktop"},
+		// Public catalog (9router modelsFetcher opencode-free).
+		ModelsURL:  "https://opencode.ai/zen/v1/models",
+		ModelsAuth: "none",
 	}
 	Registry["openrouter"] = ProviderInfo{
 		ID: "openrouter", Name: "OpenRouter",
@@ -1064,208 +436,22 @@ func init() {
 		HasFree:   true,
 		APIKeyURL: "https://openrouter.ai/settings/keys",
 	}
-	Registry["perplexity-agent"] = ProviderInfo{
-		ID: "perplexity-agent", Name: "Perplexity Agent",
-		Alias: "perplexity-agent", Aliases: []string{"perplexity-agent", "pplx-agent", "pplx-responses"},
-		BaseURL: "https://api.perplexity.ai/v1/responses",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 181,
-		Color:    "#20808D",
-		Website:  "https://www.perplexity.ai",
-		Icon:     "travel_explore",
-		TextIcon: "PA",
-	}
-	Registry["perplexity-web"] = ProviderInfo{
-		ID: "perplexity-web", Name: "Perplexity Web (Pro/Max)",
-		Alias: "perplexity-web", Aliases: []string{"perplexity-web", "pw"},
-		BaseURL: "https://www.perplexity.ai/rest/sse/perplexity_ask",
-		APIType: "openai", AuthType: "cookie",
-		Category: "webCookie", AuthModes: []string{"cookie"}, Priority: 220,
-		Color:      "#20808D",
-		Website:    "https://www.perplexity.ai",
-		Icon:       "search",
-		TextIcon:   "PW",
-		AuthScheme: "cookie",
-	}
-	Registry["perplexity"] = ProviderInfo{
-		ID: "perplexity", Name: "Perplexity",
-		Alias: "perplexity", Aliases: []string{"perplexity", "pplx"},
-		BaseURL: "https://api.perplexity.ai/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 180,
-		Color:       "#20808D",
-		Website:     "https://www.perplexity.ai",
-		Icon:        "search",
-		TextIcon:    "PP",
-		APIKeyURL:   "https://www.perplexity.ai/settings/api",
-		ValidateURL: "https://api.perplexity.ai/models",
-	}
-	Registry["playht"] = ProviderInfo{
-		ID: "playht", Name: "PlayHT",
-		Alias: "playht", Aliases: []string{"playht"},
-		BaseURL: "https://api.play.ht/api/v2/tts/stream",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#00B4D8",
-		Website:  "https://play.ht",
-		Icon:     "play_circle",
-		TextIcon: "PH",
-		Hidden:   true,
-	}
-	Registry["poolside"] = ProviderInfo{
-		ID: "poolside", Name: "Poolside",
-		Alias: "poolside", Aliases: []string{"ps"},
-		BaseURL: "https://inference.poolside.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 60,
-		Color:    "#0EA5E9",
-		Website:  "https://poolside.ai",
-		Icon:     "water_drop",
-		TextIcon: "PS",
-		HasFree:  true,
-	}
 	Registry["qoder"] = ProviderInfo{
 		ID: "qoder", Name: "Qoder",
 		Alias: "qd", Aliases: []string{"qd"},
 		BaseURL: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
 		APIType: "openai", AuthType: "oauth",
-		Category: "free", AuthModes: []string{"oauth"}, Priority: 30,
+		// Phase 36 T5 (9router@9c9dd7b1): re-enabled OAuth + PAT (apikey)
+		// auth. PATs (pt-...) are exchanged for short-lived job tokens before
+		// COSY signing.
+		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 30,
 		Color:         "#EC4899",
 		Website:       "https://qoder.com",
 		Icon:          "water_drop",
 		HasFree:       true,
+		AuthHint:      "Personal Access Token (pt-...) from https://qoder.com/account/integrations",
 		DeviceCodeURL: "https://openapi.qoder.sh/api/v1/deviceToken/poll",
 		LoginURL:      "https://qoder.com/device/selectAccounts",
-	}
-	Registry["qwen"] = ProviderInfo{
-		ID: "qwen", Name: "Qwen Code",
-		Alias: "qw", Aliases: []string{"qw"},
-		BaseURL: "https://portal.qwen.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 130,
-		Color:         "#10B981",
-		Website:       "https://chat.qwen.ai",
-		Icon:          "psychology",
-		Hidden:        true,
-		DeviceCodeURL: "https://chat.qwen.ai/api/v1/oauth2/device/code",
-		TokenURL:      "https://chat.qwen.ai/api/v1/oauth2/token",
-		ClientID:      "f0304373b74a44d2b584a3fb70ca9e56",
-	}
-	Registry["recraft"] = ProviderInfo{
-		ID: "recraft", Name: "Recraft",
-		Alias: "recraft", Aliases: []string{"recraft"},
-		BaseURL: "https://external.api.recraft.ai/v1/images/generations",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 70,
-		Color:    "#EC4899",
-		Website:  "https://recraft.ai",
-		Icon:     "image",
-		TextIcon: "RC",
-	}
-	Registry["runwayml"] = ProviderInfo{
-		ID: "runwayml", Name: "Runway ML",
-		Alias: "runwayml", Aliases: []string{"runwayml", "runway"},
-		BaseURL: "https://api.dev.runwayml.com/v1",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
-		Color:    "#000000",
-		Website:  "https://runwayml.com",
-		Icon:     "movie",
-		TextIcon: "RW",
-	}
-	Registry["sambanova"] = ProviderInfo{
-		ID: "sambanova", Name: "SambaNova",
-		Alias: "samba", Aliases: []string{"sambanova-ai"},
-		BaseURL: "https://api.sambanova.ai/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:       "#F97316",
-		Website:     "https://sambanova.ai",
-		Icon:        "memory",
-		TextIcon:    "SN",
-		Hidden:      true,
-		ValidateURL: "https://api.sambanova.ai/v1/models",
-	}
-	Registry["sdwebui"] = ProviderInfo{
-		ID: "sdwebui", Name: "SD WebUI",
-		Alias: "sdwebui", Aliases: []string{"sdwebui"},
-		BaseURL: "http://localhost:7860/sdapi/v1/txt2img",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 110,
-		Color:    "#FF7043",
-		Website:  "https://github.com/AUTOMATIC1111/stable-diffusion-webui",
-		Icon:     "brush",
-		TextIcon: "SD",
-	}
-	Registry["searchapi"] = ProviderInfo{
-		ID: "searchapi", Name: "SearchAPI",
-		Alias: "searchapi", Aliases: []string{"searchapi"},
-		BaseURL: "https://www.searchapi.io/api/v1/search",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#0EA5A4",
-		Website:  "https://www.searchapi.io",
-		Icon:     "search",
-		TextIcon: "SA",
-	}
-	Registry["searxng"] = ProviderInfo{
-		ID: "searxng", Name: "SearXNG",
-		Alias: "searxng", Aliases: []string{"searxng"},
-		BaseURL: "",
-		APIType: "openai", AuthType: "none",
-		Category: "freeTier", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#3B82F6",
-		Website:  "https://docs.searxng.org",
-		Icon:     "saved_search",
-		TextIcon: "SX",
-		NoAuth:   true,
-	}
-	Registry["serper"] = ProviderInfo{
-		ID: "serper", Name: "Serper",
-		Alias: "serper", Aliases: []string{"serper"},
-		BaseURL: "https://google.serper.dev",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#4F46E5",
-		Website:  "https://serper.dev",
-		Icon:     "search",
-		TextIcon: "SP",
-	}
-	Registry["siliconflow"] = ProviderInfo{
-		ID: "siliconflow", Name: "SiliconFlow",
-		Alias: "siliconflow", Aliases: []string{"siliconflow"},
-		BaseURL: "https://api.siliconflow.com/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 250,
-		Color:          "#5B6EF5",
-		Website:        "https://cloud.siliconflow.com",
-		Icon:           "cloud_queue",
-		TextIcon:       "SF",
-		APIKeyURL:      "https://cloud.siliconflow.com/account/ak",
-		ValidateURL:    "https://api.siliconflow.com/v1/models",
-		ThinkingFormat: "openai",
-	}
-	Registry["stability-ai"] = ProviderInfo{
-		ID: "stability-ai", Name: "Stability AI",
-		Alias: "stability-ai", Aliases: []string{"stability-ai", "stability"},
-		BaseURL: "https://api.stability.ai/v2beta/stable-image/generate",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 60,
-		Color:    "#8B5CF6",
-		Website:  "https://stability.ai",
-		Icon:     "image",
-		TextIcon: "SA",
-	}
-	Registry["tavily"] = ProviderInfo{
-		ID: "tavily", Name: "Tavily",
-		Alias: "tavily", Aliases: []string{"tavily"},
-		BaseURL: "https://api.tavily.com/search",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#5B21B6",
-		Website:  "https://tavily.com",
-		Icon:     "search",
-		TextIcon: "TV",
 	}
 	Registry["tencent"] = ProviderInfo{
 		ID: "tencent", Name: "Tencent Hunyuan",
@@ -1279,78 +465,6 @@ func init() {
 		TextIcon:    "HY",
 		ValidateURL: "https://api.hunyuan.cloud.tencent.com/v1/models",
 	}
-	Registry["together"] = ProviderInfo{
-		ID: "together", Name: "Together AI",
-		Alias: "together", Aliases: []string{"together"},
-		BaseURL: "https://api.together.xyz/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 60,
-		Color:       "#0F6FFF",
-		Website:     "https://www.together.ai",
-		Icon:        "group_work",
-		TextIcon:    "TG",
-		APIKeyURL:   "https://api.together.xyz/settings/api-keys",
-		ValidateURL: "https://api.together.xyz/v1/models",
-	}
-	Registry["topaz"] = ProviderInfo{
-		ID: "topaz", Name: "Topaz",
-		Alias: "topaz", Aliases: []string{"topaz"},
-		BaseURL: "",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#059669",
-		Website:  "https://topazlabs.com",
-		Icon:     "image",
-		TextIcon: "TP",
-	}
-	Registry["tortoise"] = ProviderInfo{
-		ID: "tortoise", Name: "Tortoise TTS",
-		Alias: "tortoise", Aliases: []string{"tortoise"},
-		BaseURL: "http://localhost:5000/api/tts",
-		APIType: "openai", AuthType: "none",
-		Category: "freeTier", AuthModes: []string{"none"}, Priority: 100,
-		Color:    "#7C3AED",
-		Website:  "https://github.com/neonbjb/tortoise-tts",
-		Icon:     "record_voice_over",
-		TextIcon: "TT",
-		Hidden:   true,
-		NoAuth:   true,
-	}
-	Registry["venice"] = ProviderInfo{
-		ID: "venice", Name: "Venice AI",
-		Alias: "venice", Aliases: []string{"venice", "vn"},
-		BaseURL: "https://api.venice.ai/api/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 115,
-		Color:          "#DC2626",
-		Website:        "https://venice.ai",
-		Icon:           "shield",
-		TextIcon:       "VE",
-		ValidateURL:    "https://api.venice.ai/api/v1/models",
-		ThinkingFormat: "openai",
-	}
-	Registry["vercel-ai-gateway"] = ProviderInfo{
-		ID: "vercel-ai-gateway", Name: "Vercel AI Gateway",
-		Alias: "vercel-ai-gateway", Aliases: []string{"vercel-ai-gateway", "vercel"},
-		BaseURL: "https://ai-gateway.vercel.sh/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 160,
-		Color:    "#111827",
-		Website:  "https://vercel.com/ai-gateway",
-		Icon:     "deployed_code",
-		TextIcon: "VG",
-	}
-	Registry["vertex-partner"] = ProviderInfo{
-		ID: "vertex-partner", Name: "Vertex Partner",
-		Alias: "vertex-partner", Aliases: []string{"vertex-partner", "vxp"},
-		BaseURL: "https://aiplatform.googleapis.com",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 260,
-		Color:    "#34A853",
-		Website:  "https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-partner-models",
-		Icon:     "cloud",
-		TextIcon: "VP",
-	}
 	Registry["vertex"] = ProviderInfo{
 		ID: "vertex", Name: "Vertex AI",
 		Alias: "vertex", Aliases: []string{"vertex", "vx"},
@@ -1361,29 +475,6 @@ func init() {
 		Website:  "https://cloud.google.com/vertex-ai",
 		Icon:     "cloud",
 		TextIcon: "VX",
-	}
-	Registry["volcengine-ark"] = ProviderInfo{
-		ID: "volcengine-ark", Name: "Volcengine Ark",
-		Alias: "volcengine-ark", Aliases: []string{"volcengine-ark", "ark"},
-		BaseURL: "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 270,
-		Color:     "#1677FF",
-		Website:   "https://ark.cn-beijing.volces.com",
-		Icon:      "cloud",
-		TextIcon:  "ARK",
-		APIKeyURL: "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
-	}
-	Registry["voyage-ai"] = ProviderInfo{
-		ID: "voyage-ai", Name: "Voyage AI",
-		Alias: "voyage-ai", Aliases: []string{"voyage-ai"},
-		BaseURL: "https://api.voyageai.com/v1/embeddings",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 40,
-		Color:    "#0EA5E9",
-		Website:  "https://www.voyageai.com",
-		Icon:     "data_array",
-		TextIcon: "VG",
 	}
 	Registry["xai"] = ProviderInfo{
 		ID: "xai", Name: "xAI (Grok)",
@@ -1399,40 +490,6 @@ func init() {
 		AuthorizeURL: "https://auth.x.ai/oauth2/authorize",
 		TokenURL:     "https://auth.x.ai/oauth2/token",
 		ClientID:     "b1a00492-073a-47ea-816f-4c329264a828",
-	}
-	Registry["xiaomi-mimo"] = ProviderInfo{
-		ID: "xiaomi-mimo", Name: "Xiaomi MiMo",
-		Alias: "xiaomi-mimo", Aliases: []string{"xiaomi-mimo", "mimo"},
-		BaseURL: "https://api.xiaomimimo.com/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 290,
-		Color:       "#FF6900",
-		Website:     "https://xiaomimimo.com",
-		Icon:        "smart_toy",
-		TextIcon:    "XM",
-		ValidateURL: "https://api.xiaomimimo.com/v1/models",
-	}
-	Registry["xiaomi-tokenplan"] = ProviderInfo{
-		ID: "xiaomi-tokenplan", Name: "Xiaomi MiMo (Token Plan)",
-		Alias: "xiaomi-tokenplan", Aliases: []string{"xiaomi-tokenplan", "xmtp"},
-		BaseURL: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 300,
-		Color:    "#FF6700",
-		Website:  "https://mimo.xiaomi.com",
-		Icon:     "smart_toy",
-		TextIcon: "XT",
-	}
-	Registry["youcom"] = ProviderInfo{
-		ID: "youcom", Name: "You.com Search",
-		Alias: "youcom", Aliases: []string{"youcom"},
-		BaseURL: "https://ydc-index.io/v1/search",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 100,
-		Color:    "#7C3AED",
-		Website:  "https://you.com",
-		Icon:     "search",
-		TextIcon: "YC",
 	}
 
 	aliasMap = buildAliasMap()

@@ -7,7 +7,7 @@ Go 1.26+ 高性能 AI 代理网关，从 [9router](https://github.com/decolua/9r
 ## 特性
 
 - OpenAI 兼容 API（`/v1/chat/completions`、`/v1/models`、`/v1/embeddings`、`/v1/messages`）
-- 100+ Provider 支持（OpenAI、Anthropic、Gemini、DeepSeek、OpenRouter、NVIDIA 等）
+- 精选 Chat Provider 注册表（OpenAI、Anthropic、Gemini、DeepSeek、OpenRouter、Claude Code、Kimi Code、Qoder 等），批量 Provider 分批深度适配
 - 多账号 fallback + 指数退避 + 连接状态管理
 - 模型别名 & Combo 组合策略（fallback / round-robin）
 - SSE 流式代理（断连感知）
@@ -138,21 +138,23 @@ webui/embed.go         # go:embed all:dist
 
 ## Provider 支持矩阵
 
-| 分类 | 数量 | 认证方式 | 说明 |
-|------|------|----------|------|
-| **apikey** | ~70 | API Key (Bearer / x-api-key / query) | OpenAI, Anthropic, DeepSeek, Groq, Cerebras, Mistral, Together, Fireworks 等 |
-| **oauth** | ~20 | OAuth 2.0 (PKCE / device-code / token import) | Claude, Gemini CLI, GitHub Copilot, Kimi, Codex, Kiro, Trae 等 |
-| **freeTier** | ~18 | API Key 或 None | Gemini, OpenRouter, NVIDIA, Cloudflare AI, Poolside, Vertex AI 等 |
-| **free** | 5 | None (零配置) | OpenCode Free, Qoder, Devin CLI 等（一键启用） |
-| **webCookie** | 2 | Cookie | Grok Web, Perplexity Web |
+Phase 36 起采用**精选注册表**（curated registry）：只保留深度适配过传输层的 Chat Provider，
+其余批量 Provider 将在后续分批完成深度适配；Media Provider（Embedding/TTS/STT/Image/Video/Web）走独立通道。
+
+| 分组 | Provider | 说明 |
+|------|----------|------|
+| **精选编程工具** | Claude Code, OpenAI Codex, GitHub Copilot, Grok Build, Cursor, Qoder, Tencent Cloud CodeBuddy (intl/CN), Kimi Code, Google Antigravity, opencode, OpenRouter, GLM (intl/CN) | 已验证传输层正确性 |
+| **官方直连 API** | Anthropic, OpenAI, Gemini, Vertex AI, Tencent Hunyuan, xAI, Alibaba Coding (intl/CN), Alibaba Studio, GitHub Models | 官方 API 端点 |
+| **E2E 验证** | DeepSeek, Cerebras, Groq, NVIDIA, API.airforce | 端到端测试覆盖 |
+| **品牌对/配额** | CodeBuddy (CN), Minimax (intl/CN) | 区域品牌分组 + 配额接口 |
 
 ### 传输格式
 
 | 格式 | Provider 示例 |
 |------|--------------|
 | OpenAI (`/v1/chat/completions`) | OpenAI, DeepSeek, OpenRouter, Groq, Cerebras, NVIDIA |
-| Anthropic (`/v1/messages`) | Anthropic, Minimax CN, GLM (claude endpoint) |
-| Gemini (`:generateContent`) | Gemini, Gemini CLI |
+| Anthropic (`/v1/messages`) | Anthropic, Minimax, GLM (claude endpoint) |
+| Gemini (`:generateContent`) | Gemini |
 
 ### 免费 Provider 快速开始
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -119,99 +118,8 @@ func refreshCodebuddyWithServer(providerID string, conn *model.ProviderConnectio
 	}, nil
 }
 
-func TestRefreshCline_WorkosPrefix(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
-		if body["refreshToken"] != "cline_rt" {
-			t.Errorf("expected refreshToken=cline_rt, got %s", body["refreshToken"])
-		}
-		if body["grantType"] != "refresh_token" {
-			t.Errorf("expected grantType=refresh_token, got %s", body["grantType"])
-		}
-		if body["clientType"] != "extension" {
-			t.Errorf("expected clientType=extension, got %s", body["clientType"])
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"data": map[string]any{
-				"accessToken":  "cline_at_new",
-				"refreshToken": "cline_rt_new",
-				"expiresAt":    time.Now().Add(1 * time.Hour).UTC().Format(time.RFC3339),
-			},
-		})
-	}))
-	defer srv.Close()
-
-	conn := &model.ProviderConnection{
-		ID:       "conn-cline",
-		Provider: "cline",
-		Data: model.ConnectionData{
-			RefreshToken: "cline_rt",
-			AccessToken:  "workos:cline_at_old",
-		},
-	}
-
-	result, err := refreshClineWithServer(conn, srv)
-	if err != nil {
-		t.Fatalf("refreshCline failed: %v", err)
-	}
-	// Should have workos: prefix
-	if result.AccessToken != "workos:cline_at_new" {
-		t.Errorf("expected workos:cline_at_new, got %s", result.AccessToken)
-	}
-	if result.RefreshToken != "cline_rt_new" {
-		t.Errorf("expected cline_rt_new, got %s", result.RefreshToken)
-	}
-}
-
-func refreshClineWithServer(conn *model.ProviderConnection, srv *httptest.Server) (*RefreshResult, error) {
-	client := srv.Client()
-	body, _ := json.Marshal(map[string]string{
-		"refreshToken": conn.Data.RefreshToken,
-		"grantType":    "refresh_token",
-		"clientType":   "extension",
-	})
-	req, _ := http.NewRequest("POST", srv.URL, strings.NewReader(string(body)))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var payload struct {
-		Data struct {
-			AccessToken  string `json:"accessToken"`
-			RefreshToken string `json:"refreshToken"`
-			ExpiresAt    string `json:"expiresAt"`
-		} `json:"data"`
-	}
-	json.NewDecoder(resp.Body).Decode(&payload)
-	if payload.Data.AccessToken == "" {
-		return nil, ClassifyRefreshError("", resp.StatusCode)
-	}
-	accessToken := payload.Data.AccessToken
-	if len(accessToken) < 7 || accessToken[:7] != "workos:" {
-		accessToken = "workos:" + accessToken
-	}
-	rt := payload.Data.RefreshToken
-	if rt == "" {
-		rt = conn.Data.RefreshToken
-	}
-	var expiresIn int
-	if payload.Data.ExpiresAt != "" {
-		if t, err := time.Parse(time.RFC3339, payload.Data.ExpiresAt); err == nil {
-			expiresIn = int(time.Until(t).Seconds())
-		}
-	}
-	return &RefreshResult{AccessToken: accessToken, RefreshToken: rt, ExpiresIn: expiresIn}, nil
-}
-
 func TestRefreshNoRefreshProviders(t *testing.T) {
-	providers := []string{"kilocode", "cursor", "zed", "windsurf"}
+	providers := []string{"cursor"}
 	for _, pid := range providers {
 		conn := &model.ProviderConnection{
 			ID:       "conn-" + pid,
@@ -350,63 +258,6 @@ func TestDualAuthSelection_FallbackToApikey(t *testing.T) {
 	}
 }
 
-func TestClineHeadersHook(t *testing.T) {
-	h := http.Header{}
-	creds := Credentials{
-		AccessToken: "my_token",
-	}
-	clineHeadersHook(h, creds)
-
-	auth := h.Get("Authorization")
-	if auth != "Bearer workos:my_token" {
-		t.Errorf("expected Bearer workos:my_token, got %s", auth)
-	}
-	if h.Get("X-Title") != "Cline" {
-		t.Errorf("expected X-Title=Cline, got %s", h.Get("X-Title"))
-	}
-	if h.Get("HTTP-Referer") != "https://cline.bot" {
-		t.Errorf("expected HTTP-Referer=https://cline.bot, got %s", h.Get("HTTP-Referer"))
-	}
-}
-
-func TestClineHeadersHook_AlreadyPrefixed(t *testing.T) {
-	h := http.Header{}
-	creds := Credentials{
-		AccessToken: "workos:already_prefixed",
-	}
-	clineHeadersHook(h, creds)
-
-	auth := h.Get("Authorization")
-	if auth != "Bearer workos:already_prefixed" {
-		t.Errorf("expected Bearer workos:already_prefixed, got %s", auth)
-	}
-}
-
-func TestKilocodeOrgHook(t *testing.T) {
-	h := http.Header{}
-	creds := Credentials{
-		AccessToken:          "kc_token",
-		ProviderSpecificData: map[string]any{"orgId": "org-123"},
-	}
-	kilocodeOrgHook(h, creds)
-
-	if h.Get("X-Kilocode-OrganizationID") != "org-123" {
-		t.Errorf("expected X-Kilocode-OrganizationID=org-123, got %s", h.Get("X-Kilocode-OrganizationID"))
-	}
-}
-
-func TestKilocodeOrgHook_NoOrg(t *testing.T) {
-	h := http.Header{}
-	creds := Credentials{
-		AccessToken: "kc_token",
-	}
-	kilocodeOrgHook(h, creds)
-
-	if h.Get("X-Kilocode-OrganizationID") != "" {
-		t.Error("expected no X-Kilocode-OrganizationID header when no orgId")
-	}
-}
-
 func TestCookieAuthScheme(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie := r.Header.Get("Cookie")
@@ -441,10 +292,8 @@ func TestCookieAuthScheme(t *testing.T) {
 func TestRefreshLeadOverrides_Batch2(t *testing.T) {
 	tests := map[string]time.Duration{
 		"github":         5 * time.Minute,
-		"cline":          5 * time.Minute,
 		"codebuddy-cn":   5 * time.Minute,
 		"codebuddy-intl": 5 * time.Minute,
-		"trae":           5 * time.Minute,
 		"grok-cli":       5 * time.Minute,
 	}
 	for pid, expected := range tests {

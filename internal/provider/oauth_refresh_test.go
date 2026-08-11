@@ -36,29 +36,23 @@ func TestRefreshCredentials_FormProvider(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Temporarily override qwen's token URL for testing.
-	origProfile := refreshProfiles["qwen"]
-	refreshProfiles["qwen"] = refreshProfile{
+	// Temporarily override kimi's token URL for testing.
+	origProfile := refreshProfiles["kimi"]
+	refreshProfiles["kimi"] = refreshProfile{
 		url: srv.URL,
-		parse: func(raw map[string]any) map[string]any {
-			if ru, ok := raw["resource_url"].(string); ok && ru != "" {
-				return map[string]any{"resourceUrl": ru}
-			}
-			return nil
-		},
 	}
-	defer func() { refreshProfiles["qwen"] = origProfile }()
+	defer func() { refreshProfiles["kimi"] = origProfile }()
 
 	conn := &model.ProviderConnection{
 		ID:       "conn-1",
-		Provider: "qwen",
+		Provider: "kimi",
 		Data: model.ConnectionData{
 			RefreshToken: "rt_old",
 			AccessToken:  "at_old",
 		},
 	}
 
-	result, err := RefreshCredentials("qwen", conn, srv.Client())
+	result, err := RefreshCredentials("kimi", conn, srv.Client())
 	if err != nil {
 		t.Fatalf("RefreshCredentials failed: %v", err)
 	}
@@ -212,126 +206,25 @@ func TestRefreshCredentials_TransientError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	origProfile := refreshProfiles["qwen"]
-	refreshProfiles["qwen"] = refreshProfile{url: srv.URL}
-	defer func() { refreshProfiles["qwen"] = origProfile }()
+	origProfile := refreshProfiles["codex"]
+	refreshProfiles["codex"] = refreshProfile{url: srv.URL, bodyFormat: "json"}
+	defer func() { refreshProfiles["codex"] = origProfile }()
 
 	conn := &model.ProviderConnection{
 		ID:       "conn-5",
-		Provider: "qwen",
+		Provider: "codex",
 		Data: model.ConnectionData{
-			RefreshToken: "qwen_rt",
-			AccessToken:  "qwen_at_old",
+			RefreshToken: "codex_rt",
+			AccessToken:  "codex_at_old",
 		},
 	}
 
-	_, err := RefreshCredentials("qwen", conn, srv.Client())
+	_, err := RefreshCredentials("codex", conn, srv.Client())
 	if err == nil {
 		t.Fatal("expected error for 500")
 	}
 	if IsUnrecoverableRefreshError(err) {
 		t.Error("500 should NOT be classified as permanent")
-	}
-}
-
-func TestRefreshCredentials_KiroSocial(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("User-Agent") != "kiro-cli/1.0.0" {
-			t.Errorf("expected kiro-cli UA, got %s", r.Header.Get("User-Agent"))
-		}
-		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
-		if body["refreshToken"] != "kiro_rt" {
-			t.Errorf("expected refreshToken=kiro_rt, got %s", body["refreshToken"])
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"accessToken":  "kiro_at_new",
-			"refreshToken": "kiro_rt_new",
-			"expiresIn":    3600,
-			"profileArn":   "arn:aws:codewhisperer:us-east-1:123:profile/abc",
-		})
-	}))
-	defer srv.Close()
-
-	// Override the social URL by patching the kiro path. Since refreshKiro
-	// uses a hardcoded URL, we test via the general mechanism with a
-	// connection that has no clientId/clientSecret (social path).
-	// For this test we'll directly test the social path logic.
-	conn := &model.ProviderConnection{
-		ID:       "conn-kiro",
-		Provider: "kiro",
-		Data: model.ConnectionData{
-			RefreshToken:         "kiro_rt",
-			AccessToken:          "kiro_at_old",
-			ProviderSpecificData: map[string]any{},
-		},
-	}
-
-	// We can't easily override the hardcoded URL in refreshKiro, so test
-	// the ClassifyRefreshError and ApplyRefreshResult logic instead.
-	result := &RefreshResult{
-		AccessToken:  "kiro_at_new",
-		RefreshToken: "kiro_rt_new",
-		ExpiresIn:    3600,
-		Extra:        map[string]any{"profileArn": "arn:aws:codewhisperer:us-east-1:123:profile/abc"},
-	}
-	ApplyRefreshResult(conn, result)
-
-	if conn.Data.AccessToken != "kiro_at_new" {
-		t.Errorf("expected kiro_at_new, got %s", conn.Data.AccessToken)
-	}
-	if conn.Data.RefreshToken != "kiro_rt_new" {
-		t.Errorf("expected kiro_rt_new, got %s", conn.Data.RefreshToken)
-	}
-	if conn.Data.ProviderSpecificData["profileArn"] != "arn:aws:codewhisperer:us-east-1:123:profile/abc" {
-		t.Error("expected profileArn to be merged into ProviderSpecificData")
-	}
-	if conn.Data.ExpiresAt == "" {
-		t.Error("expected ExpiresAt to be set")
-	}
-}
-
-func TestRefreshCredentials_IflowBasicAuth(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("Authorization")
-		if auth == "" || auth[:6] != "Basic " {
-			t.Errorf("expected Basic auth header, got %q", auth)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"access_token":  "iflow_at_new",
-			"refresh_token": "iflow_rt_new",
-			"expires_in":    86400,
-		})
-	}))
-	defer srv.Close()
-
-	origProfile := refreshProfiles["iflow"]
-	refreshProfiles["iflow"] = refreshProfile{
-		url:          srv.URL,
-		clientSecret: "testsecret",
-		extraHeaders: func(conn *model.ProviderConnection) map[string]string {
-			return map[string]string{"Authorization": "Basic dGVzdDp0ZXN0c2VjcmV0"}
-		},
-	}
-	defer func() { refreshProfiles["iflow"] = origProfile }()
-
-	conn := &model.ProviderConnection{
-		ID:       "conn-iflow",
-		Provider: "iflow",
-		Data: model.ConnectionData{
-			RefreshToken: "iflow_rt",
-			AccessToken:  "iflow_at_old",
-		},
-	}
-
-	result, err := RefreshCredentials("iflow", conn, srv.Client())
-	if err != nil {
-		t.Fatalf("RefreshCredentials failed: %v", err)
-	}
-	if result.AccessToken != "iflow_at_new" {
-		t.Errorf("expected iflow_at_new, got %s", result.AccessToken)
 	}
 }
 
@@ -364,8 +257,8 @@ func TestGetRefreshLead(t *testing.T) {
 	if GetRefreshLead("codex") != 5*24*time.Hour {
 		t.Error("codex should have 5-day lead time")
 	}
-	if GetRefreshLead("iflow") != 24*time.Hour {
-		t.Error("iflow should have 24h lead time")
+	if GetRefreshLead("kimi") != 5*time.Minute {
+		t.Error("kimi should have 5-minute lead time")
 	}
 	if GetRefreshLead("unknown") != RefreshLeadTime {
 		t.Error("unknown provider should use default lead time")

@@ -8,7 +8,7 @@ import (
 )
 
 func TestQuotaSupported(t *testing.T) {
-	for _, p := range []string{"deepseek", "glm", "glm-cn", "minimax", "minimax-cn"} {
+	for _, p := range []string{"deepseek", "glm", "glm-cn", "minimax", "minimax-cn", "qoder"} {
 		if !QuotaSupported(p) {
 			t.Errorf("expected %q to be supported", p)
 		}

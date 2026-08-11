@@ -426,11 +426,35 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	models, err := model.FetchModels(client, providerID, baseURL, conn.Data.APIKey, conn.Data.AccessToken)
-	if err != nil {
-		slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
+
+	// Qoder: COSY-signed catalog (resolve PATs first) — its inference
+	// protocol has no standard /models endpoint.
+	var models []model.ModelMetadata
+	if providerID == "qoder" {
+		models = s.fetchQoderCatalog(&conn, client)
+		if models == nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "qoder model catalog fetch failed"})
+			return
+		}
+	} else {
+		// Phase 36 T6: registry ModelsURL + format-derived auth scheme.
+		cfg := provider.ModelsFetchFor(providerInfo)
+		if conn.Data.BaseURL != "" {
+			cfg.URL = "" // user base URL override → derive from it
+		}
+		fetched, fetchErr := model.FetchModels(client, providerID, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
+		if fetchErr != nil {
+			slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
+			return
+		}
+		models = fetched
+
+		// models.dev backfill for context/output metadata when the provider
+		// API omits it (best-effort, never overwrites live values).
+		if catalog, catErr := model.LoadModelsDevCatalog(client); catErr == nil {
+			model.BackfillFromModelsDev(models, catalog)
+		}
 	}
 
 	// Store in KV cache
@@ -451,6 +475,51 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		"count":    len(models),
 		"models":   models,
 	})
+}
+
+// fetchQoderCatalog resolves the connection credential (PAT → job token) and
+// fetches Qoder's live model catalog via COSY signing.
+func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.Client) []model.ModelMetadata {
+	psd := conn.Data.ProviderSpecificData
+	userID := ""
+	machineID := ""
+	if psd != nil {
+		userID, _ = psd["userId"].(string)
+		machineID, _ = psd["machineId"].(string)
+	}
+	token := conn.Data.AccessToken
+	if token == "" {
+		token = conn.Data.APIKey
+	}
+	if token == "" {
+		return nil
+	}
+
+	resolved, err := provider.ResolveQoderCredential(token, userID, client)
+	if err != nil {
+		slog.Warn("Qoder PAT exchange failed during model refresh", "error", err)
+		return nil
+	}
+	if resolved.UserID == "" {
+		resolved.UserID = userID
+	}
+	if resolved.UserID == "" {
+		return nil
+	}
+
+	creds := provider.QoderCosyCreds{
+		UserID:    resolved.UserID,
+		AuthToken: resolved.AccessToken,
+		Name:      conn.Name,
+		Email:     conn.Email,
+		MachineID: machineID,
+	}
+	models := provider.QoderCatalogModels(creds, client, false)
+	if models == nil {
+		// Force one refresh — the cache may not be populated yet.
+		models = provider.QoderCatalogModels(creds, client, true)
+	}
+	return models
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {

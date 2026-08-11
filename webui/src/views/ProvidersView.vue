@@ -37,15 +37,58 @@ const filteredCategories = computed(() => {
   return store.registryCategories
     .map(cat => ({
       ...cat,
-      providers: cat.providers.filter(p => !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)),
+      groups: groupByBrand(cat.providers.filter(p => !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q))),
     }))
-    .filter(cat => cat.providers.length > 0)
+    .filter(cat => cat.groups.length > 0)
 })
 
+// Brand siblings (e.g. glm/glm-cn) collapse into one card with a region
+// switcher (Phase 36 T3). Unbranded providers stay as single-entry groups.
+interface BrandGroup { brand: string; region: string; providers: RegistryProvider[] }
+function groupByBrand(providers: RegistryProvider[]): BrandGroup[] {
+  const groups: BrandGroup[] = []
+  const byBrand = new Map<string, RegistryProvider[]>()
+  for (const p of providers) {
+    if (p.brand) {
+      const list = byBrand.get(p.brand) || []
+      list.push(p)
+      byBrand.set(p.brand, list)
+    } else {
+      groups.push({ brand: '', region: p.region || '', providers: [p] })
+    }
+  }
+  for (const [brand, list] of byBrand) {
+    list.sort((a, b) => (a.region || '').localeCompare(b.region || ''))
+    groups.push({ brand, region: list[0].region || '', providers: list })
+  }
+  return groups
+}
+
+const regionSel = ref<Record<string, number>>({})
+function activeInGroup(g: BrandGroup): RegistryProvider {
+  return g.providers[regionSel.value[g.brand] || 0] || g.providers[0]
+}
+// Region button label: uppercase region, or the provider id when siblings
+// share the same region (e.g. alicode-intl vs alims-intl).
+function regionLabel(g: BrandGroup, rp: RegistryProvider): string {
+  const region = (rp.region || '').toUpperCase()
+  const dup = g.providers.some(o => o !== rp && (o.region || '').toUpperCase() === region)
+  return dup ? rp.id : (region || rp.id)
+}
 function openAddFor(rp: RegistryProvider) {
   addSelected.value = rp
   addKey.value = ''
   showAdd.value = true
+}
+// Registry cards are clickable: with connections → provider detail of the
+// first connection; without → connect modal (Phase 36 T7).
+function openRegistryCard(rp: RegistryProvider) {
+  const conns = connectionsFor(rp.id)
+  if (conns.length) {
+    router.push(`/providers/${conns[0].id}`)
+  } else {
+    openAddFor(rp)
+  }
 }
 
 async function submitAdd() {
@@ -170,31 +213,44 @@ function connectionsFor(rpId: string) {
       </div>
     </template>
 
-    <!-- Registry by category -->
+    <!-- Registry by category (brand siblings grouped, Phase 36 T3) -->
     <template v-for="cat in filteredCategories" :key="cat.category">
-      <p class="section-label">{{ cat.category }} <span class="cat-count">{{ cat.providers.length }}</span></p>
+      <p class="section-label">{{ cat.category }} <span class="cat-count">{{ cat.groups.reduce((n, g) => n + g.providers.length, 0) }}</span></p>
       <div class="reg-grid stagger">
-        <GCard v-for="rp in cat.providers.slice(0, search ? 100 : 12)" :key="rp.id" class="reg-card">
-          <div class="reg-top">
-            <span class="reg-name">{{ rp.name }}</span>
-            <GBadge v-if="connectionsFor(rp.id).length" color="teal">{{ connectionsFor(rp.id).length }} conn</GBadge>
-          </div>
-          <p class="reg-id">{{ rp.id }}</p>
-          <GButton
-            v-if="rp.category === 'apikey'" size="sm" class="reg-btn"
-            @click="openAddFor(rp)"
-          >
-            <KeyRound :size="12" /> Add Key
-          </GButton>
-          <GButton
-            v-else-if="rp.category === 'free'" size="sm" variant="outline" class="reg-btn"
-            :disabled="connectionsFor(rp.id).length > 0"
-            @click="store.enableFree([rp.id])"
-          >
-            {{ connectionsFor(rp.id).length ? 'Enabled' : 'Enable' }}
-          </GButton>
-          <GButton v-else size="sm" variant="ghost" class="reg-btn" @click="openAddFor(rp)">Connect</GButton>
-        </GCard>
+        <template v-for="g in cat.groups.slice(0, search ? 100 : 12)" :key="g.brand || g.providers[0].id">
+          <GCard class="reg-card" :class="{ clickable: connectionsFor(activeInGroup(g).id).length }" @click="openRegistryCard(activeInGroup(g))">
+            <div class="reg-top">
+              <span class="reg-name">{{ g.brand || activeInGroup(g).name }}</span>
+              <GBadge v-if="g.providers.length > 1" color="gray">{{ g.providers.length }} regions</GBadge>
+              <GBadge v-if="connectionsFor(activeInGroup(g).id).length" color="teal">{{ connectionsFor(activeInGroup(g).id).length }} conn</GBadge>
+            </div>
+            <!-- Region switcher for brand siblings (Phase 36 T3) -->
+            <div v-if="g.providers.length > 1" class="region-row" @click.stop>
+              <button
+                v-for="(rp, ri) in g.providers" :key="rp.id"
+                class="region-btn" :class="{ active: ri === (regionSel[g.brand] || 0) }"
+                @click="regionSel[g.brand] = ri"
+              >{{ regionLabel(g, rp) }}</button>
+            </div>
+            <p class="reg-id">{{ activeInGroup(g).name !== activeInGroup(g).id ? activeInGroup(g).name + ' · ' : '' }}{{ activeInGroup(g).id }}</p>
+            <div class="reg-btn-row" @click.stop>
+              <GButton
+                v-if="activeInGroup(g).category === 'apikey'" size="sm" class="reg-btn"
+                @click="openAddFor(activeInGroup(g))"
+              >
+                <KeyRound :size="12" /> Add Key
+              </GButton>
+              <GButton
+                v-else-if="activeInGroup(g).category === 'free'" size="sm" variant="outline" class="reg-btn"
+                :disabled="connectionsFor(activeInGroup(g).id).length > 0"
+                @click="store.enableFree([activeInGroup(g).id])"
+              >
+                {{ connectionsFor(activeInGroup(g).id).length ? 'Enabled' : 'Enable' }}
+              </GButton>
+              <GButton v-else size="sm" variant="ghost" class="reg-btn" @click="openAddFor(activeInGroup(g))">Connect</GButton>
+            </div>
+          </GCard>
+        </template>
       </div>
     </template>
 
@@ -210,6 +266,7 @@ function connectionsFor(rpId: string) {
       </template>
 
       <template v-else-if="addTab === 'registry' && addSelected">
+        <p v-if="addSelected.authHint" class="auth-hint">{{ addSelected.authHint }}</p>
         <a
           v-if="addSelected.apiKeyUrl"
           :href="addSelected.apiKeyUrl"
@@ -292,6 +349,22 @@ function connectionsFor(rpId: string) {
 
 .reg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .reg-card { padding: 13px 15px; display: flex; flex-direction: column; gap: 6px; }
+.reg-card.clickable { cursor: pointer; }
+.reg-card.clickable:hover { border-color: var(--glass-border-hover); }
+.region-row { display: flex; gap: 4px; }
+.region-btn {
+  padding: 2px 8px; font-size: 10px; font-weight: 650; letter-spacing: 0.04em;
+  border-radius: 99px; border: 1px solid var(--glass-border);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  transition: all 0.15s ease;
+}
+.region-btn.active { background: var(--gradient-soft); color: var(--text); border-color: rgba(45,212,191,0.25); }
+.reg-btn-row { margin-top: auto; }
+.auth-hint {
+  font-size: 11.5px; color: var(--text-muted); background: var(--glass-hover);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  padding: 8px 10px; margin-bottom: 6px;
+}
 .reg-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .reg-name { font-size: 12.5px; font-weight: 600; }
 .reg-id { font-size: 10.5px; color: var(--text-faint); font-family: var(--font-mono); }

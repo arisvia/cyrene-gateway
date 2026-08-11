@@ -158,10 +158,6 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 		params.Set("state", pkce.State)
 		params.Set("plan", "generic")
 		params.Set("referrer", "cyrene-gateway")
-	case "cline", "clinepass":
-		params.Set("client_type", "extension")
-		params.Set("callback_url", redirectURI)
-		params.Set("redirect_uri", redirectURI)
 	default:
 		// Generic OAuth2 with PKCE
 		params.Set("client_id", info.ClientID)
@@ -221,26 +217,6 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
-	case "cline", "clinepass":
-		// Cline encodes token data as base64 in the code param
-		result, decodeErr := decodeClineToken(code)
-		if decodeErr == nil {
-			return result, nil
-		}
-		// Fallback to standard exchange
-		params := url.Values{
-			"grant_type":   {"authorization_code"},
-			"code":         {code},
-			"client_type":  {"extension"},
-			"redirect_uri": {redirectURI},
-		}
-		req, reqErr := http.NewRequest("POST", info.TokenURL, strings.NewReader(params.Encode()))
-		if reqErr != nil {
-			return nil, reqErr
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Accept", "application/json")
-		resp, err = client.Do(req)
 	default:
 		// Standard form-encoded exchange (codex, gemini, antigravity, etc.)
 		params := url.Values{
@@ -281,57 +257,6 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 	return mapTokenResponse(providerID, raw), nil
 }
 
-// decodeClineToken attempts to decode a Cline base64-encoded token.
-func decodeClineToken(code string) (*TokenExchangeResult, error) {
-	// Add padding if needed
-	b64 := code
-	if pad := len(b64) % 4; pad != 0 {
-		b64 += strings.Repeat("=", 4-pad)
-	}
-	decoded, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return nil, err
-	}
-	// Find last } to extract JSON
-	s := string(decoded)
-	lastBrace := strings.LastIndex(s, "}")
-	if lastBrace == -1 {
-		return nil, fmt.Errorf("no JSON found in decoded code")
-	}
-	var tokenData struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		Email        string `json:"email"`
-		FirstName    string `json:"firstName"`
-		LastName     string `json:"lastName"`
-		ExpiresAt    string `json:"expiresAt"`
-	}
-	if err := json.Unmarshal([]byte(s[:lastBrace+1]), &tokenData); err != nil {
-		return nil, err
-	}
-	if tokenData.AccessToken == "" {
-		return nil, fmt.Errorf("no access token in decoded data")
-	}
-
-	expiresIn := 3600
-	if tokenData.ExpiresAt != "" {
-		if t, err := time.Parse(time.RFC3339, tokenData.ExpiresAt); err == nil {
-			expiresIn = int(time.Until(t).Seconds())
-		}
-	}
-
-	return &TokenExchangeResult{
-		AccessToken:  tokenData.AccessToken,
-		RefreshToken: tokenData.RefreshToken,
-		ExpiresIn:    expiresIn,
-		Email:        tokenData.Email,
-		ProviderSpecificData: map[string]any{
-			"firstName": tokenData.FirstName,
-			"lastName":  tokenData.LastName,
-		},
-	}, nil
-}
-
 // DeviceCodeResponse holds the response from a device code request.
 type DeviceCodeResponse struct {
 	DeviceCode              string `json:"device_code"`
@@ -358,16 +283,6 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
 
-	var pkce *PKCE
-	// Qwen uses PKCE with device code
-	if providerID == "qwen" {
-		var err error
-		pkce, err = GeneratePKCE()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	var resp *http.Response
 	var err error
 
@@ -376,21 +291,6 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		params := url.Values{
 			"client_id": {info.ClientID},
 			"scope":     {"read:user"},
-		}
-		req, reqErr := http.NewRequest("POST", info.DeviceCodeURL, strings.NewReader(params.Encode()))
-		if reqErr != nil {
-			return nil, reqErr
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Accept", "application/json")
-		resp, err = client.Do(req)
-
-	case "qwen":
-		params := url.Values{
-			"client_id":             {info.ClientID},
-			"scope":                 {"openid profile email offline_access"},
-			"code_challenge":        {pkce.CodeChallenge},
-			"code_challenge_method": {"S256"},
 		}
 		req, reqErr := http.NewRequest("POST", info.DeviceCodeURL, strings.NewReader(params.Encode()))
 		if reqErr != nil {
@@ -506,10 +406,6 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		Interval:                interval,
 	}
 
-	if pkce != nil {
-		result.CodeVerifier = pkce.CodeVerifier
-	}
-
 	return result, nil
 }
 
@@ -543,21 +439,6 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 			"client_id":   {info.ClientID},
 			"device_code": {deviceCode},
 			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
-		}
-		req, reqErr := http.NewRequest("POST", info.TokenURL, strings.NewReader(params.Encode()))
-		if reqErr != nil {
-			return nil, reqErr
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Accept", "application/json")
-		resp, err = client.Do(req)
-
-	case "qwen":
-		params := url.Values{
-			"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
-			"client_id":     {info.ClientID},
-			"device_code":   {deviceCode},
-			"code_verifier": {codeVerifier},
 		}
 		req, reqErr := http.NewRequest("POST", info.TokenURL, strings.NewReader(params.Encode()))
 		if reqErr != nil {

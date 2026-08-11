@@ -3,8 +3,8 @@
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "reference": "decolua/9router + Vanszs/VansRouter enhancements",
   "created": "2026-07-21",
-  "current_phase": 36,
-  "last_updated": "2026-08-10",
+  "current_phase": 37,
+  "last_updated": "2026-08-11",
   "phases": [
     {
       "id": -1,
@@ -157,35 +157,92 @@
     {
       "id": 36,
       "name": "Curated Provider Deep-Adaptation (Batch 1)",
-      "status": "pending",
-      "tasks": [
-        "T1 Registry pruning (chat providers 112→~28): delete entries outside the KEEP list below; delete criteria = upstream Hidden/service-ended OR no Phase 30-32 transport verification OR duplicate of a kept upstream (opencode-go folds into opencode). KEEP (28): claude, codex, github, grok-cli, cursor, qoder, codebuddy-intl, kimi, antigravity, opencode, openrouter, glm, glm-cn [curated 13]; anthropic, openai, gemini, vertex, tencent, xai, alicode-intl, alicode, alims-intl [direct APIs]; deepseek, cerebras, groq, nvidia, api-airforce [E2E-verified]; codebuddy-cn, minimax, minimax-cn [brand pairs / quota-ported]; plus new github-models entry. Update: registry_test.go (TestRegistryCompleteness list + category counts), README provider matrix, url_test/transport_test references, E2E suite. Media providers (internal/media) are OUT OF SCOPE here — they get their own selective pass later.",
-        "T2 Official vendor names (display names only — registry IDs stay unchanged, so no DB/alias migration): grok-cli→'Grok Build', kimi→'Kimi Code', antigravity→'Google Antigravity', codebuddy-intl→'Tencent Cloud CodeBuddy', codebuddy-cn→'Tencent Cloud CodeBuddy (CN)', cursor→'Cursor', opencode→'opencode', others verified identical (Claude Code, OpenAI Codex, GitHub Copilot, Qoder, OpenRouter).",
-        "T3 Brand/Region grouping: add Brand + Region fields to ProviderInfo; set for glm/glm-cn (GLM), minimax/minimax-cn (MiniMax), codebuddy-cn/intl (CodeBuddy), alicode/alicode-intl/alims-intl (Alibaba); webui Providers page groups brand siblings under one card with region switcher.",
-        "T4 Dual-auth + new entry: claude and codex entries get AuthModes [oauth, apikey] (reuse Phase 34 dual-auth selection pattern from xai/kimi); new github-models registry entry (models.github.com, PAT auth reusing GitHub OAuth token).",
-        "T5 Qoder realignment: Category free→oauth, AuthModes [oauth, apikey]; PAT (pt-...) support end-to-end — job-token exchange, SSE terminal-frame close, quota usage for both OAuth and PAT (port 9router@9c9dd7b1, @d433c0b2); panel shows OAuth connect OR PAT entry with hint 'pt-… from qoder.com/account/integrations'. Qoder stays standalone; its vendor's platform API is the Alibaba line (already in KEEP list).",
-        "T6 Dynamic model catalog for the curated set: extend model.FetchModels with per-provider models URL + auth scheme (public endpoints for openai/anthropic/openrouter/deepseek/xai/glm etc.; OAuth-token endpoints where the provider requires auth; qoder uses its own model/list). Registry field ModelsURL + ModelsAuth ('none'|'bearer') where not derivable from BaseURL. Live results override registry_models.go static lists (static = offline fallback only). Add models.dev backfill (https://models.dev/api.json, cached, fuzzy id match) for context_length/max_output when the provider API lacks them. Surface meta in /v1/models (context_length, max_output_tokens) and panel.",
-        "T7 Detail page (ONE unified shell — same header/tabs/components for every provider; differences are content blocks, not layouts): (a) fix Models tab payload bug — frontend sends {model} but handleAddProviderModel/handleDeleteProviderModel expect {id}/{name}; (b) inline model Q&A tester: pick model → prompt → streamed answer + latency + usage (reuse /api/models/test or chat endpoint); (c) quota bar block where provider has quota support; (d) make Providers grid registry cards clickable → route to provider-level overview (route /providers/:id exists, connection-scoped; add provider-scoped entry point or reuse).",
-        "T8 Verify: go fmt → go build → go test all green; webui npx vue-tsc -b && npx vite build; BrowserUse spot-check (providers page grouping, detail page tabs + model tester on opencode free connection); restore webui/dist/index.html to placeholder before committing."
-      ],
-      "notes": "EXISTING INFRA (do not rebuild): model.FetchModels + normalizers (openai/anthropic/openrouter/google/mistral) + StaticCatalog + MergeMetadata + CachedModels KV (Phase 28); POST /api/providers/{id}/refresh-models + customModels KV CRUD + GET /api/providers/{id}/models (customModels field present but panel Models tab never merges it — wire it up); ProviderDetailView.vue 3-tab shell + token countdown + refresh button (Phase 29). Decisions logged 2026-08-11: pruning over tiering (pre-production, no compat needed but registry IDs stay stable); vendor-official display names; separate intl/CN entries + Brand/Region UI grouping; models.dev for meta backfill; free providers use fixed shared pools (opencode 'Bearer public'), no rate-limit evasion. Long-term: subsequent phases complete the remaining providers in batches; media providers selectively adapted later (mainstream first: openai, google, elevenlabs, fal-ai, stability, runway, edge-tts)."
+      "status": "done",
+      "notes": "EXISTING INFRA (do not rebuild): model.FetchModels + normalizers (openai/anthropic/openrouter/google/mistral) + StaticCatalog + MergeMetadata + CachedModels KV (Phase 28); POST /api/providers/{id}/refresh-models + customModels KV CRUD + GET /api/providers/{id}/models (customModels field present but panel Models tab never merges it — wire it up); ProviderDetailView.vue 3-tab shell + token countdown + refresh button (Phase 29). Decisions logged 2026-08-11: pruning over tiering (pre-production, no compat needed but registry IDs stay stable); vendor-official display names; separate intl/CN entries + Brand/Region UI grouping; models.dev for meta backfill; free providers use fixed shared pools (opencode 'Bearer public'), no rate-limit evasion. Long-term: subsequent phases complete the remaining providers in batches; media providers selectively adapted later (mainstream first: openai, google, elevenlabs, fal-ai, stability, runway, edge-tts).",
+      "summary": "Curated registry (112→31 chat providers; IDs stable), vendor-official names, Brand/Region grouping (GLM/MiniMax/CodeBuddy/Alibaba), dual-auth claude/codex + new github-models entry, qoder realigned (free→oauth, PAT pt-→jt- exchange + api2/api3 routing + SSE terminal close + quota for OAuth/PAT, port 9router@9c9dd7b1/@d433c0b2), dynamic model catalog (registry ModelsURL/ModelsAuth + models.dev backfill + qoder COSY catalog), detail page unified shell (Models payload fix {id}, customModels merge, inline streaming model tester, quota bar, clickable registry cards)."
     }
   ],
   "upstream_ports": [
-    {"source": "9router#2877", "what": "Gemini tool schema sanitization → internal/translator/schema.go", "when": "2026-07-28"},
-    {"source": "9router#2881", "what": "Kimi apikey routing: ApiKeyBaseURL + EffectiveBaseURL()", "when": "2026-07-28"},
-    {"source": "9router@c97963c", "what": "Raw body preservation: unknown fields pass through to upstream", "when": "2026-07-28"},
-    {"source": "9router#2873", "what": "Cache-read token tracking (cached_tokens/reasoning_tokens)", "when": "2026-07-28"},
-    {"source": "9router#2747", "what": "Preserve content_block index in Claude SSE", "when": "2026-07-28"},
-    {"source": "9router#2869", "what": "Guard empty deltas / doubled tool-call arguments", "when": "2026-07-28"},
-    {"source": "9router#2767", "what": "Per-provider token-saver exclusion list", "when": "2026-07-28"},
-    {"source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities", "when": "2026-07-28"},
-    {"source": "9router#2884", "what": "Schema cleaner property-name map safety", "when": "2026-07-30"},
-    {"source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} after $ref removal", "when": "2026-07-30"},
-    {"source": "9router@6fcd273", "what": "Registry sync: 10 new providers + Claude Opus 5 + Gemini 3.6 Flash + Laguna", "when": "2026-07-30"},
-    {"source": "VansRouter", "what": "Loop guard + termination prompt (Phase 9)", "when": "2026-07-23"},
-    {"source": "9router@2abe8b85", "what": "Gemini schema strip: multipleOf/uniqueItems/contains/unevaluated*/contentSchema → translator/schema.go", "when": "2026-08-08"},
-    {"source": "9router@41606a37", "what": "Claude→OpenAI translated usage folds cache_read/cache_creation into prompt_tokens + prompt_tokens_details", "when": "2026-08-08"}
+    {
+      "source": "9router#2877",
+      "what": "Gemini tool schema sanitization → internal/translator/schema.go",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2881",
+      "what": "Kimi apikey routing: ApiKeyBaseURL + EffectiveBaseURL()",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router@c97963c",
+      "what": "Raw body preservation: unknown fields pass through to upstream",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2873",
+      "what": "Cache-read token tracking (cached_tokens/reasoning_tokens)",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2747",
+      "what": "Preserve content_block index in Claude SSE",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2869",
+      "what": "Guard empty deltas / doubled tool-call arguments",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2767",
+      "what": "Per-provider token-saver exclusion list",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2872",
+      "what": "/v1/models metadata: context_length + capabilities",
+      "when": "2026-07-28"
+    },
+    {
+      "source": "9router#2884",
+      "what": "Schema cleaner property-name map safety",
+      "when": "2026-07-30"
+    },
+    {
+      "source": "9router@e3e3e23",
+      "what": "Gemini empty schema fix: promote {} after $ref removal",
+      "when": "2026-07-30"
+    },
+    {
+      "source": "9router@6fcd273",
+      "what": "Registry sync: 10 new providers + Claude Opus 5 + Gemini 3.6 Flash + Laguna",
+      "when": "2026-07-30"
+    },
+    {
+      "source": "VansRouter",
+      "what": "Loop guard + termination prompt (Phase 9)",
+      "when": "2026-07-23"
+    },
+    {
+      "source": "9router@2abe8b85",
+      "what": "Gemini schema strip: multipleOf/uniqueItems/contains/unevaluated*/contentSchema → translator/schema.go",
+      "when": "2026-08-08"
+    },
+    {
+      "source": "9router@41606a37",
+      "what": "Claude→OpenAI translated usage folds cache_read/cache_creation into prompt_tokens + prompt_tokens_details",
+      "when": "2026-08-08"
+    },
+    {
+      "source": "9router@9c9dd7b1",
+      "what": "Qoder PAT auth: pt-→job-token exchange, SSE terminal-frame close, re-enabled oauth+apikey, realigned model aliases → internal/provider/qoder_pat.go + chat_qoder.go",
+      "when": "2026-08-11"
+    },
+    {
+      "source": "9router@d433c0b2",
+      "what": "Qoder PAT end-to-end: jt- traffic routed to api2.qoder.sh (api3 rejects 403), quota usage resolves PAT credentials → qoder_pat.go + usage/qoder.go",
+      "when": "2026-08-11"
+    }
   ],
   "upstream_commits": {
     "decolua/9router": "15223724c3e1ad898e84ef6e0cc1686cbafc8290"
@@ -212,10 +269,30 @@
     "priority": "P0: merged PR touching handlers/translator/services. P1: open bug on existing feature. P2: registry changes. P3: features → candidate."
   },
   "future_candidates": [
-    {"what": "OpenAI Responses API adapter", "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.", "priority": "low"},
-    {"what": "Registry additions from v0.5.50: TokenRouter, selfhosted-stt/tts/embedding providers", "why": "Feature-level (new providers + media adapters incl. MiMo TTS chat-completions voice adapter); needs a dedicated phase, not maintenance scope.", "priority": "medium"},
-    {"what": "Qwen provider removal", "why": "Upstream dropped qwen (portal.qwen.ai OAuth unreliable, dcdd4628). Go side has qwen in registry/OAuth flows/tests — removal is a cross-cutting change, do deliberately.", "priority": "medium"},
-    {"what": "Combo capacity/vision adapters", "why": "6498b31/8e59093 add vision/audio capacity routing with mimo fallback — new subsystem, phase-level work.", "priority": "medium"},
-    {"what": "Ollama background refresh + codebuddy-intl usage", "why": "f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work. (Qoder PAT d433c0b2 now covered by Phase 36.)", "priority": "medium"}
+    {
+      "what": "OpenAI Responses API adapter",
+      "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.",
+      "priority": "low"
+    },
+    {
+      "what": "Registry additions from v0.5.50: TokenRouter, selfhosted-stt/tts/embedding providers",
+      "why": "Feature-level (new providers + media adapters incl. MiMo TTS chat-completions voice adapter); needs a dedicated phase, not maintenance scope.",
+      "priority": "medium"
+    },
+    {
+      "what": "Qwen provider removal",
+      "why": "Upstream dropped qwen (portal.qwen.ai OAuth unreliable, dcdd4628). Go side has qwen in registry/OAuth flows/tests — removal is a cross-cutting change, do deliberately.",
+      "priority": "medium"
+    },
+    {
+      "what": "Combo capacity/vision adapters",
+      "why": "6498b31/8e59093 add vision/audio capacity routing with mimo fallback — new subsystem, phase-level work.",
+      "priority": "medium"
+    },
+    {
+      "what": "Ollama background refresh + codebuddy-intl usage",
+      "why": "f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work. (Qoder PAT d433c0b2 now covered by Phase 36.)",
+      "priority": "medium"
+    }
   ]
 }

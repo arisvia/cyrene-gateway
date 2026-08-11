@@ -12,6 +12,18 @@ import (
 // CacheTTL is how long live-fetched model metadata stays valid.
 const CacheTTL = 24 * time.Hour
 
+// ModelsFetchConfig describes a provider's live model-catalog endpoint
+// (Phase 36 T6): where to fetch and how to authenticate.
+type ModelsFetchConfig struct {
+	// URL is the full models endpoint. Empty = derive from BaseURL.
+	URL string
+	// Auth selects credential injection: "bearer" (default), "none" (public),
+	// "query" (?key=<token>, gemini), "raw" (token verbatim in AuthHeader).
+	Auth string
+	// AuthHeader carries the token when Auth == "raw" (e.g. x-goog-api-key).
+	AuthHeader string
+}
+
 // CachedModels is the JSON structure stored in KV (scope="providerModelCache", key=providerID).
 type CachedModels struct {
 	FetchedAt time.Time       `json:"fetched_at"`
@@ -23,26 +35,55 @@ func (c *CachedModels) IsExpired() bool {
 	return time.Since(c.FetchedAt) > CacheTTL
 }
 
-// FetchModels fetches the model list from a provider's /models endpoint and
+// FetchModels fetches the model list from a provider's models endpoint and
 // normalizes the response into []ModelMetadata. The providerID determines
 // which normalizer to use.
-func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken string) ([]ModelMetadata, error) {
-	if baseURL == "" {
+//
+// cfg (Phase 36 T6) selects the endpoint and auth scheme: cfg.URL empty means
+// derive "<baseURL>/models" (legacy behavior); cfg.Auth is "bearer"
+// (default), "none" (public catalog), "query" (?key=<token>, gemini) or
+// "raw" (token verbatim in cfg.AuthHeader).
+func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken string, cfg ModelsFetchConfig) ([]ModelMetadata, error) {
+	if baseURL == "" && cfg.URL == "" {
 		return nil, fmt.Errorf("no base URL for provider %s", providerID)
 	}
 
-	url := strings.TrimRight(baseURL, "/") + "/models"
+	url := cfg.URL
+	if url == "" {
+		url = strings.TrimRight(baseURL, "/") + "/models"
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set auth
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	} else if accessToken != "" {
-		req.Header.Set("Authorization", "Bearer "+accessToken)
+	// Auth injection per scheme (Phase 36 T6).
+	token := apiKey
+	if token == "" {
+		token = accessToken
+	}
+	switch cfg.Auth {
+	case "none":
+		// public catalog — no credential
+	case "query":
+		if token != "" {
+			q := req.URL.Query()
+			q.Set("key", token)
+			req.URL.RawQuery = q.Encode()
+		}
+	case "raw":
+		if token != "" {
+			header := cfg.AuthHeader
+			if header == "" {
+				header = "x-api-key"
+			}
+			req.Header.Set(header, token)
+		}
+	default: // "bearer" / ""
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 	}
 	req.Header.Set("Accept", "application/json")
 

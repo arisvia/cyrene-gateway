@@ -17,6 +17,21 @@ type ProviderInfo struct {
 	AuthModes []string `json:"authModes,omitempty"` // supported auth modes
 	Priority  int      `json:"priority,omitempty"`  // lower = higher priority
 
+	// Brand/Region grouping (Phase 36): brand siblings (e.g. glm/glm-cn) are
+	// rendered as one panel card with a region switcher. IDs stay stable.
+	Brand  string `json:"brand,omitempty"`
+	Region string `json:"region,omitempty"` // "intl" | "cn"
+
+	// AuthHint is a human hint for the credential the panel should collect
+	// (9router authHint), e.g. qoder's PAT source (Phase 36).
+	AuthHint string `json:"authHint,omitempty"`
+
+	// ModelsURL / ModelsAuth (Phase 36): explicit live model-catalog endpoint
+	// when it cannot be derived from BaseURL. ModelsAuth is "none" (public) or
+	// "bearer" (default). Empty ModelsURL = derive via BuildModelsURL.
+	ModelsURL  string `json:"modelsUrl,omitempty"`
+	ModelsAuth string `json:"modelsAuth,omitempty"`
+
 	// Display metadata
 	Color    string `json:"color,omitempty"`
 	Website  string `json:"website,omitempty"`
@@ -92,8 +107,6 @@ var legacyAliases = map[string]string{
 	"google": "gemini",
 	"or":     "openrouter",
 	"ds":     "deepseek",
-	"sf":     "siliconflow",
-	"fw":     "fireworks",
 	"nim":    "nvidia",
 	"grok":   "xai",
 }
@@ -175,13 +188,9 @@ var modelPrefixProviders = []struct {
 	{"deepseek-", "deepseek"},
 	{"grok-", "xai"},
 	{"llama-", "openrouter"},
-	{"mistral-", "mistral"},
-	{"qwen", "qwen"},
 	{"kimi-", "kimi"},
 	{"glm-", "glm"},
 	{"minimax-", "minimax"},
-	{"jina-", "jina-ai"},
-	{"accounts/fireworks/", "fireworks"},
 }
 
 // InferProviderFromModel infers provider from model name prefix

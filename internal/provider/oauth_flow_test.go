@@ -41,13 +41,10 @@ func TestGetProviderFlowType(t *testing.T) {
 		expected OAuthFlowType
 	}{
 		{"github", FlowDeviceCode},
-		{"qwen", FlowDeviceCode},
 		{"kimi", FlowDeviceCode},
 		{"grok-cli", FlowDeviceCode},
 		{"claude", FlowAuthorizationCodePKCE},
 		{"codex", FlowAuthorizationCodePKCE},
-		{"gemini-cli", FlowAuthorizationCodePKCE},
-		{"cline", FlowAuthorizationCode},
 		{"nonexistent", ""},
 	}
 

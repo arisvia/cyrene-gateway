@@ -18,8 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const qoderModelListURL = "https://api3.qoder.sh/algo/api/v2/model/list"
-
 // --- Model config cache (from services/qoderModels.js) ---
 
 type qoderCatalogEntry struct {
@@ -74,13 +72,15 @@ func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) 
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
 
-	// Fetch model list with COSY signing (empty body)
-	headers, err := BuildQoderCosyHeaders(nil, qoderModelListURL, creds)
+	// Fetch model list with COSY signing (empty body). jt- tokens must use
+	// api2.qoder.sh — api3 rejects them with "Login expired" (403).
+	modelListURL := QoderModelListURL(creds.AuthToken)
+	headers, err := BuildQoderCosyHeaders(nil, modelListURL, creds)
 	if err != nil {
 		return nil
 	}
 
-	req, err := http.NewRequest("GET", qoderModelListURL, nil)
+	req, err := http.NewRequest("GET", modelListURL, nil)
 	if err != nil {
 		return nil
 	}

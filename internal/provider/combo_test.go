@@ -45,7 +45,7 @@ func TestInferProviderFromModel(t *testing.T) {
 		{"deepseek-chat", "deepseek"},
 		{"grok-2", "xai"},
 		{"llama-3-70b", "openrouter"},
-		{"mistral-large", "mistral"},
+		{"kimi-k2", "kimi"},
 		{"unknown-model", "openai"},
 	}
 
@@ -72,7 +72,7 @@ func TestResolveProviderAlias(t *testing.T) {
 		{"google", "gemini"},
 		{"or", "openrouter"},
 		{"ds", "deepseek"},
-		{"sf", "siliconflow"},
+		{"qd", "qoder"},
 		{"unknown", "unknown"},
 	}
 

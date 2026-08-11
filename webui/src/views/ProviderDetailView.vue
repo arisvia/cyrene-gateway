@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGatewayStore, type ProviderModel } from '@/stores/gateway'
 import { useToast } from '@/lib/toast'
@@ -8,9 +8,8 @@ import GCard from '@/components/ui/GCard.vue'
 import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
 import GModal from '@/components/ui/GModal.vue'
-import GSwitch from '@/components/ui/GSwitch.vue'
 import GSkeleton from '@/components/ui/GSkeleton.vue'
-import { ArrowLeft, Plus, Trash2, Zap, RefreshCw, KeyRound, Clock } from 'lucide-vue-next'
+import { ArrowLeft, Plus, Trash2, Zap, RefreshCw, KeyRound, Clock, FlaskConical, Gauge } from 'lucide-vue-next'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
@@ -37,7 +36,33 @@ const baseUrl = ref('')
 const strategy = ref('')
 const saving = ref(false)
 
+// Upstream quota usage (providers with a real quota API)
+const quotaResult = ref<{ plan?: string; message?: string; quotas?: Record<string, any> } | null>(null)
+
+// Inline model Q&A tester
+const testerModel = ref('')
+const testerPrompt = ref('')
+const testerRunning = ref(false)
+const testerOutput = ref('')
+const testerLatencyMs = ref(0)
+const testerUsage = ref<{ prompt?: number; completion?: number } | null>(null)
+const testerError = ref('')
+
 const conn = computed(() => store.providers.find(p => p.id === props.id))
+
+const quotaRows = computed(() => {
+  const q = quotaResult.value?.quotas
+  if (!q) return []
+  return Object.entries(q).map(([name, v]: [string, any]) => ({
+    name,
+    used: Number(v?.used || 0),
+    total: Number(v?.total || 0),
+    remaining: Number(v?.remaining || 0),
+    remainingPercentage: Number(v?.remainingPercentage || 0),
+    resetAt: v?.resetAt || '',
+    unit: v?.unit || '',
+  }))
+})
 
 // Token refresh
 const refreshing = ref(false)
@@ -71,19 +96,36 @@ onMounted(async () => {
   if (!store.providers.length) await store.loadCore()
   loading.value = false
   loadModels()
+  loadQuota()
   if (conn.value) {
     baseUrl.value = conn.value.data?.baseUrl || ''
     strategy.value = conn.value.data?.strategy || ''
   }
 })
 
+// Models = registry catalog + custom models (the Models tab previously never
+// merged customModels; the payload contract is {id}/{name}, not {model}).
 async function loadModels() {
   modelsLoading.value = true
   try {
     const r = await api(`/api/providers/${props.id}/models`)
-    models.value = Array.isArray(r?.models) ? r.models : (Array.isArray(r) ? r : [])
+    const reg = Array.isArray(r?.registryModels) ? r.registryModels : []
+    const custom = Array.isArray(r?.customModels) ? r.customModels : []
+    models.value = [
+      ...custom.map((m: any) => ({ name: m.id, displayName: m.name || m.id, source: 'custom' })),
+      ...reg.map((m: any) => ({ name: m.id, displayName: m.name || m.id, source: 'registry' })),
+    ]
+    if (!testerModel.value && models.value.length) {
+      testerModel.value = models.value[0].name
+    }
   } catch { models.value = [] }
   modelsLoading.value = false
+}
+
+async function loadQuota() {
+  try {
+    quotaResult.value = await api(`/api/usage/connection/${props.id}`)
+  } catch { quotaResult.value = null }
 }
 
 async function test() {
@@ -95,7 +137,6 @@ async function test() {
 
 async function addKey() {
   try {
-    await apiPost(`/api/providers/${props.id}/models`, {})
     await store.addProvider({
       provider: conn.value?.provider || 'custom',
       name: newKeyName.value || undefined,
@@ -109,7 +150,7 @@ async function addKey() {
 
 async function addModel() {
   try {
-    await apiPost(`/api/providers/${props.id}/models`, { model: newModel.value })
+    await apiPost(`/api/providers/${props.id}/models`, { id: newModel.value, name: newModel.value })
     toast.success(`Model "${newModel.value}" added`)
     showAddModel.value = false
     newModel.value = ''
@@ -117,10 +158,10 @@ async function addModel() {
   } catch (e: any) { toast.error(e.message) }
 }
 
-async function removeModel(name: string) {
+async function removeModel(id: string) {
   try {
-    await apiDelete(`/api/providers/${props.id}/models`, { model: name })
-    toast.success(`Model "${name}" removed`)
+    await apiDelete(`/api/providers/${props.id}/models`, { id })
+    toast.success(`Model "${id}" removed`)
     loadModels()
   } catch (e: any) { toast.error(e.message) }
 }
@@ -133,6 +174,68 @@ async function refreshModels() {
     await loadModels()
   } catch (e: any) { toast.error(e.message) }
   modelsLoading.value = false
+}
+
+// Inline Q&A: stream a chat completion through the gateway for the picked
+// model and show latency + usage (Phase 36 T7).
+async function runTester() {
+  if (!conn.value || !testerModel.value || testerRunning.value) return
+  testerRunning.value = true
+  testerOutput.value = ''
+  testerUsage.value = null
+  testerError.value = ''
+  const start = Date.now()
+  try {
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: `${conn.value.provider}/${testerModel.value}`,
+        messages: [{ role: 'user', content: testerPrompt.value || 'Say hi in one word.' }],
+        stream: true,
+      }),
+    })
+    if (!res.ok || !res.body) {
+      let msg = `HTTP ${res.status}`
+      try {
+        const j = await res.json()
+        const e = j?.error
+        if (typeof e === 'string') msg = e
+        else if (e?.message) msg = String(e.message)
+      } catch { /* non-JSON */ }
+      throw new Error(msg)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let nl
+      while ((nl = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, nl).trim()
+        buf = buf.slice(nl + 1)
+        if (!line.startsWith('data:')) continue
+        const data = line.slice(5).trim()
+        if (data === '[DONE]') continue
+        try {
+          const chunk = JSON.parse(data)
+          const delta = chunk?.choices?.[0]?.delta?.content
+          if (delta) testerOutput.value += delta
+          const u = chunk?.usage
+          if (u && (u.prompt_tokens || u.total_tokens)) {
+            testerUsage.value = { prompt: u.prompt_tokens, completion: u.completion_tokens }
+          }
+        } catch { /* partial frame */ }
+      }
+    }
+    testerLatencyMs.value = Date.now() - start
+  } catch (e: any) {
+    testerError.value = e.message || 'tester failed'
+    testerLatencyMs.value = Date.now() - start
+  }
+  testerRunning.value = false
 }
 
 async function saveSettings() {
@@ -214,6 +317,20 @@ async function doDelete() {
           </GButton>
         </div>
       </GCard>
+
+      <!-- Upstream quota usage (Phase 36 T7) -->
+      <GCard v-if="quotaRows.length || quotaResult?.plan" class="quota-card">
+        <p class="quota-title"><Gauge :size="13" /> Upstream Usage{{ quotaResult?.plan ? ` — ${quotaResult.plan}` : '' }}</p>
+        <div v-for="q in quotaRows" :key="q.name" class="quota-row">
+          <div class="quota-head">
+            <span class="quota-name">{{ q.name }}</span>
+            <span class="quota-nums">{{ q.used }} / {{ q.total }} {{ q.unit }}</span>
+          </div>
+          <div class="quota-bar"><div class="quota-fill" :style="{ width: Math.max(0, Math.min(100, 100 - q.remainingPercentage)) + '%' }" /></div>
+          <p class="quota-meta" v-if="q.resetAt">resets {{ new Date(q.resetAt).toLocaleString() }}</p>
+        </div>
+        <p v-if="!quotaRows.length && quotaResult?.message" class="quota-msg">{{ quotaResult.message }}</p>
+      </GCard>
     </div>
 
     <!-- Models tab -->
@@ -226,7 +343,7 @@ async function doDelete() {
       </div>
       <GSkeleton v-if="modelsLoading && !models.length" height="120px" />
       <div v-else-if="models.length" class="model-list stagger">
-        <div v-for="m in models" :key="m.name" class="model-row">
+        <div v-for="m in models" :key="m.source + ':' + m.name" class="model-row">
           <div class="model-info">
             <span class="model-name">{{ m.displayName || m.name }}</span>
             <span v-if="m.contextLength" class="model-meta">{{ Math.round(m.contextLength / 1000) }}K ctx</span>
@@ -234,12 +351,31 @@ async function doDelete() {
           <div class="model-caps" v-if="m.capabilities?.length">
             <GBadge v-for="c in m.capabilities.slice(0, 3)" :key="c" color="violet">{{ c }}</GBadge>
           </div>
+          <GBadge v-if="m.source === 'custom'" color="gray">custom</GBadge>
           <button class="icon-btn danger" @click="removeModel(m.name)" title="Remove model" v-if="m.source === 'custom'">
             <Trash2 :size="13" />
           </button>
         </div>
       </div>
       <p v-else class="empty-note">No models listed. Use "Refresh from Upstream" or add custom models.</p>
+
+      <!-- Inline model Q&A tester (Phase 36 T7) -->
+      <GCard class="tester-card">
+        <p class="tester-title"><FlaskConical :size="13" /> Model Tester</p>
+        <div class="tester-row">
+          <select v-model="testerModel" class="field tester-select">
+            <option v-for="m in models" :key="'t:' + m.name" :value="m.name">{{ m.displayName || m.name }}</option>
+          </select>
+          <GButton size="sm" :loading="testerRunning" :disabled="!models.length" @click="runTester">Run</GButton>
+        </div>
+        <textarea v-model="testerPrompt" class="field tester-prompt" rows="2" placeholder="Ask the model anything… (streamed through the gateway)" />
+        <div v-if="testerError" class="tester-error">{{ testerError }}</div>
+        <pre v-if="testerOutput" class="tester-out">{{ testerOutput }}</pre>
+        <p class="tester-stats" v-if="testerLatencyMs">
+          {{ testerLatencyMs }}ms
+          <template v-if="testerUsage"> · {{ testerUsage.prompt }} prompt / {{ testerUsage.completion }} completion tokens</template>
+        </p>
+      </GCard>
     </div>
 
     <!-- Settings tab -->
@@ -330,6 +466,17 @@ async function doDelete() {
 .info-item code { font-size: 11px; color: var(--text-muted); word-break: break-all; }
 .info-item span:last-child { font-size: 12.5px; }
 
+.quota-card { padding: 16px; margin-top: 14px; }
+.quota-title { font-size: 12.5px; font-weight: 650; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.quota-row { margin-bottom: 10px; }
+.quota-head { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 4px; }
+.quota-name { font-weight: 600; text-transform: capitalize; }
+.quota-nums { color: var(--text-faint); font-family: var(--font-mono); }
+.quota-bar { height: 6px; border-radius: 99px; background: var(--glass-hover); overflow: hidden; }
+.quota-fill { height: 100%; background: var(--gradient); border-radius: 99px; transition: width 0.3s ease; }
+.quota-meta { font-size: 10.5px; color: var(--text-faint); margin-top: 3px; }
+.quota-msg { font-size: 12px; color: var(--text-muted); }
+
 .model-list { display: flex; flex-direction: column; gap: 4px; }
 .model-row {
   display: flex; align-items: center; gap: 10px;
@@ -343,6 +490,20 @@ async function doDelete() {
 .model-meta { font-size: 10.5px; color: var(--text-faint); white-space: nowrap; }
 .model-caps { display: flex; gap: 4px; }
 .empty-note { font-size: 12.5px; color: var(--text-faint); padding: 20px 0; }
+
+.tester-card { padding: 16px; margin-top: 14px; }
+.tester-title { font-size: 12.5px; font-weight: 650; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.tester-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.tester-select { flex: 1; height: 32px; }
+.tester-prompt { resize: vertical; padding: 8px 12px; height: auto; min-height: 54px; }
+.tester-error { font-size: 12px; color: var(--red); margin-top: 8px; }
+.tester-out {
+  margin-top: 10px; padding: 12px; border-radius: var(--radius-sm);
+  background: var(--code-bg); border: 1px solid var(--glass-border);
+  font-size: 12px; font-family: var(--font-mono); white-space: pre-wrap;
+  max-height: 320px; overflow: auto;
+}
+.tester-stats { font-size: 11px; color: var(--text-faint); margin-top: 8px; font-family: var(--font-mono); }
 
 .settings-card { max-width: 480px; }
 .field-label { display: block; font-size: 11.5px; font-weight: 550; color: var(--text-muted); margin: 12px 0 5px; }

@@ -28,16 +28,43 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		machineID, _ = psd["machineId"].(string)
 	}
 
-	if userID == "" || conn.Data.AccessToken == "" {
+	rawToken := conn.Data.AccessToken
+	if rawToken == "" {
+		rawToken = conn.Data.APIKey
+	}
+	if rawToken == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "qoder credential is missing userId or accessToken; reconnect the account via OAuth",
+			"error": "qoder credential is missing; connect the account via OAuth or add a Personal Access Token (pt-...)",
+		})
+		return
+	}
+
+	client := s.getHTTPClient(5 * time.Minute)
+
+	// PAT (pt-...) → exchange for short-lived job token + resolve userId so
+	// COSY signing works (9router@9c9dd7b1, @d433c0b2). Device/job tokens
+	// pass through unchanged.
+	resolved, err := provider.ResolveQoderCredential(rawToken, userID, client)
+	if err != nil {
+		slog.Warn("Qoder PAT exchange failed", slog.String("connection", conn.ID), "error", err)
+		writeJSON(w, http.StatusUnauthorized, map[string]string{
+			"error": fmt.Sprintf("qoder PAT exchange failed: %v", err),
+		})
+		return
+	}
+	if resolved.UserID == "" {
+		resolved.UserID = userID
+	}
+	if resolved.UserID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{
+			"error": "qoder credential is missing userId; reconnect the account via OAuth",
 		})
 		return
 	}
 
 	creds := provider.QoderCosyCreds{
-		UserID:    userID,
-		AuthToken: conn.Data.AccessToken,
+		UserID:    resolved.UserID,
+		AuthToken: resolved.AccessToken,
 		Name:      conn.Name,
 		Email:     conn.Email,
 		MachineID: machineID,
@@ -47,15 +74,17 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	var bodyMap map[string]any
 	json.Unmarshal(rawBody, &bodyMap)
 
-	client := s.getHTTPClient(5 * time.Minute)
-
 	encodedBody, qoderKey, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	cosyHeaders, err := provider.BuildQoderCosyHeaders(encodedBody, provider.QoderChatURL, creds)
+	// jt- tokens are rejected by api3 ("Login expired" 403) — route them to
+	// api2.qoder.sh like the official qodercli.
+	chatURL := provider.QoderChatURLForToken(resolved.AccessToken)
+
+	cosyHeaders, err := provider.BuildQoderCosyHeaders(encodedBody, chatURL, creds)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{
 			"error": fmt.Sprintf("qoder cosy signing failed: %v", err),
@@ -65,7 +94,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 
 	modelSource := "system"
 
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", provider.QoderChatURL, bytes.NewReader(encodedBody))
+	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", chatURL, bytes.NewReader(encodedBody))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
 		return
@@ -141,7 +170,6 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var lastUsage usage.Usage
-	doneEmitted := false
 
 	for scanner.Scan() {
 		select {
@@ -154,10 +182,6 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		default:
 		}
 
-		if doneEmitted {
-			continue
-		}
-
 		line := scanner.Text()
 		data, done := provider.UnwrapQoderSSELine(line, "qoder/"+model)
 
@@ -167,8 +191,10 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 			}
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
-			doneEmitted = true
-			continue
+			// Terminal frame received — Qoder keeps the socket open after
+			// [DONE] (agent keepalive); stop reading so the stream closes
+			// immediately (9router@9c9dd7b1).
+			return
 		}
 
 		if data == "" {
@@ -183,13 +209,12 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		flusher.Flush()
 	}
 
-	if !doneEmitted {
-		if lastUsage.TotalTokens > 0 {
-			s.recordUsage(uc, lastUsage)
-		}
-		fmt.Fprintf(w, "data: [DONE]\n\n")
-		flusher.Flush()
+	// Stream ended without a terminal frame — emit [DONE] ourselves.
+	if lastUsage.TotalTokens > 0 {
+		s.recordUsage(uc, lastUsage)
 	}
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
 }
 
 // autoProvisionNoAuthConnection creates a persistent connection for NoAuth

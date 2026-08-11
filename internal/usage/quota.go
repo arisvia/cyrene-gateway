@@ -62,6 +62,7 @@ var quotaFetchers = map[string]QuotaFetcher{
 	"glm-cn":     fetchGLM,
 	"minimax":    fetchMiniMax,
 	"minimax-cn": fetchMiniMax,
+	"qoder":      fetchQoder,
 }
 
 // QuotaSupported reports whether a provider has a real usage fetcher.
