@@ -156,40 +156,36 @@
     },
     {
       "id": 36,
-      "name": "Dynamic Model Catalog + Qoder OAuth/PAT Realignment",
+      "name": "Curated Provider Deep-Adaptation (Batch 1)",
       "status": "pending",
       "tasks": [
-        "Scope decision (2026-08-11, user-directed): deep-adapt a curated provider set instead of all 112 — OAuth mainstream: claude, antigravity, codex, github, grok-cli, cursor, qoder, codebuddy-intl, kimi; key-or-public: opencode (built-in Bearer public pool + optional user key), openrouter (user key). Pure-apikey providers (tokenplan etc.) deferred to later phases.",
-        "Naming policy: display names follow VENDOR official names, not 9router labels; IDs may also diverge from 9router. Verified 2026-08-11: Grok Build (x.ai/build), Kimi Code / kimi-for-coding model id (kimi.com/code), Google Antigravity (antigravity.google), Tencent Cloud CodeBuddy (codebuddy.cn), Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Qoder, opencode/OpenCode Zen (opencode.ai), OpenRouter. Renames must keep DB compatibility: map old provider ids to new ones for existing connections (alias/migration).",
-        "Per-provider detail page rework: keep ONE unified page shell and layout for all providers (same header, same tab structure, same component language/design tokens) — provider differences surface as enabled/disabled content blocks within that shared frame: OAuth connect flow + token countdown, PAT/key entry with provider-specific hints (qoder pt-...), quota bar where supported, models tab with refresh/naming/meta tools. Include an inline model Q&A tester on the detail page (pick model → send prompt → show streamed answer + latency + usage), richer than upstream's connectivity-only Test.",
-        "Dynamic model catalog for the curated set: replace hardcoded registry_models.go id/name maps with live extraction from each provider's own endpoint (public models API, or OAuth-authenticated endpoint); static lists kept as offline fallback only; enrich meta end-to-end: context_length + max_output_tokens surfaced in catalog, /v1/models and panel.",
-        "Qoder fix: category free→oauth, authModes [oauth,apikey], PAT (pt-...) auth end-to-end — job-token exchange, SSE terminal-frame close, quota usage for both OAuth and PAT (port 9router@9c9dd7b1, @d433c0b2). Qoder stays a standalone product entry (its OAuth and PAT are both Qoder-native); its vendor's direct platform API is the Alibaba/Bailian line, already covered by existing entries alicode-intl (Alibaba Coding intl), alicode (Alibaba Coding CN, Bailian), alims-intl (Alibaba Studio/Model Studio) — no new entry needed.",
-        "Direct-API additions (2026-08-11, user-approved): dual-auth [oauth, apikey] on claude + codex entries (reuse Phase 34 dual-auth selection, parallel to existing xai/kimi); new GitHub Models API entry (models.github.com, PAT auth reusing GitHub OAuth token) — the only direct-API gap; Anthropic/OpenAI/Google (gemini+vertex)/Tencent direct APIs already covered as separate entries.",
-        "Registry pruning (2026-08-11, user-approved, supersedes Featured-flag idea): project not yet in production → no backward-compat needed → DELETE long-tail providers instead of tiering. Delete criteria: (1) upstream Hidden / service ended; (2) no transport verification in Phase 30-32; (3) duplicates of curated upstreams (e.g. opencode-go folds into opencode); (4) media providers (internal/media track) untouched. Keep list (~28): curated 13 (claude, codex, github, grok-cli, cursor, qoder, codebuddy-intl, kimi, antigravity, opencode, openrouter, glm, glm-cn) + direct APIs (anthropic, openai, gemini, vertex, tencent, xai, alicode-intl, alicode, alims-intl) + new github-models + E2E-verified (deepseek, cerebras, groq, nvidia, api-airforce) + brand pairs/quota-ported (codebuddy-cn, minimax, minimax-cn). Clean up registry tests, README matrix and related unit tests accordingly.",
-        "Detail page model-management features (2026-08-11, user-requested): (a) Refresh Models button per provider — calls the provider's own models endpoint (public or OAuth-authenticated) and updates the cached mapping, overriding the static fallback; (b) manual model naming — per-connection customModels CRUD in the Models tab for ids the API cannot resolve names for (customModels field already exists in /api/providers/{id}/models); (c) meta backfill — when a provider's models API lacks context_length/max_output, resolve via models.dev catalog (https://models.dev/api.json, fuzzy id match, already used upstream by mimo-free fetcher), with manual override for unmatched ids.",
-        "Curated set extended with glm + glm-cn (GLM Coding z.ai / Zhipu BigModel CN) as the apikey-provider detail-page exemplar, complementing the OAuth exemplars.",
-        "Intl/CN variant modeling (2026-08-11, user-approved): keep separate registry entries per region (distinct upstream URLs/auth/quota), but group by brand in UI via new registry fields Brand + Region (glm/glm-cn, minimax/minimax-cn, codebuddy-cn/intl, alicode/alicode-intl, alims-intl).",
-        "Long-term strategy (2026-08-11, user-directed): Phase 36 is only the first batch — the end goal is FULL adaptation of all remaining providers in subsequent phases (batched). Media providers (internal/media: embedding/image/tts/stt/video/web) follow the same selective principle: mainstream stable vendors first (openai, gemini/google, elevenlabs, fal-ai, stability, runway, edge-tts family), niche or unstable ones deferred or dropped. Pruning is permanent only for dead/duplicate entries; everything else returns in later waves.",
-        "WebUI: provider-level detail route + make registry grid cards clickable (currently only connection cards navigate)."
+        "T1 Registry pruning (chat providers 112→~28): delete entries outside the KEEP list below; delete criteria = upstream Hidden/service-ended OR no Phase 30-32 transport verification OR duplicate of a kept upstream (opencode-go folds into opencode). KEEP (28): claude, codex, github, grok-cli, cursor, qoder, codebuddy-intl, kimi, antigravity, opencode, openrouter, glm, glm-cn [curated 13]; anthropic, openai, gemini, vertex, tencent, xai, alicode-intl, alicode, alims-intl [direct APIs]; deepseek, cerebras, groq, nvidia, api-airforce [E2E-verified]; codebuddy-cn, minimax, minimax-cn [brand pairs / quota-ported]; plus new github-models entry. Update: registry_test.go (TestRegistryCompleteness list + category counts), README provider matrix, url_test/transport_test references, E2E suite. Media providers (internal/media) are OUT OF SCOPE here — they get their own selective pass later.",
+        "T2 Official vendor names (display names only — registry IDs stay unchanged, so no DB/alias migration): grok-cli→'Grok Build', kimi→'Kimi Code', antigravity→'Google Antigravity', codebuddy-intl→'Tencent Cloud CodeBuddy', codebuddy-cn→'Tencent Cloud CodeBuddy (CN)', cursor→'Cursor', opencode→'opencode', others verified identical (Claude Code, OpenAI Codex, GitHub Copilot, Qoder, OpenRouter).",
+        "T3 Brand/Region grouping: add Brand + Region fields to ProviderInfo; set for glm/glm-cn (GLM), minimax/minimax-cn (MiniMax), codebuddy-cn/intl (CodeBuddy), alicode/alicode-intl/alims-intl (Alibaba); webui Providers page groups brand siblings under one card with region switcher.",
+        "T4 Dual-auth + new entry: claude and codex entries get AuthModes [oauth, apikey] (reuse Phase 34 dual-auth selection pattern from xai/kimi); new github-models registry entry (models.github.com, PAT auth reusing GitHub OAuth token).",
+        "T5 Qoder realignment: Category free→oauth, AuthModes [oauth, apikey]; PAT (pt-...) support end-to-end — job-token exchange, SSE terminal-frame close, quota usage for both OAuth and PAT (port 9router@9c9dd7b1, @d433c0b2); panel shows OAuth connect OR PAT entry with hint 'pt-… from qoder.com/account/integrations'. Qoder stays standalone; its vendor's platform API is the Alibaba line (already in KEEP list).",
+        "T6 Dynamic model catalog for the curated set: extend model.FetchModels with per-provider models URL + auth scheme (public endpoints for openai/anthropic/openrouter/deepseek/xai/glm etc.; OAuth-token endpoints where the provider requires auth; qoder uses its own model/list). Registry field ModelsURL + ModelsAuth ('none'|'bearer') where not derivable from BaseURL. Live results override registry_models.go static lists (static = offline fallback only). Add models.dev backfill (https://models.dev/api.json, cached, fuzzy id match) for context_length/max_output when the provider API lacks them. Surface meta in /v1/models (context_length, max_output_tokens) and panel.",
+        "T7 Detail page (ONE unified shell — same header/tabs/components for every provider; differences are content blocks, not layouts): (a) fix Models tab payload bug — frontend sends {model} but handleAddProviderModel/handleDeleteProviderModel expect {id}/{name}; (b) inline model Q&A tester: pick model → prompt → streamed answer + latency + usage (reuse /api/models/test or chat endpoint); (c) quota bar block where provider has quota support; (d) make Providers grid registry cards clickable → route to provider-level overview (route /providers/:id exists, connection-scoped; add provider-scoped entry point or reuse).",
+        "T8 Verify: go fmt → go build → go test all green; webui npx vue-tsc -b && npx vite build; BrowserUse spot-check (providers page grouping, detail page tabs + model tester on opencode free connection); restore webui/dist/index.html to placeholder before committing."
       ],
-      "notes": "Planned 2026-08-11 after live debug: chat via opencode works (big-pickle verified, SSE OK); panel Models tab empty because Go lacks upstream modelsFetcher; qoder wrongly free/Enable vs upstream oauth+PAT. Facts gathered: free providers do NOT dodge limits with random — opencode uses fixed shared 'Bearer public' pool, mimo-free session ids are affinity not quota-evading; quota is NOT oauth-only (deepseek/glm/minimax apikey providers have quota fetchers, already ported in Phase 31). Official vendor names verified via vendor sites 2026-08-11 (see naming policy task). apikey-support analysis 2026-08-11: dual-mode = claude/codex/grok-cli/kimi/qoder/opencode; apikey-only-CLI = none extra; GitHub Models API is the sole uncovered direct API; Qoder's direct API is the Alibaba/Bailian line (already 3 entries)."
+      "notes": "EXISTING INFRA (do not rebuild): model.FetchModels + normalizers (openai/anthropic/openrouter/google/mistral) + StaticCatalog + MergeMetadata + CachedModels KV (Phase 28); POST /api/providers/{id}/refresh-models + customModels KV CRUD + GET /api/providers/{id}/models (customModels field present but panel Models tab never merges it — wire it up); ProviderDetailView.vue 3-tab shell + token countdown + refresh button (Phase 29). Decisions logged 2026-08-11: pruning over tiering (pre-production, no compat needed but registry IDs stay stable); vendor-official display names; separate intl/CN entries + Brand/Region UI grouping; models.dev for meta backfill; free providers use fixed shared pools (opencode 'Bearer public'), no rate-limit evasion. Long-term: subsequent phases complete the remaining providers in batches; media providers selectively adapted later (mainstream first: openai, google, elevenlabs, fal-ai, stability, runway, edge-tts)."
     }
   ],
   "upstream_ports": [
-    { "source": "9router#2877", "what": "Gemini tool schema sanitization → internal/translator/schema.go", "when": "2026-07-28" },
-    { "source": "9router#2881", "what": "Kimi apikey routing: ApiKeyBaseURL + EffectiveBaseURL()", "when": "2026-07-28" },
-    { "source": "9router@c97963c", "what": "Raw body preservation: unknown fields pass through to upstream", "when": "2026-07-28" },
-    { "source": "9router#2873", "what": "Cache-read token tracking (cached_tokens/reasoning_tokens)", "when": "2026-07-28" },
-    { "source": "9router#2747", "what": "Preserve content_block index in Claude SSE", "when": "2026-07-28" },
-    { "source": "9router#2869", "what": "Guard empty deltas / doubled tool-call arguments", "when": "2026-07-28" },
-    { "source": "9router#2767", "what": "Per-provider token-saver exclusion list", "when": "2026-07-28" },
-    { "source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities", "when": "2026-07-28" },
-    { "source": "9router#2884", "what": "Schema cleaner property-name map safety", "when": "2026-07-30" },
-    { "source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} after $ref removal", "when": "2026-07-30" },
-    { "source": "9router@6fcd273", "what": "Registry sync: 10 new providers + Claude Opus 5 + Gemini 3.6 Flash + Laguna", "when": "2026-07-30" },
-    { "source": "VansRouter", "what": "Loop guard + termination prompt (Phase 9)", "when": "2026-07-23" },
-    { "source": "9router@2abe8b85", "what": "Gemini schema strip: multipleOf/uniqueItems/contains/unevaluated*/contentSchema → translator/schema.go", "when": "2026-08-08" },
-    { "source": "9router@41606a37", "what": "Claude→OpenAI translated usage folds cache_read/cache_creation into prompt_tokens + prompt_tokens_details", "when": "2026-08-08" }
+    {"source": "9router#2877", "what": "Gemini tool schema sanitization → internal/translator/schema.go", "when": "2026-07-28"},
+    {"source": "9router#2881", "what": "Kimi apikey routing: ApiKeyBaseURL + EffectiveBaseURL()", "when": "2026-07-28"},
+    {"source": "9router@c97963c", "what": "Raw body preservation: unknown fields pass through to upstream", "when": "2026-07-28"},
+    {"source": "9router#2873", "what": "Cache-read token tracking (cached_tokens/reasoning_tokens)", "when": "2026-07-28"},
+    {"source": "9router#2747", "what": "Preserve content_block index in Claude SSE", "when": "2026-07-28"},
+    {"source": "9router#2869", "what": "Guard empty deltas / doubled tool-call arguments", "when": "2026-07-28"},
+    {"source": "9router#2767", "what": "Per-provider token-saver exclusion list", "when": "2026-07-28"},
+    {"source": "9router#2872", "what": "/v1/models metadata: context_length + capabilities", "when": "2026-07-28"},
+    {"source": "9router#2884", "what": "Schema cleaner property-name map safety", "when": "2026-07-30"},
+    {"source": "9router@e3e3e23", "what": "Gemini empty schema fix: promote {} after $ref removal", "when": "2026-07-30"},
+    {"source": "9router@6fcd273", "what": "Registry sync: 10 new providers + Claude Opus 5 + Gemini 3.6 Flash + Laguna", "when": "2026-07-30"},
+    {"source": "VansRouter", "what": "Loop guard + termination prompt (Phase 9)", "when": "2026-07-23"},
+    {"source": "9router@2abe8b85", "what": "Gemini schema strip: multipleOf/uniqueItems/contains/unevaluated*/contentSchema → translator/schema.go", "when": "2026-08-08"},
+    {"source": "9router@41606a37", "what": "Claude→OpenAI translated usage folds cache_read/cache_creation into prompt_tokens + prompt_tokens_details", "when": "2026-08-08"}
   ],
   "upstream_commits": {
     "decolua/9router": "15223724c3e1ad898e84ef6e0cc1686cbafc8290"
@@ -201,15 +197,25 @@
   "maintenance_config": {
     "scan_since": "2026-08-10",
     "max_items_per_cycle": 50,
-    "relevant_paths": ["open-sse/handlers/", "open-sse/translator/", "open-sse/services/", "open-sse/providers/registry/", "open-sse/config/"],
-    "skip_paths": ["open-sse/translator/formats/kiro", "open-sse/translator/formats/codex-responses", "src/app/(dashboard)/"],
+    "relevant_paths": [
+      "open-sse/handlers/",
+      "open-sse/translator/",
+      "open-sse/services/",
+      "open-sse/providers/registry/",
+      "open-sse/config/"
+    ],
+    "skip_paths": [
+      "open-sse/translator/formats/kiro",
+      "open-sse/translator/formats/codex-responses",
+      "src/app/(dashboard)/"
+    ],
     "priority": "P0: merged PR touching handlers/translator/services. P1: open bug on existing feature. P2: registry changes. P3: features → candidate."
   },
   "future_candidates": [
-    { "what": "OpenAI Responses API adapter", "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.", "priority": "low" },
-    { "what": "Registry additions from v0.5.50: TokenRouter, selfhosted-stt/tts/embedding providers", "why": "Feature-level (new providers + media adapters incl. MiMo TTS chat-completions voice adapter); needs a dedicated phase, not maintenance scope.", "priority": "medium" },
-    { "what": "Qwen provider removal", "why": "Upstream dropped qwen (portal.qwen.ai OAuth unreliable, dcdd4628). Go side has qwen in registry/OAuth flows/tests — removal is a cross-cutting change, do deliberately.", "priority": "medium" },
-    { "what": "Combo capacity/vision adapters", "why": "6498b31/8e59093 add vision/audio capacity routing with mimo fallback — new subsystem, phase-level work.", "priority": "medium" },
-    { "what": "Ollama background refresh + codebuddy-intl usage", "why": "f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work. (Qoder PAT d433c0b2 now covered by Phase 36.)", "priority": "medium" }
+    {"what": "OpenAI Responses API adapter", "why": "Codex structured output fails without it (9router#2896). API still unstable — wait.", "priority": "low"},
+    {"what": "Registry additions from v0.5.50: TokenRouter, selfhosted-stt/tts/embedding providers", "why": "Feature-level (new providers + media adapters incl. MiMo TTS chat-completions voice adapter); needs a dedicated phase, not maintenance scope.", "priority": "medium"},
+    {"what": "Qwen provider removal", "why": "Upstream dropped qwen (portal.qwen.ai OAuth unreliable, dcdd4628). Go side has qwen in registry/OAuth flows/tests — removal is a cross-cutting change, do deliberately.", "priority": "medium"},
+    {"what": "Combo capacity/vision adapters", "why": "6498b31/8e59093 add vision/audio capacity routing with mimo fallback — new subsystem, phase-level work.", "priority": "medium"},
+    {"what": "Ollama background refresh + codebuddy-intl usage", "why": "f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work. (Qoder PAT d433c0b2 now covered by Phase 36.)", "priority": "medium"}
   ]
 }
