@@ -159,13 +159,13 @@
       "name": "Dynamic Model Catalog + Qoder OAuth/PAT Realignment",
       "status": "pending",
       "tasks": [
-        "modelsFetcher framework: registry field ModelsFetcher{URL,Type} + GET /api/providers/suggested-models (10-min TTL cache), port upstream filter types: openai passthrough, opencode-free (-free suffix + allowlist), openrouter-free (pricing 0 + ctx>=200k), mimo-free; cover opencode/openrouter/kilocode/venice/tokenrouter/vercel-ai-gateway/perplexity-agent/mimo-free",
-        "Replace hardcoded registry_models.go id/name maps with live extraction from each provider's own API (public models endpoint, or OAuth-authenticated endpoint for OAuth providers); keep static lists only as offline fallback",
-        "Enrich model metadata end-to-end: context_length + max_output_tokens in model catalog, /v1/models and panel (sources: upstream API fields where available, e.g. openrouter context_length)",
-        "Qoder fix: category free→oauth, authModes [oauth,apikey], PAT (pt-...) auth end-to-end — job-token exchange, SSE terminal-frame close, quota usage for both OAuth and PAT (port 9router@9c9dd7b1, @d433c0b2)",
-        "WebUI: provider-level detail route + make registry grid cards clickable (currently only connection cards navigate); detail Models tab shows dynamic catalog with context/max-output metadata"
+        "Scope decision (2026-08-11, user-directed): deep-adapt a curated provider set instead of all 112 — OAuth mainstream: claude, antigravity, codex, github, grok-cli, cursor, qoder, codebuddy-intl, kimi; key-or-public: opencode (built-in Bearer public pool + optional user key), openrouter (user key). Pure-apikey providers (tokenplan etc.) deferred to later phases.",
+        "Per-provider detail page rework (beyond generic Connections/Models/Settings): provider-specific layouts driven by registry capabilities — OAuth connect flow + token countdown, PAT/key entry with provider-specific hints (qoder pt-...), quota bar where supported, models tab. Include an inline model Q&A tester on the detail page (pick model → send prompt → show streamed answer + latency + usage), richer than upstream's connectivity-only Test.",
+        "Dynamic model catalog for the curated set: replace hardcoded registry_models.go id/name maps with live extraction from each provider's own endpoint (public models API, or OAuth-authenticated endpoint); static lists kept as offline fallback only; enrich meta end-to-end: context_length + max_output_tokens surfaced in catalog, /v1/models and panel.",
+        "Qoder fix: category free→oauth, authModes [oauth,apikey], PAT (pt-...) auth end-to-end — job-token exchange, SSE terminal-frame close, quota usage for both OAuth and PAT (port 9router@9c9dd7b1, @d433c0b2).",
+        "WebUI: provider-level detail route + make registry grid cards clickable (currently only connection cards navigate)."
       ],
-      "notes": "Planned 2026-08-11 after live debug: chat path via opencode works (big-pickle free model verified, SSE OK), but panel Models tab empty because Go lacks upstream modelsFetcher; qoder is wrongly free/Enable in Go registry vs upstream oauth+PAT."
+      "notes": "Planned 2026-08-11 after live debug: chat via opencode works (big-pickle verified, SSE OK); panel Models tab empty because Go lacks upstream modelsFetcher; qoder wrongly free/Enable vs upstream oauth+PAT. Facts gathered: free providers do NOT dodge limits with random — opencode uses fixed shared 'Bearer public' pool, mimo-free session ids are affinity not quota-evading; quota is NOT oauth-only (deepseek/glm/minimax apikey providers have quota fetchers, already ported in Phase 31). Display names verified against upstream: all match (Kimi upstream name is 'Kimi', not 'Kimi Code')."
     }
   ],
   "upstream_ports": [
