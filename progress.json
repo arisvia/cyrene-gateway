@@ -153,6 +153,19 @@
       "name": "Free/FreeTier Providers + E2E Verification",
       "status": "done",
       "summary": "mimo-free marked Hidden (service ended). E2E test suite: 11 providers across all categories (openai/deepseek/openrouter/cerebras/groq/nvidia/opencode/api-airforce/github/anthropic/gemini), NoAuth auto-provision, SSE streaming, registry completeness, category consistency. README provider support matrix."
+    },
+    {
+      "id": 36,
+      "name": "Dynamic Model Catalog + Qoder OAuth/PAT Realignment",
+      "status": "pending",
+      "tasks": [
+        "modelsFetcher framework: registry field ModelsFetcher{URL,Type} + GET /api/providers/suggested-models (10-min TTL cache), port upstream filter types: openai passthrough, opencode-free (-free suffix + allowlist), openrouter-free (pricing 0 + ctx>=200k), mimo-free; cover opencode/openrouter/kilocode/venice/tokenrouter/vercel-ai-gateway/perplexity-agent/mimo-free",
+        "Replace hardcoded registry_models.go id/name maps with live extraction from each provider's own API (public models endpoint, or OAuth-authenticated endpoint for OAuth providers); keep static lists only as offline fallback",
+        "Enrich model metadata end-to-end: context_length + max_output_tokens in model catalog, /v1/models and panel (sources: upstream API fields where available, e.g. openrouter context_length)",
+        "Qoder fix: category free→oauth, authModes [oauth,apikey], PAT (pt-...) auth end-to-end — job-token exchange, SSE terminal-frame close, quota usage for both OAuth and PAT (port 9router@9c9dd7b1, @d433c0b2)",
+        "WebUI: provider-level detail route + make registry grid cards clickable (currently only connection cards navigate); detail Models tab shows dynamic catalog with context/max-output metadata"
+      ],
+      "notes": "Planned 2026-08-11 after live debug: chat path via opencode works (big-pickle free model verified, SSE OK), but panel Models tab empty because Go lacks upstream modelsFetcher; qoder is wrongly free/Enable in Go registry vs upstream oauth+PAT."
     }
   ],
   "upstream_ports": [
@@ -190,6 +203,6 @@
     { "what": "Registry additions from v0.5.50: TokenRouter, selfhosted-stt/tts/embedding providers", "why": "Feature-level (new providers + media adapters incl. MiMo TTS chat-completions voice adapter); needs a dedicated phase, not maintenance scope.", "priority": "medium" },
     { "what": "Qwen provider removal", "why": "Upstream dropped qwen (portal.qwen.ai OAuth unreliable, dcdd4628). Go side has qwen in registry/OAuth flows/tests — removal is a cross-cutting change, do deliberately.", "priority": "medium" },
     { "what": "Combo capacity/vision adapters", "why": "6498b31/8e59093 add vision/audio capacity routing with mimo fallback — new subsystem, phase-level work.", "priority": "medium" },
-    { "what": "Qoder PAT auth + Ollama background refresh + codebuddy-intl usage", "why": "d433c0b2/f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work.", "priority": "medium" }
+    { "what": "Ollama background refresh + codebuddy-intl usage", "why": "f260a181/9138c993 — OAuth/quota subsystem extensions, phase-level work. (Qoder PAT d433c0b2 now covered by Phase 36.)", "priority": "medium" }
   ]
 }
