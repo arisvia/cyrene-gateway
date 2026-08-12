@@ -31,11 +31,8 @@ func Load() *Config {
 	flag.IntVar(&cfg.MITMPort, "mitm-port", envIntOrDefault("CYRENE_MITM_PORT", 443), "MITM proxy listen port")
 	flag.Parse()
 
-	cfg.DataDir = os.Getenv("CYRENE_DATA_DIR")
-	if cfg.DataDir == "" {
-		home, _ := os.UserHomeDir()
-		cfg.DataDir = filepath.Join(home, ".cyrene-gateway")
-	}
+	home, _ := os.UserHomeDir()
+	cfg.DataDir = filepath.Join(home, ".cyrene-gateway")
 	cfg.DBPath = filepath.Join(cfg.DataDir, "data.sqlite")
 
 	return cfg

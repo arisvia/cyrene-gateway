@@ -21,6 +21,10 @@ Go 1.26+ 高性能 AI 代理网关，从 [9router](https://github.com/decolua/9r
 - 结构化日志（slog）
 - 多平台构建（Linux / Windows / macOS，Windows 含嵌入图标）
 
+## 安全提示
+
+当前 `main` 分支已进入 Phase 37 安全加固。完成该阶段前，请仅在可信本机或受防火墙保护的网络中运行，不要以默认配置直接暴露到公网。深度审计与整改清单见 [docs/SECURITY_AUDIT_2026-08-12.md](docs/SECURITY_AUDIT_2026-08-12.md)。
+
 ## 快速开始
 
 ### 下载
@@ -69,9 +73,9 @@ curl -X POST http://localhost:20128/api/models/alias \
 -secret ""          # Dashboard 访问密码
 ```
 
-数据统一存放在 `~/.cyrene-gateway/`（数据库、面板缓存等），可通过 `CYRENE_DATA_DIR` 覆盖。
+数据统一存放在 `~/.cyrene-gateway/`（数据库、面板缓存等）。
 
-环境变量 `CYRENE_HOST` / `CYRENE_PORT` / `CYRENE_DATA_DIR` / `CYRENE_DASHBOARD` / `CYRENE_PANEL_URL` / `CYRENE_SECRET` 同样支持，flag 优先于 env。
+环境变量 `CYRENE_HOST` / `CYRENE_PORT` / `CYRENE_DASHBOARD` / `CYRENE_PANEL_URL` / `CYRENE_SECRET` 同样支持，flag 优先于 env。
 
 ## 开发
 
