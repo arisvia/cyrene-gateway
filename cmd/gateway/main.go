@@ -19,9 +19,6 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Override auth secret if -secret flag is provided
-	auth.SetSecret(cfg.Secret)
-
 	// Structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -33,10 +30,19 @@ func main() {
 	)
 
 	// Ensure data directory exists, then initialize database
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		slog.Error("Failed to create data directory", "error", err)
 		os.Exit(1)
 	}
+
+	// Initialize the auth signing secret explicitly after config load. It
+	// lives in the fixed application data directory and is separated from
+	// password hashing salts (P1-6).
+	if err := auth.InitSecretManager(cfg.DataDir, cfg.Secret); err != nil {
+		slog.Error("Failed to initialize auth secret", "error", err)
+		os.Exit(1)
+	}
+
 	database, err := db.Open(cfg.DBPath)
 	if err != nil {
 		slog.Error("Failed to initialize database", "error", err)

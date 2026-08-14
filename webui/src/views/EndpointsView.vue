@@ -8,7 +8,7 @@ import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
 import {
   Copy, Check, Globe, Wifi, Radio, ShieldAlert, ShieldCheck,
-  Zap, Plus, Trash2, KeyRound, Activity, MessageSquare,
+  Zap, Plus, Trash2, KeyRound, Activity, X,
 } from 'lucide-vue-next'
 
 const store = useGatewayStore()
@@ -22,6 +22,8 @@ const copied = ref('')
 const newKeyName = ref('')
 const creatingKey = ref(false)
 const curlExample = ref('')
+// One-time reveal: the raw key only exists in the create response (37A).
+const revealedKey = ref<{ id: string; name?: string; key: string } | null>(null)
 
 onMounted(async () => {
   if (!store.endpoints.length) await store.loadCore()
@@ -32,7 +34,7 @@ onMounted(async () => {
 
 function buildCurl() {
   const url = store.endpoints[0]?.url || 'http://localhost:20128'
-  const key = store.apiKeys[0]?.key || 'sk-...'
+  const key = revealedKey.value?.key || 'cg-your-api-key'
   const auth = requireAuth.value ? ` \\\n  -H "Authorization: Bearer ${key}"` : ''
   curlExample.value = `curl -X POST ${url}/v1/chat/completions${auth} \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"openai/gpt-4o","messages":[{"role":"user","content":"Hello"}]}'`
 }
@@ -63,13 +65,19 @@ async function createKey() {
   if (creatingKey.value) return
   creatingKey.value = true
   try {
-    await store.createKey(newKeyName.value || 'default')
+    const k = await store.createKey(newKeyName.value || 'default')
+    if (k?.key) revealedKey.value = { id: k.id, name: k.name, key: k.key }
     newKeyName.value = ''
     buildCurl()
   } catch (e: any) {
     toast.error(`Failed: ${e.message}`)
   }
   creatingKey.value = false
+}
+
+function dismissRevealedKey() {
+  revealedKey.value = null
+  buildCurl()
 }
 
 async function deleteKey(id: string) {
@@ -142,19 +150,33 @@ const typeIcon: Record<string, any> = { local: Globe, lan: Wifi, tunnel: Radio }
     <!-- API Keys -->
     <p class="section-label">API Keys</p>
     <div class="keys-section">
+      <!-- One-time key reveal after creation -->
+      <div v-if="revealedKey" class="key-reveal">
+        <div class="reveal-head">
+          <KeyRound :size="14" />
+          <span>Key "{{ revealedKey.name || revealedKey.id.slice(0, 8) }}" created — copy it now, it won't be shown again</span>
+          <button class="icon-btn danger" @click="dismissRevealedKey" title="Dismiss" aria-label="Dismiss key reveal">
+            <X :size="13" />
+          </button>
+        </div>
+        <div class="reveal-row">
+          <code class="key-val reveal-key">{{ revealedKey.key }}</code>
+          <button class="icon-btn" @click="copyText(revealedKey.key, 'API Key')" title="Copy key">
+            <Check v-if="copied === revealedKey.key" :size="13" style="color:var(--green)" />
+            <Copy v-else :size="13" />
+          </button>
+        </div>
+      </div>
+
       <div v-if="store.apiKeys.length === 0" class="empty-keys">
         <KeyRound :size="15" />
         <span>No API keys yet. Create one to authenticate requests.</span>
       </div>
       <div v-else class="keys-list stagger">
         <div v-for="k in store.apiKeys" :key="k.id" class="key-row">
-          <code class="key-val">{{ k.key.slice(0, 14) }}…{{ k.key.slice(-4) }}</code>
+          <code class="key-val">{{ k.keyHint || '••••' }}</code>
           <span class="key-name">{{ k.name || k.id.slice(0, 8) }}</span>
           <div class="key-actions">
-            <button class="icon-btn" @click="copyText(k.key, 'API Key')" title="Copy key">
-              <Check v-if="copied === k.key" :size="13" style="color:var(--green)" />
-              <Copy v-else :size="13" />
-            </button>
             <button class="icon-btn danger" @click="deleteKey(k.id)" title="Delete key">
               <Trash2 :size="13" />
             </button>
@@ -225,6 +247,14 @@ const typeIcon: Record<string, any> = { local: Globe, lan: Wifi, tunnel: Radio }
   border: 1px dashed var(--glass-border); color: var(--text-faint); font-size: 12.5px;
 }
 .keys-list { display: flex; flex-direction: column; gap: 6px; }
+.key-reveal {
+  margin-bottom: 10px; padding: 12px 14px; border-radius: var(--radius-sm);
+  background: rgba(45,212,191,0.06); border: 1px solid rgba(45,212,191,0.25);
+}
+.reveal-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.reveal-head span { flex: 1; }
+.reveal-row { display: flex; align-items: center; gap: 8px; }
+.reveal-key { word-break: break-all; font-size: 12px; }
 .key-row {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; border-radius: var(--radius-sm);

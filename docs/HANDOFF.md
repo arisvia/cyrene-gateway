@@ -26,9 +26,17 @@
 
 ## 最近一次交接
 
-- 日期：2026-08-12
-- 当前工作项：37A
-- 已完成：后端与前端静态审计；活动文档压缩；删除 `CYRENE_DATA_DIR` 外部配置；明确不保留旧版兼容。
-- 尚未完成：Phase 37-38 代码实现与动态验证。
-- 环境限制：上一审计环境缺少 Go；Node 可用但未安装 webui dependencies。
-- 下一步：在完整开发环境执行 baseline，然后实施 37A。
+- 日期：2026-08-13
+- 当前工作项：37B（37A 已完成）
+- 已完成（37A）：
+  - 默认仅监听 loopback（`127.0.0.1`）；非 loopback 绑定强制全部 `/api/*` 会话认证（含 tunnel/MITM/CLI 等高权限接口），首次设置密码前保留 bootstrap 通道。
+  - 管理 API 全面脱敏：Connection/APIKey/Node DTO（`hasApiKey`/`hasRefreshToken`/`credentialHint` 等），list/detail/mutation 均不返回凭据；字段级 patch 防止掩码回写覆盖凭据；settings 响应不含 `passwordHash`，PUT/PATCH 不可注入。
+  - 删除默认密码 `123456`，Argon2id 哈希 + 首次设置流程（前端 setup 屏）；密码最短 8 位。
+  - 登录 limiter 改为 mutex 保护、容量上限 10k、过期清理的实例化 `LoginLimiter`；`go test -race` 通过。
+  - auth secret 移除 `init()`，`main` 中显式 `InitSecretManager(cfg.DataDir, cfg.Secret)`，文件 0600、目录 0700。
+  - usage history 响应不再序列化调用方 API key（`json:"-"`）。
+  - 前端适配：`ConnectionData` 类型、key 一次性展示、详情页 `hasRefreshToken`、登录错误态修复。
+- 验证：go fmt/vet/test/test -race/build 全绿；webui npm ci/test/build 全绿；浏览器走查覆盖首次设置、登录/登出、key 一次性展示、添加 Provider、脱敏详情、字段级 patch、light 主题、错误态。
+- 环境限制：沙箱浏览器无法调整视口，375px 走查未执行（属 38B/38D 验收，非 37A）。
+- 尚未完成：Phase 37 其余 work item（37B 起）。
+- 下一步：实施 37B Unified Upstream Executor。

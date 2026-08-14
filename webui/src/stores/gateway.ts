@@ -13,9 +13,28 @@ export interface Provider {
   email?: string
   priority: number
   isActive: boolean
-  data?: Record<string, any>
+  data?: ConnectionData
   createdAt?: string
   updatedAt?: string
+}
+
+// Redacted connection data as returned by the management API: credentials are
+// never returned, only presence flags and masked hints (37A).
+export interface ConnectionData {
+  hasApiKey?: boolean
+  hasAccessToken?: boolean
+  hasRefreshToken?: boolean
+  credentialHint?: string
+  apiKeyHint?: string
+  accessTokenHint?: string
+  baseUrl?: string
+  expiresAt?: string
+  testStatus?: string
+  lastError?: string
+  rateLimitedUntil?: string
+  backoffLevel?: number
+  quotaLimit?: number
+  quotaPeriod?: string
 }
 
 export interface RegistryProvider {
@@ -52,10 +71,13 @@ export interface Combo {
   createdAt?: string
 }
 
+// Local client API key. The raw `key` is only present in the create response
+// (one-time reveal); list responses expose only `keyHint` (37A).
 export interface ApiKey {
   id: string
   name?: string
-  key: string
+  key?: string
+  keyHint?: string
   isActive: boolean
   createdAt?: string
 }

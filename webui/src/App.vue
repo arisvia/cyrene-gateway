@@ -8,10 +8,16 @@ import GButton from '@/components/ui/GButton.vue'
 
 const store = useGatewayStore()
 
-const authState = ref<'checking' | 'login' | 'ready'>('checking')
+const authState = ref<'checking' | 'login' | 'setup' | 'ready'>('checking')
 const loginPassword = ref('')
 const loginError = ref('')
 const loginLoading = ref(false)
+
+// First-time password setup (37A: no default password exists)
+const setupPassword = ref('')
+const setupConfirm = ref('')
+const setupError = ref('')
+const setupLoading = ref(false)
 
 async function checkAuth() {
   try {
@@ -19,8 +25,10 @@ async function checkAuth() {
     if (st.authenticated) {
       authState.value = 'ready'
       store.loadCore()
-    } else {
+    } else if (st.hasPassword) {
       authState.value = 'login'
+    } else {
+      authState.value = 'setup'
     }
   } catch {
     authState.value = 'ready'
@@ -41,10 +49,44 @@ async function doLogin() {
       authState.value = 'ready'
       store.loadCore()
     }
-  } catch {
-    loginError.value = 'Connection failed'
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (msg.includes('too many failed attempts')) loginError.value = 'Too many attempts — try again later'
+    else if (msg.includes('no password configured')) loginError.value = 'No password configured yet — complete first-run setup'
+    else if (msg.includes('invalid password')) loginError.value = 'Invalid password'
+    else if (msg.startsWith('401')) loginError.value = 'Invalid password'
+    else loginError.value = 'Connection failed'
   }
   loginLoading.value = false
+}
+
+async function doSetup() {
+  if (setupLoading.value) return
+  setupError.value = ''
+  if (!setupPassword.value) { setupError.value = 'Password is required'; return }
+  if (setupPassword.value.length < 8) { setupError.value = 'Password must be at least 8 characters'; return }
+  if (setupPassword.value !== setupConfirm.value) { setupError.value = 'Passwords do not match'; return }
+  setupLoading.value = true
+  try {
+    const res = await apiPost('/api/auth/password', { password: setupPassword.value })
+    if (res?.error) {
+      setupError.value = res.error
+    } else {
+      // Sign in with the freshly created password.
+      const login = await apiPost('/api/auth/login', { password: setupPassword.value })
+      if (!login?.error) {
+        setupPassword.value = ''
+        setupConfirm.value = ''
+        authState.value = 'ready'
+        store.loadCore()
+      } else {
+        authState.value = 'login'
+      }
+    }
+  } catch {
+    setupError.value = 'Connection failed'
+  }
+  setupLoading.value = false
 }
 
 async function doLogout() {
@@ -64,8 +106,34 @@ onMounted(checkAuth)
 
   <GToastHost />
 
+  <!-- First-time password setup -->
+  <div v-if="authState === 'setup'" class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">
+        <img src="/icon.png" alt="Cyrene" class="login-icon">
+        <div>
+          <p class="login-title">Cyrene Gateway</p>
+          <p class="login-sub">First-run setup — create your dashboard password</p>
+        </div>
+      </div>
+      <p class="setup-note">There is no default password. Set a dashboard password (at least 8 characters) to continue.</p>
+      <p v-if="setupError" class="login-error">{{ setupError }}</p>
+      <label class="field-label" for="setup-pw">New password</label>
+      <input
+        id="setup-pw" v-model="setupPassword" type="password" class="field"
+        placeholder="At least 8 characters" @keyup.enter="doSetup" autofocus
+      >
+      <label class="field-label" for="setup-pw2">Confirm password</label>
+      <input
+        id="setup-pw2" v-model="setupConfirm" type="password" class="field"
+        placeholder="Repeat password" @keyup.enter="doSetup"
+      >
+      <GButton class="login-btn" :loading="setupLoading" @click="doSetup">Set Password &amp; Continue</GButton>
+    </div>
+  </div>
+
   <!-- Login -->
-  <div v-if="authState === 'login'" class="login-wrap">
+  <div v-else-if="authState === 'login'" class="login-wrap">
     <div class="login-card">
       <div class="login-brand">
         <img src="/icon.png" alt="Cyrene" class="login-icon">
@@ -163,4 +231,9 @@ onMounted(checkAuth)
 .field::placeholder { color: var(--text-faint); }
 .field:focus { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
 .login-btn { width: 100%; justify-content: center; height: 38px !important; }
+.setup-note {
+  font-size: 12px; color: var(--text-muted); background: var(--glass-hover);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+  padding: 8px 12px; margin-bottom: 14px; line-height: 1.5;
+}
 </style>

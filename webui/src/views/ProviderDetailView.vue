@@ -33,7 +33,6 @@ const confirmDelete = ref(false)
 
 // Settings tab
 const baseUrl = ref('')
-const strategy = ref('')
 const saving = ref(false)
 
 // Upstream quota usage (providers with a real quota API)
@@ -99,7 +98,6 @@ onMounted(async () => {
   loadQuota()
   if (conn.value) {
     baseUrl.value = conn.value.data?.baseUrl || ''
-    strategy.value = conn.value.data?.strategy || ''
   }
 })
 
@@ -241,9 +239,11 @@ async function runTester() {
 async function saveSettings() {
   saving.value = true
   try {
+    // Secrets are redacted in the DTO; only send non-secret fields so the
+    // stored credentials are preserved by the server-side patch.
     await apiPut(`/api/providers/${props.id}`, {
       isActive: conn.value?.isActive ?? true,
-      data: { ...conn.value?.data, baseUrl: baseUrl.value || undefined, strategy: strategy.value || undefined },
+      data: { baseUrl: baseUrl.value || undefined },
     })
     toast.success('Provider settings saved')
     await store.loadCore()
@@ -311,7 +311,7 @@ async function doDelete() {
             </span>
           </div>
         </div>
-        <div class="token-actions" v-if="conn?.data?.refreshToken">
+        <div class="token-actions" v-if="conn?.data?.hasRefreshToken">
           <GButton variant="ghost" size="sm" :loading="refreshing" @click="refreshToken">
             <RefreshCw :size="13" /> Refresh Token
           </GButton>
@@ -383,8 +383,6 @@ async function doDelete() {
       <GCard class="settings-card">
         <label class="field-label">Base URL Override</label>
         <input v-model="baseUrl" class="field" placeholder="Leave empty for default">
-        <label class="field-label">Strategy Override</label>
-        <input v-model="strategy" class="field" placeholder="e.g. round-robin, sticky">
         <div class="settings-actions">
           <GButton size="sm" :loading="saving" @click="saveSettings">Save</GButton>
         </div>

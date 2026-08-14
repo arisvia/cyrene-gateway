@@ -2,7 +2,7 @@
   "project": "cyrene-gateway",
   "description": "Go 1.26+ high-performance AI proxy gateway refactored from 9router (Next.js)",
   "current_phase": 37,
-  "last_updated": "2026-08-12",
+  "last_updated": "2026-08-13",
   "context": {
     "active_plan": "docs/ACTIVE_PLAN.md",
     "decisions": "docs/ARCHITECTURE_DECISIONS.md",
@@ -63,17 +63,25 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "37A",
+  "current_work_item": "37B",
   "work_items": [
     {
       "id": "37A",
       "phase": 37,
       "name": "Secure Boundary and Credentials",
-      "status": "pending",
+      "status": "done",
       "depends_on": [],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Loopback-only default bind with forced session auth on non-loopback; redacted Connection/APIKey/Node DTOs with field-level patch; Argon2id passwords with first-time setup (no default); race-safe bounded login limiter; explicit auth secret init under the fixed data dir.",
+      "verification": [
+        "go fmt ./...",
+        "go vet ./...",
+        "go test ./...",
+        "go test -race ./...",
+        "go build ./...",
+        "cd webui && npm ci && npm test && npm run build",
+        "browser walkthrough: first-run setup, login/logout, one-time key reveal, add provider, redacted detail, field-level patch, light theme, error states"
+      ]
     },
     {
       "id": "37B",

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -25,6 +26,9 @@ func setupTestServer(t *testing.T) (*Server, *db.DB) {
 		Port:    0,
 		DBPath:  ":memory:",
 		DataDir: t.TempDir(),
+	}
+	if err := auth.InitSecretManager(cfg.DataDir, ""); err != nil {
+		t.Fatalf("failed to init auth secret: %v", err)
 	}
 	srv := NewServer(database, cfg)
 	return srv, database
@@ -381,7 +385,9 @@ func TestAuthStatusNoLoginRequired(t *testing.T) {
 	}
 }
 
-func TestLoginWithDefaultPassword(t *testing.T) {
+func TestLoginBeforeFirstTimeSetup(t *testing.T) {
+	// There is no default password: before first-time password setup every
+	// login attempt (including the legacy "123456") is rejected (37A).
 	srv, _ := setupTestServer(t)
 
 	body := `{"password":"123456"}`
@@ -390,20 +396,8 @@ func TestLoginWithDefaultPassword(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// Check that auth_token cookie is set
-	cookies := w.Result().Cookies()
-	found := false
-	for _, c := range cookies {
-		if c.Name == "auth_token" && c.Value != "" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("expected auth_token cookie to be set")
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without a configured password, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

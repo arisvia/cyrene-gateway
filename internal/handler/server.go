@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
@@ -63,7 +64,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Proxies:     proxyMgr,
 		MediaClient: media.NewClient(),
 		Dashboard:   NewDashboardHandler(cfg),
-		Auth:        NewAuthHandler(database),
+		Auth:        NewAuthHandler(database, auth.NewLoginLimiter(), !cfg.IsLoopbackBind()),
 		Tunnel:      NewTunnelHandler(tunnelMgr),
 		CLI:         NewCLIHandler(cli.NewManager()),
 		Endpoints:   NewEndpointHandler(cfg, database, tunnelMgr),
@@ -74,13 +75,14 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 	s.registerRoutes()
 	s.registerMediaRoutes()
 
-	// Wrap the mux with the middleware chain
+	// Wrap the mux with the middleware chain. Non-loopback binds force session
+	// auth on every /api route regardless of the requireLogin setting (37A).
 	s.Handler = middleware.Chain(mux,
 		middleware.Recovery,
 		middleware.Logging,
 		middleware.CORS,
 		middleware.APIKeyAuth(database),
-		middleware.DashboardAuth(database),
+		middleware.DashboardAuth(database, !cfg.IsLoopbackBind()),
 	)
 	return s
 }
@@ -528,7 +530,22 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
 		return
 	}
-	writeJSON(w, http.StatusOK, settings)
+	// Settings responses never carry the password hash; only presence.
+	out := map[string]any{
+		"requireLogin":       settings.RequireLogin,
+		"requireApiKey":      settings.RequireAPIKey,
+		"hasPassword":        settings.PasswordHash != "",
+		"comboStrategy":      settings.ComboStrategy,
+		"rtkEnabled":         settings.RTKEnabled,
+		"cavemanEnabled":     settings.CavemanEnabled,
+		"cavemanLevel":       settings.CavemanLevel,
+		"ponytailEnabled":    settings.PonytailEnabled,
+		"ponytailLevel":      settings.PonytailLevel,
+		"providerStrategies": settings.ProviderStrategies,
+		"providerThinking":   settings.ProviderThinking,
+		"tokenSaverExclude":  settings.TokenSaverExclude,
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -536,6 +553,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
+	}
+	// The password hash is never accepted through settings writes; it has a
+	// dedicated endpoint. Preserve any existing hash instead of clearing it.
+	if current, err := s.DB.GetSettings(); err == nil {
+		settings.PasswordHash = current.PasswordHash
+	} else {
+		settings.PasswordHash = ""
 	}
 	if err := s.DB.SaveSettings(&settings); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
@@ -567,6 +591,9 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 	for k, v := range patch {
 		merged[k] = v
 	}
+	// The password hash can only be changed through /api/auth/password.
+	delete(merged, "passwordHash")
+	delete(merged, "hasPassword")
 	mergedBytes, _ := json.Marshal(merged)
 
 	var updated db.Settings
@@ -587,7 +614,7 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, conns)
+	writeJSON(w, http.StatusOK, toConnectionDTOList(conns))
 }
 
 func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
@@ -616,6 +643,7 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	dataBytes, _ := json.Marshal(req.Data)
 	var connData model.ConnectionData
 	json.Unmarshal(dataBytes, &connData)
+	redactSecretFields(&connData)
 
 	pc := &model.ProviderConnection{
 		ID:       req.ID,
@@ -632,7 +660,30 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, pc)
+	dto := toConnectionDTO(pc)
+	writeJSON(w, http.StatusCreated, dto)
+}
+
+// redactSecretFields drops client-side redaction metadata from incoming
+// connection data: DTO presence flags and hints must never be persisted as
+// credential values.
+func redactSecretFields(d *model.ConnectionData) {
+	d.ProviderSpecificData = cleanProviderSpecificData(d.ProviderSpecificData)
+}
+
+func cleanProviderSpecificData(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	for k, v := range m {
+		if s, ok := v.(string); ok && s != "" && strings.HasPrefix(s, "••••") {
+			delete(m, k)
+		}
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
@@ -676,17 +727,64 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		existing.IsActive = *req.IsActive
 	}
 	if req.Data != nil {
+		// Field-level patch: only fields present in the request body change
+		// the stored value. Empty or masked secrets keep the stored credential
+		// instead of overwriting it with redacted data (P0-1).
 		dataBytes, _ := json.Marshal(req.Data)
-		var connData model.ConnectionData
-		json.Unmarshal(dataBytes, &connData)
-		existing.Data = connData
+		var patchData model.ConnectionData
+		json.Unmarshal(dataBytes, &patchData)
+		raw := map[string]any{}
+		json.Unmarshal(dataBytes, &raw)
+
+		if v, ok := raw["apiKey"]; ok {
+			if str, _ := v.(string); str != "" && !strings.HasPrefix(str, "••••") {
+				existing.Data.APIKey = str
+			}
+		}
+		if v, ok := raw["accessToken"]; ok {
+			if str, _ := v.(string); str != "" && !strings.HasPrefix(str, "••••") {
+				existing.Data.AccessToken = str
+			}
+		}
+		if v, ok := raw["refreshToken"]; ok {
+			if str, _ := v.(string); str != "" && !strings.HasPrefix(str, "••••") {
+				existing.Data.RefreshToken = str
+			}
+		}
+		if _, ok := raw["baseUrl"]; ok {
+			existing.Data.BaseURL = patchData.BaseURL
+		}
+		if _, ok := raw["expiresAt"]; ok {
+			existing.Data.ExpiresAt = patchData.ExpiresAt
+		}
+		if _, ok := raw["testStatus"]; ok {
+			existing.Data.TestStatus = patchData.TestStatus
+		}
+		if _, ok := raw["lastError"]; ok {
+			existing.Data.LastError = patchData.LastError
+		}
+		if _, ok := raw["rateLimitedUntil"]; ok {
+			existing.Data.RateLimitedUntil = patchData.RateLimitedUntil
+		}
+		if _, ok := raw["backoffLevel"]; ok {
+			existing.Data.BackoffLevel = patchData.BackoffLevel
+		}
+		if _, ok := raw["quotaLimit"]; ok {
+			existing.Data.QuotaLimit = patchData.QuotaLimit
+		}
+		if _, ok := raw["quotaPeriod"]; ok {
+			existing.Data.QuotaPeriod = patchData.QuotaPeriod
+		}
+		if patchData.ProviderSpecificData != nil {
+			existing.Data.ProviderSpecificData = cleanProviderSpecificData(patchData.ProviderSpecificData)
+		}
 	}
 
 	if err := s.DB.UpdateConnection(existing); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update connection"})
 		return
 	}
-	writeJSON(w, http.StatusOK, existing)
+	writeJSON(w, http.StatusOK, toConnectionDTO(existing))
 }
 
 func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -713,7 +811,7 @@ func (s *Server) handleResetProviderStatus(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset connection"})
 		return
 	}
-	writeJSON(w, http.StatusOK, conn)
+	writeJSON(w, http.StatusOK, toConnectionDTO(conn))
 }
 
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
@@ -722,7 +820,11 @@ func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, nodes)
+	out := make([]NodeDTO, 0, len(nodes))
+	for i := range nodes {
+		out = append(out, toNodeDTO(&nodes[i]))
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) handleCreateNode(w http.ResponseWriter, r *http.Request) {
@@ -757,7 +859,7 @@ func (s *Server) handleCreateNode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create node"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, n)
+	writeJSON(w, http.StatusCreated, toNodeDTO(n))
 }
 
 func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
@@ -790,11 +892,12 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		existing.Name = *req.Name
 	}
 	if req.Data != nil {
-		existing.Data = model.NodeData{
-			Prefix:  req.Data.Prefix,
-			APIType: req.Data.APIType,
-			BaseURL: req.Data.BaseURL,
-			APIKey:  req.Data.APIKey,
+		existing.Data.Prefix = req.Data.Prefix
+		existing.Data.APIType = req.Data.APIType
+		existing.Data.BaseURL = req.Data.BaseURL
+		// Empty or masked keys keep the stored credential.
+		if req.Data.APIKey != "" && !strings.HasPrefix(req.Data.APIKey, "••••") {
+			existing.Data.APIKey = req.Data.APIKey
 		}
 	}
 
@@ -802,7 +905,7 @@ func (s *Server) handleUpdateNode(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update node"})
 		return
 	}
-	writeJSON(w, http.StatusOK, existing)
+	writeJSON(w, http.StatusOK, toNodeDTO(existing))
 }
 
 func (s *Server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
@@ -913,7 +1016,7 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, keys)
+	writeJSON(w, http.StatusOK, toAPIKeyDTOList(keys))
 }
 
 func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
@@ -936,7 +1039,16 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create key"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, key)
+	// The full key is returned exactly once; subsequent reads only expose a
+	// masked hint.
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":        key.ID,
+		"name":      key.Name,
+		"key":       key.Key,
+		"keyHint":   auth.MaskSecret(key.Key),
+		"isActive":  key.IsActive,
+		"createdAt": key.CreatedAt,
+	})
 }
 
 func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {

@@ -7,14 +7,16 @@ import (
 	"time"
 )
 
-// UsageEntry represents a row in usageHistory.
+// UsageEntry represents a row in usageHistory. APIKey records which client
+// key made the request; it is stored for bookkeeping but never serialized
+// into API responses (secret contract, 37A).
 type UsageEntry struct {
 	ID               int64   `json:"id,omitempty"`
 	Timestamp        string  `json:"timestamp"`
 	Provider         string  `json:"provider"`
 	Model            string  `json:"model"`
 	ConnectionID     string  `json:"connectionId,omitempty"`
-	APIKey           string  `json:"apiKey,omitempty"`
+	APIKey           string  `json:"-"`
 	Endpoint         string  `json:"endpoint,omitempty"`
 	PromptTokens     int     `json:"promptTokens"`
 	CompletionTokens int     `json:"completionTokens"`
