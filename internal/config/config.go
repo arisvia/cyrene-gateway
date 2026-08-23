@@ -22,7 +22,7 @@ type Config struct {
 func Load() *Config {
 	cfg := &Config{}
 
-	flag.StringVar(&cfg.Host, "host", envOrDefault("CYRENE_HOST", "0.0.0.0"), "Host address to bind")
+	flag.StringVar(&cfg.Host, "host", envOrDefault("CYRENE_HOST", "127.0.0.1"), "Host address to bind (default 127.0.0.1 for security)")
 	flag.IntVar(&cfg.Port, "port", envIntOrDefault("CYRENE_PORT", 20128), "Port to bind the gateway")
 	flag.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local dashboard directory path (empty=use embedded)")
 	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded)")

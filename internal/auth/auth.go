@@ -4,19 +4,27 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/crypto/argon2"
 )
 
 // Secret management: load from env, file, or generate and persist.
 
-var secret []byte
+var (
+	secretMu sync.RWMutex
+	secret   []byte
+)
 
 func init() {
 	secret = loadSecret()
@@ -35,7 +43,7 @@ func loadSecret() []byte {
 	b := make([]byte, 32)
 	rand.Read(b)
 	generated := hex.EncodeToString(b)
-	os.MkdirAll(dir, 0o755)
+	os.MkdirAll(dir, 0o700)
 	os.WriteFile(path, []byte(generated), 0o600)
 	return []byte(generated)
 }
@@ -43,18 +51,26 @@ func loadSecret() []byte {
 // SetSecret overrides the auth secret (used when -secret flag is provided).
 func SetSecret(s string) {
 	if s != "" {
+		secretMu.Lock()
 		secret = []byte(s)
+		secretMu.Unlock()
 	}
 }
 
+func getSecret() []byte {
+	secretMu.RLock()
+	defer secretMu.RUnlock()
+	return secret
+}
+
 func sign(data []byte) string {
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, getSecret())
 	mac.Write(data)
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func verify(data []byte, signature string) bool {
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, getSecret())
 	mac.Write(data)
 	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(expected), []byte(signature))
@@ -82,6 +98,30 @@ func VerifyAPIKeySignature(key string) bool {
 		return false
 	}
 	return verify([]byte(parts[0]), parts[1])
+}
+
+// ExtractAPIKey extracts the API key from Authorization header or x-api-key header.
+func ExtractAPIKey(authHeader, xApiKeyHeader string) string {
+	if authHeader != "" {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			return strings.TrimPrefix(authHeader, "Bearer ")
+		}
+		return authHeader
+	}
+	return xApiKeyHeader
+}
+
+// ClientIP extracts the IP address from a host:port string.
+func ClientIP(remoteAddr string) string {
+	if strings.HasPrefix(remoteAddr, "[") && strings.Contains(remoteAddr, "]:") {
+		idx := strings.LastIndex(remoteAddr, "]:")
+		return remoteAddr[:idx+1]
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return remoteAddr
+	}
+	return host
 }
 
 // --- Dashboard Session Token ---
@@ -126,25 +166,74 @@ func VerifySessionToken(token string) bool {
 	return claims.Authenticated && time.Now().Unix() < claims.ExpiresAt
 }
 
-// --- Password Hashing (HMAC-based, no bcrypt dependency) ---
+// --- Password Hashing (Argon2id + legacy HMAC fallback) ---
 
-// HashPassword creates an HMAC-SHA256 hash of the password.
+const (
+	argonMemory      = 64 * 1024 // 64 MB
+	argonIterations  = 3
+	argonParallelism = 2
+	argonSaltLen     = 16
+	argonKeyLen      = 32
+)
+
+// HashPassword creates a secure Argon2id hash of the password.
 func HashPassword(password string) string {
-	mac := hmac.New(sha256.New, secret)
+	salt := make([]byte, argonSaltLen)
+	rand.Read(salt)
+	hash := argon2.IDKey([]byte(password), salt, argonIterations, argonMemory, argonParallelism, argonKeyLen)
+	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
+		argon2.Version, argonMemory, argonIterations, argonParallelism,
+		base64.RawStdEncoding.EncodeToString(salt),
+		base64.RawStdEncoding.EncodeToString(hash))
+}
+
+// VerifyPassword checks a password against a stored hash (supports Argon2id and legacy HMAC migration).
+func VerifyPassword(password, storedHash string) bool {
+	if strings.HasPrefix(storedHash, "$argon2id$") {
+		return verifyArgon2id(password, storedHash)
+	}
+	// Fallback to legacy HMAC hash verification
+	mac := hmac.New(sha256.New, getSecret())
 	mac.Write([]byte("password:" + password))
-	return hex.EncodeToString(mac.Sum(nil))
+	legacyHash := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(legacyHash), []byte(storedHash))
 }
 
-// VerifyPassword checks a password against a stored hash.
-func VerifyPassword(password, hash string) bool {
-	return hmac.Equal([]byte(HashPassword(password)), []byte(hash))
+func verifyArgon2id(password, storedHash string) bool {
+	parts := strings.Split(storedHash, "$")
+	if len(parts) < 6 {
+		return false
+	}
+	var version int
+	var memory uint32
+	var iterations uint32
+	var parallelism uint8
+	_, err := fmt.Sscanf(parts[2], "v=%d", &version)
+	if err != nil {
+		return false
+	}
+	_, err = fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism)
+	if err != nil {
+		return false
+	}
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
+	if err != nil {
+		return false
+	}
+	expectedHash, err := base64.RawStdEncoding.DecodeString(parts[5])
+	if err != nil {
+		return false
+	}
+	calculatedHash := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expectedHash)))
+	return subtle.ConstantTimeCompare(expectedHash, calculatedHash) == 1
 }
 
-// --- Login Rate Limiter ---
+// --- Concurrent-Safe Login Rate Limiter ---
 
 const (
 	maxFailsBeforeLock = 5
 	failWindowMS       = 60 * 60 * 1000 // 1h
+	maxLimiterEntries  = 10000          // Memory upper-bound
 )
 
 var lockStepsMS = []int64{30_000, 120_000, 600_000, 1_800_000} // 30s, 2m, 10m, 30m
@@ -156,40 +245,72 @@ type lockEntry struct {
 	lastFailAt int64
 }
 
-var attempts = make(map[string]*lockEntry)
+type LoginLimiter struct {
+	mu       sync.Mutex
+	attempts map[string]*lockEntry
+}
+
+var globalLimiter = &LoginLimiter{
+	attempts: make(map[string]*lockEntry),
+}
 
 func nowMS() int64 { return time.Now().UnixMilli() }
 
-func getEntry(ip string) *lockEntry {
-	e, ok := attempts[ip]
-	if !ok {
-		return nil
+func (l *LoginLimiter) cleanupLocked() {
+	now := nowMS()
+	for ip, e := range l.attempts {
+		if e.lastFailAt > 0 && now-e.lastFailAt > failWindowMS && (e.lockUntil == 0 || now >= e.lockUntil) {
+			delete(l.attempts, ip)
+		}
 	}
-	if e.lastFailAt > 0 && nowMS()-e.lastFailAt > failWindowMS && (e.lockUntil == 0 || nowMS() >= e.lockUntil) {
-		delete(attempts, ip)
-		return nil
+	// If still too large, prune arbitrarily
+	if len(l.attempts) > maxLimiterEntries {
+		for ip := range l.attempts {
+			delete(l.attempts, ip)
+			if len(l.attempts) <= maxLimiterEntries/2 {
+				break
+			}
+		}
 	}
-	return e
 }
 
 // CheckLock returns whether the IP is locked out and seconds remaining.
 func CheckLock(ip string) (locked bool, retryAfterSec int) {
-	e := getEntry(ip)
-	if e == nil || e.lockUntil == 0 {
+	globalLimiter.mu.Lock()
+	defer globalLimiter.mu.Unlock()
+
+	e, ok := globalLimiter.attempts[ip]
+	if !ok {
 		return false, 0
 	}
-	remaining := e.lockUntil - nowMS()
+	now := nowMS()
+	if e.lastFailAt > 0 && now-e.lastFailAt > failWindowMS && (e.lockUntil == 0 || now >= e.lockUntil) {
+		delete(globalLimiter.attempts, ip)
+		return false, 0
+	}
+	if e.lockUntil == 0 {
+		return false, 0
+	}
+	remaining := e.lockUntil - now
 	if remaining <= 0 {
 		return false, 0
 	}
 	return true, int((remaining + 999) / 1000)
 }
 
-// RecordFail records a failed login attempt.
+// RecordFail records a failed login attempt safely.
 func RecordFail(ip string) {
-	e := getEntry(ip)
-	if e == nil {
+	globalLimiter.mu.Lock()
+	defer globalLimiter.mu.Unlock()
+
+	if len(globalLimiter.attempts) >= maxLimiterEntries {
+		globalLimiter.cleanupLocked()
+	}
+
+	e, ok := globalLimiter.attempts[ip]
+	if !ok {
 		e = &lockEntry{}
+		globalLimiter.attempts[ip] = e
 	}
 	e.fails++
 	e.lastFailAt = nowMS()
@@ -199,48 +320,11 @@ func RecordFail(ip string) {
 		e.lockLevel++
 		e.fails = 0
 	}
-	attempts[ip] = e
 }
 
-// RecordSuccess clears login attempts for an IP.
+// RecordSuccess clears login attempts for an IP safely.
 func RecordSuccess(ip string) {
-	delete(attempts, ip)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// ExtractAPIKey extracts the API key from request headers.
-func ExtractAPIKey(authHeader, xAPIKey string) string {
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return authHeader[7:]
-	}
-	if xAPIKey != "" {
-		return xAPIKey
-	}
-	return ""
-}
-
-// ClientIP extracts client IP from remote address.
-func ClientIP(remoteAddr string) string {
-	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-		return remoteAddr[:idx]
-	}
-	return remoteAddr
-}
-
-// FormatRetryAfter formats milliseconds into human-readable duration.
-func FormatRetryAfter(ms int64) string {
-	sec := ms / 1000
-	if sec < 60 {
-		return fmt.Sprintf("%ds", sec)
-	}
-	if sec < 3600 {
-		return fmt.Sprintf("%dm%ds", sec/60, sec%60)
-	}
-	return fmt.Sprintf("%dh%dm", sec/3600, (sec%3600)/60)
+	globalLimiter.mu.Lock()
+	defer globalLimiter.mu.Unlock()
+	delete(globalLimiter.attempts, ip)
 }

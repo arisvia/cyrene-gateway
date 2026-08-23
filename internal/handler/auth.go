@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/db"
@@ -53,9 +54,15 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	valid := false
 	if settings.PasswordHash != "" {
 		valid = auth.VerifyPassword(req.Password, settings.PasswordHash)
+		// Automatically upgrade legacy HMAC hash to Argon2id upon successful verification
+		if valid && !strings.HasPrefix(settings.PasswordHash, "$argon2id$") {
+			settings.PasswordHash = auth.HashPassword(req.Password)
+			_ = h.db.SaveSettings(settings)
+		}
 	} else {
-		// Default password when none is set
-		valid = req.Password == "123456"
+		// No password configured
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "password not initialized"})
+		return
 	}
 
 	if !valid {

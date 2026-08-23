@@ -26,9 +26,17 @@
 
 ## 最近一次交接
 
-- 日期：2026-08-12
-- 当前工作项：37A
-- 已完成：后端与前端静态审计；活动文档压缩；删除 `CYRENE_DATA_DIR` 外部配置；明确不保留旧版兼容。
-- 尚未完成：Phase 37-38 代码实现与动态验证。
-- 环境限制：上一审计环境缺少 Go；Node 可用但未安装 webui dependencies。
-- 下一步：在完整开发环境执行 baseline，然后实施 37A。
+- 日期：2026-08-23
+- 当前工作项：37B
+- 已完成：
+  - 实施并验证 Work Item 37A：
+    - 默认绑定回环地址 `127.0.0.1`，禁止未授权远程匿名访问管理接口。
+    - API 响应 DTO 密钥全量脱敏（`ConnectionDTO`），隐藏 APIKey、AccessToken、RefreshToken 及 ProviderSpecificData 中的敏感项。
+    - Provider 更新采用 Partial Patch 逻辑，缺省 Secret 字段自动保留原有凭据。
+    - 修复登录限流器并发安全问题（Mutex 保护 + 容量上限 + 定期清理）。
+    - 升级密码存储方案为 Argon2id（自动迁移旧 HMAC 哈希），移除弱默认密码 `123456`。
+    - 补充 37A 专属安全回归测试并全部通过。
+    - 前端构建验证通过（`npm run build` 生成 `webui/dist`）。
+- 尚未完成：Phase 37B 及后续工作项。
+- 环境状态：Go 1.26.1 已安装且测试通过；Node.js 与 webui 构建正常。
+- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37B（统一 Upstream Executor，抽象 Single/Combo/Messages/Tester 的执行管线）。

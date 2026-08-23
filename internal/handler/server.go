@@ -112,6 +112,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	s.Router.HandleFunc("PATCH /api/settings", s.handlePatchSettings)
 	s.Router.HandleFunc("GET /api/providers", s.handleListProviders)
+	s.Router.HandleFunc("GET /api/providers/{id}", s.handleGetProvider)
 	s.Router.HandleFunc("POST /api/providers", s.handleCreateProvider)
 	s.Router.HandleFunc("PUT /api/providers/{id}", s.handleUpdateProvider)
 	s.Router.HandleFunc("DELETE /api/providers/{id}", s.handleDeleteProvider)
@@ -528,7 +529,10 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
 		return
 	}
-	writeJSON(w, http.StatusOK, settings)
+	// Redact PasswordHash from settings response
+	sanitized := *settings
+	sanitized.PasswordHash = ""
+	writeJSON(w, http.StatusOK, sanitized)
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
@@ -587,7 +591,21 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
-	writeJSON(w, http.StatusOK, conns)
+	dtos := make([]model.ConnectionDTO, len(conns))
+	for i, c := range conns {
+		dtos[i] = c.ToDTO()
+	}
+	writeJSON(w, http.StatusOK, dtos)
+}
+
+func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	conn, err := s.DB.GetConnection(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, conn.ToDTO())
 }
 
 func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
@@ -632,7 +650,7 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, pc)
+	writeJSON(w, http.StatusCreated, pc.ToDTO())
 }
 
 func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
@@ -677,16 +695,27 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Data != nil {
 		dataBytes, _ := json.Marshal(req.Data)
-		var connData model.ConnectionData
-		json.Unmarshal(dataBytes, &connData)
-		existing.Data = connData
+		var incomingData model.ConnectionData
+		json.Unmarshal(dataBytes, &incomingData)
+
+		// Preserve existing secrets if empty in patch
+		if incomingData.APIKey == "" {
+			incomingData.APIKey = existing.Data.APIKey
+		}
+		if incomingData.AccessToken == "" {
+			incomingData.AccessToken = existing.Data.AccessToken
+		}
+		if incomingData.RefreshToken == "" {
+			incomingData.RefreshToken = existing.Data.RefreshToken
+		}
+		existing.Data = incomingData
 	}
 
 	if err := s.DB.UpdateConnection(existing); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update connection"})
 		return
 	}
-	writeJSON(w, http.StatusOK, existing)
+	writeJSON(w, http.StatusOK, existing.ToDTO())
 }
 
 func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -713,7 +742,7 @@ func (s *Server) handleResetProviderStatus(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset connection"})
 		return
 	}
-	writeJSON(w, http.StatusOK, conn)
+	writeJSON(w, http.StatusOK, conn.ToDTO())
 }
 
 func (s *Server) handleListNodes(w http.ResponseWriter, r *http.Request) {

@@ -63,17 +63,21 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "37A",
+  "current_work_item": "37B",
   "work_items": [
     {
       "id": "37A",
       "phase": 37,
       "name": "Secure Boundary and Credentials",
-      "status": "pending",
+      "status": "done",
       "depends_on": [],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Implemented secure loopback-by-default bind, redacted provider secret DTOs, race-safe bounded login rate limiter, Argon2id password hashing with legacy migration, and unauthenticated remote management block.",
+      "verification": [
+        "go test -race ./...",
+        "go test -v ./internal/handler -run 'TestSecretRedactionContract|TestRemoteUnauthenticatedManagementBlocked|TestPasswordArgon2idMigration'",
+        "cd webui && npm run build"
+      ]
     },
     {
       "id": "37B",

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -382,9 +383,14 @@ func TestAuthStatusNoLoginRequired(t *testing.T) {
 }
 
 func TestLoginWithDefaultPassword(t *testing.T) {
-	srv, _ := setupTestServer(t)
+	srv, database := setupTestServer(t)
 
-	body := `{"password":"123456"}`
+	// Set a password first (no weak default 123456)
+	settings, _ := database.GetSettings()
+	settings.PasswordHash = auth.HashPassword("secure-password-123")
+	database.SaveSettings(settings)
+
+	body := `{"password":"secure-password-123"}`
 	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -469,10 +475,11 @@ func TestAPIKeyAuthWithValidKey(t *testing.T) {
 	settings.RequireAPIKey = true
 	database.SaveSettings(settings)
 
-	// Create an API key
+	// Create a valid signed API key
+	apiKeyStr := auth.GenerateAPIKey()
 	key := &model.APIKey{
 		ID:       "test-key-id",
-		Key:      "cg-testkey123",
+		Key:      apiKeyStr,
 		Name:     "test",
 		IsActive: true,
 	}
@@ -482,7 +489,7 @@ func TestAPIKeyAuthWithValidKey(t *testing.T) {
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
 	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer cg-testkey123")
+	req.Header.Set("Authorization", "Bearer "+apiKeyStr)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
