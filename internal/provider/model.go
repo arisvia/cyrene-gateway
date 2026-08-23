@@ -1,41 +1,42 @@
 package provider
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
-// ParseModel parses a model string into provider and model name.
-// Supports formats: "provider/model", "alias/model", or bare "model" (alias lookup).
+// ParseModel splits "provider/model" into provider and model parts.
+// If no slash is present, provider is empty and will be inferred or resolved via alias.
 func ParseModel(modelStr string) model.ModelInfo {
-	if modelStr == "" {
-		return model.ModelInfo{}
+	if idx := strings.Index(modelStr, "/"); idx != -1 {
+		rawProv := modelStr[:idx]
+		canonicalProv := ResolveProviderAlias(rawProv)
+		return model.ModelInfo{
+			Provider: canonicalProv,
+			Model:    modelStr[idx+1:],
+		}
 	}
-
-	// Standard format: provider/model or alias/model
-	if idx := strings.Index(modelStr, "/"); idx > 0 {
-		providerOrAlias := modelStr[:idx]
-		modelName := modelStr[idx+1:]
-		provider := ResolveProviderAlias(providerOrAlias)
-		return model.ModelInfo{Provider: provider, Model: modelName}
-	}
-
 	// Bare model name - will need alias resolution or inference
 	return model.ModelInfo{Provider: "", Model: modelStr}
 }
 
-// ResolveModel resolves a model string to full ModelInfo using DB aliases and inference.
+// ResolveModel resolves a model string to full ModelInfo using:
+// 1. Explicit provider prefix (e.g. "openai/gpt-4o")
+// 2. Alias resolution from KV store
+// 3. Dynamic search in cached models of active connections
+// 4. Fallback: prefix-based inference
 func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	parsed := ParseModel(modelStr)
 
-	// Already has provider
+	// 1. Explicit provider already present
 	if parsed.Provider != "" {
 		return parsed, nil
 	}
 
-	// Try model alias from KV store (scope="aliases")
+	// 2. Try model alias from KV store (scope="aliases")
 	aliases, err := database.KVList("aliases")
 	if err == nil {
 		if target, ok := aliases[parsed.Model]; ok {
@@ -46,7 +47,45 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 		}
 	}
 
-	// Fallback: infer provider from model name
+	// 3. Dynamic lookup across cached models of active providers
+	if caches, err := database.KVList("providerModelCache"); err == nil && len(caches) > 0 {
+		lowerTarget := strings.ToLower(parsed.Model)
+		for providerID, raw := range caches {
+			var cached model.CachedModels
+			if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+				continue
+			}
+			for _, m := range cached.Models {
+				if strings.EqualFold(m.ID, lowerTarget) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerTarget)) {
+					return model.ModelInfo{
+						Provider: providerID,
+						Model:    m.ID,
+					}, nil
+				}
+			}
+		}
+	}
+
+	// 4. Dynamic lookup across active connections (e.g. if custom node or openrouter)
+	if conns, err := database.ListConnections(); err == nil {
+		for _, conn := range conns {
+			if !conn.IsActive {
+				continue
+			}
+			if regModels, ok := RegistryModels[conn.Provider]; ok {
+				for _, rm := range regModels {
+					if strings.EqualFold(rm.ID, parsed.Model) || strings.EqualFold(rm.Name, parsed.Model) {
+						return model.ModelInfo{
+							Provider: conn.Provider,
+							Model:    rm.ID,
+						}, nil
+					}
+				}
+			}
+		}
+	}
+
+	// 5. Fallback: infer provider from model name
 	return model.ModelInfo{
 		Provider: InferProviderFromModel(parsed.Model),
 		Model:    parsed.Model,

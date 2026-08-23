@@ -524,6 +524,48 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 	return models
 }
 
+// syncConnectionModels fetches and updates the cached model list for a connection.
+func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
+	if conn == nil || !conn.IsActive {
+		return
+	}
+	providerInfo, ok := provider.GetProvider(conn.Provider)
+	if !ok {
+		return
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	var models []model.ModelMetadata
+
+	if conn.Provider == "qoder" {
+		models = s.fetchQoderCatalog(conn, client)
+	} else {
+		baseURL := providerInfo.BaseURL
+		if conn.Data.BaseURL != "" {
+			baseURL = conn.Data.BaseURL
+		}
+		cfg := provider.ModelsFetchFor(providerInfo)
+		if conn.Data.BaseURL != "" {
+			cfg.URL = ""
+		}
+		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
+		if err == nil && len(fetched) > 0 {
+			models = fetched
+		}
+	}
+
+	if len(models) > 0 {
+		cached := model.CachedModels{
+			FetchedAt: time.Now(),
+			Models:    models,
+		}
+		if data, err := json.Marshal(cached); err == nil {
+			s.DB.KVSet("providerModelCache", conn.Provider, string(data))
+			slog.Info("Auto-synced live models for provider", slog.String("provider", conn.Provider), slog.Int("count", len(models)))
+		}
+	}
+}
+
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	settings, err := s.DB.GetSettings()
 	if err != nil {
@@ -651,6 +693,10 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
 	}
+
+	// Trigger async dynamic model catalog discovery for the newly added connection
+	go s.syncConnectionModels(pc)
+
 	writeJSON(w, http.StatusCreated, pc.ToDTO())
 }
 
