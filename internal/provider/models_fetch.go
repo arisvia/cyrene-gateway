@@ -2,6 +2,7 @@ package provider
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
@@ -52,8 +53,17 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 			m.ContextLength = ctxLen
 		}
 		m.Capabilities = []string{"chat"}
+		m.Modalities = []string{"text"}
 		if isReasoning, _ := raw["is_reasoning"].(bool); isReasoning {
 			m.Capabilities = append(m.Capabilities, "reasoning")
+		}
+		if hasVision, _ := raw["has_vision"].(bool); hasVision || strings.Contains(strings.ToLower(key), "vl") || strings.Contains(strings.ToLower(key), "vision") {
+			m.Capabilities = append(m.Capabilities, "vision")
+			m.Modalities = append(m.Modalities, "image")
+		}
+		if hasAudio, _ := raw["has_audio"].(bool); hasAudio || strings.Contains(strings.ToLower(key), "audio") || strings.Contains(strings.ToLower(key), "omni") {
+			m.Capabilities = append(m.Capabilities, "audio")
+			m.Modalities = append(m.Modalities, "audio")
 		}
 		out = append(out, m)
 	}
