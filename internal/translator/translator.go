@@ -134,6 +134,29 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		result["messages"] = claudeMessages
 	}
 
+	// Support reasoning_effort & thinking conversion
+	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
+		var budget int
+		switch strings.ToLower(effort) {
+		case "low":
+			budget = 2048
+		case "medium":
+			budget = 8192
+		case "high":
+			budget = 16384
+		case "max":
+			budget = 32768
+		}
+		if budget > 0 {
+			result["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": budget,
+			}
+		}
+	} else if thinking, ok := body["thinking"].(map[string]any); ok {
+		result["thinking"] = thinking
+	}
+
 	// Convert tools
 	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
 		var claudeTools []any
@@ -287,6 +310,21 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 	if mt := getMaxTokens(body); mt > 0 {
 		genConfig["maxOutputTokens"] = mt
 	}
+
+	// Support reasoning_effort & thinking config for Gemini
+	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
+		switch strings.ToLower(effort) {
+		case "low":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 2048}
+		case "medium":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 8192}
+		case "high":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 16384}
+		case "none", "off":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 0}
+		}
+	}
+
 	if len(genConfig) > 0 {
 		result["generationConfig"] = genConfig
 	}
