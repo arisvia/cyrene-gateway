@@ -269,26 +269,48 @@ export const useGatewayStore = defineStore('gateway', () => {
   /* ─── Provider actions ─── */
 
   async function addProvider(payload: Record<string, any>) {
-    await apiPost('/api/providers', payload)
+    const res = await apiPost<Provider>('/api/providers', payload)
     toast.success(`Provider "${payload.name || payload.provider}" added`)
-    await loadCore()
+    if (res?.id) {
+      providers.value.push(res)
+    } else {
+      await loadProvidersOnly()
+    }
+  }
+
+  async function loadProvidersOnly() {
+    try {
+      const p = await api('/api/providers')
+      providers.value = Array.isArray(p) ? p : []
+    } catch (e) {
+      console.error('[store] loadProvidersOnly failed:', e)
+    }
   }
 
   async function toggleProvider(p: Provider) {
-    await apiPut(`/api/providers/${p.id}`, { isActive: !p.isActive })
-    await loadCore()
+    const originalState = p.isActive
+    p.isActive = !p.isActive
+    try {
+      await apiPut(`/api/providers/${p.id}`, { isActive: p.isActive })
+    } catch (e) {
+      p.isActive = originalState
+      toast.error('Failed to update provider status')
+    }
   }
 
   async function resetCooldown(p: Provider) {
     await apiPost(`/api/providers/${p.id}/reset`)
     toast.success(`Cooldown reset — ${p.name || p.provider}`)
-    await loadCore()
+    if (p.data) {
+      p.data.rateLimitedUntil = ''
+      p.data.testStatus = 'ok'
+    }
   }
 
   async function deleteProvider(p: Provider) {
     await apiDelete(`/api/providers/${p.id}`)
     toast.success(`Deleted "${p.name || p.provider}"`)
-    await loadCore()
+    providers.value = providers.value.filter(item => item.id !== p.id)
   }
 
   async function enableFree(ids?: string[]): Promise<number> {
