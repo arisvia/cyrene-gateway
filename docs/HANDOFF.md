@@ -27,14 +27,15 @@
 ## 最近一次交接
 
 - 日期：2026-08-23
-- 当前工作项：37D
+- 当前工作项：37F
 - 已完成：
   - 实施并验证 Work Item 37A（安全边界与凭据脱敏）。
   - 实施并验证 Work Item 37B（统一 Upstream Executor 与错误分类）。
-  - 实施并验证 Work Item 37C：
-    - 实现遵循标准规范的 `SSEReader` 与 `FormatSSEEvent`，支持多行 data 聚合、注释跳过及自定义 Event/ID 提取。
-    - 添加 `RequestSizeLimiter` 中间件，对 JSON 请求体（10MB）与 Multipart 上传（50MB）设置硬上限。
-    - 补充 37C 专项测试并全量 `go test -race ./...` 通过。
-- 尚未完成：Phase 37D（网络与文件安全）、37F（Database V2）、37E（发布门禁）。
+  - 实施并验证 Work Item 37C（流式处理与资源限制）。
+  - 实施并验证 Work Item 37D：
+    - 编写 SSRF 防护解析器 `ValidateUpstreamURL` 与 `SafeHTTPClient`。
+    - 禁止非授权访问回环、内网私网地址、链路本地与云厂商元数据（`169.254.169.254`）。
+    - 补充 37D 单元测试并全量 `go test -race ./...` 通过。
+- 尚未完成：Phase 37F（Database V2）、37E（发布门禁）。
 - 环境状态：Go 1.26.1、Node.js 与 webui 均正常。
-- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37D（SSRF 防护、Panel 安全下载与解压、原子配置写入）。
+- 下一步：按照 `docs/WORK_ITEMS.md` 与 `docs/DATABASE_V2.md` 实施 37F。
