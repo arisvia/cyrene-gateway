@@ -27,11 +27,15 @@
 ## 最近一次交接
 
 - 日期：2026-08-23
-- 当前工作项：37E
+- 当前工作项：38A
 - 已完成：
-  - 实施并验证 Work Item 37A、37B、37C、37D、37F。
-  - 数据库 Schema Version 推进到 V2，清理历史迁移包袱。
-  - 全量后端 `go test -race ./...` 与前端构建 `npm run build` 通过。
-- 尚未完成：Phase 37E（最终发布门禁）。
+  - **Phase 37 全量通关（Release Gate Passed ★）**：
+    - 37A: 安全边界与凭据脱敏、Argon2id 密码哈希、并发安全登录限流器。
+    - 37B: 统一 Upstream Executor 执行管线、严格 400/422 不 fallback 策略。
+    - 37C: 标准 SSEReader 事件解析、请求大小限制（10MB JSON/50MB Multipart）。
+    - 37D: SSRF 防护与 SafeHTTPClient 逐跳重定向安全检查。
+    - 37F: Database V2 规范基线建立。
+    - 37E: 全量发布门禁验证通过（`go fmt`, `go vet`, `go test -race`, `npm run build` 全部 PASS）。
+- 尚未完成：Phase 38（WebUI 领域状态与 Provider 向导重构）。
 - 环境状态：Go 1.26.1、Node.js 与 webui 均正常。
-- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37E（全量门禁检查与文档状态更新）。
+- 下一步：按照 `docs/WORK_ITEMS.md` 推进 38A（前端契约与状态层重构）。

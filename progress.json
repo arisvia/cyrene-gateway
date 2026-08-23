@@ -63,7 +63,7 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "37E",
+  "current_work_item": "38A",
   "work_items": [
     {
       "id": "37A",
@@ -145,7 +145,7 @@
       "id": "37E",
       "phase": 37,
       "name": "Release Gate",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "37B",
         "37C",
@@ -153,8 +153,14 @@
         "37F"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Verified all Phase 37 P0/P1 audit findings resolved, all unit/contract/e2e/race tests pass, and frontend build passes cleanly.",
+      "verification": [
+        "go fmt ./...",
+        "go vet ./...",
+        "go test ./...",
+        "go test -race ./...",
+        "cd webui && npm run build"
+      ]
     },
     {
       "id": "38A",
