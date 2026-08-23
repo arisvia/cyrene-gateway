@@ -3,7 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGatewayStore, type RegistryProvider, type Provider } from '@/stores/gateway'
 import { useToast } from '@/lib/toast'
-import { apiPost } from '@/lib/api'
+import { api, apiPost } from '@/lib/api'
 import GCard from '@/components/ui/GCard.vue'
 import GButton from '@/components/ui/GButton.vue'
 import GBadge from '@/components/ui/GBadge.vue'
@@ -24,7 +24,9 @@ import {
   Clock,
   Sparkles,
   Server,
-  Play
+  Play,
+  Copy,
+  QrCode
 } from 'lucide-vue-next'
 
 const store = useGatewayStore()
@@ -45,7 +47,19 @@ const selectedAuthMode = ref<string>('apikey')
 const formName = ref('')
 const formApiKey = ref('')
 const formBaseUrl = ref('')
-const formEndpointType = ref('openai')
+
+// OAuth & Device Code state
+const deviceCodeData = ref<{
+  userCode?: string
+  verificationUri?: string
+  verificationUriComplete?: string
+  deviceCode?: string
+  codeVerifier?: string
+  nonce?: string
+  machineId?: string
+} | null>(null)
+const pollingOAuth = ref(false)
+let pollTimer: number | null = null
 
 // Wizard test state
 const testingConnection = ref(false)
@@ -117,8 +131,10 @@ function regionLabel(g: BrandGroup, rp: RegistryProvider): string {
 }
 
 function openWizard(rp?: RegistryProvider) {
+  stopOAuthPoll()
   testResult.value = null
   testingConnection.value = false
+  deviceCodeData.value = null
   if (rp) {
     selectedProvider.value = rp
     formName.value = rp.name
@@ -137,12 +153,59 @@ function openWizard(rp?: RegistryProvider) {
 }
 
 function selectProviderInWizard(rp: RegistryProvider) {
+  stopOAuthPoll()
   selectedProvider.value = rp
   formName.value = rp.name
   formBaseUrl.value = rp.baseUrl || ''
   selectedAuthMode.value = rp.authModes?.[0] || rp.authType || 'apikey'
   testResult.value = null
+  deviceCodeData.value = null
   wizardStep.value = 2
+}
+
+async function startDeviceCodeFlow() {
+  if (!selectedProvider.value) return
+  stopOAuthPoll()
+  pollingOAuth.value = true
+  deviceCodeData.value = null
+  try {
+    const res = await apiPost(`/api/oauth/${selectedProvider.value.id}/device-code`)
+    deviceCodeData.value = res
+    if (res.verificationUriComplete || res.verificationUri) {
+      window.open(res.verificationUriComplete || res.verificationUri, '_blank')
+    }
+    // Start polling
+    pollTimer = window.setInterval(async () => {
+      try {
+        const pollRes = await apiPost(`/api/oauth/${selectedProvider.value?.id}/device-code/poll`, {
+          deviceCode: deviceCodeData.value?.deviceCode,
+          codeVerifier: deviceCodeData.value?.codeVerifier,
+          nonce: deviceCodeData.value?.nonce,
+          machineId: deviceCodeData.value?.machineId,
+        })
+        if (pollRes?.status === 'complete' || pollRes?.accessToken || pollRes?.id) {
+          stopOAuthPoll()
+          toast.success(`${selectedProvider.value?.name} OAuth authorization complete!`)
+          showWizard.value = false
+          await store.loadCore()
+          activeTab.value = 'connections'
+        }
+      } catch (e) {
+        // Continue polling until timeout
+      }
+    }, 2500)
+  } catch (e: any) {
+    pollingOAuth.value = false
+    toast.error(e.message || 'Failed to start device code flow')
+  }
+}
+
+function stopOAuthPoll() {
+  pollingOAuth.value = false
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 }
 
 async function testCurrentInWizard() {
@@ -173,7 +236,6 @@ async function saveConnection() {
   if (submitting.value) return
   submitting.value = true
   try {
-    const isCustom = !selectedProvider.value
     const provId = selectedProvider.value ? selectedProvider.value.id : 'custom'
     const payload: Record<string, any> = {
       provider: provId,
@@ -268,6 +330,7 @@ async function testSingleConnection(conn: Provider) {
                 <h3 class="conn-name">{{ conn.name || conn.provider }}</h3>
                 <div class="conn-meta">
                   <span class="conn-provider-badge">{{ conn.provider }}</span>
+                  <span class="conn-auth-badge">{{ conn.authType?.toUpperCase() || 'APIKEY' }}</span>
                   <span v-if="conn.data?.credentialHint" class="conn-hint">{{ conn.data.credentialHint }}</span>
                 </div>
               </div>
@@ -375,7 +438,7 @@ async function testSingleConnection(conn: Provider) {
             </div>
 
             <div class="catalog-card-footer">
-              <span class="auth-pill">{{ activeInGroup(g).authType || 'API Key' }}</span>
+              <span class="auth-pill">{{ activeInGroup(g).authModes?.join(' / ') || activeInGroup(g).authType || 'API Key' }}</span>
               <GButton size="sm" variant="outline" @click.stop="openWizard(activeInGroup(g))">
                 Connect
               </GButton>
@@ -386,7 +449,7 @@ async function testSingleConnection(conn: Provider) {
     </div>
 
     <!-- Three-Step Connection Wizard Modal -->
-    <GModal :open="showWizard" @close="showWizard = false">
+    <GModal :open="showWizard" @close="showWizard = false; stopOAuthPoll()">
       <div class="wizard-modal">
         <!-- Wizard Step 1: Select Provider -->
         <div v-if="wizardStep === 1">
@@ -402,7 +465,7 @@ async function testSingleConnection(conn: Provider) {
               <div class="item-avatar">{{ rp.name.slice(0, 2).toUpperCase() }}</div>
               <div class="item-info">
                 <span class="item-name">{{ rp.name }}</span>
-                <span class="item-meta">{{ rp.category }} · {{ rp.authType }}</span>
+                <span class="item-meta">{{ rp.category }} · {{ rp.authModes?.join(' / ') || rp.authType }}</span>
               </div>
               <GButton size="sm" variant="outline">Select</GButton>
             </div>
@@ -412,56 +475,85 @@ async function testSingleConnection(conn: Provider) {
         <!-- Wizard Step 2: Configure & Test -->
         <div v-else-if="wizardStep === 2">
           <h3 class="modal-title">Configure {{ selectedProvider ? selectedProvider.name : 'Custom Provider' }}</h3>
-          <p class="modal-desc">Enter your credentials and verify connectivity before saving.</p>
+          <p class="modal-desc">Select channel, input credentials and verify connectivity.</p>
 
           <div class="form-group">
             <label>Connection Name</label>
             <input v-model="formName" type="text" placeholder="e.g. Primary Account" />
           </div>
 
+          <!-- Dual-Auth Selector: API Key vs OAuth / Device Flow -->
           <div v-if="selectedProvider?.authModes && selectedProvider.authModes.length > 1" class="form-group">
-            <label>Auth Mode</label>
+            <label>Authentication Method</label>
             <div class="auth-mode-selector">
               <button
                 v-for="mode in selectedProvider.authModes"
                 :key="mode"
                 class="mode-pill"
                 :class="{ active: selectedAuthMode === mode }"
-                @click="selectedAuthMode = mode"
+                @click="selectedAuthMode = mode; stopOAuthPoll()"
               >
-                {{ mode.toUpperCase() }}
+                {{ mode === 'oauth' ? 'OAuth Login' : (mode === 'apikey' ? 'API Key / Token' : mode.toUpperCase()) }}
               </button>
             </div>
           </div>
 
-          <div v-if="selectedAuthMode === 'apikey' || !selectedProvider" class="form-group">
-            <label>API Key / Token</label>
-            <input v-model="formApiKey" type="password" placeholder="sk-..." />
+          <!-- Mode 1: API Key / PAT Form -->
+          <div v-if="selectedAuthMode === 'apikey' || !selectedProvider">
+            <div class="form-group">
+              <label>API Key / Personal Access Token</label>
+              <input v-model="formApiKey" type="password" placeholder="sk-... or pt-..." />
+            </div>
+
+            <div class="form-group">
+              <label>Base URL (Optional override)</label>
+              <input v-model="formBaseUrl" type="text" :placeholder="selectedProvider?.baseUrl || 'https://api.openai.com/v1'" />
+            </div>
+
+            <div v-if="testResult" class="wizard-test-result" :class="{ ok: testResult.ok, error: !testResult.ok }">
+              <span v-if="testResult.ok">✓ Connection verified! Latency: {{ testResult.latencyMs || 0 }}ms</span>
+              <span v-else>✕ Verification failed: {{ testResult.error || 'Invalid credentials or host unreachable' }}</span>
+            </div>
+
+            <div class="wizard-actions">
+              <GButton variant="outline" @click="wizardStep = 1">Back</GButton>
+              <div class="right-actions">
+                <GButton
+                  variant="outline"
+                  :disabled="testingConnection || (!formApiKey && !formBaseUrl)"
+                  @click="testCurrentInWizard"
+                >
+                  {{ testingConnection ? 'Testing…' : 'Test Connection' }}
+                </GButton>
+                <GButton variant="primary" :disabled="submitting" @click="saveConnection">
+                  {{ submitting ? 'Saving…' : 'Save Connection' }}
+                </GButton>
+              </div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label>Base URL (Optional override)</label>
-            <input v-model="formBaseUrl" type="text" :placeholder="selectedProvider?.baseUrl || 'https://api.openai.com/v1'" />
-          </div>
-
-          <div v-if="testResult" class="wizard-test-result" :class="{ ok: testResult.ok, error: !testResult.ok }">
-            <span v-if="testResult.ok">✓ Connection verified! Latency: {{ testResult.latencyMs || 0 }}ms</span>
-            <span v-else>✕ Verification failed: {{ testResult.error || 'Invalid credentials or host unreachable' }}</span>
-          </div>
-
-          <div class="wizard-actions">
-            <GButton variant="outline" @click="wizardStep = 1">Back</GButton>
-            <div class="right-actions">
-              <GButton
-                variant="outline"
-                :disabled="testingConnection || (!formApiKey && !formBaseUrl)"
-                @click="testCurrentInWizard"
-              >
-                {{ testingConnection ? 'Testing…' : 'Test Connection' }}
+          <!-- Mode 2: OAuth / Device Code Flow -->
+          <div v-else-if="selectedAuthMode === 'oauth'" class="oauth-flow-section">
+            <div v-if="!pollingOAuth" class="oauth-start-wrap">
+              <p class="oauth-hint">Click below to open the vendor login page and link your account.</p>
+              <GButton variant="primary" @click="startDeviceCodeFlow">
+                <ExternalLink :size="15" />
+                <span>Start OAuth Login</span>
               </GButton>
-              <GButton variant="primary" :disabled="submitting" @click="saveConnection">
-                {{ submitting ? 'Saving…' : 'Save Connection' }}
-              </GButton>
+            </div>
+
+            <div v-else class="oauth-polling-wrap">
+              <div class="oauth-spinner"></div>
+              <h4>Waiting for authorization in browser…</h4>
+              <div v-if="deviceCodeData?.userCode" class="user-code-box">
+                <span>Code:</span> <strong>{{ deviceCodeData.userCode }}</strong>
+              </div>
+              <p class="oauth-subhint">Please confirm the code in your opened browser window.</p>
+              <GButton size="sm" variant="outline" @click="stopOAuthPoll">Cancel</GButton>
+            </div>
+
+            <div class="wizard-actions" style="margin-top: 1.5rem;">
+              <GButton variant="outline" @click="wizardStep = 1; stopOAuthPoll()">Back</GButton>
             </div>
           </div>
         </div>
@@ -609,6 +701,15 @@ async function testSingleConnection(conn: Provider) {
   padding: 2px 6px;
   border-radius: 4px;
   color: var(--g-text-secondary, #94a3b8);
+}
+
+.conn-auth-badge {
+  font-size: 0.7rem;
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
 }
 
 .conn-hint {
@@ -871,18 +972,76 @@ async function testSingleConnection(conn: Provider) {
 }
 
 .mode-pill {
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 6px;
   background: var(--g-surface, #14141e);
   border: 1px solid var(--g-border, #2e2e3f);
   color: var(--g-text-secondary, #94a3b8);
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .mode-pill.active {
   background: var(--g-primary, #6366f1);
   color: #fff;
+  font-weight: 600;
   border-color: var(--g-primary, #6366f1);
+}
+
+.oauth-flow-section {
+  padding: 1rem 0;
+  text-align: center;
+}
+
+.oauth-start-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.oauth-hint {
+  font-size: 0.85rem;
+  color: var(--g-text-secondary, #94a3b8);
+  margin: 0;
+}
+
+.oauth-polling-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 1rem;
+  background: var(--g-surface, #14141e);
+  border-radius: 8px;
+}
+
+.oauth-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(99, 102, 241, 0.2);
+  border-top-color: var(--g-primary, #6366f1);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.user-code-box {
+  background: var(--g-surface-elevated, #242436);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+  color: var(--g-primary, #6366f1);
+}
+
+.oauth-subhint {
+  font-size: 0.8rem;
+  color: var(--g-text-muted, #64748b);
+  margin: 0;
 }
 </style>
