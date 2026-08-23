@@ -38,7 +38,7 @@
       "id": 37,
       "name": "Security Hardening & Core Proxy Reliability Audit",
       "description": "Resolve the 2026-08-12 deep-audit findings before public deployment. Full details: docs/SECURITY_AUDIT_2026-08-12.md.",
-      "status": "pending",
+      "status": "done",
       "tasks": [
         "37A: secure-by-default bind/auth; redact all provider/API secrets from response DTOs; protect privileged management endpoints",
         "37A: make login limiter race-safe and bounded; replace default password and migrate password hashing; initialize auth secret explicitly under the fixed application data directory",
@@ -47,12 +47,12 @@
         "37D: validate custom BaseURL and panel-url against SSRF/redirect policy; make panel extraction and sensitive config writes atomic and permission-safe",
         "37E: add regression/E2E coverage, then run go fmt ./..., go vet ./..., go test ./..., go test -race ./... and vulnerability scanning"
       ],
-      "notes": "Static backend audit recorded 2026-08-12. No legacy compatibility is required because the project is pre-production. Dynamic Go verification remains mandatory before completion."
+      "notes": "Static backend audit recorded 2026-08-12. Dynamic Go verification completed and release gates passed."
     },
     {
       "id": 38,
       "name": "WebUI Provider Workflow & Product Logic Rebuild",
-      "status": "pending",
+      "status": "done",
       "description": "Rebuild frontend contract/state and the Provider Catalog -> Connection workflow. Details: docs/FRONTEND_AUDIT_2026-08-12.md.",
       "tasks": [
         "38A: typed API contract, secret-free DTOs, domain stores, request cancellation and local mutation refresh",
@@ -182,39 +182,48 @@
       "id": "38B",
       "phase": 38,
       "name": "Provider Catalog and Connection Wizard",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "38A",
         "37E"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Verified connection wizard workflow contracts, schema-driven connection configuration and testing validation.",
+      "verification": [
+        "cd webui && npm test",
+        "cd webui && npm run build"
+      ]
     },
     {
       "id": "38C",
       "phase": 38,
       "name": "Connection Workspace and Route Inspector",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "38B"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Established Route Inspector and connection detail view consistency without exposing secrets.",
+      "verification": [
+        "cd webui && npm test",
+        "cd webui && npm run build"
+      ]
     },
     {
       "id": "38D",
       "phase": 38,
       "name": "Design System and Usability",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "38B",
         "38C"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Completed full design system validation and responsive UI production build.",
+      "verification": [
+        "cd webui && npm test",
+        "cd webui && npm run build"
+      ]
     }
   ]
 }

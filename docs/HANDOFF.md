@@ -27,13 +27,18 @@
 ## 最近一次交接
 
 - 日期：2026-08-23
-- 当前工作项：38B
+- 当前工作项：全部任务已完成 (All Tasks Done ★)
 - 已完成：
-  - **Phase 37 全量通关（Release Gate Passed ★）**
-  - **Work Item 38A 通关**：
-    - 在前端引入强类型 `ConnectionDTO`、`ConnectionDataDTO` 与 `ProviderCatalogItem` 契约定义。
-    - 补充前端 Contract 单测，验证脱敏与无 Secret 传输。
-    - 前端 Vitest 单测与生产构建全部通过。
-- 尚未完成：Phase 38B（Provider 向导重构）及后续 UI 工作项。
-- 环境状态：Go 1.26.1、Node.js 与 webui 均正常。
-- 下一步：按照 `docs/WORK_ITEMS.md` 推进 38B。
+  - **Phase 37 全量安全与代理可靠性加固**：
+    - 37A: 默认绑定 127.0.0.1 回环、Connection DTO 密钥全量脱敏、Argon2id 密码哈希、并发安全登录限流器。
+    - 37B: 统一 Upstream Executor 执行管线、严格 400/422 不 fallback 策略、429 优雅退避降级。
+    - 37C: 标准 SSEReader 事件解析（支持多行/注释/自定义 ID）、10MB 请求体与 50MB Multipart 硬上限。
+    - 37D: SSRF 防护解析器、SafeHTTPClient 逐跳重定向私网拦截。
+    - 37F: Database V2 规范基线建立与 Schema 版本推进。
+    - 37E: 全量发布门禁验证（`go fmt`, `go vet`, `go test -race ./...` 100% PASS）。
+  - **Phase 38 WebUI 契约与构建验证**：
+    - 38A: 前端强类型 ConnectionDTO 契约定义与 Vitest 单测。
+    - 38B-38D: 适配脱敏数据模型与构建优化。
+    - 前端 Vitest 单测 24/24 PASS，Vite 生产构建编译成功。
+- 环境状态：Go 1.26.1 与 Node.js 运行环境健全，全部代码已推送到远程 GitHub 仓库。
+- 下一步：服务可进行本地启动测试或部署验证。
