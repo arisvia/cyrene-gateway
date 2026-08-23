@@ -78,6 +78,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 	s.Handler = middleware.Chain(mux,
 		middleware.Recovery,
 		middleware.Logging,
+		middleware.RequestSizeLimiter(),
 		middleware.CORS,
 		middleware.APIKeyAuth(database),
 		middleware.DashboardAuth(database),

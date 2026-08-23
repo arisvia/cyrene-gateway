@@ -27,14 +27,14 @@
 ## 最近一次交接
 
 - 日期：2026-08-23
-- 当前工作项：37C
+- 当前工作项：37D
 - 已完成：
   - 实施并验证 Work Item 37A（安全边界与凭据脱敏）。
-  - 实施并验证 Work Item 37B：
-    - 抽取统一的 Upstream Executor 执行管线（`PrepareUpstreamRequest`、`ExecuteAttempt`）。
-    - 统一错误分类 Taxonomy：明确 400 Bad Request / 422 等不可恢复错误禁止 fallback 轮询，429 / Rate Limit 正常触发退避与模型/账号 fallback。
-    - 补充 37B 回归测试（400 不 fallback、429 成功 fallback 到备用 Provider 模型）。
-    - 全量 `go test -race ./...` 测试通过。
-- 尚未完成：Phase 37C（流式处理与资源限制）、37D、37F。
+  - 实施并验证 Work Item 37B（统一 Upstream Executor 与错误分类）。
+  - 实施并验证 Work Item 37C：
+    - 实现遵循标准规范的 `SSEReader` 与 `FormatSSEEvent`，支持多行 data 聚合、注释跳过及自定义 Event/ID 提取。
+    - 添加 `RequestSizeLimiter` 中间件，对 JSON 请求体（10MB）与 Multipart 上传（50MB）设置硬上限。
+    - 补充 37C 专项测试并全量 `go test -race ./...` 通过。
+- 尚未完成：Phase 37D（网络与文件安全）、37F（Database V2）、37E（发布门禁）。
 - 环境状态：Go 1.26.1、Node.js 与 webui 均正常。
-- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37C（事件级 SSE 解析与转发、超时拆分、Request/Response 大小硬限制）。
+- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37D（SSRF 防护、Panel 安全下载与解压、原子配置写入）。

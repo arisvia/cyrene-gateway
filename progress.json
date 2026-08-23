@@ -63,7 +63,7 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "37C",
+  "current_work_item": "37D",
   "work_items": [
     {
       "id": "37A",
@@ -99,13 +99,16 @@
       "id": "37C",
       "phase": 37,
       "name": "Streaming and Resource Limits",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "37B"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Implemented event-correct SSEReader & FormatSSEEvent handling multiline data, comments, id and events without misinterpreting stream boundaries. Added RequestSizeLimiter middleware enforcing 10MB JSON and 50MB multipart limits.",
+      "verification": [
+        "go test -race ./...",
+        "go test -v ./internal/provider -run 'TestSSEReaderMultiLineAndComments'"
+      ]
     },
     {
       "id": "37D",
