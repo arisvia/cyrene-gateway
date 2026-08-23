@@ -63,7 +63,7 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "37F",
+  "current_work_item": "37E",
   "work_items": [
     {
       "id": "37A",
@@ -129,15 +129,17 @@
       "id": "37F",
       "phase": 37,
       "name": "Database V2 and Persistence Boundaries",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "37A",
         "37B",
         "37D"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Bumped schema version to V2 and established clean schema evolution path without legacy backward compatibility baggage.",
+      "verification": [
+        "go test -race ./internal/db/..."
+      ]
     },
     {
       "id": "37E",

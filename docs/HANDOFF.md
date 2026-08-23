@@ -27,15 +27,11 @@
 ## 最近一次交接
 
 - 日期：2026-08-23
-- 当前工作项：37F
+- 当前工作项：37E
 - 已完成：
-  - 实施并验证 Work Item 37A（安全边界与凭据脱敏）。
-  - 实施并验证 Work Item 37B（统一 Upstream Executor 与错误分类）。
-  - 实施并验证 Work Item 37C（流式处理与资源限制）。
-  - 实施并验证 Work Item 37D：
-    - 编写 SSRF 防护解析器 `ValidateUpstreamURL` 与 `SafeHTTPClient`。
-    - 禁止非授权访问回环、内网私网地址、链路本地与云厂商元数据（`169.254.169.254`）。
-    - 补充 37D 单元测试并全量 `go test -race ./...` 通过。
-- 尚未完成：Phase 37F（Database V2）、37E（发布门禁）。
+  - 实施并验证 Work Item 37A、37B、37C、37D、37F。
+  - 数据库 Schema Version 推进到 V2，清理历史迁移包袱。
+  - 全量后端 `go test -race ./...` 与前端构建 `npm run build` 通过。
+- 尚未完成：Phase 37E（最终发布门禁）。
 - 环境状态：Go 1.26.1、Node.js 与 webui 均正常。
-- 下一步：按照 `docs/WORK_ITEMS.md` 与 `docs/DATABASE_V2.md` 实施 37F。
+- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37E（全量门禁检查与文档状态更新）。

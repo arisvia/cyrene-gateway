@@ -143,7 +143,7 @@ func (d *DB) migrate() error {
 
 	// Set schema version
 	_, err := d.conn.Exec(
-		`INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '1')`,
+		`INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '2')`,
 	)
 	return err
 }
