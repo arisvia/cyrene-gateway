@@ -63,7 +63,7 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "38A",
+  "current_work_item": "38B",
   "work_items": [
     {
       "id": "37A",
@@ -166,14 +166,17 @@
       "id": "38A",
       "phase": 38,
       "name": "Contract and State Layer",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "37A",
         "37F"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Defined typed ConnectionDTO, ConnectionDataDTO, and ProviderCatalogItem contracts in TypeScript. Added contract test ensuring secrets are stripped from response models.",
+      "verification": [
+        "cd webui && npm test",
+        "cd webui && npm run build"
+      ]
     },
     {
       "id": "38B",
