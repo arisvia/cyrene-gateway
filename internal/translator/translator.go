@@ -90,7 +90,21 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		case "system":
 			text := extractText(msg["content"])
 			if text != "" {
-				systemParts = append(systemParts, text)
+				if len(claudeMessages) == 0 {
+					// Leading system prompt
+					systemParts = append(systemParts, text)
+				} else {
+					// Mid-conversation system prompt -> wrap as user notice to avoid Anthropic 400
+					claudeMessages = append(claudeMessages, map[string]any{
+						"role": "user",
+						"content": []any{
+							map[string]any{
+								"type": "text",
+								"text": "[System Instruction]: " + text,
+							},
+						},
+					})
+				}
 			}
 		case "user", "assistant":
 			claudeMsg := convertMessageToClaude(msg)
@@ -446,13 +460,24 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 					content.WriteString(text)
 				}
 			case "tool_use":
-				args, _ := json.Marshal(b["input"])
+				var argsStr string
+				if b["input"] == nil {
+					argsStr = "{}"
+				} else if s, ok := b["input"].(string); ok {
+					argsStr = s
+					if argsStr == "" {
+						argsStr = "{}"
+					}
+				} else {
+					args, _ := json.Marshal(b["input"])
+					argsStr = string(args)
+				}
 				toolCalls = append(toolCalls, map[string]any{
 					"id":   b["id"],
 					"type": "function",
 					"function": map[string]any{
 						"name":      b["name"],
-						"arguments": string(args),
+						"arguments": argsStr,
 					},
 				})
 			}
@@ -542,13 +567,24 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 							content.WriteString(text)
 						}
 						if fc, ok := p["functionCall"].(map[string]any); ok {
-							args, _ := json.Marshal(fc["args"])
+							var argsStr string
+							if fc["args"] == nil {
+								argsStr = "{}"
+							} else if s, ok := fc["args"].(string); ok {
+								argsStr = s
+								if argsStr == "" {
+									argsStr = "{}"
+								}
+							} else {
+								args, _ := json.Marshal(fc["args"])
+								argsStr = string(args)
+							}
 							toolCalls = append(toolCalls, map[string]any{
 								"id":   fmt.Sprintf("call_%v", fc["name"]),
 								"type": "function",
 								"function": map[string]any{
 									"name":      fc["name"],
-									"arguments": string(args),
+									"arguments": argsStr,
 								},
 							})
 						}
