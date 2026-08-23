@@ -438,8 +438,17 @@ async function testSingleConnection(conn: Provider) {
             </div>
 
             <div class="catalog-card-footer">
-              <span class="auth-pill">{{ activeInGroup(g).authModes?.join(' / ') || activeInGroup(g).authType || 'API Key' }}</span>
-              <GButton size="sm" variant="outline" @click.stop="openWizard(activeInGroup(g))">
+              <span class="auth-pill">{{ activeInGroup(g).noAuth ? 'Free Pool' : (activeInGroup(g).authModes?.join(' / ') || activeInGroup(g).authType || 'API Key') }}</span>
+              <GButton
+                v-if="activeInGroup(g).noAuth"
+                size="sm"
+                variant="primary"
+                @click.stop="store.enableFree([activeInGroup(g).id])"
+              >
+                <Zap :size="13" />
+                <span>Enable Free</span>
+              </GButton>
+              <GButton v-else size="sm" variant="outline" @click.stop="openWizard(activeInGroup(g))">
                 Connect
               </GButton>
             </div>

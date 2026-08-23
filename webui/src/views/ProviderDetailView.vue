@@ -290,7 +290,6 @@ async function doDelete() {
     <!-- Connections tab -->
     <div v-if="tab === 'connections'" class="tab-panel">
       <div class="panel-actions">
-        <GButton size="sm" @click="showAddKey = true"><KeyRound :size="13" /> Add Key</GButton>
         <GButton variant="ghost" size="sm" @click="store.toggleProvider(conn!)" v-if="conn">
           {{ conn.isActive ? 'Disable' : 'Enable' }}
         </GButton>
@@ -403,18 +402,6 @@ async function doDelete() {
         </div>
       </GCard>
     </div>
-
-    <!-- Add Key modal -->
-    <GModal v-if="showAddKey" title="Add API Key" @close="showAddKey = false">
-      <label class="field-label">Key Name (optional)</label>
-      <input v-model="newKeyName" class="field" placeholder="work-key">
-      <label class="field-label">API Key</label>
-      <input v-model="newKey" class="field" type="password" placeholder="sk-…" @keyup.enter="addKey">
-      <div class="modal-actions">
-        <GButton variant="ghost" @click="showAddKey = false">Cancel</GButton>
-        <GButton @click="addKey">Add Key</GButton>
-      </div>
-    </GModal>
 
     <!-- Add Model modal -->
     <GModal v-if="showAddModel" title="Add Custom Model" @close="showAddModel = false">
