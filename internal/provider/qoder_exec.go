@@ -38,22 +38,35 @@ func qoderCacheKey(userID string) string {
 
 // QoderModelConfig returns the server-published model_config for a model key,
 // fetching the live catalog if needed. Returns nil when unavailable.
+// Supports direct key match as well as display name / alias fuzzy matching.
 func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client) map[string]any {
 	entry := qoderResolveCatalog(creds, client, false)
 	if entry == nil {
 		return nil
 	}
-	config, ok := entry.rawConfigs[modelKey]
-	if !ok {
-		return nil
+	if config, ok := entry.rawConfigs[modelKey]; ok {
+		out := make(map[string]any, len(config)+1)
+		for k, v := range config {
+			out[k] = v
+		}
+		out["key"] = modelKey
+		return out
 	}
-	// Defensive copy with key set
-	out := make(map[string]any, len(config)+1)
-	for k, v := range config {
-		out[k] = v
+
+	// Fuzzy match by model name / display name (e.g. Qwen3.7-Max -> qmodel_latest)
+	lowerTarget := strings.ToLower(modelKey)
+	for k, cfg := range entry.rawConfigs {
+		if name, ok := cfg["name"].(string); ok && strings.EqualFold(name, lowerTarget) {
+			out := make(map[string]any, len(cfg)+1)
+			for field, v := range cfg {
+				out[field] = v
+			}
+			out["key"] = k
+			return out
+		}
 	}
-	out["key"] = modelKey
-	return out
+
+	return nil
 }
 
 func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) *qoderCatalogEntry {
