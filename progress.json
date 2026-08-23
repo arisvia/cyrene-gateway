@@ -63,7 +63,7 @@
     }
   ],
   "release_gate": "Phase 37 must be done before public deployment; Phase 38 must be done before declaring the management UI product-ready.",
-  "current_work_item": "37B",
+  "current_work_item": "37C",
   "work_items": [
     {
       "id": "37A",
@@ -83,13 +83,17 @@
       "id": "37B",
       "phase": 37,
       "name": "Unified Upstream Executor",
-      "status": "pending",
+      "status": "done",
       "depends_on": [
         "37A"
       ],
       "spec": "docs/WORK_ITEMS.md",
-      "summary": "",
-      "verification": []
+      "summary": "Extracted unified upstream executor and candidate pipeline (PrepareUpstreamRequest, ExecuteAttempt). Unified error classification taxonomy to strictly prevent 400/422 deterministic errors from triggering fallback, while correctly failing over on 429/rate limits with backoff state updates.",
+      "verification": [
+        "go test -race ./...",
+        "go test -v ./internal/handler -run 'TestComboFallback400NonFallbackable|TestComboFallback429Fallbackable'",
+        "go test -v ./internal/provider -run 'TestCheckFallbackError'"
+      ]
     },
     {
       "id": "37C",

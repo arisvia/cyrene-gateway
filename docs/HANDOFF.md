@@ -27,16 +27,14 @@
 ## 最近一次交接
 
 - 日期：2026-08-23
-- 当前工作项：37B
+- 当前工作项：37C
 - 已完成：
-  - 实施并验证 Work Item 37A：
-    - 默认绑定回环地址 `127.0.0.1`，禁止未授权远程匿名访问管理接口。
-    - API 响应 DTO 密钥全量脱敏（`ConnectionDTO`），隐藏 APIKey、AccessToken、RefreshToken 及 ProviderSpecificData 中的敏感项。
-    - Provider 更新采用 Partial Patch 逻辑，缺省 Secret 字段自动保留原有凭据。
-    - 修复登录限流器并发安全问题（Mutex 保护 + 容量上限 + 定期清理）。
-    - 升级密码存储方案为 Argon2id（自动迁移旧 HMAC 哈希），移除弱默认密码 `123456`。
-    - 补充 37A 专属安全回归测试并全部通过。
-    - 前端构建验证通过（`npm run build` 生成 `webui/dist`）。
-- 尚未完成：Phase 37B 及后续工作项。
-- 环境状态：Go 1.26.1 已安装且测试通过；Node.js 与 webui 构建正常。
-- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37B（统一 Upstream Executor，抽象 Single/Combo/Messages/Tester 的执行管线）。
+  - 实施并验证 Work Item 37A（安全边界与凭据脱敏）。
+  - 实施并验证 Work Item 37B：
+    - 抽取统一的 Upstream Executor 执行管线（`PrepareUpstreamRequest`、`ExecuteAttempt`）。
+    - 统一错误分类 Taxonomy：明确 400 Bad Request / 422 等不可恢复错误禁止 fallback 轮询，429 / Rate Limit 正常触发退避与模型/账号 fallback。
+    - 补充 37B 回归测试（400 不 fallback、429 成功 fallback 到备用 Provider 模型）。
+    - 全量 `go test -race ./...` 测试通过。
+- 尚未完成：Phase 37C（流式处理与资源限制）、37D、37F。
+- 环境状态：Go 1.26.1、Node.js 与 webui 均正常。
+- 下一步：按照 `docs/WORK_ITEMS.md` 实施 37C（事件级 SSE 解析与转发、超时拆分、Request/Response 大小硬限制）。

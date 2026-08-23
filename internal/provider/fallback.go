@@ -31,10 +31,14 @@ type ErrorRule struct {
 
 // ErrorRules are checked top-to-bottom: text rules first, then status rules.
 var ErrorRules = []ErrorRule{
+	// Non-fallback deterministic errors
+	{Status: 400, CooldownMs: 0},
+	{Status: 422, CooldownMs: 0},
+
 	// Text-based rules
 	{Text: "no credentials", CooldownMs: CooldownLong},
 	{Text: "request not allowed", CooldownMs: CooldownShort},
-	{Text: "improperly formed request", CooldownMs: CooldownLong},
+	{Text: "improperly formed request", CooldownMs: 0}, // Non-fallback
 	{Text: "rate limit", Backoff: true},
 	{Text: "too many requests", Backoff: true},
 	{Text: "quota exceeded", Backoff: true},
@@ -75,11 +79,19 @@ func GetQuotaCooldown(backoffLevel int) time.Duration {
 
 // CheckFallbackError classifies an upstream error and determines cooldown.
 func CheckFallbackError(status int, errorText string, backoffLevel int) FallbackResult {
+	// Explicit 400 Bad Request / 422 Unprocessable Entity should never trigger fallback across other connections/models
+	if status == 400 || status == 422 {
+		return FallbackResult{ShouldFallback: false}
+	}
+
 	lowerErr := strings.ToLower(errorText)
 
 	for _, rule := range ErrorRules {
 		// Text-based rule
 		if rule.Text != "" && lowerErr != "" && strings.Contains(lowerErr, rule.Text) {
+			if rule.CooldownMs == 0 && !rule.Backoff {
+				return FallbackResult{ShouldFallback: false}
+			}
 			if rule.Backoff {
 				newLevel := backoffLevel + 1
 				if newLevel > BackoffMaxLevel {
@@ -96,6 +108,9 @@ func CheckFallbackError(status int, errorText string, backoffLevel int) Fallback
 
 		// Status-based rule
 		if rule.Status != 0 && rule.Status == status {
+			if rule.CooldownMs == 0 && !rule.Backoff {
+				return FallbackResult{ShouldFallback: false}
+			}
 			if rule.Backoff {
 				newLevel := backoffLevel + 1
 				if newLevel > BackoffMaxLevel {
