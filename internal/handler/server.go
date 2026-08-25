@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -522,6 +523,42 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 		models = provider.QoderCatalogModels(creds, client, true)
 	}
 	return models
+}
+
+// StartBackgroundModelSync starts periodic synchronization of models for active connections.
+func (s *Server) StartBackgroundModelSync(ctx context.Context, interval time.Duration) {
+	go func() {
+		// Run initial sync shortly after startup
+		time.Sleep(3 * time.Second)
+		s.syncAllActiveConnections()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.syncAllActiveConnections()
+			}
+		}
+	}()
+}
+
+func (s *Server) syncAllActiveConnections() {
+	conns, err := s.DB.ListConnections()
+	if err != nil {
+		return
+	}
+	seen := make(map[string]bool)
+	for _, c := range conns {
+		if c.IsActive && !seen[c.Provider] {
+			seen[c.Provider] = true
+			connCopy := c
+			s.syncConnectionModels(&connCopy)
+		}
+	}
 }
 
 // syncConnectionModels fetches and updates the cached model list for a connection.

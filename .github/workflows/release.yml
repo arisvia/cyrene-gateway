@@ -1,0 +1,71 @@
+name: Release CI/CD & Multi-Arch Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build, Test & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: webui/package-lock.json
+
+      - name: Install WebUI dependencies & Build Panel
+        run: |
+          cd webui
+          npm ci
+          npm test
+          npm run build
+
+      - name: Run Go Formatter & Vet
+        run: |
+          go fmt ./...
+          go vet ./...
+
+      - name: Run Go Tests & Race Detector
+        run: |
+          go test -race ./...
+
+      - name: Build Multi-Arch Binaries
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p dist
+          # Linux AMD64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-gateway-linux-amd64 ./cmd/gateway
+          # Linux ARM64
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-gateway-linux-arm64 ./cmd/gateway
+          # Darwin ARM64 (macOS Apple Silicon)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-gateway-darwin-arm64 ./cmd/gateway
+          # Darwin AMD64 (macOS Intel)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-gateway-darwin-amd64 ./cmd/gateway
+          # Windows AMD64
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-gateway-windows-amd64.exe ./cmd/gateway
+
+      - name: Create Release and Upload Assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

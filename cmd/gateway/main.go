@@ -50,6 +50,11 @@ func main() {
 	// Attempt to download latest panel (non-blocking, falls back to embedded)
 	go srv.Dashboard.TryDownload()
 
+	// Start background model discovery & health probing ticker (every 6 hours)
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+	srv.StartBackgroundModelSync(bgCtx, 6*time.Hour)
+
 	httpServer := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Handler:      srv.Handler,
