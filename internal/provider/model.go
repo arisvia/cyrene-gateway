@@ -37,7 +37,7 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	}
 
 	// 2. Try model alias from KV store (scope="aliases")
-	aliases, err := database.KVList("aliases")
+	aliases, err := database.KVList(model.KVScopeAliases)
 	if err == nil {
 		if target, ok := aliases[parsed.Model]; ok {
 			resolved := ParseModel(target)
@@ -48,7 +48,7 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	}
 
 	// 3. Dynamic lookup across cached models of active providers
-	if caches, err := database.KVList("providerModelCache"); err == nil && len(caches) > 0 {
+	if caches, err := database.KVList(model.KVScopeProviderModelCache); err == nil && len(caches) > 0 {
 		lowerTarget := strings.ToLower(parsed.Model)
 		for providerID, raw := range caches {
 			var cached model.CachedModels
@@ -110,7 +110,7 @@ func ResolveCombo(modelStr string, database *db.DB) (*model.Combo, bool) {
 
 // IsModelDisabled checks if a model is in the disabled models list.
 func IsModelDisabled(modelStr string, database *db.DB) bool {
-	disabled, err := database.KVList("disabledModels")
+	disabled, err := database.KVList(model.KVScopeDisabledModels)
 	if err != nil {
 		return false
 	}
