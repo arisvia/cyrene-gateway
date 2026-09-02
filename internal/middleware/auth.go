@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"slices"
 	"net"
 	"net/http"
 	"strings"
@@ -124,12 +125,7 @@ func isPublicPath(path string) bool {
 		"/api/auth/logout",
 		"/api/auth/status",
 	}
-	for _, p := range publicPaths {
-		if path == p {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(publicPaths, path)
 }
 
 func writeAuthError(w http.ResponseWriter, status int, msg string) {

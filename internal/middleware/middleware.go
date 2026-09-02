@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"slices"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -9,8 +10,8 @@ import (
 
 // Chain wraps a handler with the given middleware in order.
 func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
-	for i := len(mws) - 1; i >= 0; i-- {
-		h = mws[i](h)
+	for _, mw := range slices.Backward(mws) {
+		h = mw(h)
 	}
 	return h
 }

@@ -16,8 +16,11 @@ export interface RegistryProvider {
   name: string
   category: string
   authType: string
+  apiType?: string
   authModes?: string[]
+  priority?: number
   baseUrl?: string
+  website?: string
   noAuth?: boolean
   hasFree?: boolean
   deviceCodeUrl?: string

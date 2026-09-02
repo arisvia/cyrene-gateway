@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"slices"
 	"bufio"
 	"bytes"
 	"context"
@@ -983,8 +984,8 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			default:
 			}
 			line := scanner.Bytes()
-			if bytes.HasPrefix(line, []byte("data: ")) {
-				data := bytes.TrimPrefix(line, []byte("data: "))
+			if after, ok0 :=bytes.CutPrefix(line, []byte("data: ")); ok0  {
+				data := after
 				if u := usage.ExtractFromClaudeSSE(data); u.TotalTokens > 0 {
 					if u.PromptTokens > 0 {
 						totalUsage.PromptTokens = u.PromptTokens
@@ -1120,11 +1121,9 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
 			providerID = providerID[:idx]
 		}
 	}
-	for _, excluded := range settings.TokenSaverExclude {
-		if excluded == providerID {
+	if slices.Contains(settings.TokenSaverExclude, providerID) {
 			return
 		}
-	}
 
 	// RTK compression of tool results
 	if settings.RTKEnabled {
@@ -1205,8 +1204,8 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 // extractRequestAPIKey extracts the API key from the request Authorization header.
 func extractRequestAPIKey(r *http.Request) string {
 	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
+	if after, ok :=strings.CutPrefix(auth, "Bearer "); ok  {
+		return after
 	}
 	if key := r.Header.Get("x-api-key"); key != "" {
 		return key

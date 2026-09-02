@@ -44,9 +44,9 @@ describe('Providers 页面渲染', () => {
     await tick()
 
     const text = document.body.textContent || ''
-    expect(text).toContain('提供商连接')
-    expect(text).toContain('还没有任何连接')
-    expect(text).toContain('一键启用免费提供商')
+    expect(text).toContain('提供商')
+    expect(text).toContain('还没有接入任何提供商连接')
+    expect(text).toContain('一键启用全部免费渠道')
   })
 
   it('有数据时渲染卡片、凭证状态与操作', async () => {
@@ -73,7 +73,6 @@ describe('Providers 页面渲染', () => {
     expect(text).toContain('已配置凭证')     // p1 hasApiKey
     expect(text).toContain('缺凭证')        // p2 无 key
     expect(text).toContain('测试')
-    expect(text).toContain('共 2 个连接')
-    expect(text).toContain('1 个启用')
+    expect(text).toContain('我的连接 (2)')
   })
 })

@@ -9,14 +9,14 @@ import (
 
 type Config struct {
 	Host                 string
-	Port                 int
 	DBPath               string
 	DataDir              string
 	Dashboard            string
 	PanelURL             string
 	Secret               string
-	MITM                 bool
+	Port                 int
 	MITMPort             int
+	MITM                 bool
 	AllowPrivateNetworks bool
 }
 

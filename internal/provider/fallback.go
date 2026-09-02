@@ -63,10 +63,7 @@ type FallbackResult struct {
 // GetQuotaCooldown calculates exponential backoff cooldown.
 // Level 1: 2s, Level 2: 4s, Level 3: 8s... → max 5min
 func GetQuotaCooldown(backoffLevel int) time.Duration {
-	level := backoffLevel - 1
-	if level < 0 {
-		level = 0
-	}
+	level := max(backoffLevel-1, 0)
 	cooldown := BackoffBase
 	for i := 0; i < level; i++ {
 		cooldown *= 2
@@ -93,10 +90,7 @@ func CheckFallbackError(status int, errorText string, backoffLevel int) Fallback
 				return FallbackResult{ShouldFallback: false}
 			}
 			if rule.Backoff {
-				newLevel := backoffLevel + 1
-				if newLevel > BackoffMaxLevel {
-					newLevel = BackoffMaxLevel
-				}
+				newLevel := min(backoffLevel+1, BackoffMaxLevel)
 				return FallbackResult{
 					ShouldFallback:  true,
 					Cooldown:        GetQuotaCooldown(newLevel),
@@ -112,10 +106,7 @@ func CheckFallbackError(status int, errorText string, backoffLevel int) Fallback
 				return FallbackResult{ShouldFallback: false}
 			}
 			if rule.Backoff {
-				newLevel := backoffLevel + 1
-				if newLevel > BackoffMaxLevel {
-					newLevel = BackoffMaxLevel
-				}
+				newLevel := min(backoffLevel+1, BackoffMaxLevel)
 				return FallbackResult{
 					ShouldFallback:  true,
 					Cooldown:        GetQuotaCooldown(newLevel),

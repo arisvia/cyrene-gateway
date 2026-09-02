@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"maps"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -664,9 +665,7 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 	currentBytes, _ := json.Marshal(current)
 	var merged map[string]json.RawMessage
 	json.Unmarshal(currentBytes, &merged)
-	for k, v := range patch {
-		merged[k] = v
-	}
+	maps.Copy(merged, patch)
 	mergedBytes, _ := json.Marshal(merged)
 
 	var updated db.Settings

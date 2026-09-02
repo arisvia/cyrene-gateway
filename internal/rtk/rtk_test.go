@@ -35,7 +35,7 @@ func TestCompressMessages_ShortToolContent(t *testing.T) {
 func TestCompressMessages_LargeToolContent(t *testing.T) {
 	// Build a tool message with >250 lines
 	var lines []string
-	for i := 0; i < 400; i++ {
+	for i := range 400 {
 		lines = append(lines, "line "+itoa(i)+" with some padding content to make it longer than minimum")
 	}
 	content := strings.Join(lines, "\n")
@@ -60,7 +60,7 @@ func TestCompressMessages_LargeToolContent(t *testing.T) {
 
 func TestCompressMessages_ToolResultBlock(t *testing.T) {
 	var lines []string
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		lines = append(lines, "output line "+itoa(i)+" padding padding padding padding")
 	}
 	content := strings.Join(lines, "\n")
@@ -83,7 +83,7 @@ func TestCompressMessages_ToolResultBlock(t *testing.T) {
 
 func TestCompressMessages_ErrorBlockPreserved(t *testing.T) {
 	var lines []string
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		lines = append(lines, "error line "+itoa(i)+" padding padding padding padding")
 	}
 	content := strings.Join(lines, "\n")

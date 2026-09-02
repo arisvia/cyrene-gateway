@@ -11,12 +11,12 @@ import (
 // ParseModel splits "provider/model" into provider and model parts.
 // If no slash is present, provider is empty and will be inferred or resolved via alias.
 func ParseModel(modelStr string) model.ModelInfo {
-	if idx := strings.Index(modelStr, "/"); idx != -1 {
-		rawProv := modelStr[:idx]
+	if before, after, ok := strings.Cut(modelStr, "/"); ok {
+		rawProv := before
 		canonicalProv := ResolveProviderAlias(rawProv)
 		return model.ModelInfo{
 			Provider: canonicalProv,
-			Model:    modelStr[idx+1:],
+			Model:    after,
 		}
 	}
 	// Bare model name - will need alias resolution or inference

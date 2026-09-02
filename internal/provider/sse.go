@@ -122,8 +122,8 @@ func FormatSSEEvent(e SSEEvent) []byte {
 		buf.WriteString(fmt.Sprintf("retry: %s\n", e.Retry))
 	}
 
-	lines := strings.Split(string(e.Data), "\n")
-	for _, l := range lines {
+	lines := strings.SplitSeq(string(e.Data), "\n")
+	for l := range lines {
 		buf.WriteString(fmt.Sprintf("data: %s\n", l))
 	}
 	buf.WriteString("\n")

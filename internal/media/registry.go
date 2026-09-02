@@ -1,5 +1,7 @@
 package media
 
+import "slices"
+
 // Kind represents a media service type.
 type Kind string
 
@@ -56,12 +58,9 @@ func init() {
 func GetProvidersByKind(kind Kind) []*MediaProviderInfo {
 	var result []*MediaProviderInfo
 	for _, p := range Registry {
-		for _, k := range p.Kinds {
-			if k == kind {
+		if slices.Contains(p.Kinds, kind) {
 				result = append(result, p)
-				break
 			}
-		}
 	}
 	return result
 }
@@ -85,12 +84,7 @@ func SupportsKind(provider string, kind Kind) bool {
 	if !ok {
 		return false
 	}
-	for _, k := range p.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.Kinds, kind)
 }
 
 func addProvider(id, name string, kinds []Kind, models []ModelEntry, configs map[Kind]ProviderConfig) {
@@ -117,13 +111,7 @@ func mergeProvider(id, name string, kind Kind, models []ModelEntry, cfg Provider
 		Registry[id] = p
 	}
 	// Add kind if not present
-	found := false
-	for _, k := range p.Kinds {
-		if k == kind {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(p.Kinds, kind)
 	if !found {
 		p.Kinds = append(p.Kinds, kind)
 	}

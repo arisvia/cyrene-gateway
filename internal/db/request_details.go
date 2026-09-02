@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -112,28 +113,25 @@ func (d *DB) GetRequestDetails(f RequestDetailFilter) (*RequestDetailResult, err
 		args = append(args, f.EndDate)
 	}
 
-	where := ""
+	var where strings.Builder
 	if len(conds) > 0 {
 		for i, c := range conds {
 			if i == 0 {
-				where += " WHERE " + c
+				where.WriteString(" WHERE " + c)
 			} else {
-				where += " AND " + c
+				where.WriteString(" AND " + c)
 			}
 		}
 	}
 
 	// Count total
 	var totalItems int
-	countQuery := `SELECT COUNT(*) FROM requestDetails` + where
+	countQuery := `SELECT COUNT(*) FROM requestDetails` + where.String()
 	if err := d.conn.QueryRow(countQuery, args...).Scan(&totalItems); err != nil {
 		return nil, err
 	}
 
-	page := f.Page
-	if page < 1 {
-		page = 1
-	}
+	page := max(f.Page, 1)
 	pageSize := f.PageSize
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
@@ -142,7 +140,7 @@ func (d *DB) GetRequestDetails(f RequestDetailFilter) (*RequestDetailResult, err
 	offset := (page - 1) * pageSize
 
 	// Fetch page
-	dataQuery := `SELECT data FROM requestDetails` + where + ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+	dataQuery := `SELECT data FROM requestDetails` + where.String() + ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`
 	dataArgs := append(args, pageSize, offset)
 	rows, err := d.conn.Query(dataQuery, dataArgs...)
 	if err != nil {

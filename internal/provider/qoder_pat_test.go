@@ -133,7 +133,7 @@ func TestResolveQoderCredential_Cached(t *testing.T) {
 		QoderPATUserInfoURL = origUserInfo
 	}()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		cred, err := ResolveQoderCredential(pat, "", srv.Client())
 		if err != nil {
 			t.Fatalf("call %d failed: %v", i, err)
@@ -206,10 +206,8 @@ func TestResolveQoderCredential_ConcurrentDedup(t *testing.T) {
 	}()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 5 {
+		wg.Go(func() {
 			cred, err := ResolveQoderCredential(pat, "", srv.Client())
 			if err != nil {
 				t.Errorf("concurrent resolve failed: %v", err)
@@ -218,7 +216,7 @@ func TestResolveQoderCredential_ConcurrentDedup(t *testing.T) {
 			if cred.AccessToken != "jt-concurrent" {
 				t.Errorf("unexpected token %q", cred.AccessToken)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

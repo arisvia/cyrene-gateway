@@ -25,9 +25,9 @@ type ExecutionCandidate struct {
 // ExecutionRequest holds the normalized request payload and metadata.
 type ExecutionRequest struct {
 	Model      string
-	Stream     bool
 	RawBody    []byte
 	Messages   []map[string]any
+	Stream     bool
 	HasTools   bool
 	SaveTokens bool
 }

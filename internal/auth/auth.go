@@ -123,8 +123,8 @@ func VerifyAPIKeySignature(key string) bool {
 // ExtractAPIKey extracts the API key from Authorization header or x-api-key header.
 func ExtractAPIKey(authHeader, xApiKeyHeader string) string {
 	if authHeader != "" {
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			return strings.TrimPrefix(authHeader, "Bearer ")
+		if after, ok :=strings.CutPrefix(authHeader, "Bearer "); ok  {
+			return after
 		}
 		return authHeader
 	}

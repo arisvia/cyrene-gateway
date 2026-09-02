@@ -4,77 +4,65 @@ import "strings"
 
 // ProviderInfo defines a known provider's configuration
 type ProviderInfo struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Alias    string   `json:"alias,omitempty"`
-	Aliases  []string `json:"aliases,omitempty"`
-	BaseURL  string   `json:"baseUrl"`
-	APIType  string   `json:"apiType"`  // "openai", "anthropic", "gemini"
-	AuthType string   `json:"authType"` // "api-key", "oauth", "cookie", "none"
-
+	// Extra headers sent on every upstream request (e.g. x-opencode-client)
+	Headers  map[string]string `json:"headers,omitempty"`
+	ID       string            `json:"id"`
+	Name     string            `json:"name"`
+	Alias    string            `json:"alias,omitempty"`
+	BaseURL  string            `json:"baseUrl"`
+	APIType  string            `json:"apiType"`  // "openai", "anthropic", "gemini"
+	AuthType string            `json:"authType"` // "api-key", "oauth", "cookie", "none"
 	// Category and auth metadata (Phase 10)
-	Category  string   `json:"category"`            // "apikey", "oauth", "freeTier", "free", "webCookie"
-	AuthModes []string `json:"authModes,omitempty"` // supported auth modes
-	Priority  int      `json:"priority,omitempty"`  // lower = higher priority
-
+	Category string `json:"category"` // "apikey", "oauth", "freeTier", "free", "webCookie"
 	// Brand/Region grouping (Phase 36): brand siblings (e.g. glm/glm-cn) are
 	// rendered as one panel card with a region switcher. IDs stay stable.
 	Brand  string `json:"brand,omitempty"`
 	Region string `json:"region,omitempty"` // "intl" | "cn"
-
 	// AuthHint is a human hint for the credential the panel should collect
 	// (9router authHint), e.g. qoder's PAT source (Phase 36).
 	AuthHint string `json:"authHint,omitempty"`
-
 	// ModelsURL / ModelsAuth (Phase 36): explicit live model-catalog endpoint
 	// when it cannot be derived from BaseURL. ModelsAuth is "none" (public) or
 	// "bearer" (default). Empty ModelsURL = derive via BuildModelsURL.
 	ModelsURL  string `json:"modelsUrl,omitempty"`
 	ModelsAuth string `json:"modelsAuth,omitempty"`
-
 	// Display metadata
 	Color    string `json:"color,omitempty"`
 	Website  string `json:"website,omitempty"`
 	Icon     string `json:"icon,omitempty"`
 	TextIcon string `json:"textIcon,omitempty"`
-
 	// APIKeyURL is the "Get API Key" link surfaced in the panel, ported from
 	// 9router registry display.notice.apiKeyUrl (Phase 31).
 	APIKeyURL string `json:"apiKeyUrl,omitempty"`
-
-	// Flags
-	Hidden  bool `json:"hidden,omitempty"`
-	HasFree bool `json:"hasFree,omitempty"`
-	NoAuth  bool `json:"noAuth,omitempty"`
-
 	// OAuth configuration
 	DeviceCodeURL string `json:"deviceCodeUrl,omitempty"`
 	TokenURL      string `json:"tokenUrl,omitempty"`
 	AuthorizeURL  string `json:"authorizeUrl,omitempty"`
 	ClientID      string `json:"clientId,omitempty"`
 	LoginURL      string `json:"loginUrl,omitempty"` // browser-based device login page (qoder)
-
 	// Auth-mode-specific overrides (9router#2881): when a connection uses
 	// api-key auth on a provider whose primary transport is OAuth, route to
 	// a different base URL / API type.
 	ApiKeyBaseURL string `json:"apiKeyBaseUrl,omitempty"`
 	ApiKeyAPIType string `json:"apiKeyApiType,omitempty"`
-
-	// Extra headers sent on every upstream request (e.g. x-opencode-client)
-	Headers map[string]string `json:"headers,omitempty"`
-
 	// Transport config (Phase 30): explicit upstream adaptation ported from
 	// 9router registry transport blocks. When set, these override the
 	// format-derived defaults in ResolveTransport.
-	URLSuffix  string   `json:"urlSuffix,omitempty"`  // appended to base URL (e.g. "?beta=true")
-	AuthHeader string   `json:"authHeader,omitempty"` // header carrying the token (e.g. "x-api-key")
-	AuthScheme string   `json:"authScheme,omitempty"` // "bearer" | "raw" | "query"
-	AuthHooks  []string `json:"authHooks,omitempty"`  // provider header overlays (e.g. "kimiHeaders")
-
+	URLSuffix  string `json:"urlSuffix,omitempty"`  // appended to base URL (e.g. "?beta=true")
+	AuthHeader string `json:"authHeader,omitempty"` // header carrying the token (e.g. "x-api-key")
+	AuthScheme string `json:"authScheme,omitempty"` // "bearer" | "raw" | "query"
 	// ValidateURL is the endpoint used for connection testing (9router transport.validateUrl).
 	ValidateURL string `json:"validateUrl,omitempty"`
 	// ThinkingFormat indicates how reasoning tokens are surfaced ("openai" = reasoning_content field).
-	ThinkingFormat string `json:"thinkingFormat,omitempty"`
+	ThinkingFormat string   `json:"thinkingFormat,omitempty"`
+	Aliases        []string `json:"aliases,omitempty"`
+	AuthModes      []string `json:"authModes,omitempty"` // supported auth modes
+	AuthHooks      []string `json:"authHooks,omitempty"` // provider header overlays (e.g. "kimiHeaders")
+	Priority       int      `json:"priority,omitempty"`  // lower = higher priority
+	// Flags
+	Hidden  bool `json:"hidden,omitempty"`
+	HasFree bool `json:"hasFree,omitempty"`
+	NoAuth  bool `json:"noAuth,omitempty"`
 	// ForceStream forces streaming even when the client requests non-stream (9router transport.forceStream).
 	ForceStream bool `json:"forceStream,omitempty"`
 }

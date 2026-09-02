@@ -10,7 +10,7 @@ import (
 
 func TestRateLimiterAllow(t *testing.T) {
 	rl := NewRateLimiter(3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if !rl.Allow("k1") {
 			t.Fatalf("request %d should be allowed", i+1)
 		}
@@ -25,7 +25,7 @@ func TestRateLimiterAllow(t *testing.T) {
 
 func TestRateLimiterDisabled(t *testing.T) {
 	rl := NewRateLimiter(0)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if !rl.Allow("k1") {
 			t.Fatal("limit 0 must disable limiting")
 		}
@@ -80,17 +80,15 @@ func TestRateLimiterConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	var allowed int64 = -1
 	var mu sync.Mutex
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			ok := rl.Allow("shared")
 			mu.Lock()
 			if ok && allowed < 0 {
 				allowed = 1
 			}
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 	_ = allowed

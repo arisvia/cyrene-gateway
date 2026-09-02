@@ -864,12 +864,12 @@ func parseDataURI(uri string) (mediaType, data string) {
 		return "", ""
 	}
 	rest := uri[5:]
-	commaIdx := strings.Index(rest, ",")
-	if commaIdx < 0 {
+	before, after, ok := strings.Cut(rest, ",")
+	if !ok {
 		return "", ""
 	}
-	meta := rest[:commaIdx]
-	data = rest[commaIdx+1:]
+	meta := before
+	data = after
 	// meta = "image/png;base64"
 	semiIdx := strings.Index(meta, ";")
 	if semiIdx > 0 {

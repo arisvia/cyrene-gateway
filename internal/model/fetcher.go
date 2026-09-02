@@ -403,7 +403,7 @@ func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMet
 
 func parseModalities(s string) []string {
 	var mods []string
-	for _, part := range strings.Split(s, "+") {
+	for part := range strings.SplitSeq(s, "+") {
 		part = strings.TrimSpace(part)
 		if part != "" {
 			mods = append(mods, part)

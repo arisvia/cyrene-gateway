@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -523,10 +524,7 @@ func ExchangeCopilotToken(githubAccessToken string, client *http.Client) (*Refre
 		return nil, fmt.Errorf("copilot token exchange returned no token")
 	}
 
-	expiresIn := int(time.Until(time.Unix(data.ExpiresAt, 0)).Seconds())
-	if expiresIn < 1 {
-		expiresIn = 1
-	}
+	expiresIn := max(int(time.Until(time.Unix(data.ExpiresAt, 0)).Seconds()), 1)
 
 	return &RefreshResult{
 		AccessToken: data.Token,
@@ -546,9 +544,7 @@ func ApplyRefreshResult(conn *model.ProviderConnection, result *RefreshResult) {
 		if conn.Data.ProviderSpecificData == nil {
 			conn.Data.ProviderSpecificData = make(map[string]any)
 		}
-		for k, v := range result.Extra {
-			conn.Data.ProviderSpecificData[k] = v
-		}
+		maps.Copy(conn.Data.ProviderSpecificData, result.Extra)
 	}
 	slog.Info("Token refreshed",
 		slog.String("provider", conn.Provider),

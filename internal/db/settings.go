@@ -22,22 +22,22 @@ type ProviderThinkingConfig struct {
 }
 
 type Settings struct {
-	RequireLogin  bool `json:"requireLogin"`
-	RequireAPIKey bool `json:"requireApiKey"`
-	// APIKeyRPM caps requests per API key per minute for /v1/* calls.
-	// 0 disables inbound rate limiting (default, backwards compatible).
-	APIKeyRPM          int                                 `json:"apiKeyRpm,omitempty"`
-	PasswordHash       string                              `json:"passwordHash,omitempty"`
-	ComboStrategy      string                              `json:"comboStrategy,omitempty"`
-	RTKEnabled         bool                                `json:"rtkEnabled"`
-	CavemanEnabled     bool                                `json:"cavemanEnabled"`
-	CavemanLevel       string                              `json:"cavemanLevel,omitempty"`
-	PonytailEnabled    bool                                `json:"ponytailEnabled"`
-	PonytailLevel      string                              `json:"ponytailLevel,omitempty"`
 	ProviderStrategies map[string]ProviderStrategyOverride `json:"providerStrategies,omitempty"`
 	ProviderThinking   map[string]ProviderThinkingConfig   `json:"providerThinking,omitempty"`
+	PasswordHash       string                              `json:"passwordHash,omitempty"`
+	ComboStrategy      string                              `json:"comboStrategy,omitempty"`
+	CavemanLevel       string                              `json:"cavemanLevel,omitempty"`
+	PonytailLevel      string                              `json:"ponytailLevel,omitempty"`
 	// TokenSaverExclude lists providers where caveman/ponytail breaks output (9router#2767).
 	TokenSaverExclude []string `json:"tokenSaverExclude,omitempty"`
+	// APIKeyRPM caps requests per API key per minute for /v1/* calls.
+	// 0 disables inbound rate limiting (default, backwards compatible).
+	APIKeyRPM       int  `json:"apiKeyRpm,omitempty"`
+	RequireLogin    bool `json:"requireLogin"`
+	RequireAPIKey   bool `json:"requireApiKey"`
+	RTKEnabled      bool `json:"rtkEnabled"`
+	CavemanEnabled  bool `json:"cavemanEnabled"`
+	PonytailEnabled bool `json:"ponytailEnabled"`
 }
 
 func DefaultSettings() *Settings {

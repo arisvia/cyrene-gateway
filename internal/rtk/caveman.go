@@ -2,6 +2,8 @@ package rtk
 
 // Caveman levels and prompts (adapted from caveman skill).
 
+import "strings"
+
 const (
 	CavemanLite        = "lite"
 	CavemanFull        = "full"
@@ -69,12 +71,12 @@ var CavemanPrompts = map[string]string{
 }
 
 func joinParts(parts ...string) string {
-	result := ""
+	var result strings.Builder
 	for i, p := range parts {
 		if i > 0 {
-			result += " "
+			result.WriteString(" ")
 		}
-		result += p
+		result.WriteString(p)
 	}
-	return result
+	return result.String()
 }

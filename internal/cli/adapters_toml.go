@@ -325,11 +325,11 @@ func yamlLineValue(fragment string) string {
 		end = len(fragment)
 	}
 	line := fragment[:end]
-	idx := strings.Index(line, ":")
-	if idx < 0 {
+	_, after, ok := strings.Cut(line, ":")
+	if !ok {
 		return ""
 	}
-	return strings.Trim(strings.TrimSpace(line[idx+1:]), `"'`)
+	return strings.Trim(strings.TrimSpace(after), `"'`)
 }
 
 // upsertYAMLModelBlock replaces an existing top-level "model:" block or

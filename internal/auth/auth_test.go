@@ -91,7 +91,7 @@ func TestLoginRateLimiter(t *testing.T) {
 	}
 
 	// Record 5 failures to trigger lock
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		RecordFail(ip)
 	}
 

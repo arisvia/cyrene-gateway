@@ -93,8 +93,8 @@ func endpoint(defaultURL, override string) string {
 	if override == "" {
 		return defaultURL
 	}
-	idx := strings.Index(defaultURL, "://")
-	path := defaultURL[idx+3:]
+	_, after, _ := strings.Cut(defaultURL, "://")
+	path := after
 	if slash := strings.Index(path, "/"); slash >= 0 {
 		return strings.TrimRight(override, "/") + path[slash:]
 	}

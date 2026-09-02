@@ -376,8 +376,8 @@ func (s *Server) intercept(w http.ResponseWriter, r *http.Request, body []byte, 
 // extractModel attempts to extract the model from URL path or request body.
 func extractModel(url string, body []byte) string {
 	// Try URL path (Gemini-style: /models/{model}:generateContent)
-	if idx := strings.Index(url, "/models/"); idx >= 0 {
-		rest := url[idx+len("/models/"):]
+	if _, after, ok := strings.Cut(url, "/models/"); ok {
+		rest := after
 		if end := strings.IndexAny(rest, "/:"); end > 0 {
 			return rest[:end]
 		}

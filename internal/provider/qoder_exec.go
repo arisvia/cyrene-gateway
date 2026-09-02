@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -46,9 +48,7 @@ func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client
 	}
 	if config, ok := entry.rawConfigs[modelKey]; ok {
 		out := make(map[string]any, len(config)+1)
-		for k, v := range config {
-			out[k] = v
-		}
+		maps.Copy(out, config)
 		out["key"] = modelKey
 		return out
 	}
@@ -58,9 +58,7 @@ func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client
 	for k, cfg := range entry.rawConfigs {
 		if name, ok := cfg["name"].(string); ok && strings.EqualFold(name, lowerTarget) {
 			out := make(map[string]any, len(cfg)+1)
-			for field, v := range cfg {
-				out[field] = v
-			}
+			maps.Copy(out, cfg)
 			out["key"] = k
 			return out
 		}
@@ -167,9 +165,7 @@ func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCre
 		if entry != nil {
 			if cfg, ok := entry.rawConfigs[qoderKey]; ok {
 				modelConfig = make(map[string]any, len(cfg)+1)
-				for k, v := range cfg {
-					modelConfig[k] = v
-				}
+				maps.Copy(modelConfig, cfg)
 				modelConfig["key"] = qoderKey
 			}
 		}
@@ -279,9 +275,7 @@ func qoderNormalizeMessages(body map[string]any) (messages []map[string]any, sys
 			continue
 		}
 		cloned := make(map[string]any, len(msg))
-		for k, v := range msg {
-			cloned[k] = v
-		}
+		maps.Copy(cloned, msg)
 		cloned["content"] = text
 		messages = append(messages, cloned)
 	}
@@ -310,9 +304,9 @@ func qoderExtractText(content any) string {
 }
 
 func qoderLastUserText(messages []map[string]any) string {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i]["role"] == "user" {
-			if s, ok := messages[i]["content"].(string); ok {
+	for _, message := range slices.Backward(messages) {
+		if message["role"] == "user" {
+			if s, ok := message["content"].(string); ok {
 				return s
 			}
 		}

@@ -192,13 +192,13 @@ func (m *Manager) runTS(bin string, args ...string) (string, error) {
 
 // EnableResult is returned from Enable().
 type EnableResult struct {
-	Success          bool   `json:"success"`
 	TunnelURL        string `json:"tunnelUrl,omitempty"`
-	NeedsLogin       bool   `json:"needsLogin,omitempty"`
 	AuthURL          string `json:"authUrl,omitempty"`
-	FunnelNotEnabled bool   `json:"funnelNotEnabled,omitempty"`
 	EnableURL        string `json:"enableUrl,omitempty"`
 	Error            string `json:"error,omitempty"`
+	Success          bool   `json:"success"`
+	NeedsLogin       bool   `json:"needsLogin,omitempty"`
+	FunnelNotEnabled bool   `json:"funnelNotEnabled,omitempty"`
 }
 
 // Enable starts the tailscale daemon, logs in if needed, and starts funnel.
@@ -430,7 +430,7 @@ func (m *Manager) Install(ctx context.Context, onProgress func(string)) error {
 
 func parseAuthURL(output string) string {
 	// Look for https://login.tailscale.com/a/...
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if idx := strings.Index(line, "https://login.tailscale.com/a/"); idx >= 0 {
 			url := line[idx:]
 			// Trim trailing whitespace/control chars
@@ -442,7 +442,7 @@ func parseAuthURL(output string) string {
 }
 
 func parseEnableURL(output string) string {
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if idx := strings.Index(line, "https://login.tailscale.com/"); idx >= 0 {
 			url := strings.TrimSpace(line[idx:])
 			return url

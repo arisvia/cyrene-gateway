@@ -423,8 +423,8 @@ func (s *Server) handleOAuthStatus(w http.ResponseWriter, r *http.Request) {
 		Email     string `json:"email,omitempty"`
 		Name      string `json:"name,omitempty"`
 		AuthType  string `json:"authType"`
-		IsActive  bool   `json:"isActive"`
 		ExpiresAt string `json:"expiresAt,omitempty"`
+		IsActive  bool   `json:"isActive"`
 		Expired   bool   `json:"expired"`
 	}
 

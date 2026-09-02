@@ -1,6 +1,10 @@
 package translator
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+	"slices"
+)
 
 // cleanJSONSchemaForGemini sanitizes a JSON Schema for Gemini/Antigravity API compatibility.
 // Gemini rejects many standard JSON Schema keywords (additionalProperties, $schema, format, etc.)
@@ -177,9 +181,7 @@ func mergeAllOfWalk(obj map[string]any, isSchema bool) {
 						continue
 					}
 					if props, ok := item["properties"].(map[string]any); ok {
-						for k, v := range props {
-							mergedProps[k] = v
-						}
+						maps.Copy(mergedProps, props)
 					}
 					if req, ok := item["required"].([]any); ok {
 						for _, r := range req {
@@ -196,9 +198,7 @@ func mergeAllOfWalk(obj map[string]any, isSchema bool) {
 					if existing == nil {
 						existing = map[string]any{}
 					}
-					for k, v := range mergedProps {
-						existing[k] = v
-					}
+					maps.Copy(existing, mergedProps)
 					obj["properties"] = existing
 				}
 				if len(mergedRequired) > 0 {
@@ -233,9 +233,7 @@ func flattenAnyOfOneOfWalk(obj map[string]any, isSchema bool) {
 					if len(nonNull) > 0 {
 						selected := nonNull[selectBestSchema(nonNull)]
 						delete(obj, keyword)
-						for k, v := range selected {
-							obj[k] = v
-						}
+						maps.Copy(obj, selected)
 					}
 				}
 			}
@@ -370,10 +368,5 @@ func selectBestSchema(items []map[string]any) int {
 }
 
 func containsAny(slice []any, item any) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }

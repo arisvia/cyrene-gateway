@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -188,7 +189,8 @@ func (d *DB) SaveUsageEntry(e *UsageEntry) error {
 
 // GetUsageHistory returns usage records with optional filters.
 func (d *DB) GetUsageHistory(f UsageFilter) ([]UsageEntry, error) {
-	query := `SELECT id, timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta FROM usageHistory`
+	var query strings.Builder
+	query.WriteString(`SELECT id, timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta FROM usageHistory`)
 	var conds []string
 	var args []any
 
@@ -212,25 +214,25 @@ func (d *DB) GetUsageHistory(f UsageFilter) ([]UsageEntry, error) {
 	if len(conds) > 0 {
 		for i, c := range conds {
 			if i == 0 {
-				query += " WHERE " + c
+				query.WriteString(" WHERE " + c)
 			} else {
-				query += " AND " + c
+				query.WriteString(" AND " + c)
 			}
 		}
 	}
 
-	query += " ORDER BY id DESC"
+	query.WriteString(" ORDER BY id DESC")
 
 	limit := f.Limit
 	if limit <= 0 {
 		limit = 100
 	}
-	query += fmt.Sprintf(" LIMIT %d", limit)
+	query.WriteString(fmt.Sprintf(" LIMIT %d", limit))
 	if f.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", f.Offset)
+		query.WriteString(fmt.Sprintf(" OFFSET %d", f.Offset))
 	}
 
-	rows, err := d.conn.Query(query, args...)
+	rows, err := d.conn.Query(query.String(), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +323,7 @@ func (d *DB) GetUsageLast10Minutes() ([]map[string]any, error) {
 	// Build 10 buckets
 	buckets := make([]map[string]any, 10)
 	bucketMap := make(map[int64]int) // minute epoch → bucket index
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ts := currentMinute.Add(time.Duration(i-9) * time.Minute)
 		epoch := ts.Unix() / 60
 		bucketMap[epoch] = i

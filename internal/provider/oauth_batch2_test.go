@@ -192,10 +192,7 @@ func exchangeCopilotTokenWithServer(githubToken string, srv *httptest.Server) (*
 	if data.Token == "" {
 		return nil, ClassifyRefreshError("", resp.StatusCode)
 	}
-	expiresIn := int(time.Until(time.Unix(data.ExpiresAt, 0)).Seconds())
-	if expiresIn < 1 {
-		expiresIn = 1
-	}
+	expiresIn := max(int(time.Until(time.Unix(data.ExpiresAt, 0)).Seconds()), 1)
 	return &RefreshResult{AccessToken: data.Token, ExpiresIn: expiresIn}, nil
 }
 

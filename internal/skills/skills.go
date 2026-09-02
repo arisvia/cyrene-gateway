@@ -48,12 +48,12 @@ func parseSkill(id, content string) Skill {
 		end := strings.Index(content[4:], "\n---")
 		if end > 0 {
 			fm := content[4 : 4+end]
-			for _, line := range strings.Split(fm, "\n") {
+			for line := range strings.SplitSeq(fm, "\n") {
 				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "name:") {
-					s.Name = strings.TrimSpace(strings.TrimPrefix(line, "name:"))
-				} else if strings.HasPrefix(line, "description:") {
-					s.Description = strings.TrimSpace(strings.TrimPrefix(line, "description:"))
+				if after, ok :=strings.CutPrefix(line, "name:"); ok  {
+					s.Name = strings.TrimSpace(after)
+				} else if after, ok :=strings.CutPrefix(line, "description:"); ok  {
+					s.Description = strings.TrimSpace(after)
 				}
 			}
 		}

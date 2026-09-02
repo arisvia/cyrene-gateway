@@ -67,7 +67,7 @@ func init() {
 	for i := range qoderS2C {
 		qoderS2C[i] = -1
 	}
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		qoderS2C[qoderStdAlphabet[i]] = int16(qoderCustomAlphabet[i])
 	}
 	qoderS2C['='] = int16('$')
@@ -83,7 +83,7 @@ func QoderEncodeBody(plaintext []byte) string {
 	rearranged := std[n-a:] + std[a:n-a] + std[:a]
 
 	out := make([]byte, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		c := rearranged[i]
 		if c < 128 && qoderS2C[c] >= 0 {
 			out[i] = byte(qoderS2C[c])
