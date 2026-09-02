@@ -1,4 +1,4 @@
-import { createSignal, createComputed } from 'solid-js'
+import { createSignal, createRoot } from 'solid-js'
 import { createStore, produce } from 'solid-js/store'
 import { api, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api'
 import { useToast } from '@/lib/toast'
@@ -7,7 +7,7 @@ import type {
   UsageStats, RequestDetail, Pagination, ProviderUsage,
 } from '@/types/domain'
 
-export function useGatewayStore() {
+function createGatewayStore() {
   const toast = useToast()
 
   // ── state ──
@@ -137,12 +137,10 @@ export function useGatewayStore() {
   async function addProvider(payload: Record<string, any>) {
     const res = await apiPost<Provider>('/api/providers', payload)
     toast.success(`Provider "${payload.name || payload.provider}" added`)
-    if (res?.id) {
-      setProviders(p => [...p, res])
-    } else {
-      await loadProvidersOnly()
-    }
-  }
+    // 以服务端返回的 DTO（含后端生成的 ID/默认值）为准刷新列表，而非本地拼接
+    await loadProvidersOnly()
+    return res
+   }
 
   async function toggleProvider(p: Provider) {
     const original = p.isActive
@@ -159,7 +157,7 @@ export function useGatewayStore() {
     await apiPost(`/api/providers/${p.id}/reset`)
     toast.success(`Cooldown reset — ${p.name || p.provider}`)
     setProviders(list => list.map(x => x.id === p.id
-      ? { ...x, data: { ...x.data, rateLimitedUntil: '', testStatus: 'ok' } } : x))
+      ? { ...x, data: { ...x.data, rateLimitedUntil: '', testStatus: 'active' } } : x))
   }
 
   async function deleteProvider(p: Provider) {
@@ -176,7 +174,7 @@ export function useGatewayStore() {
     return count
   }
 
-  async function testProvider(id: string): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+  async function testProvider(id: string): Promise<{ ok: boolean; latencyMs?: number; error?: string; code?: number; latency?: string }> {
     return apiPost(`/api/providers/${id}/test`)
   }
 
@@ -261,6 +259,91 @@ export function useGatewayStore() {
     return apiPost('/api/auth/password', { password })
   }
 
+  // ── provider 编辑 / 凭证 ──
+  async function updateProvider(id: string, patch: Record<string, any>) {
+    const res = await apiPut(`/api/providers/${id}`, patch)
+    await loadProvidersOnly()
+    return res
+  }
+
+  async function testCredentials(payload: Record<string, any>) {
+    return apiPost('/api/providers/test-credentials', payload)
+  }
+
+  async function testBatch(ids: string[]) {
+    return apiPost('/api/providers/test-batch', { ids })
+  }
+
+  async function refreshModels(id: string) {
+    return apiPost(`/api/providers/${id}/refresh-models`)
+  }
+
+  // ── provider 模型（registry + 自定义）──
+  async function loadProviderModels(id: string) {
+    return api(`/api/providers/${id}/models`)
+  }
+
+  async function addProviderModel(id: string, model: { id: string; name?: string }) {
+    return apiPost(`/api/providers/${id}/models`, model)
+  }
+
+  async function deleteProviderModel(id: string, modelId: string) {
+    return apiDelete(`/api/providers/${id}/models`, { id: modelId })
+  }
+
+  // ── OAuth 流程 ──
+  // authorize 后端只注册 GET（用 POST 会 405）；device-code 为 POST
+  async function oauthStart(providerId: string, mode: 'authorize' | 'device-code', extra: Record<string, any> = {}) {
+    if (mode === 'authorize') {
+      const params = new URLSearchParams(extra as Record<string, string>)
+      const qs = params.toString()
+      return api(`/api/oauth/${providerId}/authorize${qs ? `?${qs}` : ''}`)
+    }
+    return apiPost(`/api/oauth/${providerId}/${mode}`, extra)
+  }
+
+  async function oauthPoll(providerId: string, payload: Record<string, any>) {
+    return apiPost(`/api/oauth/${providerId}/device-code/poll`, payload)
+  }
+
+  async function oauthImport(providerId: string, payload: Record<string, any>) {
+    return apiPost(`/api/oauth/${providerId}/import`, payload)
+  }
+
+  async function oauthStatus(providerId: string) {
+    return api(`/api/oauth/${providerId}/status`)
+  }
+
+  async function oauthRefresh(providerId: string) {
+    return apiPost(`/api/oauth/${providerId}/refresh`)
+  }
+
+  // ── provider 节点 ──
+  async function loadNodes() {
+    try {
+      const r = await api('/api/provider-nodes')
+      return Array.isArray(r) ? r : []
+    } catch { return [] }
+  }
+
+  async function saveNode(payload: Record<string, any>) {
+    if (payload.id) return apiPut(`/api/provider-nodes/${payload.id}`, payload)
+    return apiPost('/api/provider-nodes', payload)
+  }
+
+  async function deleteNode(id: string) {
+    return apiDelete(`/api/provider-nodes/${id}`)
+  }
+
+  // ── 模型禁用 / 启用 ──
+  async function loadDisabledModels() {
+    try { return (await api('/api/models/disabled')) || {} } catch { return {} }
+  }
+
+  async function setModelDisabled(model: string, disabled: boolean) {
+    if (disabled) return apiPost('/api/models/disabled', { model })
+    return apiDelete('/api/models/disabled', { model })
+  }
   return {
     version, health, providers, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings, aliases,
@@ -274,5 +357,18 @@ export function useGatewayStore() {
     saveProxyPool, toggleProxyPool, deleteProxyPool,
     addAlias, deleteAlias,
     saveSettings, setPassword,
+    updateProvider, testCredentials, testBatch, refreshModels,
+    loadProviderModels, addProviderModel, deleteProviderModel,
+    oauthStart, oauthPoll, oauthImport, oauthStatus, oauthRefresh,
+    loadNodes, saveNode, deleteNode,
+    loadDisabledModels, setModelDisabled,
   }
+}
+
+// 单例：整个应用共享同一份信号（此前每次调用都新建一份 → 页面读到空数据）
+let _store: ReturnType<typeof createGatewayStore> | null = null
+
+export function useGatewayStore() {
+  if (!_store) _store = createRoot(createGatewayStore)
+  return _store
 }

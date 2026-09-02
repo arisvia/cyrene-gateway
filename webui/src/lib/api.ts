@@ -20,7 +20,7 @@ async function request<T = any>(method: string, path: string, body?: unknown): P
   return text ? JSON.parse(text) : undefined as T
 }
 
-export const api = <T = any>(path: string) => request<T>('GET', path)
+export const api = <T = any>(path: string, method?: string) => request<T>(method ?? 'GET', path)
 export const apiPost = <T = any>(path: string, body?: unknown) => request<T>('POST', path, body)
 export const apiPut = <T = any>(path: string, body?: unknown) => request<T>('PUT', path, body)
 export const apiPatch = <T = any>(path: string, body?: unknown) => request<T>('PATCH', path, body)

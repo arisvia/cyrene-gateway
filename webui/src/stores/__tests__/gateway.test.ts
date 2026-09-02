@@ -65,8 +65,10 @@ describe('gateway store', () => {
     expect(store.activeConnections()).toBeGreaterThanOrEqual(0)
   })
 
-  it('addProvider posts and appends', async () => {
+  it('addProvider posts then refreshes list from server', async () => {
     ;(apiPost as any).mockResolvedValue({ id: 'n1', provider: 'gemini', isActive: true })
+    // addProvider 内部经 loadProvidersOnly() 调 api('/api/providers') 以服务端为准
+    ;(api as any).mockResolvedValue([{ id: 'n1', provider: 'gemini', isActive: true }])
     const store = useGatewayStore()
     await store.addProvider({ provider: 'gemini', name: 'g1' })
     expect(apiPost).toHaveBeenCalledWith('/api/providers', { provider: 'gemini', name: 'g1' })

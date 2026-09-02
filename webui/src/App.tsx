@@ -1,4 +1,4 @@
-import { type Component, For, Show, createSignal, onMount } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, onMount } from 'solid-js'
 import { HashRouter, Route, A } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
 import { ThemeToggle } from './components/layout/Sidebar'
@@ -50,68 +50,91 @@ const App: Component = () => {
   const [open, setOpen] = createSignal(false)
   onMount(() => store.loadCore())
 
-  return (
-    <HashRouter>
+  // 布局作为 root 传入 Router：这样侧栏/头部里的 <A> 处于路由上下文内，
+  const Layout: Component<{ children?: JSX.Element }> = props => (
+    <div class="min-h-screen">
       <ToastHost />
-      <div class="min-h-screen flex">
-        {/* 桌面侧栏 */}
-        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-[220px] border-r border-subtle bg-card backdrop-blur-xl z-40">
-          <div class="h-14 flex items-center gap-2 px-4 border-b border-subtle">
-            <div class="w-7 h-7 rounded-lg" style={{ background: 'var(--gradient)' }} />
-            <div>
-              <div class="text-sm font-semibold leading-tight">Cyrene Gateway</div>
-              <div class="text-[11px] text-faint leading-tight">v{store.version()}</div>
-            </div>
-          </div>
-          <SidebarNav onNavigate={() => setOpen(false)} />
-          <div class="mt-auto p-3 border-t border-subtle flex items-center justify-between">
-            <ThemeToggle />
-          </div>
-        </aside>
 
-        {/* 移动端抽屉 */}
-        <Show when={open()}>
-          <div class="md:hidden fixed inset-0 z-50">
-            <div class="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-            <aside class="absolute inset-y-0 left-0 w-[260px] bg-bg-elevated border-r border-subtle flex flex-col">
-              <div class="h-14 flex items-center gap-2 px-4 border-b border-subtle">
-                <div class="w-7 h-7 rounded-lg" style={{ background: 'var(--gradient)' }} />
-                <span class="text-sm font-semibold">Cyrene Gateway</span>
-              </div>
-              <SidebarNav onNavigate={() => setOpen(false)} />
-            </aside>
+      {/* 桌面侧栏 */}
+      <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-[var(--sidebar-w)] glass-panel border-y-0 border-l-0 z-40">
+        <div class="h-14 flex items-center gap-2.5 px-4 border-b border-subtle">
+          <div class="w-7 h-7 rounded-control gradient-brand shadow-accent" />
+          <div class="min-w-0">
+            <div class="text-sm font-semibold leading-tight truncate">Cyrene Gateway</div>
+            <div class="text-[11px] text-faint leading-tight">v{store.version()}</div>
           </div>
-        </Show>
-
-        {/* 主区 */}
-        <div class="flex-1 md:ml-[220px] min-w-0 flex flex-col">
-          <header class="h-14 sticky top-0 z-30 flex items-center gap-3 px-4 lg:px-8 border-b border-subtle bg-card backdrop-blur-xl">
-            <button class="md:hidden p-2 -ml-2" onClick={() => setOpen(true)} aria-label="打开菜单">☰</button>
-            <div class="ml-auto flex items-center gap-3 text-sm text-muted">
-              <span class="text-faint">{store.activeConnections()} 个活跃连接</span>
-              <A href="/settings" class="px-3 py-1.5 rounded-lg border border-subtle hover:border-accent transition-colors">设置</A>
-            </div>
-          </header>
-          <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-10 py-6 lg:py-10">
-            <Route path="/" component={Home} />
-            <Route path="/providers" component={Providers} />
-            <Route path="/providers/:id" component={ProviderDetail} />
-            <Route path="/combos" component={Combos} />
-            <Route path="/usage" component={Usage} />
-            <Route path="/quota" component={Quota} />
-            <Route path="/media" component={Media} />
-            <Route path="/proxy-pools" component={ProxyPools} />
-            <Route path="/cli-tools" component={CliTools} />
-            <Route path="/cli-tools/:id" component={CliToolDetail} />
-            <Route path="/console" component={Console} />
-            <Route path="/tunnel" component={Tunnel} />
-            <Route path="/mitm" component={Mitm} />
-            <Route path="/skills" component={Skills} />
-            <Route path="/settings" component={Settings} />
-            <Route path="*" component={Home} />
-          </main>
         </div>
+        <SidebarNav onNavigate={() => setOpen(false)} />
+        <div class="p-3 border-t border-subtle flex items-center justify-between">
+          <ThemeToggle />
+          <A href="/settings" class="text-xs text-muted hover:text-text transition-colors">
+            设置 →
+          </A>
+        </div>
+      </aside>
+
+      {/* 移动端抽屉 */}
+      <Show when={open()}>
+        <div class="md:hidden fixed inset-0 z-50">
+          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
+          <aside class="absolute inset-y-0 left-0 w-[260px] bg-bg-elevated border-r border-subtle flex flex-col animate-slide-up">
+            <div class="h-14 flex items-center gap-2.5 px-4 border-b border-subtle">
+              <div class="w-7 h-7 rounded-control gradient-brand" />
+              <span class="text-sm font-semibold flex-1">Cyrene Gateway</span>
+              <button
+                type="button"
+                class="flex h-8 w-8 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover"
+                onClick={() => setOpen(false)}
+                aria-label="关闭菜单"
+              >
+                ×
+              </button>
+            </div>
+            <SidebarNav onNavigate={() => setOpen(false)} />
+          </aside>
+        </div>
+      </Show>
+
+      {/* 主区 */}
+      <div class="flex flex-col md:pl-[var(--sidebar-w)] min-h-screen">
+        <header class="h-14 sticky top-0 z-30 flex items-center gap-3 px-4 lg:px-8 border-b border-subtle bg-card backdrop-blur-xl">
+          <button
+            type="button"
+            class="md:hidden flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-text hover:bg-hover"
+            onClick={() => setOpen(true)}
+            aria-label="打开菜单"
+          >
+            ☰
+          </button>
+          <div class="ml-auto flex items-center gap-3 text-sm text-muted">
+            <span class="hidden sm:inline text-faint">{store.activeConnections()} 个活跃连接</span>
+          </div>
+        </header>
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-10 py-6 lg:py-10">
+          {props.children}
+        </main>
       </div>
+    </div>
+  )
+
+  return (
+    <HashRouter root={Layout}>
+      <Route path="/" component={Home} />
+      <Route path="/providers" component={Providers} />
+      <Route path="/providers/:id" component={ProviderDetail} />
+      <Route path="/combos" component={Combos} />
+      <Route path="/usage" component={Usage} />
+      <Route path="/quota" component={Quota} />
+      <Route path="/media" component={Media} />
+      <Route path="/proxy-pools" component={ProxyPools} />
+      <Route path="/cli-tools" component={CliTools} />
+      <Route path="/cli-tools/:id" component={CliToolDetail} />
+      <Route path="/console" component={Console} />
+      <Route path="/tunnel" component={Tunnel} />
+      <Route path="/mitm" component={Mitm} />
+      <Route path="/skills" component={Skills} />
+      <Route path="/settings" component={Settings} />
+      <Route path="*" component={Home} />
     </HashRouter>
   )
 }
@@ -130,8 +153,8 @@ function SidebarNav(props: { onNavigate?: () => void }) {
                     href={item.href}
                     end={item.end}
                     onClick={props.onNavigate}
-                    class="flex items-center px-2 py-1.5 rounded-lg text-sm text-muted hover:text-text hover:bg-glass-hover transition-colors"
-                    activeClass="!text-text bg-gradient-soft font-medium"
+                    class="flex items-center px-2.5 py-1.5 rounded-control text-sm text-muted hover:text-text hover:bg-hover transition-colors"
+                    activeClass="!text-text gradient-soft ring-1 ring-subtle font-medium"
                   >
                     {item.label}
                   </A>

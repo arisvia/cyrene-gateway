@@ -9,7 +9,7 @@ const Home: Component = () => {
   const [skills] = createResource(async () => {
     try {
       const r = await api('/api/skills')
-      return Array.isArray(r) ? r : []
+      return Array.isArray(r?.skills) ? r.skills : []
     } catch { return [] }
   })
 
@@ -34,7 +34,7 @@ const Home: Component = () => {
             <For each={store.endpoints()}>
               {ep => (
                 <button
-                  class="w-full flex items-center justify-between gap-3 rounded-lg border border-subtle px-3 py-2 text-left hover:border-accent transition-colors"
+                  class="w-full flex items-center justify-between gap-3 rounded-control border border-subtle px-3 py-2 text-left hover:border-accent transition-colors"
                   onClick={() => copy(ep.url)}
                   title="点击复制"
                 >
@@ -55,10 +55,10 @@ const Home: Component = () => {
             <A href="/cli-tools" class="text-xs text-muted hover:text-text">全部工具 →</A>
           </div>
           <div class="grid grid-cols-2 gap-2">
-            <A href="/cli-tools" class="rounded-lg border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">Claude Code</A>
-            <A href="/cli-tools" class="rounded-lg border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">Codex</A>
-            <A href="/cli-tools" class="rounded-lg border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">OpenCode</A>
-            <A href="/cli-tools" class="rounded-lg border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">Cline</A>
+            <A href="/cli-tools" class="rounded-control border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">Claude Code</A>
+            <A href="/cli-tools" class="rounded-control border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">Codex</A>
+            <A href="/cli-tools" class="rounded-control border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">OpenCode</A>
+            <A href="/cli-tools" class="rounded-control border border-subtle px-3 py-2 text-sm hover:border-accent transition-colors">Cline</A>
           </div>
         </Card>
       </div>
@@ -68,7 +68,7 @@ const Home: Component = () => {
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <For each={skills()}>
             {s => (
-              <div class="rounded-lg border border-subtle p-3">
+              <div class="rounded-control border border-subtle p-3">
                 <div class="text-sm font-medium flex items-center gap-2">
                   {s.name}
                   <Badge tone="blue">cyrene</Badge>

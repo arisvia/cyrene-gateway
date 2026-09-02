@@ -12,9 +12,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 后端端口可注入：默认 20128，与网关默认启动端口一致
+    // 用法：GW_PORT=20128 npm run dev
     proxy: {
-      '/api': 'http://127.0.0.1:20128',
-      '/v1': 'http://127.0.0.1:20128',
+      '/api': `http://127.0.0.1:${process.env.GW_PORT ?? 20128}`,
+      '/v1': `http://127.0.0.1:${process.env.GW_PORT ?? 20128}`,
     },
   },
   build: {

@@ -1,83 +1,85 @@
 @import 'tailwindcss';
 
+/* ============================================================
+   Cyrene Gateway — 设计 token（语义化，参考 9router 面板）
+   规则：所有基础样式必须放入 @layer base。
+   原因：未分层的样式规则在 CSS cascade 中优先于 @layer utilities，
+   会击穿 Tailwind 的水平/垂直 padding 与纵向间距工具类 ——
+   上一次「全页挤在一起」的根因。
+   ============================================================ */
+
+/* ---- 原始变量（暗色为默认主题，.light 覆盖） ---- */
 :root {
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
-  --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* 品牌 */
   --accent: #2dd4bf;
   --accent-2: #8b5cf6;
-  --gradient: linear-gradient(135deg, #2dd4bf 0%, #818cf8 50%, #8b5cf6 100%);
-  --gradient-soft: linear-gradient(135deg, rgba(45,212,191,0.12), rgba(139,92,246,0.12));
   --on-accent: #042f2e;
-  --green: #34d399;
-  --amber: #fbbf24;
-  --red: #f87171;
-  --blue: #60a5fa;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --radius-xs: 6px;
+  --gradient: linear-gradient(135deg, #2dd4bf 0%, #818cf8 50%, #8b5cf6 100%);
+
+  /* 状态色 */
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #60a5fa;
+
+  /* 表面 / 玻璃拟态 */
   --glass-blur: 20px;
-  --glass: rgba(255,255,255,0.03);
-  --glass-hover: rgba(255,255,255,0.06);
-  --glass-border: rgba(255,255,255,0.07);
-  --glass-border-hover: rgba(255,255,255,0.14);
-  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 50%);
-  --glass-depth: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+  --glass: rgba(255, 255, 255, 0.03);
+  --glass-hover: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --glass-border-hover: rgba(255, 255, 255, 0.14);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
+  --glass-depth: 0 8px 32px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+
+  /* 底色 / 文字 */
   --bg: #0a0a10;
   --bg-elevated: #12121a;
-  --code-bg: rgba(0,0,0,0.35);
+  --code-bg: rgba(0, 0, 0, 0.35);
   --text: #f1f5f9;
   --text-muted: #94a3b8;
   --text-faint: #64748b;
-  --ring: rgba(45,212,191,0.5);
-  --ring-soft: rgba(45,212,191,0.15);
-  --shadow-accent: 0 4px 16px rgba(45,212,191,0.2);
-  --shadow-accent-hover: 0 6px 24px rgba(45,212,191,0.3);
-  --shadow-glow: 0 0 40px rgba(139,92,246,0.06);
+
+  /* 焦点环 / 阴影 */
+  --ring: rgba(45, 212, 191, 0.5);
+  --ring-soft: rgba(45, 212, 191, 0.15);
+  --shadow-accent: 0 4px 16px rgba(45, 212, 191, 0.2);
+  --shadow-accent-hover: 0 6px 24px rgba(45, 212, 191, 0.3);
+  --shadow-glow: 0 0 40px rgba(139, 92, 246, 0.06);
+
+  /* 动效 / 布局 */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --duration: 0.2s;
   --sidebar-w: 220px;
+
+  color-scheme: dark;
 }
+
 .light {
-  --glass: rgba(255,255,255,0.65);
-  --glass-hover: rgba(255,255,255,0.85);
-  --glass-border: rgba(15,23,42,0.08);
-  --glass-border-hover: rgba(15,23,42,0.15);
-  --glass-sheen: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, transparent 50%);
-  --glass-depth: 0 8px 32px rgba(15,23,42,0.08), 0 2px 8px rgba(15,23,42,0.04);
+  --glass: rgba(255, 255, 255, 0.65);
+  --glass-hover: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-border-hover: rgba(15, 23, 42, 0.15);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, transparent 50%);
+  --glass-depth: 0 8px 32px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
   --bg: #f1f5f9;
   --bg-elevated: #ffffff;
-  --code-bg: rgba(15,23,42,0.04);
+  --code-bg: rgba(15, 23, 42, 0.04);
   --text: #0f172a;
   --text-muted: #475569;
   --text-faint: #94a3b8;
   --on-accent: #ffffff;
-  --shadow-accent: 0 4px 16px rgba(45,212,191,0.25);
-  --shadow-accent-hover: 0 6px 24px rgba(45,212,191,0.35);
-  --shadow-glow: 0 0 40px rgba(139,92,246,0.04);
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 15px; }
-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-}
-::selection { background: rgba(45,212,191,0.25); }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.2); border-radius: 3px; }
-a { color: inherit; text-decoration: none; }
-button { font-family: inherit; }
-code, pre { font-family: var(--font-mono); }
-:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+  --shadow-accent: 0 4px 16px rgba(45, 212, 191, 0.25);
+  --shadow-accent-hover: 0 6px 24px rgba(45, 212, 191, 0.35);
+  --shadow-glow: 0 0 40px rgba(139, 92, 246, 0.04);
 
+  color-scheme: light;
+}
+
+/* 注册 Tailwind v4 主题 token —— 只有 --color- 前缀才会生成对应的 bg/text/border 工具类 */
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-elevated: var(--bg-elevated);
@@ -86,6 +88,176 @@ code, pre { font-family: var(--font-mono); }
   --color-faint: var(--text-faint);
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
+  --color-on-accent: var(--on-accent);
   --color-subtle: var(--glass-border);
+  --color-hover: var(--glass-hover);
   --color-card: var(--glass);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-ring: var(--ring);
+  --color-ring-soft: var(--ring-soft);
+
+  --font-sans: var(--font);
+  --font-mono: var(--font-mono);
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+
+  --shadow-glass: var(--glass-depth);
+  --shadow-accent: var(--shadow-accent);
+
+  --animate-fade-in: fadeIn 0.2s ease-out both;
+  --animate-slide-up: slideUp 0.25s var(--ease-out-expo) both;
+  --animate-scale-in: scaleIn 0.18s var(--ease-out-expo) both;
+  --animate-stagger: slideUp 0.3s var(--ease-out-expo) backwards;
+}
+
+/* ---- 基础样式：全部进 @layer base（v4 会自动追加到 preflight 之后） ---- */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 15px;
+  }
+
+  body {
+    font-family: var(--font);
+    background-color: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* Tailwind v4 移除了 button 的 pointer 光标，按 9router 做法恢复 */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  label[for],
+  summary,
+  select {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role='button'][aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  code,
+  pre,
+  kbd {
+    font-family: var(--font-mono);
+  }
+
+  /* 原生下拉跟随主题（暗色黑底白字） */
+  select {
+    color-scheme: dark;
+  }
+  .light select,
+  .light select option {
+    color-scheme: light;
+    background-color: var(--bg-elevated);
+    color: var(--text);
+  }
+
+  ::selection {
+    background: rgba(45, 212, 191, 0.25);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* 细滚动条（webkit + firefox） */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.45);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* 页面入场：配合 --animate-stagger 做子项瀑布 */
+  .stagger > * {
+    animation: var(--animate-stagger);
+  }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .stagger > * {
+      animation: none;
+    }
+  }
+}
+
+/* ---- 语义组合工具（组件层） ---- */
+@utility glass-panel {
+  background-color: var(--glass);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+}
+
+@utility gradient-brand {
+  background-image: var(--gradient);
+}
+
+@utility gradient-soft {
+  background-image: linear-gradient(135deg, rgba(45, 212, 191, 0.12), rgba(139, 92, 246, 0.12));
 }

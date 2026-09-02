@@ -55,8 +55,13 @@ export interface ApiKey {
 
 export interface ProxyPool {
   id: string
+  name: string
+  proxyUrl: string
+  type: string
   isActive: boolean
-  data: { name: string; type: string; proxyUrl: string; noProxy?: string; strictProxy?: boolean }
+  noProxy?: string
+  strictProxy?: boolean
+  boundConnections?: number
 }
 
 export interface Endpoint {
@@ -79,11 +84,14 @@ export interface ProviderModel {
 
 export interface UsageStats {
   totalRequests?: number
+  totalRequestsLifetime?: number
   totalPromptTokens?: number
   totalCompletionTokens?: number
   totalCost?: number
-  totalRequestsLifetime?: number
+  period?: string
   byProvider?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
+  byModel?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
+  last10Minutes?: { minute: string; requests: number }[]
 }
 
 export interface RequestDetail {

@@ -1,6 +1,8 @@
 # Cyrene Gateway 前端重构蓝图（SolidJS + Vite 8 + Tailwind 4）
 
-> **状态：线框稿（待用户确认后实施）**
+> **状态：已实施（2026-09-01 样式层修复后）**。16 页全部迁移完成；本轮修复了
+> 未分层 reset 击穿 Tailwind 工具类导致的「全页挤压」回归，并按 9router
+> `globals.css` 的做法补齐语义 token 体系。
 > 目标：借鉴 9router 面板的简洁布局，功能全保留（MITM/Tunnel 简化呈现），砍掉死掉的 i18n。
 > 本文档为重构唯一依据，实施前需确认。
 
@@ -169,3 +171,33 @@ webui/src/
 - `ProvidersView`（1067 行）是最大迁移单元，OAuth 设备码轮询等异步交互最易错 → 单独一节实施 + 人工过流程
 - Tailwind 4 的 vite 插件要求 Node ≥ 20（已满足）
 - embed 白屏回归风险：验收第 3 步必须做「干净克隆构建」复验
+
+## 7. 样式层规约（Tailwind 4 实施细则，2026-09-01 修订）
+
+> 本节是 `webui/src/styles/app.css` 的使用说明。违反任何一条都会复现
+> 「按钮/菜单/文字全部挤在一起、部分区域无法点击」的全页挤压回归。
+
+1. **基础样式必须进 `@layer base`**。未分层的 `*, *::before { margin:0; padding:0 }`
+   在 CSS cascade 中优先于 `@layer utilities`，会击穿所有 `px-*`/`py-*`/`space-y-*`。
+2. **颜色 token 必须以 `--color-*` 注册进 `@theme inline`**，才会生成
+   `bg-*`/`text-*`/`border-*` 工具类。已有语义 token：
+   `bg`、`bg-elevated`、`text`、`muted`、`faint`、`accent`、`accent-2`、
+   `on-accent`、`subtle`（边框）、`hover`（悬停面）、`card`（卡面）、
+   `success`、`warning`、`danger`、`info`、`ring`、`ring-soft`。
+   `--glass-hover` 这类非 `--color-*` 变量**不会**生成工具类（此前
+   `bg-glass-hover` 15 处引用静默失效即此原因）。
+3. **注释里不得出现 `*/` 字样**（例如 `bg-*/text-*` 会被当作注释结束符，
+   使整个 `@theme` 块被 CSS 解析器吞掉 —— 已修复的另一个隐性回归）。
+4. **组件级组合样式用 `@utility`**（现有：`glass-panel`、`gradient-brand`、
+   `gradient-soft`）；`@utility` 中不要引用未注册变量。
+5. **禁止 v3 时代的任意值绕路写法**：`text-[color:var(--green)]` 应写
+   `text-success`；`!w-32` 前缀 important 已废弃，用 `w-32!` 后缀（当前代码
+   已无此类，新增时注意）。
+6. **Modal 规范**：打开时锁定 `body.overflow`、监听 Esc 关闭、初始焦点移入
+   面板（见 `components/ui/index.tsx` 的 Modal）。
+7. **`button { cursor: pointer }` 已在 base 层恢复**（Tailwind v4 移除了该
+   默认值），勿在组件里逐个补 `cursor-pointer`。
+8. **原生 `select` 已设置 `color-scheme`**，暗色主题下拉不再白底白字。
+
+验收命令：`pnpm build && pnpm typecheck && pnpm test`，再 `go build` 后人工
+过一遍 16 页（桌面 + 移动端抽屉 + 明暗主题切换）。

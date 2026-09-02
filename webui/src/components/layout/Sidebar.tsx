@@ -10,12 +10,13 @@ export function ThemeToggle() {
   }
   return (
     <button
-      class="text-sm text-muted hover:text-text transition-colors"
+      type="button"
+      class="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-text hover:bg-hover transition-colors"
       onClick={toggle}
       aria-label="切换主题"
       title="切换主题"
     >
-      {light() ? '🌙' : '☀️'}
+      <span aria-hidden="true">{light() ? '🌙' : '☀️'}</span>
     </button>
   )
 }
