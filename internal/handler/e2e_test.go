@@ -144,19 +144,6 @@ func TestE2EChatCompletion(t *testing.T) {
 		// Note: anthropic format translates the request body, so the mock must
 		// return an anthropic-format response. Tested separately below.
 		// --- freeTier (apikey, custom headers) ---
-		{
-			Provider: "api-airforce", Model: "api-airforce/anthropic/claude-3.7-sonnet",
-			AuthType: "api-key", APIKey: "af-test",
-			WantAuth: func(r *http.Request) error {
-				if got := r.Header.Get("Authorization"); got != "Bearer af-test" {
-					return fmt.Errorf("api-airforce: want Bearer, got %q", got)
-				}
-				if got := r.Header.Get("HTTP-Referer"); got != "https://endpoint-proxy.local" {
-					return fmt.Errorf("api-airforce: want HTTP-Referer, got %q", got)
-				}
-				return nil
-			},
-		},
 		// --- oauth category (access token) ---
 		{
 			Provider: "github", Model: "github/gpt-5.4",

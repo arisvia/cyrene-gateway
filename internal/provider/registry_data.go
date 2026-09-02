@@ -33,18 +33,6 @@ func init() {
 		Icon:     "cloud",
 		TextIcon: "ALi",
 	}
-	Registry["alims-intl"] = ProviderInfo{
-		ID: "alims-intl", Name: "Alibaba Studio",
-		Alias: "alims-intl", Aliases: []string{"alims-intl"},
-		BaseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 11,
-		Brand: "Alibaba", Region: "intl",
-		Color:    "#FF6A00",
-		Website:  "https://modelstudio.console.alibabacloud.com",
-		Icon:     "cloud",
-		TextIcon: "ALi",
-	}
 	Registry["anthropic"] = ProviderInfo{
 		ID: "anthropic", Name: "Anthropic",
 		Alias: "anthropic", Aliases: []string{"anthropic"},
@@ -62,19 +50,6 @@ func init() {
 		},
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
-	}
-	Registry["api-airforce"] = ProviderInfo{
-		ID: "api-airforce", Name: "API.airforce",
-		Alias: "af", Aliases: []string{"airforce"},
-		BaseURL: "https://api.airforce/v1/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 50,
-		Color:    "#0EA5E9",
-		Website:  "https://api.airforce",
-		Icon:     "flight",
-		TextIcon: "AF",
-		HasFree:  true,
-		Headers:  map[string]string{"HTTP-Referer": "https://endpoint-proxy.local", "X-Title": "Endpoint Proxy"},
 	}
 	Registry["antigravity"] = ProviderInfo{
 		ID: "antigravity", Name: "Google Antigravity",
@@ -243,20 +218,6 @@ func init() {
 			"x-vscode-user-agent-library-version": "electron-fetch",
 			"X-Initiator":                         "user",
 		},
-	}
-	// Phase 36 T4: GitHub Models — models.github.com inference endpoint, PAT
-	// auth (a GitHub PAT / OAuth token is used as a plain Bearer key).
-	Registry["github-models"] = ProviderInfo{
-		ID: "github-models", Name: "GitHub Models",
-		Alias: "ghm", Aliases: []string{"gh-models"},
-		BaseURL: "https://models.inference.ai.azure.com/chat/completions",
-		APIType: "openai", AuthType: "api-key",
-		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 45,
-		Color:     "#333333",
-		Website:   "https://github.com/marketplace/models",
-		Icon:      "code",
-		TextIcon:  "GM",
-		APIKeyURL: "https://github.com/settings/tokens",
 	}
 	Registry["glm-cn"] = ProviderInfo{
 		ID: "glm-cn", Name: "GLM (China)",

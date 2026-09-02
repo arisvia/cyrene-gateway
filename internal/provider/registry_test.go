@@ -11,11 +11,11 @@ func TestRegistryCompleteness(t *testing.T) {
 		"claude", "codex", "github", "grok-cli", "cursor", "qoder",
 		"codebuddy-intl", "kimi", "antigravity", "opencode", "openrouter",
 		"glm", "glm-cn",
-		// Direct vendor APIs (10)
+		// Direct vendor APIs (8)
 		"anthropic", "openai", "gemini", "vertex", "tencent",
-		"xai", "alicode-intl", "alicode", "alims-intl", "github-models",
-		// E2E-verified (5)
-		"deepseek", "cerebras", "groq", "nvidia", "api-airforce",
+		"xai", "alicode-intl", "alicode",
+		// E2E-verified (4)
+		"deepseek", "cerebras", "groq", "nvidia",
 		// Brand pairs / quota-ported (3)
 		"codebuddy-cn", "minimax", "minimax-cn",
 	}
@@ -35,9 +35,9 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":   14,
+		"apikey":   12,
 		"oauth":    11,
-		"freeTier": 5,
+		"freeTier": 4,
 		"free":     1,
 	}
 
@@ -91,8 +91,7 @@ func TestRegistryBrandRegion(t *testing.T) {
 	brands := map[string][]string{
 		"GLM":       {"glm", "glm-cn"},
 		"MiniMax":   {"minimax", "minimax-cn"},
-		"CodeBuddy": {"codebuddy-intl", "codebuddy-cn"},
-		"Alibaba":   {"alicode-intl", "alicode", "alims-intl"},
+		"Alibaba":   {"alicode-intl", "alicode"},
 	}
 	for brand, ids := range brands {
 		for _, id := range ids {

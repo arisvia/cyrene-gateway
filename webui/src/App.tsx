@@ -148,7 +148,6 @@ const App: Component = () => {
           <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
           <div class="min-w-0">
             <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
-            <div class="text-[11px] text-faint leading-tight font-mono">v{store.version()}</div>
           </div>
         </div>
         <SidebarNav onNavigate={() => setOpen(false)} />
