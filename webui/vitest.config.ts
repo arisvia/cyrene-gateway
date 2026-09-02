@@ -1,14 +1,14 @@
 import { defineConfig } from 'vitest/config'
-import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import solid from 'vite-plugin-solid'
 
 export default defineConfig({
-  plugins: [vue()],
-  resolve: {
-    alias: { '@': resolve(__dirname, 'src') },
-  },
+  plugins: [solid()],
   test: {
     environment: 'happy-dom',
-    globals: true,
+  },
+  resolve: {
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
+    },
   },
 })

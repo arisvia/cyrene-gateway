@@ -130,8 +130,8 @@ func TestModelsDevBackfill(t *testing.T) {
 	}
 
 	models := []ModelMetadata{
-		{ID: "gpt-4o"},                             // exact match
-		{ID: "openai/gpt-4o"},                      // prefixed
+		{ID: "gpt-4o"},        // exact match
+		{ID: "openai/gpt-4o"}, // prefixed
 		{ID: "claude-fable-5", ContextLength: 999}, // existing value preserved
 		{ID: "unknown-model"},                      // no match
 	}

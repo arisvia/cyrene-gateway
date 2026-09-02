@@ -24,18 +24,20 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 			slog.Int("status", res.Code),
 		)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":      true,
-			"status":  "active",
-			"code":    res.Code,
-			"latency": res.Latency,
+			"ok":        true,
+			"status":    "active",
+			"code":      res.Code,
+			"latency":   res.Latency,
+			"latencyMs": res.LatencyMS,
 		})
 	} else {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":      false,
-			"status":  "error",
-			"code":    res.Code,
-			"error":   res.Error,
-			"latency": res.Latency,
+			"ok":        false,
+			"status":    "error",
+			"code":      res.Code,
+			"error":     res.Error,
+			"latency":   res.Latency,
+			"latencyMs": res.LatencyMS,
 		})
 	}
 }

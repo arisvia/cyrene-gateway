@@ -133,8 +133,12 @@ func (d *DB) migrate() error {
 			status TEXT,
 			data TEXT NOT NULL
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_history_ts ON usageHistory (timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_history_conn ON usageHistory (connectionId, timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_history_model ON usageHistory (provider, model, timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_request_details_ts ON requestDetails (timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_connections_provider ON providerConnections (provider, isActive)`,
 	}
-
 	for _, m := range migrations {
 		if _, err := d.conn.Exec(m); err != nil {
 			return fmt.Errorf("exec migration: %w", err)

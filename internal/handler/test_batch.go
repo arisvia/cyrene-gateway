@@ -183,10 +183,11 @@ func (s *Server) handleEnableFreeProviders(w http.ResponseWriter, r *http.Reques
 
 // testResult is the internal result of a single connection test.
 type testResult struct {
-	OK      bool
-	Latency string
-	Code    int
-	Error   string
+	OK        bool
+	Latency   string
+	LatencyMS int64
+	Code      int
+	Error     string
 }
 
 // testConnection performs a single provider connection test (extracted from handleTestProvider).
@@ -261,7 +262,6 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		req.Header.Set("Authorization", "Bearer public")
 	}
 	req.Header.Set("Content-Type", "application/json")
-
 	client := s.getHTTPClient(30 * time.Second)
 	start := time.Now()
 	resp, err := client.Do(req)
@@ -271,7 +271,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		conn.Data.TestStatus = "error"
 		conn.Data.LastError = err.Error()
 		s.DB.UpdateConnection(conn)
-		return testResult{OK: false, Latency: latency.String(), Error: err.Error()}
+		return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
 	}
 	defer resp.Body.Close()
 	io.ReadAll(resp.Body)
@@ -279,11 +279,11 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		provider.ResetAccountState(conn)
 		s.DB.UpdateConnection(conn)
-		return testResult{OK: true, Latency: latency.String(), Code: resp.StatusCode}
+		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
 	}
 
 	conn.Data.TestStatus = "error"
 	conn.Data.LastError = "HTTP " + fmt.Sprintf("%d", resp.StatusCode)
 	s.DB.UpdateConnection(conn)
-	return testResult{OK: false, Latency: latency.String(), Code: resp.StatusCode, Error: "HTTP " + fmt.Sprintf("%d", resp.StatusCode)}
+	return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: "HTTP " + fmt.Sprintf("%d", resp.StatusCode)}
 }

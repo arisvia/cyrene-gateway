@@ -22,10 +22,11 @@ func setupTestServer(t *testing.T) (*Server, *db.DB) {
 	}
 	t.Cleanup(func() { database.Close() })
 	cfg := &config.Config{
-		Host:    "127.0.0.1",
-		Port:    0,
-		DBPath:  ":memory:",
-		DataDir: t.TempDir(),
+		Host:                 "127.0.0.1",
+		Port:                 0,
+		DBPath:               ":memory:",
+		DataDir:              t.TempDir(),
+		AllowPrivateNetworks: true,
 	}
 	srv := NewServer(database, cfg)
 	return srv, database
@@ -358,6 +359,25 @@ func TestDashboardServesHTML(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "Cyrene") {
 		t.Fatal("expected dashboard HTML content")
+	}
+}
+
+func TestDashboardAssetMissIs404NotSPA(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// A hashed asset path that does not exist in the embedded dist
+	// must return 404 — never the SPA index.html fallback, which
+	// previously made a missing JS bundle indistinguishable from a
+	// real one (browser got text/html with 200 and rendered a blank page).
+	req := httptest.NewRequest("GET", "/assets/index-DOESNOTEXIST.js", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing asset, got %d with content-type %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	if ct := w.Header().Get("Content-Type"); strings.Contains(ct, "text/html") {
+		t.Fatalf("expected non-HTML error response for missing asset, got %s", ct)
 	}
 }
 

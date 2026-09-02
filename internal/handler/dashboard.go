@@ -93,6 +93,12 @@ func (d *DashboardHandler) serveFromDir(w http.ResponseWriter, r *http.Request, 
 			http.ServeFile(w, r, full)
 			return true
 		}
+		// Hashed build assets must 404 when missing — serving index.html
+		// here masked broken panel builds as blank pages (200 + text/html).
+		if strings.HasPrefix(path, "assets/") {
+			http.NotFound(w, r)
+			return true
+		}
 	}
 	indexPath := filepath.Join(dir, "index.html")
 	if data, err := os.ReadFile(indexPath); err == nil {
@@ -117,6 +123,12 @@ func (d *DashboardHandler) serveEmbedded(w http.ResponseWriter, r *http.Request,
 				return
 			}
 		}
+	}
+	// Hashed build assets must 404 when missing — serving index.html
+	// here masked broken panel builds as blank pages (200 + text/html).
+	if strings.HasPrefix(path, "assets/") {
+		http.NotFound(w, r)
+		return
 	}
 
 	// SPA fallback: serve index.html for all unmatched routes

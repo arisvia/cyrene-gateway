@@ -176,6 +176,16 @@ func ExecuteAttempt(
 
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ExecutionResult{
+				StatusCode:     499,
+				ErrorBody:      []byte("client canceled request"),
+				ShouldFallback: false,
+				ModelInfo:      cand.ModelInfo,
+				Connection:     cand.Connection,
+				TargetFormat:   targetFormat,
+			}
+		}
 		slog.Warn("Upstream request network failure", slog.String("provider", cand.ModelInfo.Provider), "error", err)
 		return ExecutionResult{
 			StatusCode:     http.StatusBadGateway,
@@ -186,7 +196,6 @@ func ExecuteAttempt(
 			TargetFormat:   targetFormat,
 		}
 	}
-
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return ExecutionResult{
 			Response:     resp,

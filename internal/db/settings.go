@@ -22,8 +22,11 @@ type ProviderThinkingConfig struct {
 }
 
 type Settings struct {
-	RequireLogin       bool                                `json:"requireLogin"`
-	RequireAPIKey      bool                                `json:"requireApiKey"`
+	RequireLogin  bool `json:"requireLogin"`
+	RequireAPIKey bool `json:"requireApiKey"`
+	// APIKeyRPM caps requests per API key per minute for /v1/* calls.
+	// 0 disables inbound rate limiting (default, backwards compatible).
+	APIKeyRPM          int                                 `json:"apiKeyRpm,omitempty"`
 	PasswordHash       string                              `json:"passwordHash,omitempty"`
 	ComboStrategy      string                              `json:"comboStrategy,omitempty"`
 	RTKEnabled         bool                                `json:"rtkEnabled"`

@@ -12,6 +12,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
+	"github.com/arisvia/cyrene-gateway/internal/metrics"
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
 	"github.com/arisvia/cyrene-gateway/internal/mitm"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -33,6 +34,8 @@ type Server struct {
 	Endpoints   *EndpointHandler
 	Events      *EventBroadcaster
 	MITM        *MITMHandler
+	Metrics     *metrics.M
+	Config      *config.Config
 	startTime   time.Time
 }
 
@@ -68,20 +71,28 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Tunnel:      NewTunnelHandler(tunnelMgr),
 		CLI:         NewCLIHandler(cli.NewManager()),
 		Endpoints:   NewEndpointHandler(cfg, database, tunnelMgr),
-		Events:      NewEventBroadcaster(),
 		MITM:        NewMITMHandler(mitmSrv, mitmEnabled),
+		Metrics:     metrics.New(Version()),
+		Config:      cfg,
 		startTime:   time.Now(),
 	}
 	s.registerRoutes()
 	s.registerMediaRoutes()
+	// Prometheus scrape endpoint (public; no session required)
+	s.Router.Handle("GET /metrics", s.Metrics.Handler())
 
-	// Wrap the mux with the middleware chain
 	s.Handler = middleware.Chain(mux,
 		middleware.Recovery,
 		middleware.Logging,
 		middleware.RequestSizeLimiter(),
 		middleware.CORS,
 		middleware.APIKeyAuth(database),
+		middleware.APIKeyRateLimit(func() int {
+			if st, err := database.GetSettings(); err == nil {
+				return st.APIKeyRPM
+			}
+			return 0
+		}),
 		middleware.DashboardAuth(database),
 	)
 	return s
@@ -145,6 +156,7 @@ func (s *Server) registerRoutes() {
 
 	// Provider connection testing
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
+	s.Router.HandleFunc("POST /api/providers/test-credentials", s.handleTestCredentials)
 	s.Router.HandleFunc("POST /api/providers/test-batch", s.handleTestBatch)
 	s.Router.HandleFunc("POST /api/providers/enable-free", s.handleEnableFreeProviders)
 	s.Router.HandleFunc("POST /api/providers/{id}/refresh-models", s.handleRefreshModels)
@@ -715,6 +727,12 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	var connData model.ConnectionData
 	json.Unmarshal(dataBytes, &connData)
 
+	if connData.BaseURL != "" {
+		if _, err := provider.ValidateUpstreamURL(connData.BaseURL, false); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid baseUrl: " + err.Error()})
+			return
+		}
+	}
 	pc := &model.ProviderConnection{
 		ID:       req.ID,
 		Provider: req.Provider,
@@ -792,9 +810,14 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		if incomingData.RefreshToken == "" {
 			incomingData.RefreshToken = existing.Data.RefreshToken
 		}
+		if incomingData.BaseURL != "" {
+			if _, err := provider.ValidateUpstreamURL(incomingData.BaseURL, false); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid baseUrl: " + err.Error()})
+				return
+			}
+		}
 		existing.Data = incomingData
 	}
-
 	if err := s.DB.UpdateConnection(existing); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update connection"})
 		return

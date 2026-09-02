@@ -70,6 +70,51 @@ func ExtractFromClaude(data []byte) Usage {
 	}
 }
 
+// ExtractFromClaudeSSE extracts usage from an Anthropic message_start or message_delta event.
+func ExtractFromClaudeSSE(data []byte) Usage {
+	var event struct {
+		Type    string `json:"type"`
+		Message *struct {
+			Usage struct {
+				InputTokens              int `json:"input_tokens"`
+				OutputTokens             int `json:"output_tokens"`
+				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+			} `json:"usage"`
+		} `json:"message"`
+		Usage *struct {
+			InputTokens              int `json:"input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(data, &event); err != nil {
+		return Usage{}
+	}
+	if event.Type == "message_start" && event.Message != nil {
+		u := event.Message.Usage
+		prompt := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+		return Usage{
+			PromptTokens:     prompt,
+			CompletionTokens: u.OutputTokens,
+			TotalTokens:      prompt + u.OutputTokens,
+			CachedTokens:     u.CacheReadInputTokens,
+		}
+	}
+	if (event.Type == "message_delta" || event.Type == "") && event.Usage != nil {
+		u := event.Usage
+		prompt := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+		return Usage{
+			PromptTokens:     prompt,
+			CompletionTokens: u.OutputTokens,
+			TotalTokens:      prompt + u.OutputTokens,
+			CachedTokens:     u.CacheReadInputTokens,
+		}
+	}
+	return Usage{}
+}
+
 // ExtractFromGemini extracts usage from a Gemini response body.
 func ExtractFromGemini(data []byte) Usage {
 	var resp struct {

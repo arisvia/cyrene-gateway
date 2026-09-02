@@ -40,7 +40,7 @@ const (
 	QoderDeviceTokenURL = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
 	QoderUserinfoURL    = "https://openapi.qoder.sh/api/v1/userinfo"
 
-	qoderIDEVersion   = "1.0.0"
+	qoderIDEVersion   = "1.26.0"
 	qoderClientType   = "5"
 	qoderDataPolicy   = "disagree"
 	qoderLoginVersion = "v2"

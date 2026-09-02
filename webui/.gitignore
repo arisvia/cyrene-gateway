@@ -1,6 +1,7 @@
 node_modules/
-dist/assets/
-dist/i18n/
 *.local
 tsconfig.tsbuildinfo
-dist/providers/
+
+# 构建产物不入库：CI（release.yml）在 go build 前重新构建 webui，
+# go:embed 在构建机上取新鲜产物；克隆源码开发需先 pnpm build。
+dist/

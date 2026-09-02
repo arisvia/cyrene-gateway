@@ -32,13 +32,13 @@ func ValidateUpstreamURL(rawURL string, allowPrivate bool) (*url.URL, error) {
 	}
 
 	if !allowPrivate {
-		// Resolve IP to check for loopback, private, link-local, multicast
+		// Resolve IP to check for loopback, private, link-local, multicast, metadata
 		ips, err := net.LookupIP(host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve host %q: %w", host, err)
 		}
 		for _, ip := range ips {
-			if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			if isBlockedIP(ip) {
 				return nil, fmt.Errorf("%w: resolved to %s", ErrPrivateNetworkBlocked, ip.String())
 			}
 		}
@@ -47,28 +47,68 @@ func ValidateUpstreamURL(rawURL string, allowPrivate bool) (*url.URL, error) {
 	return u, nil
 }
 
-// SafeHTTPClient returns an HTTP client equipped with custom dialer checking every resolved IP against SSRF rules.
-func SafeHTTPClient(timeout time.Duration, allowPrivate bool) *http.Client {
-	dialer := &net.Dialer{
+func isBlockedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	// Explicitly check IPv4 cloud metadata range 169.254.0.0/16 and CGNAT 100.64.0.0/10
+	if ip4 := ip.To4(); ip4 != nil {
+		if ip4[0] == 169 && ip4[1] == 254 {
+			return true
+		}
+		if ip4[0] == 100 && (ip4[1]&0xC0) == 64 {
+			return true
+		}
+	}
+	return false
+}
+
+// SafeDialerControl returns a Control function for net.Dialer that blocks SSRF targets at dial time.
+func SafeDialerControl(allowPrivate bool) func(network, address string, c syscall.RawConn) error {
+	return dialerControlExempt(allowPrivate, nil)
+}
+
+// dialerControlExempt is SafeDialerControl with a permit-list of hosts/IPs that
+// are always dialable (the operator's outbound proxy endpoints). When
+// http.Transport.Proxy is set, DialContext only ever sees the proxy address —
+// never the request target — so blocking private addresses there cannot protect
+// the target; it only breaks standard local proxy pools (Clash/V2Ray on
+// 127.0.0.1). Target safety through a proxy is enforced by the client's
+// CheckRedirect validation plus the proxy's own egress rules.
+func dialerControlExempt(allowPrivate bool, exempt map[string]bool) func(network, address string, c syscall.RawConn) error {
+	return func(network, address string, c syscall.RawConn) error {
+		if allowPrivate {
+			return nil
+		}
+		host, _, err := net.SplitHostPort(address)
+		if err != nil {
+			host = address
+		}
+		if exempt[host] {
+			return nil
+		}
+		ip := net.ParseIP(host)
+		if ip != nil && isBlockedIP(ip) {
+			return ErrPrivateNetworkBlocked
+		}
+		return nil
+	}
+}
+
+func safeDialer(allowPrivate bool, exempt map[string]bool) *net.Dialer {
+	return &net.Dialer{
 		Timeout:   10 * time.Second,
 		KeepAlive: 30 * time.Second,
-		Control: func(network, address string, c syscall.RawConn) error {
-			if allowPrivate {
-				return nil
-			}
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				host = address
-			}
-			ip := net.ParseIP(host)
-			if ip != nil {
-				if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-					return ErrPrivateNetworkBlocked
-				}
-			}
-			return nil
-		},
+		Control:   dialerControlExempt(allowPrivate, exempt),
 	}
+}
+
+// SafeHTTPClient returns an HTTP client equipped with custom dialer checking every resolved IP against SSRF rules.
+func SafeHTTPClient(timeout time.Duration, allowPrivate bool) *http.Client {
+	dialer := safeDialer(allowPrivate, nil)
 
 	transport := &http.Transport{
 		DialContext:           dialer.DialContext,

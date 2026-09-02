@@ -74,6 +74,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	var bodyMap map[string]any
 	json.Unmarshal(rawBody, &bodyMap)
 
+	start := time.Now()
 	encodedBody, qoderKey, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -128,6 +129,9 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		errBody, _ := io.ReadAll(resp.Body)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
+		if s.Metrics != nil {
+			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, "/v1/chat/completions", resp.StatusCode, time.Since(start).Seconds(), nil)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		w.Write(errBody)
@@ -143,6 +147,8 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		ConnectionID: conn.ID,
 		APIKey:       extractRequestAPIKey(r),
 		Endpoint:     "/v1/chat/completions",
+		StartedAt:    start,
+		Status:       resp.StatusCode,
 	}
 
 	// Stream with envelope unwrapping

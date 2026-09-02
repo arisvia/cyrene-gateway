@@ -560,80 +560,76 @@ func ApplyRefreshResult(conn *model.ProviderConnection, result *RefreshResult) {
 
 type refreshEntry struct {
 	mu        sync.Mutex
+	doneChan  chan struct{}
+	done      bool
 	result    *RefreshResult
 	err       error
 	expiresAt time.Time
-	done      bool
 }
 
-var refreshDedupMap sync.Map
+var (
+	refreshMapLock  sync.Mutex
+	refreshDedupMap = make(map[string]*refreshEntry)
+)
 
 const refreshResultTTL = 10 * time.Second
 
 // DedupRefresh ensures only one refresh runs per provider+token combination.
-// Concurrent callers with the same key will wait for the first refresh to complete.
+// Concurrent callers with the same key will wait for the in-flight refresh to complete.
 func DedupRefresh(providerID string, oldToken string, fn func() (*RefreshResult, error)) (*RefreshResult, error) {
 	if oldToken == "" {
 		return fn()
 	}
 	key := providerID + ":" + oldToken
 
-	// Check for cached result
-	if v, ok := refreshDedupMap.Load(key); ok {
-		entry := v.(*refreshEntry)
+	refreshMapLock.Lock()
+	entry, exists := refreshDedupMap[key]
+	if exists {
 		entry.mu.Lock()
-		if entry.done {
-			if time.Now().Before(entry.expiresAt) {
-				result, err := entry.result, entry.err
-				entry.mu.Unlock()
-				return result, err
-			}
-			// Expired, delete and proceed
+		if entry.done && time.Now().Before(entry.expiresAt) {
+			res, err := entry.result, entry.err
 			entry.mu.Unlock()
-			refreshDedupMap.Delete(key)
-		} else {
-			// Wait for in-flight refresh
-			entry.mu.Unlock()
-			for i := 0; i < 100; i++ {
-				time.Sleep(100 * time.Millisecond)
-				entry.mu.Lock()
-				if entry.done {
-					result, err := entry.result, entry.err
-					entry.mu.Unlock()
-					return result, err
-				}
-				entry.mu.Unlock()
-			}
+			refreshMapLock.Unlock()
+			return res, err
 		}
-	}
-
-	// Create new entry
-	entry := &refreshEntry{}
-	entry.mu.Lock()
-	actual, loaded := refreshDedupMap.LoadOrStore(key, entry)
-	if loaded {
-		existing := actual.(*refreshEntry)
+		if !entry.done {
+			// Another goroutine is refreshing this token; wait for it
+			waitCh := entry.doneChan
+			entry.mu.Unlock()
+			refreshMapLock.Unlock()
+			<-waitCh
+			entry.mu.Lock()
+			res, err := entry.result, entry.err
+			entry.mu.Unlock()
+			return res, err
+		}
+		// Expired entry, replace it
 		entry.mu.Unlock()
-		existing.mu.Lock()
-		if existing.done {
-			result, err := existing.result, existing.err
-			existing.mu.Unlock()
-			return result, err
-		}
-		existing.mu.Unlock()
 	}
 
-	// Execute the refresh
+	// Start a new refresh
+	newEntry := &refreshEntry{
+		doneChan: make(chan struct{}),
+	}
+	refreshDedupMap[key] = newEntry
+	refreshMapLock.Unlock()
+
 	result, err := fn()
 
-	entry.result = result
-	entry.err = err
-	entry.expiresAt = time.Now().Add(refreshResultTTL)
-	entry.done = true
-	entry.mu.Unlock()
+	newEntry.mu.Lock()
+	newEntry.result = result
+	newEntry.err = err
+	newEntry.expiresAt = time.Now().Add(refreshResultTTL)
+	newEntry.done = true
+	close(newEntry.doneChan)
+	newEntry.mu.Unlock()
 
 	if err != nil {
-		refreshDedupMap.Delete(key)
+		refreshMapLock.Lock()
+		if refreshDedupMap[key] == newEntry {
+			delete(refreshDedupMap, key)
+		}
+		refreshMapLock.Unlock()
 	}
 
 	return result, err

@@ -3,7 +3,9 @@ package handler
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,12 +15,23 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
+	"github.com/arisvia/cyrene-gateway/internal/metrics"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/rtk"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
+
+func isHopByHopHeader(h string) bool {
+	h = strings.ToLower(h)
+	switch h {
+	case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+		"te", "trailers", "transfer-encoding", "upgrade":
+		return true
+	}
+	return false
+}
 
 // usageContext carries metadata for recording usage after a proxied response.
 type usageContext struct {
@@ -27,6 +40,8 @@ type usageContext struct {
 	ConnectionID string
 	APIKey       string
 	Endpoint     string
+	StartedAt    time.Time // upstream attempt start (metrics duration)
+	Status       int       // final HTTP status returned to the client
 }
 
 // ChatCompletionRequest represents an OpenAI-compatible chat request
@@ -111,12 +126,16 @@ func runLoopGuard(messages []Message) string {
 
 // getHTTPClient returns an HTTP client, using proxy rotation if available.
 func (s *Server) getHTTPClient(timeout time.Duration) *http.Client {
+	allowPrivate := false
+	if s.Config != nil && s.Config.AllowPrivateNetworks {
+		allowPrivate = true
+	}
 	if s.Proxies != nil && s.Proxies.HasProxies() {
-		client := s.Proxies.GetHTTPClient()
+		client := s.Proxies.GetHTTPClient(allowPrivate)
 		client.Timeout = timeout
 		return client
 	}
-	return &http.Client{Timeout: timeout}
+	return provider.SafeHTTPClient(timeout, allowPrivate)
 }
 
 // tryRefreshToken attempts to refresh OAuth credentials if needed.
@@ -221,6 +240,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		slog.String("strategy", string(strategy)),
 		slog.Int("models", len(models)),
 	)
+	start := time.Now()
 
 	// Try each model in order with fallback
 	var lastStatus int
@@ -323,21 +343,31 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		client := s.getHTTPClient(5 * time.Minute)
 		resp, err := client.Do(upstreamReq)
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
+				slog.Info("Client canceled combo request", slog.String("model", modelStr))
+				return
+			}
 			lastError = fmt.Sprintf("upstream request failed: %v", err)
 			lastStatus = 502
 			slog.Warn("Combo model failed", slog.String("model", modelStr), "error", err)
+			provider.ApplyErrorState(conn, 502, err.Error())
+			s.DB.UpdateConnection(conn)
 			continue
 		}
 
 		// Success (2xx) - stream response to client
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			slog.Info("Combo model succeeded", slog.String("model", modelStr))
+			provider.ResetAccountState(conn)
+			s.DB.UpdateConnection(conn)
 			uc := &usageContext{
 				Provider:     modelInfo.Provider,
 				Model:        modelInfo.Model,
 				ConnectionID: conn.ID,
 				APIKey:       extractRequestAPIKey(r),
 				Endpoint:     "/v1/chat/completions",
+				StartedAt:    start,
+				Status:       resp.StatusCode,
 			}
 			s.proxyResponse(w, r, resp, req.Stream, translator.FormatOpenAI, modelInfo.Model, uc)
 			resp.Body.Close()
@@ -351,8 +381,12 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		lastStatus = resp.StatusCode
 		lastError = string(errBody)
 
+		// Apply and persist error state for this connection
+		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
+		s.DB.UpdateConnection(conn)
+
 		// Check if should fallback
-		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), 0)
+		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
 		if !fallbackResult.ShouldFallback {
 			// Non-fallbackable error, return immediately
 			w.Header().Set("Content-Type", "application/json")
@@ -366,8 +400,6 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			slog.Int("status", resp.StatusCode),
 		)
 	}
-
-	// All models failed
 	if lastStatus == 0 {
 		lastStatus = 503
 	}
@@ -563,6 +595,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	)
 
 	// Phase 9: Use proxy-aware HTTP client
+	start := time.Now()
 	client := s.getHTTPClient(5 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
@@ -615,6 +648,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		errBody, _ := io.ReadAll(resp.Body)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
+		if s.Metrics != nil {
+			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, "/v1/chat/completions", resp.StatusCode, time.Since(start).Seconds(), nil)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		// Wrap error with actionable hint (Phase 26 Error UX)
@@ -634,6 +670,8 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		ConnectionID: conn.ID,
 		APIKey:       extractRequestAPIKey(r),
 		Endpoint:     "/v1/chat/completions",
+		StartedAt:    start,
+		Status:       resp.StatusCode,
 	}
 	s.proxyResponse(w, r, resp, req.Stream, targetFormat, modelInfo.Model, uc)
 }
@@ -710,13 +748,10 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	flusher.Flush()
 
 	ctx := r.Context()
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
+	reader := provider.NewSSEReader(resp.Body)
 	var lastUsage usage.Usage
 
-	for scanner.Scan() {
-		// Check for client disconnect
+	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("Client disconnected during stream", slog.String("model", model))
@@ -727,30 +762,32 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 		default:
 		}
 
-		line := scanner.Text()
-
-		// Skip empty lines (SSE separators)
-		if line == "" {
-			continue
-		}
-
-		// Handle SSE data lines
-		if !strings.HasPrefix(line, "data: ") && !strings.HasPrefix(line, "data:") {
-			// Non-data SSE lines (event:, id:, etc.) - pass through for OpenAI format
-			if format == translator.FormatOpenAI {
-				fmt.Fprintf(w, "%s\n", line)
+		event, err := reader.ReadEvent(ctx)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				// Normal stream completion without explicit [DONE]
+				if lastUsage.TotalTokens > 0 {
+					s.recordUsage(uc, lastUsage)
+				}
+				fmt.Fprintf(w, "data: [DONE]\n\n")
 				flusher.Flush()
+				return
 			}
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			// Mid-stream read error (network dropped or corrupted event)
+			slog.Warn("Upstream SSE read error", slog.String("model", model), slog.String("error", err.Error()))
+			// Do NOT synthesize clean [DONE] on real upstream error
+			return
+		}
+
+		if len(event.Data) == 0 {
 			continue
 		}
 
-		// Extract data payload
-		data := strings.TrimPrefix(line, "data: ")
-		data = strings.TrimPrefix(data, "data:")
-		data = strings.TrimSpace(data)
-
-		// Handle [DONE] marker
-		if data == "[DONE]" {
+		dataStr := strings.TrimSpace(string(event.Data))
+		if dataStr == "[DONE]" {
 			if lastUsage.TotalTokens > 0 {
 				s.recordUsage(uc, lastUsage)
 			}
@@ -759,14 +796,14 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			return
 		}
 
-		// Extract usage from SSE chunk (final chunk often has usage)
-		if u := usage.ExtractFromSSELine([]byte(data)); u.TotalTokens > 0 {
+		// Extract usage from SSE chunk
+		if u := usage.ExtractFromSSELine(event.Data); u.TotalTokens > 0 {
 			lastUsage = u
 		}
 
 		// Translate SSE chunks if needed
 		if format != translator.FormatOpenAI {
-			translated, isDone, err := translator.TranslateSSEChunk(format, []byte(data), model)
+			translated, isDone, err := translator.TranslateSSEChunk(format, event.Data, model)
 			if err != nil || translated == nil {
 				continue
 			}
@@ -781,17 +818,10 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			fmt.Fprintf(w, "data: %s\n\n", translated)
 		} else {
 			// OpenAI format passthrough
-			fmt.Fprintf(w, "data: %s\n\n", data)
+			fmt.Fprintf(w, "data: %s\n\n", dataStr)
 		}
 		flusher.Flush()
 	}
-
-	// Ensure [DONE] is sent if stream ends without it
-	if lastUsage.TotalTokens > 0 {
-		s.recordUsage(uc, lastUsage)
-	}
-	fmt.Fprintf(w, "data: [DONE]\n\n")
-	flusher.Flush()
 }
 
 // handleMessages implements the Anthropic-compatible /v1/messages passthrough endpoint.
@@ -913,6 +943,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	provider.ResetAccountState(conn)
 	s.DB.UpdateConnection(conn)
 
+	uc := &usageContext{
+		Provider:     modelInfo.Provider,
+		Model:        modelInfo.Model,
+		ConnectionID: conn.ID,
+		APIKey:       extractRequestAPIKey(r),
+		Endpoint:     "/v1/messages",
+	}
+
 	// For Anthropic passthrough, stream directly without translation
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -926,35 +964,62 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		var totalUsage usage.Usage
 		ctx := r.Context()
-		buf := make([]byte, 4096)
-		for {
+
+		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 			}
-			n, readErr := resp.Body.Read(buf)
-			if n > 0 {
-				w.Write(buf[:n])
-				flusher.Flush()
+			line := scanner.Bytes()
+			if bytes.HasPrefix(line, []byte("data: ")) {
+				data := bytes.TrimPrefix(line, []byte("data: "))
+				if u := usage.ExtractFromClaudeSSE(data); u.TotalTokens > 0 {
+					if u.PromptTokens > 0 {
+						totalUsage.PromptTokens = u.PromptTokens
+					}
+					if u.CompletionTokens > 0 {
+						totalUsage.CompletionTokens = u.CompletionTokens
+					}
+					if u.CachedTokens > 0 {
+						totalUsage.CachedTokens = u.CachedTokens
+					}
+					totalUsage.TotalTokens = totalUsage.PromptTokens + totalUsage.CompletionTokens
+				}
 			}
-			if readErr != nil {
-				break
-			}
+			fmt.Fprintf(w, "%s\n", line)
+			flusher.Flush()
+		}
+		if totalUsage.TotalTokens > 0 {
+			s.recordUsage(uc, totalUsage)
 		}
 	} else {
-		// Copy headers and body
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
+			return
+		}
+		u := usage.ExtractFromClaude(respBody)
+		if u.TotalTokens > 0 {
+			s.recordUsage(uc, u)
+		}
+		// Copy headers and body (strip hop-by-hop)
 		for key, values := range resp.Header {
+			if isHopByHopHeader(key) {
+				continue
+			}
 			for _, v := range values {
 				w.Header().Add(key, v)
 			}
 		}
 		w.WriteHeader(resp.StatusCode)
-		io.Copy(w, resp.Body)
+		w.Write(respBody)
 	}
 }
-
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Model string          `json:"model"`
@@ -1076,6 +1141,18 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
 func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if uc == nil || u.TotalTokens == 0 {
 		return
+	}
+	if s.Metrics != nil {
+		dur := time.Since(uc.StartedAt).Seconds()
+		if dur < 0 {
+			dur = 0
+		}
+		s.Metrics.ObserveRequest(uc.Provider, uc.Model, uc.Endpoint, uc.Status, dur, &metrics.Usage{
+			PromptTokens:     u.PromptTokens,
+			CompletionTokens: u.CompletionTokens,
+			CachedTokens:     u.CachedTokens,
+			ReasoningTokens:  u.ReasoningTokens,
+		})
 	}
 	entry := &db.UsageEntry{
 		Provider:         uc.Provider,

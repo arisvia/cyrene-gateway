@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { createSignal } from 'solid-js'
 
 export interface Toast {
   id: number
@@ -6,14 +6,14 @@ export interface Toast {
   message: string
 }
 
-const toasts = ref<Toast[]>([])
+const [toasts, setToasts] = createSignal<Toast[]>([])
 let nextId = 0
 
 function push(kind: Toast['kind'], message: string) {
   const id = nextId++
-  toasts.value.push({ id, kind, message })
+  setToasts(t => [...t, { id, kind, message }])
   setTimeout(() => {
-    toasts.value = toasts.value.filter(t => t.id !== id)
+    setToasts(t => t.filter(x => x.id !== id))
   }, 3500)
 }
 

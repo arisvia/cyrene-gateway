@@ -6,13 +6,15 @@ import (
 	"testing"
 )
 
-// useTempHome redirects HOME to a fresh temp dir so adapters operate on an
-// isolated filesystem. Returns a cleanup restore func.
+// useTempHome redirects user home directory to a fresh temp dir so adapters
+// operate on an isolated filesystem across all platforms (Linux/macOS/Windows).
 func useTempHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
+	t.Setenv("APPDATA", filepath.Join(dir, "AppData", "Roaming"))
 	return dir
 }
 

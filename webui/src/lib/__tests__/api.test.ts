@@ -67,4 +67,18 @@ describe('api lib', () => {
     const call = (fetch as any).mock.calls[0]
     expect(call[1].method).toBe('PUT')
   })
+
+  it('apiDelete() sends DELETE with optional body', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"ok":true}'),
+    })
+
+    await apiDelete('/api/models/alias', { alias: 'test-alias' })
+    const call = (fetch as any).mock.calls[0]
+    expect(call[1].method).toBe('DELETE')
+    expect(call[1].headers['Content-Type']).toBe('application/json')
+    expect(call[1].body).toBe(JSON.stringify({ alias: 'test-alias' }))
+  })
 })

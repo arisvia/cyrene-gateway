@@ -1,0 +1,14 @@
+services:
+  gateway:
+    build: .
+    image: cyrene-gateway:local
+    container_name: cyrene-gateway
+    ports:
+      - "20128:20128"
+    volumes:
+      - gateway-data:/home/gateway/.cyrene-gateway
+    restart: unless-stopped
+    # MITM/Tailscale 属于宿主机能力，容器内默认不开启
+
+volumes:
+  gateway-data:

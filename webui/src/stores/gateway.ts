@@ -1,184 +1,42 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { createSignal, createComputed } from 'solid-js'
+import { createStore, produce } from 'solid-js/store'
 import { api, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import type {
+  Provider, RegistryCategory, Combo, ApiKey, ProxyPool, Endpoint,
+  UsageStats, RequestDetail, Pagination, ProviderUsage,
+} from '@/types/domain'
 
-/* ─── Domain types ─── */
-
-export interface Provider {
-  id: string
-  provider: string
-  name?: string
-  authType: string
-  email?: string
-  priority: number
-  isActive: boolean
-  data?: Record<string, any>
-  createdAt?: string
-  updatedAt?: string
-}
-
-export interface RegistryProvider {
-  id: string
-  name: string
-  category: string
-  authType: string
-  authModes?: string[]
-  baseUrl?: string
-  noAuth?: boolean
-  hasFree?: boolean
-  deviceCodeUrl?: string
-  loginUrl?: string
-  authorizeUrl?: string
-  headers?: Record<string, string>
-  models?: string[]
-  apiKeyUrl?: string
-  brand?: string
-  region?: string
-  authHint?: string
-}
-
-export interface RegistryCategory {
-  category: string
-  count: number
-  providers: RegistryProvider[]
-}
-
-export interface Combo {
-  id: string
-  name: string
-  kind: string
-  models: string[]
-  createdAt?: string
-}
-
-export interface ApiKey {
-  id: string
-  name?: string
-  key: string
-  isActive: boolean
-  createdAt?: string
-}
-
-export interface ProxyPool {
-  id: string
-  isActive: boolean
-  data: { name: string; type: string; proxyUrl: string; noProxy?: string; strictProxy?: boolean }
-}
-
-export interface Endpoint {
-  label: string
-  url: string
-  type: string
-}
-
-export interface ProviderModel {
-  name: string
-  enabled?: boolean
-  alias?: string
-  contextLength?: number
-  maxOutputTokens?: number
-  capabilities?: string[]
-  modalities?: string[]
-  displayName?: string
-  source?: string
-}
-
-export interface UsageStats {
-  totalRequests?: number
-  totalPromptTokens?: number
-  totalCompletionTokens?: number
-  totalCost?: number
-  totalRequestsLifetime?: number
-  byProvider?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
-}
-
-export interface RequestDetail {
-  id?: string
-  timestamp?: string
-  provider?: string
-  model?: string
-  status?: string
-  promptTokens?: number
-  completionTokens?: number
-  cost?: number
-  latencyMs?: number
-  connectionId?: string
-  endpoint?: string
-}
-
-export interface Pagination {
-  page: number
-  pageSize: number
-  totalItems: number
-  totalPages: number
-  hasNext: boolean
-  hasPrev: boolean
-}
-
-export interface ProviderUsage {
-  provider: string
-  requests: number
-  promptTokens: number
-  completionTokens: number
-  cost: number
-  connections: number
-  activeConnections: number
-  quotaLimit?: number
-  quotaUsed?: number
-  overQuota?: boolean
-}
-
-export interface CLITool {
-  id: string
-  name: string
-  description?: string
-  icon?: string
-  configType?: string
-  configured?: boolean
-}
-
-export interface Skill {
-  id: string
-  name: string
-  description?: string
-  content?: string
-}
-
-/* ─── Store ─── */
-
-export const useGatewayStore = defineStore('gateway', () => {
+export function useGatewayStore() {
   const toast = useToast()
 
-  // Core state
-  const version = ref('…')
-  const health = ref<Record<string, any>>({})
-  const providers = ref<Provider[]>([])
-  const combos = ref<Combo[]>([])
-  const apiKeys = ref<ApiKey[]>([])
-  const proxyPools = ref<ProxyPool[]>([])
-  const endpoints = ref<Endpoint[]>([])
-  const registryCategories = ref<RegistryCategory[]>([])
-  const settings = ref<Record<string, any>>({})
-  const aliases = ref<Record<string, string>>({})
+  // ── state ──
+  const [version, setVersion] = createSignal('…')
+  const [health, setHealth] = createSignal<Record<string, any>>({})
+  const [providers, setProviders] = createSignal<Provider[]>([])
+  const [combos, setCombos] = createSignal<Combo[]>([])
+  const [apiKeys, setApiKeys] = createSignal<ApiKey[]>([])
+  const [proxyPools, setProxyPools] = createSignal<ProxyPool[]>([])
+  const [endpoints, setEndpoints] = createSignal<Endpoint[]>([])
+  const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>([])
+  const [settings, setSettings] = createSignal<Record<string, any>>({})
+  const [aliases, setAliases] = createSignal<Record<string, string>>({})
 
-  // Usage state
-  const usageStats = ref<UsageStats>({})
-  const usageChart = ref<{ label: string; tokens: number }[]>([])
-  const requestDetails = ref<RequestDetail[]>([])
-  const requestDetailsPagination = ref<Pagination>({ page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
-  const providerUsage = ref<ProviderUsage[]>([])
-  const usageLogs = ref<any[]>([])
-  const quotaEntries = ref<any[]>([])
-
-  // Derived
-  const registryList = computed(() =>
-    registryCategories.value.flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name))
+  const [usageStats, setUsageStats] = createStore<UsageStats>({})
+  const [usageChart, setUsageChart] = createSignal<{ label: string; tokens: number }[]>([])
+  const [requestDetails, setRequestDetails] = createSignal<RequestDetail[]>([])
+  const [requestDetailsPagination, setRequestDetailsPagination] = createSignal<Pagination>(
+    { page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false },
   )
-  const activeConnections = computed(() => providers.value.filter(p => p.isActive).length)
+  const [providerUsage, setProviderUsage] = createSignal<ProviderUsage[]>([])
+  const [usageLogs, setUsageLogs] = createSignal<any[]>([])
+  const [quotaEntries, setQuotaEntries] = createSignal<any[]>([])
 
-  /* ─── Loaders ─── */
+  const registryList = () =>
+    registryCategories().flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name))
+  const activeConnections = () => providers().filter(p => p.isActive).length
 
+  // ── loaders ──
   async function loadCore() {
     try {
       const [v, h, p, c, reg, ep, a] = await Promise.all([
@@ -190,13 +48,13 @@ export const useGatewayStore = defineStore('gateway', () => {
         api('/api/endpoints'),
         api('/api/models/alias'),
       ])
-      version.value = v?.version || 'dev'
-      health.value = h || {}
-      providers.value = Array.isArray(p) ? p : []
-      combos.value = Array.isArray(c) ? c : []
-      registryCategories.value = Array.isArray(reg?.categories) ? reg.categories : []
-      endpoints.value = Array.isArray(ep?.endpoints) ? ep.endpoints : []
-      aliases.value = a || {}
+      setVersion(v?.version || 'dev')
+      setHealth(h || {})
+      setProviders(Array.isArray(p) ? p : [])
+      setCombos(Array.isArray(c) ? c : [])
+      setRegistryCategories(Array.isArray(reg?.categories) ? reg.categories : [])
+      setEndpoints(Array.isArray(ep?.endpoints) ? ep.endpoints : [])
+      setAliases(a || {})
     } catch (e) {
       console.error('[store] loadCore failed:', e)
     }
@@ -204,22 +62,31 @@ export const useGatewayStore = defineStore('gateway', () => {
     loadProxyPools()
   }
 
+  async function loadProvidersOnly() {
+    try {
+      const p = await api('/api/providers')
+      setProviders(Array.isArray(p) ? p : [])
+    } catch (e) {
+      console.error('[store] loadProvidersOnly failed:', e)
+    }
+  }
+
   async function loadKeys() {
     try {
       const r = await api('/api/keys')
-      apiKeys.value = Array.isArray(r) ? r : []
-    } catch { apiKeys.value = [] }
+      setApiKeys(Array.isArray(r) ? r : [])
+    } catch { setApiKeys([]) }
   }
 
   async function loadProxyPools() {
     try {
       const r = await api('/api/proxy-pools')
-      proxyPools.value = Array.isArray(r?.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : [])
-    } catch { proxyPools.value = [] }
+      setProxyPools(Array.isArray(r?.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : []))
+    } catch { setProxyPools([]) }
   }
 
   async function loadSettings() {
-    try { settings.value = (await api('/api/settings')) || {} } catch { settings.value = {} }
+    try { setSettings((await api('/api/settings')) || {}) } catch { setSettings({}) }
   }
 
   async function loadUsage(period: string) {
@@ -229,9 +96,9 @@ export const useGatewayStore = defineStore('gateway', () => {
         api(`/api/usage/chart?period=${period}`),
         api('/api/usage/request-details?page=1&pageSize=15'),
       ])
-      usageStats.value = stats || {}
-      usageChart.value = Array.isArray(chart) ? chart : []
-      requestDetails.value = Array.isArray(details?.details) ? details.details : (Array.isArray(details) ? details : [])
+      setUsageStats(stats || {})
+      setUsageChart(Array.isArray(chart) ? chart : [])
+      setRequestDetails(Array.isArray(details?.details) ? details.details : (Array.isArray(details) ? details : []))
     } catch (e) { console.error('[store] loadUsage failed:', e) }
   }
 
@@ -240,60 +107,50 @@ export const useGatewayStore = defineStore('gateway', () => {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       for (const [k, v] of Object.entries(filters)) { if (v) params.set(k, v) }
       const res = await api(`/api/usage/request-details?${params}`)
-      requestDetails.value = Array.isArray(res?.details) ? res.details : []
-      requestDetailsPagination.value = res?.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false }
+      setRequestDetails(Array.isArray(res?.details) ? res.details : [])
+      setRequestDetailsPagination(res?.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
     } catch (e) { console.error('[store] loadRequestDetails failed:', e) }
   }
 
   async function loadProviderUsage(period = '7d') {
     try {
       const res = await api(`/api/usage/providers?period=${period}`)
-      providerUsage.value = Array.isArray(res?.providers) ? res.providers : []
-    } catch { providerUsage.value = [] }
+      setProviderUsage(Array.isArray(res?.providers) ? res.providers : [])
+    } catch { setProviderUsage([]) }
   }
 
   async function loadUsageLogs(limit = 50) {
     try {
       const res = await api(`/api/usage/logs?limit=${limit}`)
-      usageLogs.value = Array.isArray(res?.logs) ? res.logs : []
-    } catch { usageLogs.value = [] }
+      setUsageLogs(Array.isArray(res?.logs) ? res.logs : [])
+    } catch { setUsageLogs([]) }
   }
 
   async function loadQuota() {
     try {
       const res = await api('/api/quota')
-      quotaEntries.value = Array.isArray(res?.entries) ? res.entries : []
-    } catch { quotaEntries.value = [] }
+      setQuotaEntries(Array.isArray(res?.entries) ? res.entries : [])
+    } catch { setQuotaEntries([]) }
   }
 
-  /* ─── Provider actions ─── */
-
+  // ── provider actions ──
   async function addProvider(payload: Record<string, any>) {
     const res = await apiPost<Provider>('/api/providers', payload)
     toast.success(`Provider "${payload.name || payload.provider}" added`)
     if (res?.id) {
-      providers.value.push(res)
+      setProviders(p => [...p, res])
     } else {
       await loadProvidersOnly()
     }
   }
 
-  async function loadProvidersOnly() {
-    try {
-      const p = await api('/api/providers')
-      providers.value = Array.isArray(p) ? p : []
-    } catch (e) {
-      console.error('[store] loadProvidersOnly failed:', e)
-    }
-  }
-
   async function toggleProvider(p: Provider) {
-    const originalState = p.isActive
-    p.isActive = !p.isActive
+    const original = p.isActive
+    setProviders(list => list.map(x => x.id === p.id ? { ...x, isActive: !original } : x))
     try {
-      await apiPut(`/api/providers/${p.id}`, { isActive: p.isActive })
-    } catch (e) {
-      p.isActive = originalState
+      await apiPut(`/api/providers/${p.id}`, { isActive: !original })
+    } catch {
+      setProviders(list => list.map(x => x.id === p.id ? { ...x, isActive: original } : x))
       toast.error('Failed to update provider status')
     }
   }
@@ -301,16 +158,14 @@ export const useGatewayStore = defineStore('gateway', () => {
   async function resetCooldown(p: Provider) {
     await apiPost(`/api/providers/${p.id}/reset`)
     toast.success(`Cooldown reset — ${p.name || p.provider}`)
-    if (p.data) {
-      p.data.rateLimitedUntil = ''
-      p.data.testStatus = 'ok'
-    }
+    setProviders(list => list.map(x => x.id === p.id
+      ? { ...x, data: { ...x.data, rateLimitedUntil: '', testStatus: 'ok' } } : x))
   }
 
   async function deleteProvider(p: Provider) {
     await apiDelete(`/api/providers/${p.id}`)
     toast.success(`Deleted "${p.name || p.provider}"`)
-    providers.value = providers.value.filter(item => item.id !== p.id)
+    setProviders(list => list.filter(item => item.id !== p.id))
   }
 
   async function enableFree(ids?: string[]): Promise<number> {
@@ -325,8 +180,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     return apiPost(`/api/providers/${id}/test`)
   }
 
-  /* ─── Key actions ─── */
-
+  // ── keys ──
   async function createKey(name: string) {
     const k = await apiPost('/api/keys', { name })
     toast.success(`Key "${name || k?.id?.slice(0, 8)}" created`)
@@ -340,8 +194,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     await loadKeys()
   }
 
-  /* ─── Combo actions ─── */
-
+  // ── combos ──
   async function saveCombo(payload: { id?: string; name: string; kind: string; models: string[] }) {
     if (payload.id) {
       await apiPut(`/api/combos/${payload.id}`, payload)
@@ -358,8 +211,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     await loadCore()
   }
 
-  /* ─── Proxy pool actions ─── */
-
+  // ── proxy pools ──
   async function saveProxyPool(payload: { id?: string; name: string; type: string; proxyUrl: string; noProxy?: string; strictProxy?: boolean }) {
     if (payload.id) {
       await apiPut(`/api/proxy-pools/${payload.id}`, payload)
@@ -381,24 +233,24 @@ export const useGatewayStore = defineStore('gateway', () => {
     await loadProxyPools()
   }
 
-  /* ─── Alias actions ─── */
-
+  // ── aliases ──
   async function addAlias(alias: string, target: string) {
     await apiPost('/api/models/alias', { alias, target })
     toast.success(`Alias "${alias}" → ${target}`)
-    aliases.value = { ...aliases.value, [alias]: target }
+    setAliases(a => ({ ...a, [alias]: target }))
   }
 
   async function deleteAlias(alias: string) {
     await apiDelete('/api/models/alias', { alias })
     toast.success(`Alias "${alias}" removed`)
-    const next = { ...aliases.value }
-    delete next[alias]
-    aliases.value = next
+    setAliases(a => {
+      const next = { ...a }
+      delete next[alias]
+      return next
+    })
   }
 
-  /* ─── Settings actions ─── */
-
+  // ── settings ──
   async function saveSettings(patch: Record<string, any>) {
     await apiPatch('/api/settings', patch)
     toast.success('Settings saved')
@@ -410,15 +262,12 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   return {
-    // State
     version, health, providers, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings, aliases,
     usageStats, usageChart, requestDetails, requestDetailsPagination,
     providerUsage, usageLogs, quotaEntries, activeConnections,
-    // Loaders
-    loadCore, loadKeys, loadProxyPools, loadSettings, loadUsage,
+    loadCore, loadProvidersOnly, loadKeys, loadProxyPools, loadSettings, loadUsage,
     loadRequestDetails, loadProviderUsage, loadUsageLogs, loadQuota,
-    // Actions
     addProvider, toggleProvider, resetCooldown, deleteProvider, enableFree, testProvider,
     createKey, deleteKey,
     saveCombo, deleteCombo,
@@ -426,4 +275,4 @@ export const useGatewayStore = defineStore('gateway', () => {
     addAlias, deleteAlias,
     saveSettings, setPassword,
   }
-})
+}

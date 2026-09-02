@@ -8,15 +8,16 @@ import (
 )
 
 type Config struct {
-	Host      string
-	Port      int
-	DBPath    string
-	DataDir   string
-	Dashboard string
-	PanelURL  string
-	Secret    string
-	MITM      bool
-	MITMPort  int
+	Host                 string
+	Port                 int
+	DBPath               string
+	DataDir              string
+	Dashboard            string
+	PanelURL             string
+	Secret               string
+	MITM                 bool
+	MITMPort             int
+	AllowPrivateNetworks bool
 }
 
 func Load() *Config {
@@ -29,8 +30,8 @@ func Load() *Config {
 	flag.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "Dashboard access password")
 	flag.BoolVar(&cfg.MITM, "mitm", false, "Enable MITM proxy (local deployments only, requires localhost bind)")
 	flag.IntVar(&cfg.MITMPort, "mitm-port", envIntOrDefault("CYRENE_MITM_PORT", 443), "MITM proxy listen port")
+	flag.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers)")
 	flag.Parse()
-
 	home, _ := os.UserHomeDir()
 	cfg.DataDir = filepath.Join(home, ".cyrene-gateway")
 	cfg.DBPath = filepath.Join(cfg.DataDir, "data.sqlite")
