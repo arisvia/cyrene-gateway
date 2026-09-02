@@ -1,5 +1,6 @@
 import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup } from 'solid-js'
 import { useToast } from '@/lib/toast'
+export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 
 export const Card: Component<{ class?: string; onClick?: () => void; children?: JSX.Element }> = props => (
   <div

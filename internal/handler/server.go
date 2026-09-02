@@ -425,22 +425,21 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider"})
 		return
 	}
-
-	// Find an active connection for this provider
+	// Find an active connection for this provider, or use NoAuth default for free providers
 	conns, err := s.DB.ListConnectionsByProvider(providerID)
-	if err != nil || len(conns) == 0 {
+	baseURL := providerInfo.BaseURL
+	var conn model.ProviderConnection
+	if err == nil && len(conns) > 0 {
+		conn = conns[0]
+		if conn.Data.BaseURL != "" {
+			baseURL = conn.Data.BaseURL
+		}
+	} else if !providerInfo.NoAuth && providerInfo.Category != "free" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": "no active connection for provider: " + providerID,
 		})
 		return
 	}
-
-	conn := conns[0]
-	baseURL := providerInfo.BaseURL
-	if conn.Data.BaseURL != "" {
-		baseURL = conn.Data.BaseURL
-	}
-
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	// Qoder: COSY-signed catalog (resolve PATs first) — its inference
@@ -568,54 +567,110 @@ func (s *Server) syncAllActiveConnections() {
 	if err != nil {
 		return
 	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
 	seen := make(map[string]bool)
-	for _, c := range conns {
-		if c.IsActive && !seen[c.Provider] {
-			seen[c.Provider] = true
-			connCopy := c
-			s.syncConnectionModels(&connCopy)
+	type syncTarget struct {
+		providerID  string
+		baseURL     string
+		apiKey      string
+		accessToken string
+		conn        *model.ProviderConnection
+	}
+	var targets []syncTarget
+
+	for i := range conns {
+		conn := &conns[i]
+		if !conn.IsActive || seen[conn.Provider] {
+			continue
+		}
+		seen[conn.Provider] = true
+		pInfo, ok := provider.GetProvider(conn.Provider)
+		if !ok {
+			continue
+		}
+		baseURL := pInfo.BaseURL
+		if conn.Data.BaseURL != "" {
+			baseURL = conn.Data.BaseURL
+		}
+		targets = append(targets, syncTarget{
+			providerID:  conn.Provider,
+			baseURL:     baseURL,
+			apiKey:      conn.Data.APIKey,
+			accessToken: conn.Data.AccessToken,
+			conn:        conn,
+		})
+	}
+
+	// Also sync public free providers (like opencode) to keep real-time available models updated
+	for id, p := range provider.Registry {
+		if (p.NoAuth || p.Category == "free") && !seen[id] && !p.Hidden {
+			seen[id] = true
+			targets = append(targets, syncTarget{
+				providerID: id,
+				baseURL:    p.BaseURL,
+			})
+		}
+	}
+
+	for _, target := range targets {
+		pInfo, _ := provider.GetProvider(target.providerID)
+		var models []model.ModelMetadata
+		if target.providerID == "qoder" && target.conn != nil {
+			models = s.fetchQoderCatalog(target.conn, client)
+		} else {
+			cfg := provider.ModelsFetchFor(pInfo)
+			fetched, err := model.FetchModels(client, target.providerID, target.baseURL, target.apiKey, target.accessToken, cfg)
+			if err == nil && len(fetched) > 0 {
+				models = fetched
+			}
+		}
+		if len(models) == 0 {
+			continue
+		}
+
+		cached := model.CachedModels{
+			FetchedAt: time.Now().UTC(),
+			Models:    models,
+		}
+		if data, err := json.Marshal(cached); err == nil {
+			s.DB.KVSet("providerModelCache", target.providerID, string(data))
+			slog.Info("Auto-synced live models for provider", slog.String("provider", target.providerID), slog.Int("count", len(models)))
 		}
 	}
 }
 
-// syncConnectionModels fetches and updates the cached model list for a connection.
 func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
-	if conn == nil || !conn.IsActive {
+	if conn == nil {
 		return
 	}
-	providerInfo, ok := provider.GetProvider(conn.Provider)
+	pInfo, ok := provider.GetProvider(conn.Provider)
 	if !ok {
 		return
 	}
-
-	client := &http.Client{Timeout: 15 * time.Second}
+	baseURL := pInfo.BaseURL
+	if conn.Data.BaseURL != "" {
+		baseURL = conn.Data.BaseURL
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
 	var models []model.ModelMetadata
-
 	if conn.Provider == "qoder" {
 		models = s.fetchQoderCatalog(conn, client)
 	} else {
-		baseURL := providerInfo.BaseURL
-		if conn.Data.BaseURL != "" {
-			baseURL = conn.Data.BaseURL
-		}
-		cfg := provider.ModelsFetchFor(providerInfo)
-		if conn.Data.BaseURL != "" {
-			cfg.URL = ""
-		}
+		cfg := provider.ModelsFetchFor(pInfo)
 		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
 		if err == nil && len(fetched) > 0 {
 			models = fetched
 		}
 	}
-
 	if len(models) > 0 {
 		cached := model.CachedModels{
-			FetchedAt: time.Now(),
+			FetchedAt: time.Now().UTC(),
 			Models:    models,
 		}
 		if data, err := json.Marshal(cached); err == nil {
 			s.DB.KVSet("providerModelCache", conn.Provider, string(data))
-			slog.Info("Auto-synced live models for provider", slog.String("provider", conn.Provider), slog.Int("count", len(models)))
+			slog.Info("Live models synced for connection", slog.String("provider", conn.Provider), slog.Int("count", len(models)))
 		}
 	}
 }
