@@ -1,9 +1,9 @@
 package middleware
 
 import (
-	"slices"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"

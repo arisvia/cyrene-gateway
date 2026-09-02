@@ -1,10 +1,10 @@
 package middleware
 
 import (
-	"slices"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"slices"
 	"time"
 )
 

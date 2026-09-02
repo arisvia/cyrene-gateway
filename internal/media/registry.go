@@ -59,8 +59,8 @@ func GetProvidersByKind(kind Kind) []*MediaProviderInfo {
 	var result []*MediaProviderInfo
 	for _, p := range Registry {
 		if slices.Contains(p.Kinds, kind) {
-				result = append(result, p)
-			}
+			result = append(result, p)
+		}
 	}
 	return result
 }
