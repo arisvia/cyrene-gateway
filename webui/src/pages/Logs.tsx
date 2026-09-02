@@ -102,7 +102,7 @@ const LogsPage: Component = () => {
   }
 
   return (
-    <div class="space-y-4 flex flex-col h-[calc(100vh-140px)]">
+    <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
       {/* 头部与状态栏 */}
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>

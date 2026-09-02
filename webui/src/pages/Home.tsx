@@ -39,7 +39,6 @@ const Home: Component = () => {
               <div class="flex items-center gap-2.5">
                 <h1 class="text-xl font-bold tracking-tight text-foreground">Cyrene Gateway</h1>
                 <Badge tone="green" class="font-medium">运行中</Badge>
-                <Badge tone="gray" class="font-mono">v{store.version()}</Badge>
               </div>
               <p class="text-xs text-faint mt-1 flex items-center gap-3">
                 <span>高并发统一 API 代理与模型路由枢纽</span>

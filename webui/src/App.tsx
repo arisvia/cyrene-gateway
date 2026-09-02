@@ -167,12 +167,12 @@ const App: Component = () => {
           />
         </Show>
         {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
-        <div class="fixed top-[-10%] left-[20%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
-        <div class="fixed bottom-[-10%] right-[10%] w-[600px] h-[600px] bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
+        <div class="fixed top-[-10%] left-[20%] w-125 h-125 bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+        <div class="fixed bottom-[-10%] right-[10%] w-150 h-150 bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
         <ToastHost />
         {/* 桌面侧栏 */}
-        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
-          <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
+        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 bg-card/60 backdrop-blur-xl border-r border-subtle">
+          <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
             <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
             <div class="min-w-0">
               <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
@@ -219,7 +219,7 @@ const App: Component = () => {
 
       {/* 主区 */}
       <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen">
-        <header class="h-16 sticky top-0 z-30 flex items-center justify-between gap-3 px-4 lg:px-10 border-b border-subtle bg-bg/85 backdrop-blur-xl shrink-0">
+        <header class="h-16 sticky top-0 z-30 flex items-center justify-between gap-3 px-4 lg:px-10 border-b border-subtle bg-bg/85 backdrop-blur-xl shrink-0 box-border">
           <button
             type="button"
             class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle"
