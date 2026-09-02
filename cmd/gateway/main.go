@@ -19,8 +19,9 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Override auth secret if -secret flag is provided
+	// Auth secret: -secret flag wins; else load/generate <data-dir>/auth-secret
 	auth.SetSecret(cfg.Secret)
+	auth.InitSecretFile(cfg.DataDir)
 
 	// Structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))

@@ -26,26 +26,46 @@ var (
 	secret   []byte
 )
 
+// init keeps env-only secret resolution working even before explicit Init
+// (some tests rely on CYRENE_AUTH_SECRET). File persistence moves to
+// InitSecretFile so -data-dir can control where the secret lives.
 func init() {
-	secret = loadSecret()
+	secret = []byte(os.Getenv("CYRENE_AUTH_SECRET"))
 }
 
-func loadSecret() []byte {
-	if env := os.Getenv("CYRENE_AUTH_SECRET"); env != "" {
-		return []byte(env)
+// InitSecretFile loads the HMAC secret from <dir>/auth-secret, generating and
+// persisting one when absent. Must be called after flag parsing with the
+// resolved data directory. A secret already set via env or SetSecret wins.
+func InitSecretFile(dir string) {
+	secretMu.Lock()
+	defer secretMu.Unlock()
+	if len(secret) >= 32 {
+		return // env or explicit SetSecret already provided a secret
 	}
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".cyrene-gateway")
 	path := filepath.Join(dir, "auth-secret")
 	if data, err := os.ReadFile(path); err == nil && len(data) >= 32 {
-		return []byte(strings.TrimSpace(string(data)))
+		secret = []byte(strings.TrimSpace(string(data)))
+		return
 	}
 	b := make([]byte, 32)
 	rand.Read(b)
 	generated := hex.EncodeToString(b)
 	os.MkdirAll(dir, 0o700)
 	os.WriteFile(path, []byte(generated), 0o600)
-	return []byte(generated)
+	secret = []byte(generated)
+}
+
+// loadSecret is retained for backward compatibility of tests only.
+func loadSecret() []byte {
+	if env := os.Getenv("CYRENE_AUTH_SECRET"); env != "" {
+		return []byte(env)
+	}
+	home, _ := os.UserHomeDir()
+	path := filepath.Join(home, ".cyrene-gateway", "auth-secret")
+	if data, err := os.ReadFile(path); err == nil && len(data) >= 32 {
+		return []byte(strings.TrimSpace(string(data)))
+	}
+	return nil
 }
 
 // SetSecret overrides the auth secret (used when -secret flag is provided).

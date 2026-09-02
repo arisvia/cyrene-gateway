@@ -23,7 +23,7 @@ type Config struct {
 func Load() *Config {
 	cfg := &Config{}
 
-	flag.StringVar(&cfg.Host, "host", envOrDefault("CYRENE_HOST", "127.0.0.1"), "Host address to bind (default 127.0.0.1 for security)")
+	flag.StringVar(&cfg.DataDir, "data-dir", envOrDefault("CYRENE_DATA_DIR", ""), "Data directory for database, panel cache and secrets (default ~/.cyrene-gateway)")
 	flag.IntVar(&cfg.Port, "port", envIntOrDefault("CYRENE_PORT", 20128), "Port to bind the gateway")
 	flag.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local dashboard directory path (empty=use embedded)")
 	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded)")
@@ -32,8 +32,12 @@ func Load() *Config {
 	flag.IntVar(&cfg.MITMPort, "mitm-port", envIntOrDefault("CYRENE_MITM_PORT", 443), "MITM proxy listen port")
 	flag.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers)")
 	flag.Parse()
+
 	home, _ := os.UserHomeDir()
-	cfg.DataDir = filepath.Join(home, ".cyrene-gateway")
+	defaultDir := filepath.Join(home, ".cyrene-gateway")
+	if cfg.DataDir == "" {
+		cfg.DataDir = defaultDir
+	}
 	cfg.DBPath = filepath.Join(cfg.DataDir, "data.sqlite")
 
 	return cfg
