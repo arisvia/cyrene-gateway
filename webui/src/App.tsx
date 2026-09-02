@@ -125,7 +125,7 @@ const NAV = [
     items: [
       { href: '/media', label: '媒体', icon: NavIcons.media },
       { href: '/logs', label: '日志', icon: NavIcons.logs },
-      { href: '/cli-tools', label: 'CLI 工具', icon: NavIcons.cli },
+      { href: '/cli-tools', label: '工具', icon: NavIcons.cli },
       { href: '/mitm', label: 'MITM', icon: NavIcons.mitm },
       { href: '/skills', label: '技能', icon: NavIcons.skills },
     ],

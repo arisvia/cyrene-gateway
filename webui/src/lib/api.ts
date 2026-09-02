@@ -11,7 +11,15 @@ async function request<T = any>(method: string, path: string, body?: unknown): P
     let msg = `${res.status} ${res.statusText}`
     try {
       const j = await res.json()
-      if (j.error) msg = j.error
+      if (typeof j.error === 'string') {
+        msg = j.error
+      } else if (j.error?.message) {
+        msg = j.error.message
+      } else if (j.message) {
+        msg = typeof j.message === 'string' ? j.message : JSON.stringify(j.message)
+      } else if (j.error) {
+        msg = JSON.stringify(j.error)
+      }
     } catch { /* non-JSON error body */ }
     throw new Error(msg)
   }

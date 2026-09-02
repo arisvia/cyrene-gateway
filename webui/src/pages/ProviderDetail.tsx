@@ -27,7 +27,8 @@ const ProviderDetail: Component = () => {
     const text = prompt().trim()
     if (!text || chatBusy() || !conn()) return
     setChatErr('')
-    setChatHistory(h => [...h, { role: 'user', content: text }])
+    const nextHistory = [...chatHistory(), { role: 'user', content: text }]
+    setChatHistory(nextHistory)
     setPrompt('')
     setChatBusy(true)
     try {
@@ -37,12 +38,18 @@ const ProviderDetail: Component = () => {
       const fullModel = targetModel.includes('/') ? targetModel : `${conn()!.provider}/${targetModel}`
       const r = await apiPost('/v1/chat/completions', {
         model: fullModel,
-        messages: [...chatHistory(), { role: 'user', content: text }],
+        messages: nextHistory,
       }) as { choices?: Array<{ message?: { content?: string } }> } | null
       const reply = r?.choices?.[0]?.message?.content ?? '(无返回)'
       setChatHistory(h => [...h, { role: 'assistant', content: reply }])
     } catch (e: unknown) {
-      setChatErr(e instanceof Error ? e.message : '请求失败')
+      let errMsg = '请求失败'
+      if (e instanceof Error) {
+        errMsg = e.message
+      } else if (typeof e === 'object' && e !== null) {
+        errMsg = JSON.stringify(e)
+      }
+      setChatErr(errMsg)
       setChatHistory(h => h.slice(0, -1))
     } finally {
       setChatBusy(false)

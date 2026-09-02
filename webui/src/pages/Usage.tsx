@@ -2,7 +2,9 @@ import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup
 import { useGatewayStore } from '@/stores/gateway'
 import { Card, Badge, Button, Select, Empty, Skeleton } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
+import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
+import type { RequestDetail } from '@/types/domain'
 const PERIODS = [
   { value: '24h', label: '最近 24 小时' },
   { value: '7d', label: '最近 7 天' },
@@ -12,6 +14,7 @@ const PERIODS = [
 const Usage: Component = () => {
   const store = useGatewayStore()
   const [subTab, setSubTab] = createSignal<'overview' | 'details'>('overview')
+  const [selectedDetail, setSelectedDetail] = createSignal<RequestDetail | null>(null)
   const [period, setPeriod] = createSignal('7d')
   const [loading, setLoading] = createSignal(true)
   const [live, setLive] = createSignal(false)
@@ -232,6 +235,7 @@ const Usage: Component = () => {
                     <th class="pb-2 font-medium text-right">输入</th>
                     <th class="pb-2 font-medium text-right">输出</th>
                     <th class="pb-2 font-medium text-right">耗时</th>
+                    <th class="pb-2 font-medium text-right">详情</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -244,6 +248,20 @@ const Usage: Component = () => {
                         <td class="py-2 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
                         <td class="py-2 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
                         <td class="py-2 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
+                        <td class="py-2 text-right">
+                          <button
+                            type="button"
+                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors"
+                            onClick={() => setSelectedDetail(d)}
+                            title="查看请求明细"
+                            aria-label="查看请求明细"
+                          >
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          </button>
+                        </td>
                       </tr>
                     )}
                   </For>
@@ -269,6 +287,12 @@ const Usage: Component = () => {
           </Show>
         </Card>
       </Show>
+
+      {/* 请求明细详情弹窗 */}
+      <RequestDetailModal
+        item={selectedDetail()}
+        onClose={() => setSelectedDetail(null)}
+      />
     </div>
   )
 }
