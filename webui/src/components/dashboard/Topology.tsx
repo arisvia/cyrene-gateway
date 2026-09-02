@@ -16,8 +16,12 @@ interface TopologyProps {
 }
 
 export const GatewayTopology: Component<TopologyProps> = props => {
+  let containerRef: HTMLDivElement | undefined
+  const [zoom, setZoom] = createSignal(1)
+  const [pan, setPan] = createSignal({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = createSignal(false)
+  const [dragStart, setDragStart] = createSignal({ x: 0, y: 0 })
   const [hoveredNode, setHoveredNode] = createSignal<string | null>(null)
-  const [fullscreen, setFullscreen] = createSignal(false)
 
   const providers = createMemo(() => props.providers || [])
   const activeCount = createMemo(() => providers().filter(p => p.isActive).length)
@@ -28,11 +32,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
     const count = list.length
     if (count === 0) return []
 
-    // 全屏模式下半径适度放大，常规模式下收紧
-    const isFull = fullscreen()
-    const radius = isFull
-      ? Math.min(300, Math.max(200, 180 + count * 10))
-      : Math.min(180, Math.max(140, 120 + count * 8))
+    // 基础半径自适应
+    const radius = Math.min(220, Math.max(140, 120 + count * 10))
 
     return list.map((p, i) => {
       // 角度均匀分布（从 -90 度/正上方开始顺时针分布）
@@ -54,91 +55,105 @@ export const GatewayTopology: Component<TopologyProps> = props => {
     })
   })
 
-  // Esc 键退出全屏支持
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && fullscreen()) {
-      setFullscreen(false)
-    }
+  // 缩放控制（限制 50% ~ 200%）
+  const zoomIn = () => setZoom(z => Math.min(2.0, Number((z + 0.15).toFixed(2))))
+  const zoomOut = () => setZoom(z => Math.max(0.5, Number((z - 0.15).toFixed(2))))
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  // 鼠标拖拽平移
+  const handleMouseDown = (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - pan().x, y: e.clientY - pan().y })
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging()) return
+    setPan({ x: e.clientX - dragStart().x, y: e.clientY - dragStart().y })
+  }
+
+  const handleMouseUp = () => setIsDragging(false)
+
+  // 滚轮缩放（以视窗绝对中心为原点）
+  const handleWheel = (e: WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY < 0 ? 0.08 : -0.08
+    setZoom(z => Math.max(0.5, Math.min(2.0, Number((z + delta).toFixed(2)))))
   }
 
   onMount(() => {
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('mouseup', handleMouseUp)
   })
 
   onCleanup(() => {
-    window.removeEventListener('keydown', handleKeyDown)
+    window.removeEventListener('mouseup', handleMouseUp)
   })
 
   return (
-    <>
-      {/* 拓扑图主卡片 / 全屏模态 */}
-      <Card
-        class={`overflow-hidden border border-subtle/80 bg-card/75 backdrop-blur-xl animate-fade-in select-none flex items-center justify-center ${
-          fullscreen()
-            ? 'fixed inset-0 z-50 rounded-none border-0 bg-bg/95 backdrop-blur-2xl w-screen h-screen'
-            : 'relative h-[460px] sm:h-[480px]'
-        }`}
-      >
-        {/* 顶部标题栏与状态指示 */}
-        <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
-          <div class="flex items-center gap-3 bg-bg/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
-            <div class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shadow-accent shadow-sm" />
-            <div>
-              <h3 class="text-xs font-semibold flex items-center gap-2 text-foreground">
-                实时路由拓扑
-                <Badge tone="green" class="text-[10px] px-1.5 py-0">
-                  {activeCount()} 活跃通道
-                </Badge>
-              </h3>
-              <p class="text-[11px] text-faint">
-                实时可视化客户端调度核心与模型上游连接状态
-              </p>
-            </div>
-          </div>
-
-          {/* 状态图例与全屏切换按钮 */}
-          <div class="flex items-center gap-2 pointer-events-auto">
-            <div class="hidden sm:flex items-center gap-3 text-[11px] text-faint bg-bg/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-subtle">
-              <span class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-accent animate-pulse shadow-accent" /> 调度中
-              </span>
-              <span class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-success" /> 活跃
-              </span>
-              <span class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-zinc-600" /> 未激活
-              </span>
-            </div>
-
-            {/* 一键全屏切换 */}
-            <button
-              type="button"
-              class="h-8 px-2.5 rounded-xl text-muted hover:text-foreground hover:bg-hover bg-bg/85 backdrop-blur-md border border-subtle transition-colors flex items-center gap-1.5 text-xs font-medium"
-              onClick={() => setFullscreen(!fullscreen())}
-              title={fullscreen() ? '退出全屏 (Esc)' : '全屏展开'}
-            >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d={fullscreen() ? 'M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3' : 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'} />
-              </svg>
-              <span class="hidden sm:inline">{fullscreen() ? '退出' : '全屏'}</span>
-            </button>
+    <Card class="h-[460px] sm:h-[480px] overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl animate-fade-in select-none">
+      {/* 顶部标题栏与状态指示 */}
+      <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
+        <div class="flex items-center gap-3 bg-bg/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
+          <div class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shadow-accent shadow-sm" />
+          <div>
+            <h3 class="text-xs font-semibold flex items-center gap-2 text-foreground">
+              实时路由拓扑
+              <Badge tone="green" class="text-[10px] px-1.5 py-0">
+                {activeCount()} 活跃通道
+              </Badge>
+            </h3>
+            <p class="text-[11px] text-faint">
+              支持无限平移与缩放 · 实时监控流量路由分发
+            </p>
           </div>
         </div>
 
-        {/* 点阵网格背景 */}
-        <div
-          class="absolute inset-0 pointer-events-none opacity-30 dark:opacity-15"
-          style={{
-            'background-image': 'radial-gradient(currentColor 1px, transparent 1px)',
-            'background-size': '24px 24px',
-          }}
-        />
+        {/* 状态图例 */}
+        <div class="hidden sm:flex items-center gap-3 text-[11px] text-faint bg-bg/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-subtle pointer-events-auto">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-accent animate-pulse shadow-accent" /> 调度中
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-success" /> 活跃
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-zinc-600" /> 未激活
+          </span>
+        </div>
+      </div>
 
-        {/* 核心画布容器：完全居中，无任何溢出或滚动条 */}
-        <div class="relative w-full h-full flex items-center justify-center">
+      {/* 点阵网格背景 (随平移无缝滚动) */}
+      <div
+        class="absolute inset-0 pointer-events-none opacity-30 dark:opacity-15"
+        style={{
+          'background-image': 'radial-gradient(currentColor 1px, transparent 1px)',
+          'background-size': '24px 24px',
+          'background-position': `${pan().x}px ${pan().y}px`,
+        }}
+      />
+
+      {/* 画布拖拽与视窗视口 */}
+      <div
+        ref={containerRef}
+        class="w-full h-full relative cursor-grab active:cursor-grabbing overflow-hidden flex items-center justify-center"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+      >
+        {/* 核心缩放图层：严格以 (0,0) 为几何中心对称放大/缩小 */}
+        <div
+          class="absolute top-1/2 left-1/2 w-0 h-0 transition-transform duration-75 ease-out"
+          style={{
+            transform: `translate(${pan().x}px, ${pan().y}px) scale(${zoom()})`,
+            'transform-origin': '0 0',
+          }}
+        >
           {/* SVG 曲线连接层 (贝塞尔平滑流向曲线 + 粒子脉冲) */}
           <svg
-            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] pointer-events-none overflow-visible -z-10"
+            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] pointer-events-none overflow-visible -z-10"
             viewBox="-600 -600 1200 1200"
           >
             <defs>
@@ -180,7 +195,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
 
           {/* 1. 中心枢纽：Cyrene Gateway (简约精致胶囊牌) */}
           <div
-            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 px-4 py-2.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-xl shadow-accent/15 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
+            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 px-4 py-2.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-xl shadow-accent/15 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
           >
             <img src="/icon.png" alt="Cyrene" class="w-5 h-5 rounded-lg object-contain shadow-accent shadow-sm shrink-0" />
             <div class="font-bold text-xs tracking-tight text-foreground whitespace-nowrap">
@@ -195,8 +210,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                 <div
                   class="absolute -translate-x-1/2 -translate-y-1/2 z-10 transition-all duration-200 group"
                   style={{
-                    left: `calc(50% + ${node.x}px)`,
-                    top: `calc(50% + ${node.y}px)`,
+                    left: `${node.x}px`,
+                    top: `${node.y}px`,
                   }}
                   onMouseEnter={() => setHoveredNode(node.id)}
                   onMouseLeave={() => setHoveredNode(null)}
@@ -234,7 +249,41 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             }}
           </For>
         </div>
-      </Card>
-    </>
+      </div>
+
+      {/* 左下角视窗控制器 (缩放/重置) */}
+      <div class="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-bg/85 backdrop-blur-md p-1 rounded-xl border border-subtle shadow-sm">
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"
+          onClick={zoomIn}
+          title="放大 (+)"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"
+          onClick={zoomOut}
+          title="缩小 (−)"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-xs"
+          onClick={resetView}
+          title="重置视图"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </button>
+        <span class="text-[10px] text-faint px-1.5 tabular-nums font-mono">
+          {Math.round(zoom() * 100)}%
+        </span>
+      </div>
+    </Card>
   )
 }
