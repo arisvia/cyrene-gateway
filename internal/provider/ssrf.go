@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -32,14 +33,30 @@ func ValidateUpstreamURL(rawURL string, allowPrivate bool) (*url.URL, error) {
 	}
 
 	if !allowPrivate {
-		// Resolve IP to check for loopback, private, link-local, multicast, metadata
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve host %q: %w", host, err)
+		lowerHost := strings.ToLower(host)
+		if lowerHost == "localhost" ||
+			strings.HasSuffix(lowerHost, ".local") ||
+			strings.HasSuffix(lowerHost, ".internal") ||
+			strings.HasSuffix(lowerHost, ".lan") ||
+			strings.HasSuffix(lowerHost, ".home.arpa") {
+			return nil, fmt.Errorf("%w: reserved local domain %s", ErrPrivateNetworkBlocked, host)
 		}
-		for _, ip := range ips {
+
+		// Direct IP check
+		if ip := net.ParseIP(host); ip != nil {
 			if isBlockedIP(ip) {
 				return nil, fmt.Errorf("%w: resolved to %s", ErrPrivateNetworkBlocked, ip.String())
+			}
+			return u, nil
+		}
+
+		// Domain resolution check (if network is available)
+		ips, err := net.LookupIP(host)
+		if err == nil {
+			for _, ip := range ips {
+				if isBlockedIP(ip) {
+					return nil, fmt.Errorf("%w: resolved to %s", ErrPrivateNetworkBlocked, ip.String())
+				}
 			}
 		}
 	}
@@ -72,12 +89,7 @@ func SafeDialerControl(allowPrivate bool) func(network, address string, c syscal
 }
 
 // dialerControlExempt is SafeDialerControl with a permit-list of hosts/IPs that
-// are always dialable (the operator's outbound proxy endpoints). When
-// http.Transport.Proxy is set, DialContext only ever sees the proxy address —
-// never the request target — so blocking private addresses there cannot protect
-// the target; it only breaks standard local proxy pools (Clash/V2Ray on
-// 127.0.0.1). Target safety through a proxy is enforced by the client's
-// CheckRedirect validation plus the proxy's own egress rules.
+// are always dialable (the operator's outbound proxy endpoints).
 func dialerControlExempt(allowPrivate bool, exempt map[string]bool) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) error {
 		if allowPrivate {

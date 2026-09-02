@@ -739,8 +739,9 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
 	if connData.BaseURL != "" {
-		if _, err := provider.ValidateUpstreamURL(connData.BaseURL, false); err != nil {
+		if _, err := provider.ValidateUpstreamURL(connData.BaseURL, allowPrivate); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid baseUrl: " + err.Error()})
 			return
 		}
@@ -836,7 +837,8 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 			incomingData.RefreshToken = existing.Data.RefreshToken
 		}
 		if incomingData.BaseURL != "" {
-			if _, err := provider.ValidateUpstreamURL(incomingData.BaseURL, false); err != nil {
+			allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
+			if _, err := provider.ValidateUpstreamURL(incomingData.BaseURL, allowPrivate); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid baseUrl: " + err.Error()})
 				return
 			}
