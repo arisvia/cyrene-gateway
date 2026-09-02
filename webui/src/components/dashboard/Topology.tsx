@@ -85,23 +85,29 @@ export const GatewayTopology: Component<CanvasTopologyProps> = props => {
     setZoom(z => Math.max(0.5, Math.min(2.0, Number((z + delta).toFixed(2)))))
   }
 
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && fullscreen()) {
+      setFullscreen(false)
+    }
+  }
+
   onMount(() => {
     window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('keydown', handleKeyDown)
   })
 
   onCleanup(() => {
     window.removeEventListener('mouseup', handleMouseUp)
+    window.removeEventListener('keydown', handleKeyDown)
   })
-
   return (
     <Card
-      class={`overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl transition-all duration-300 select-none ${
+      class={`overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl transition-all duration-200 select-none ${
         fullscreen()
-          ? 'fixed inset-4 z-50 rounded-2xl shadow-2xl bg-bg/95 flex flex-col'
+          ? 'fixed inset-0 z-[100] !rounded-none !border-0 bg-bg/95 backdrop-blur-2xl flex flex-col w-screen h-screen'
           : 'h-[460px] sm:h-[500px]'
       }`}
     >
-      {/* 顶部标题栏与状态指示 */}
       <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
         <div class="flex items-center gap-3 bg-bg/80 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
           <div class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shadow-accent shadow-sm" />
@@ -214,18 +220,26 @@ export const GatewayTopology: Component<CanvasTopologyProps> = props => {
             </For>
           </svg>
 
-          {/* 1. 中心枢纽：Cyrene Gateway (9router 风格中心卡片) */}
+          {/* 1. 中心枢纽：Cyrene Core Gateway (精致现代网关状态中心指示牌) */}
           <div
-            class="absolute -translate-x-1/2 -translate-y-1/2 z-10 px-4 py-2.5 rounded-xl bg-bg-elevated border border-accent/40 shadow-xl shadow-accent/10 flex items-center gap-2.5 min-w-[130px] justify-center hover:scale-105 transition-transform duration-200"
+            class="absolute -translate-x-1/2 -translate-y-1/2 z-20 p-3.5 rounded-2xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-2xl shadow-accent/15 flex flex-col items-center gap-2 min-w-[150px] justify-center hover:scale-105 transition-transform duration-200 group cursor-default"
           >
-            <div class="w-6 h-6 rounded-lg bg-accent text-on-accent font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
-              C
+            {/* 顶栏：图标 + 名称 */}
+            <div class="flex items-center gap-2.5">
+              <img src="/icon.png" alt="Cyrene" class="w-6 h-6 rounded-lg object-contain shadow-accent shadow-sm shrink-0" />
+              <div class="font-bold text-xs tracking-tight text-foreground">
+                Cyrene Gateway
+              </div>
             </div>
-            <div class="font-bold text-xs tracking-tight text-foreground">
-              Cyrene Gateway
+
+            {/* 底栏状态指示与活跃指标胶囊 */}
+            <div class="w-full pt-2 border-t border-subtle/60 flex items-center justify-around gap-2 text-[10px]">
+              <div class="flex items-center gap-1.5 text-accent font-medium">
+                <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                <span>{activeCount()} 通道就绪</span>
+              </div>
             </div>
           </div>
-
           {/* 2. 周围辐射排布的模型上游卡片 (9router 风格节点胶囊) */}
           <For each={nodePositions()}>
             {node => {
