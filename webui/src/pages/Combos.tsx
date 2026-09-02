@@ -1,6 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, createResource } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
+import type { Combo } from '@/types/domain'
 import { Card, Badge, Button, Input, Select, Modal, Field, Empty } from '@/components/ui'
 
 const STRATEGY_LABEL: Record<string, string> = {
@@ -10,16 +11,16 @@ const STRATEGY_LABEL: Record<string, string> = {
 const Combos: Component = () => {
   const store = useGatewayStore()
   const [open, setOpen] = createSignal(false)
-  const [editing, setEditing] = createSignal<any>(null)
+  const [editing, setEditing] = createSignal<Combo | null>(null)
   const [saving, setSaving] = createSignal(false)
-  const [form, setForm] = createSignal({ name: '', kind: 'fallback', models: [] as string[] })
+  const [form, setForm] = createSignal<{ name: string; kind: string; models: string[] }>({ name: '', kind: 'fallback', models: [] })
   const [modelPick, setModelPick] = createSignal('')
 
   // 可用模型来自网关统一模型表
   const [available, { refetch }] = createResource(async () => {
     try {
-      const r = await api('/v1/models')
-      return (r?.data ?? []).map((m: any) => m.id as string)
+      const r = await api('/v1/models') as { data?: Array<{ id: string }> } | null
+      return (r?.data ?? []).map(m => m.id)
     } catch { return [] as string[] }
   })
 
@@ -31,7 +32,7 @@ const Combos: Component = () => {
     setOpen(true)
   }
 
-  function openEdit(c: any) {
+  function openEdit(c: Combo) {
     setEditing(c)
     setForm({ name: c.name || '', kind: c.kind || 'fallback', models: c.models || [] })
     setOpen(true)

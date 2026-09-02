@@ -1,4 +1,5 @@
 import { type Component, For, Show, createSignal, createResource, createMemo } from 'solid-js'
+import type { CLITool } from '@/types/domain'
 import { A } from '@solidjs/router'
 import { api, apiPost, apiDelete } from '@/lib/api'
 import { Card, Badge, Button, Input, Empty, Skeleton } from '@/components/ui'
@@ -27,9 +28,9 @@ const CliTools: Component = () => {
       api('/api/cli-tools').catch(() => ({ tools: [] })),
       api('/api/cli-tools/all-statuses').catch(() => ({})),
     ])
-    const tools = reg?.tools ?? []
-    const st = statuses ?? {}
-    return tools.map((t: any): ToolRow => {
+    const tools = (reg?.tools ?? []) as CLITool[]
+    const st = (statuses ?? {}) as Record<string, { installed?: boolean; has9Router?: boolean; configPath?: string; message?: string }>
+    return tools.map((t): ToolRow => {
       const s = st[t.id] ?? {}
       return {
         ...t,
@@ -49,14 +50,14 @@ const CliTools: Component = () => {
     try {
       await apiPost('/api/cli-tools/' + id, { baseUrl: baseUrl() })
       await refetch()
-    } catch (e: any) { setErr(e?.message || '接入失败') }
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : '接入失败') }
     finally { setBusy(null) }
   }
 
   async function reset(id: string) {
     setBusy(id); setErr('')
     try { await apiDelete('/api/cli-tools/' + id); await refetch() }
-    catch (e: any) { setErr(e?.message || '重置失败') }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : '重置失败') }
     finally { setBusy(null) }
   }
 

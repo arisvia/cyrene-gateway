@@ -1,11 +1,12 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
+import type { ProxyPool } from '@/types/domain'
 import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
   const [open, setOpen] = createSignal(false)
-  const [editing, setEditing] = createSignal<any>(null)
+  const [editing, setEditing] = createSignal<ProxyPool | null>(null)
   const [saving, setSaving] = createSignal(false)
   const [form, setForm] = createSignal({ name: '', proxyUrl: '', type: 'http', noProxy: '', strictProxy: true })
 
@@ -17,7 +18,7 @@ const ProxyPools: Component = () => {
     setOpen(true)
   }
 
-  function openEdit(p: any) {
+  function openEdit(p: ProxyPool) {
     setEditing(p)
     setForm({
       name: p.name || '', proxyUrl: p.proxyUrl || '', type: p.type || 'http',

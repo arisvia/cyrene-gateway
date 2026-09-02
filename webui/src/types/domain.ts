@@ -6,7 +6,7 @@ export interface Provider {
   email?: string
   priority: number
   isActive: boolean
-  data?: Record<string, any>
+  data?: Record<string, unknown>
   createdAt?: string
   updatedAt?: string
 }
@@ -29,6 +29,7 @@ export interface RegistryProvider {
   brand?: string
   region?: string
   authHint?: string
+  color?: string
 }
 
 export interface RegistryCategory {
@@ -71,6 +72,7 @@ export interface Endpoint {
 }
 
 export interface ProviderModel {
+  id?: string
   name: string
   enabled?: boolean
   alias?: string
@@ -144,4 +146,27 @@ export interface Skill {
   name: string
   description?: string
   content?: string
+  version?: string
 }
+
+export interface ToolStatus {
+  configured?: boolean
+  target?: string
+  status?: string
+  detail?: string
+}
+
+export interface TunnelStatus {
+  installed: boolean
+  daemonRunning: boolean
+  loggedIn: boolean
+  funnelRunning: boolean
+  tunnelUrl?: string
+  platform?: string
+  version?: string
+  error?: string
+}
+
+export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue'
+export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
+export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'

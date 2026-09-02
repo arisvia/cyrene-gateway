@@ -340,7 +340,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	if resp.StatusCode != http.StatusOK {
 		refreshErr := ClassifyRefreshError(string(respBody), resp.StatusCode)
@@ -433,7 +433,7 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
 	}
@@ -507,7 +507,7 @@ func ExchangeCopilotToken(githubAccessToken string, client *http.Client) (*Refre
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
 		return nil, ClassifyRefreshError(string(respBody), resp.StatusCode)
 	}
@@ -630,7 +630,15 @@ func DedupRefresh(providerID string, oldToken string, fn func() (*RefreshResult,
 			delete(refreshDedupMap, key)
 		}
 		refreshMapLock.Unlock()
+	} else {
+		// Clean up expired dedup entries after TTL to prevent unbounded memory growth
+		time.AfterFunc(refreshResultTTL, func() {
+			refreshMapLock.Lock()
+			if refreshDedupMap[key] == newEntry {
+				delete(refreshDedupMap, key)
+			}
+			refreshMapLock.Unlock()
+		})
 	}
-
 	return result, err
 }

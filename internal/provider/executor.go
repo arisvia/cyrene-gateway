@@ -206,8 +206,8 @@ func ExecuteAttempt(
 		}
 	}
 
-	// Read upstream error body
-	errBody, _ := io.ReadAll(resp.Body)
+	// Read upstream error body (capped to 1MB to prevent OOM)
+	errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	resp.Body.Close()
 
 	fbResult := CheckFallbackError(resp.StatusCode, string(errBody), cand.Connection.Data.BackoffLevel)

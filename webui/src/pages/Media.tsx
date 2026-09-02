@@ -17,7 +17,7 @@ const Media: Component = () => {
   const [text, setText] = createSignal('')
   const [model, setModel] = createSignal('')
   const [busy, setBusy] = createSignal(false)
-  const [result, setResult] = createSignal<any>(null)
+  const [result, setResult] = createSignal<unknown>(null)
   const [error, setError] = createSignal('')
 
   async function run() {
@@ -25,11 +25,11 @@ const Media: Component = () => {
     if (!text().trim()) return
     setBusy(true); setError(''); setResult(null)
     try {
-      const body: Record<string, any> = { input: text(), prompt: text() }
+      const body: Record<string, unknown> = { input: text(), prompt: text() }
       if (model()) body.model = model()
       const r = await apiPost(cap.endpoint, body)
       setResult(r)
-    } catch (e: any) { setError(e?.message || '请求失败') }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : '请求失败') }
     finally { setBusy(false) }
   }
 

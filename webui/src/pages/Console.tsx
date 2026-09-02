@@ -6,7 +6,10 @@ interface Turn { role: string; content: string }
 
 const Console: Component = () => {
   const [models] = createResource(async () => {
-    try { return (await api('/v1/models'))?.data ?? [] } catch { return [] }
+    try {
+      const res = await api('/v1/models') as { data?: Array<{ id: string }> } | null
+      return res?.data ?? []
+    } catch { return [] }
   })
   const [model, setModel] = createSignal('')
   const [prompt, setPrompt] = createSignal('')
@@ -22,14 +25,15 @@ const Console: Component = () => {
     setPrompt('')
     setBusy(true)
     try {
+      const targetModel = model() || models()?.[0]?.id || ''
       const r = await apiPost('/v1/chat/completions', {
-        model: model() || (models()[0] as any)?.id,
+        model: targetModel,
         messages: [...history(), { role: 'user', content: text }],
-      })
+      }) as { choices?: Array<{ message?: { content?: string } }> } | null
       const reply = r?.choices?.[0]?.message?.content ?? '(无返回)'
       setHistory(h => [...h, { role: 'assistant', content: reply }])
-    } catch (e: any) {
-      setErr(e?.message || '请求失败')
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : '请求失败')
       setHistory(h => h.slice(0, -1))
     } finally { setBusy(false) }
   }
@@ -45,7 +49,7 @@ const Console: Component = () => {
         <Select
           class="min-w-[220px]"
           value={model()}
-          options={[{ value: '', label: '选择模型…' }, ...(models() ?? []).map((m: any) => ({ value: m.id, label: m.id }))]}
+          options={[{ value: '', label: '选择模型…' }, ...(models() ?? []).map(m => ({ value: m.id, label: m.id }))]}
           onChange={setModel}
         />
         <Show when={model()}>

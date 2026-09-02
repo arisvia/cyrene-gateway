@@ -540,8 +540,12 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 // StartBackgroundModelSync starts periodic synchronization of models for active connections.
 func (s *Server) StartBackgroundModelSync(ctx context.Context, interval time.Duration) {
 	go func() {
-		// Run initial sync shortly after startup
-		time.Sleep(3 * time.Second)
+		// Run initial sync shortly after startup (respect context cancellation)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(3 * time.Second):
+		}
 		s.syncAllActiveConnections()
 
 		ticker := time.NewTicker(interval)

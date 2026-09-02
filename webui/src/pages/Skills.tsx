@@ -1,10 +1,11 @@
 import { type Component, For, Show, createSignal, createResource, createMemo } from 'solid-js'
 import { api } from '@/lib/api'
+import type { Skill } from '@/types/domain'
 import { Card, Badge, Button, Input, Empty, Skeleton } from '@/components/ui'
 
 const Skills: Component = () => {
   const [data] = createResource(async () => {
-    try { return await api('/api/skills') } catch { return null }
+    try { return await api('/api/skills') as { count?: number; skills?: Skill[] } | null } catch { return null }
   })
   const [q, setQ] = createSignal('')
   const [expanded, setExpanded] = createSignal<string | null>(null)
@@ -13,11 +14,11 @@ const Skills: Component = () => {
     const list = data()?.skills ?? []
     const kw = q().toLowerCase().trim()
     if (!kw) return list
-    return list.filter((s: any) =>
+    return list.filter((s: Skill) =>
       (s.name || '').toLowerCase().includes(kw) || (s.description || '').toLowerCase().includes(kw))
   })
 
-  async function copy(s: any) {
+  async function copy(s: Skill) {
     try {
       await navigator.clipboard.writeText(s.content || '')
     } catch { /* 剪贴板不可用时忽略 */ }
@@ -28,7 +29,7 @@ const Skills: Component = () => {
       <div>
         <h1 class="text-xl font-semibold">技能清单</h1>
         <p class="text-sm text-faint mt-0.5">
-          供 AI 客户端发现的 cyrene-* 技能{data()?.count ? ` · 共 ${data().count} 个` : ''}
+          供 AI 客户端发现的 cyrene-* 技能{data()?.count ? ` · 共 ${data()?.count} 个` : ''}
         </p>
       </div>
 

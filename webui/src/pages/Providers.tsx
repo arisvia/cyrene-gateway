@@ -171,7 +171,7 @@ const Providers: Component = () => {
                     {/* 品牌色标 */}
                     <div
                       class="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-xs font-bold text-white"
-                      style={{ background: (reg() as any)?.color || 'var(--accent)' }}
+                      style={{ background: reg()?.color || 'var(--accent)' }}
                     >
                       {(p.name || p.provider).slice(0, 2).toUpperCase()}
                     </div>
@@ -203,7 +203,7 @@ const Providers: Component = () => {
                         <span class="font-mono">{p.provider}</span>
                         <Show when={p.email}> · {p.email}</Show>
                         <Show when={p.data?.credentialHint}>
-                          {' '}· 凭证 <span class="font-mono">{p.data?.credentialHint}</span>
+                          {' '}· 凭证 <span class="font-mono">{String(p.data?.credentialHint ?? '')}</span>
                         </Show>
                         {' '}· 优先级 {p.priority}
                       </div>

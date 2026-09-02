@@ -5,7 +5,7 @@ import { Card, Badge, Button, Input, Select, Toggle, Field } from '@/components/
 const Settings: Component = () => {
   const store = useGatewayStore()
   const [saving, setSaving] = createSignal(false)
-  const [local, setLocal] = createSignal<Record<string, any>>({})
+  const [local, setLocal] = createSignal<Record<string, unknown>>({})
   const [pw, setPw] = createSignal('')
   const [pwMsg, setPwMsg] = createSignal('')
   const [keyName, setKeyName] = createSignal('')
@@ -20,7 +20,7 @@ const Settings: Component = () => {
     return Object.keys(local()).some(k => local()[k] !== orig[k])
   }
 
-  const set = (k: string, v: any) => setLocal(l => ({ ...l, [k]: v }))
+  const set = (k: string, v: unknown) => setLocal(l => ({ ...l, [k]: v }))
 
   async function save() {
     setSaving(true)
@@ -35,7 +35,7 @@ const Settings: Component = () => {
       await store.setPassword(pw())
       setPw('')
       setPwMsg('密码已更新')
-    } catch (e: any) { setPwMsg(e?.message || '设置失败') }
+    } catch (e: unknown) { setPwMsg(e instanceof Error ? e.message : '设置失败') }
   }
 
   return (
@@ -83,7 +83,7 @@ const Settings: Component = () => {
         <h3 class="text-sm font-semibold">调度策略</h3>
         <Field label="组合默认策略" hint="新建组合时使用的默认调度方式">
           <Select
-            value={local().comboStrategy || 'fallback'}
+            value={String(local().comboStrategy || 'fallback')}
             options={[
               { value: 'fallback', label: '故障回退' },
               { value: 'round-robin', label: '轮询' },

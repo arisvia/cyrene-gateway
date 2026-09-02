@@ -1,14 +1,15 @@
 import { type Component, For, Show, createSignal, createResource, onMount } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { api, apiPost } from '@/lib/api'
+import { api } from '@/lib/api'
+import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
   const store = useGatewayStore()
 
-  const [conn, setConn] = createSignal<any>(null)
+  const [conn, setConn] = createSignal<Provider | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [notFound, setNotFound] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
@@ -26,12 +27,13 @@ const ProviderDetail: Component = () => {
     setLoading(true)
     setNotFound(false)
     try {
-      const r = await api(`/api/providers/${params.id}`)
+      const r = await api(`/api/providers/${params.id}`) as Provider | null
       if (!r) { setNotFound(true); return }
       setConn(r)
       setName(r.name || '')
       setPriority(String(r.priority ?? 0))
-      setBaseUrl(r.data?.baseUrl || '')
+      const d = r.data as { baseUrl?: string } | undefined
+      setBaseUrl(d?.baseUrl || '')
     } catch {
       setNotFound(true)
     } finally {
@@ -46,7 +48,7 @@ const ProviderDetail: Component = () => {
     async id => {
       try {
         const r = await api(`/api/providers/${id}/models`)
-        return r as { registryModels?: any[]; customModels?: any[] }
+        return r as { registryModels?: ProviderModel[]; customModels?: ProviderModel[] }
       } catch { return { registryModels: [], customModels: [] } }
     },
   )
@@ -55,20 +57,27 @@ const ProviderDetail: Component = () => {
     () => conn()?.provider,
     async p => {
       if (!p) return null
-      try { return await api(`/api/oauth/${p}/status`) } catch { return null }
+      try {
+        return await api(`/api/oauth/${p}/status`) as {
+          flowType?: string
+          connections?: Array<{ id: string }>
+        } | null
+      } catch { return null }
     },
   )
 
   async function save() {
     setSaving(true)
     try {
-      const patch: Record<string, any> = { name: name(), priority: Number(priority()) || 0 }
-      if (apiKey()) patch.data = { ...(conn()?.data || {}), apiKey: apiKey() }
-      if (baseUrl()) patch.data = { ...patch.data, baseUrl: baseUrl() }
+      const current = conn()
+      const patch: Partial<Provider> & { data?: Record<string, unknown> } = { name: name(), priority: Number(priority()) || 0 }
+      const currData = (current?.data || {}) as Record<string, unknown>
+      if (apiKey()) patch.data = { ...currData, apiKey: apiKey() }
+      if (baseUrl()) patch.data = { ...(patch.data || currData), baseUrl: baseUrl() }
       await store.updateProvider(params.id, patch)
       await load()
       setApiKey('')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('[detail] save failed:', e)
     } finally {
       setSaving(false)
@@ -81,8 +90,8 @@ const ProviderDetail: Component = () => {
     try {
       const r = await store.testProvider(params.id)
       setTestResult({ ok: !!r?.ok, msg: r?.ok ? `连通 · ${r.latencyMs}ms` : `${r?.error || '失败'}${r?.code ? `（HTTP ${r.code}）` : ''}` })
-    } catch (e: any) {
-      setTestResult({ ok: false, msg: e?.message || '请求失败' })
+    } catch (e: unknown) {
+      setTestResult({ ok: false, msg: e instanceof Error ? e.message : '请求失败' })
     } finally {
       setTesting(false)
     }
@@ -90,7 +99,7 @@ const ProviderDetail: Component = () => {
 
   async function addCustomModel(modelId: string, modelName: string) {
     if (!modelId.trim()) return
-    await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || undefined })
+    await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || modelId.trim() })
     refetchModels()
   }
 
@@ -105,23 +114,25 @@ const ProviderDetail: Component = () => {
       <div>
         <A href="/providers" class="text-xs text-faint hover:text-accent">← 返回连接列表</A>
         <Show when={!loading() && conn()}>
-          <div class="flex items-center gap-3 mt-2 flex-wrap">
-            <h1 class="text-xl font-semibold">{conn().name || conn().provider}</h1>
-            <Badge tone={conn().isActive ? 'green' : 'gray'}>{conn().isActive ? '启用' : '停用'}</Badge>
-            <Badge tone="blue">{conn().authType}</Badge>
-            <span class="text-xs text-faint font-mono">{conn().id.slice(0, 12)}…</span>
-            <div class="ml-auto flex gap-2">
-              <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
-              <Toggle checked={conn().isActive} onChange={() => { store.toggleProvider(conn()); load() }} />
+          {c => (
+            <div class="flex items-center gap-3 mt-2 flex-wrap">
+              <h1 class="text-xl font-semibold">{c().name || c().provider}</h1>
+              <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? '启用' : '停用'}</Badge>
+              <Badge tone="blue">{c().authType}</Badge>
+              <span class="text-xs text-faint font-mono">{c().id.slice(0, 12)}…</span>
+              <div class="ml-auto flex gap-2">
+                <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
+                <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
+              </div>
             </div>
+          )}
+        </Show>
+        <Show when={testResult()}>
+          <div class={`mt-2 text-xs px-3 py-1.5 rounded-control inline-block ${testResult()!.ok
+            ? 'bg-success/10 text-success'
+            : 'bg-danger/10 text-danger'}`}>
+            {testResult()!.msg}
           </div>
-          <Show when={testResult()}>
-            <div class={`mt-2 text-xs px-3 py-1.5 rounded-control inline-block ${testResult()!.ok
-              ? 'bg-success/10 text-success'
-              : 'bg-danger/10 text-danger'}`}>
-              {testResult()!.msg}
-            </div>
-          </Show>
         </Show>
       </div>
 
@@ -134,131 +145,144 @@ const ProviderDetail: Component = () => {
       </Show>
 
       <Show when={!loading() && conn()}>
-        {/* Tab */}
-        <div class="flex gap-1 border-b border-subtle">
-          <For each={[
-            { id: 'overview' as const, label: '配置' },
-            { id: 'models' as const, label: '模型' },
-            { id: 'oauth' as const, label: '授权' },
-          ]}>
-            {t => (
-              <button
-                class={`px-3.5 py-2 text-sm border-b-2 transition-colors ${tab() === t.id
-                  ? 'border-[color:var(--accent)] text-text'
-                  : 'border-transparent text-faint hover:text-muted'}`}
-                onClick={() => setTab(t.id)}
-              >
-                {t.label}
-              </button>
-            )}
-          </For>
-        </div>
-
-        {/* 配置 */}
-        <Show when={tab() === 'overview'}>
-          <Card class="p-5 space-y-4">
-            <Field label="显示名称">
-              <Input value={name()} onInput={setName} placeholder="便于识别的名称" />
-            </Field>
-            <Field label="优先级" hint="数值越小越优先被调度">
-              <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
-            </Field>
-            <Show when={conn().authType === 'api-key'}>
-              <Field label="API Key" hint="留空表示不修改；密钥写入后不在界面回显">
-                <Input type="password" value={apiKey()} onInput={setApiKey} placeholder="sk-…" />
-              </Field>
-            </Show>
-            <Field label="Base URL" hint="自定义端点，留空使用默认">
-              <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
-            </Field>
-
-            <Show when={conn().data?.credentialHint}>
-              <div class="text-xs text-faint">
-                当前凭证：<span class="font-mono">{conn().data.credentialHint}</span>
-                <Show when={conn().data?.hasAccessToken}> · Access Token 已配置</Show>
-                <Show when={conn().data?.hasRefreshToken}> · Refresh Token 已配置</Show>
-              </div>
-            </Show>
-
-            <div class="flex justify-between pt-1">
-              <Button variant="danger" onClick={async () => { await store.deleteProvider(conn()); history.back() }}>
-                删除连接
-              </Button>
-              <Button variant="primary" loading={saving()} onClick={save}>保存</Button>
+        {c => (
+          <div class="space-y-5">
+            {/* Tab */}
+            <div class="flex gap-1 border-b border-subtle">
+              <For each={[
+                { id: 'overview' as const, label: '配置' },
+                { id: 'models' as const, label: '模型' },
+                { id: 'oauth' as const, label: '授权' },
+              ]}>
+                {t => (
+                  <button
+                    class={`px-3.5 py-2 text-sm border-b-2 transition-colors ${tab() === t.id
+                      ? 'border-[color:var(--accent)] text-text'
+                      : 'border-transparent text-faint hover:text-muted'}`}
+                    onClick={() => setTab(t.id)}
+                  >
+                    {t.label}
+                  </button>
+                )}
+              </For>
             </div>
-          </Card>
-        </Show>
 
-        {/* 模型 */}
-        <Show when={tab() === 'models'}>
-          <div class="space-y-4">
-            <Card class="p-5">
-              <h3 class="text-sm font-semibold mb-3">自定义模型</h3>
-              <div class="flex gap-2">
-                <Input placeholder="模型 ID，例如 my-finetune-v1" />
-                <Button variant="secondary" onClick={() => {
-                  const el = document.querySelector<HTMLInputElement>('input[placeholder^="模型 ID"]')
-                  if (el?.value) { addCustomModel(el.value, ''); el.value = '' }
-                }}>添加</Button>
-              </div>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <Show when={(models()?.customModels?.length ?? 0) > 0} fallback={
-                  <span class="text-xs text-faint">暂无自定义模型</span>
-                }>
-                  <For each={models()?.customModels ?? []}>
-                    {m => (
-                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs">
-                        <span class="font-mono">{m.id || m.name}</span>
-                        <button class="text-faint hover:text-danger" onClick={() => removeCustomModel(m.id || m.name)}>×</button>
-                      </span>
-                    )}
-                  </For>
+            {/* 配置 */}
+            <Show when={tab() === 'overview'}>
+              <Card class="p-5 space-y-4">
+                <Field label="显示名称">
+                  <Input value={name()} onInput={setName} placeholder="便于识别的名称" />
+                </Field>
+                <Field label="优先级" hint="数值越小越优先被调度">
+                  <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
+                </Field>
+                <Show when={c().authType === 'api-key'}>
+                  <Field label="API Key" hint="留空表示不修改；密钥写入后不在界面回显">
+                    <Input type="password" value={apiKey()} onInput={setApiKey} placeholder="sk-…" />
+                  </Field>
                 </Show>
-              </div>
-            </Card>
+                <Field label="Base URL" hint="自定义端点，留空使用默认">
+                  <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
+                </Field>
 
-            <Card class="p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-semibold">可用模型</h3>
-                <span class="text-xs text-faint">{models()?.registryModels?.length ?? 0} 个</span>
-              </div>
-              <Show when={(models()?.registryModels?.length ?? 0) > 0} fallback={<Empty message="该提供商未上报模型列表。" />}>
-                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  <For each={models()?.registryModels ?? []}>
-                    {m => (
-                      <div class="px-3 py-2 rounded-control border border-subtle bg-bg-elevated">
-                        <div class="text-sm truncate">{m.name || m.id}</div>
-                        <div class="text-[11px] text-faint font-mono truncate">{m.id}</div>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </Card>
-          </div>
-        </Show>
+                <Show when={c().data?.credentialHint}>
+                  <div class="text-xs text-faint">
+                    当前凭证：<span class="font-mono">{String(c().data?.credentialHint ?? '')}</span>
+                    <Show when={c().data?.hasAccessToken}> · Access Token 已配置</Show>
+                    <Show when={c().data?.hasRefreshToken}> · Refresh Token 已配置</Show>
+                  </div>
+                </Show>
 
-        {/* 授权 */}
-        <Show when={tab() === 'oauth'}>
-          <Card class="p-5 space-y-3">
-            <Show when={oauthStatus()} fallback={<Empty message="该提供商无需 OAuth 授权。" />}>
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm">授权方式：</span>
-                <Badge tone="blue">{oauthStatus().flowType || 'none'}</Badge>
-                <Button size="sm" variant="secondary" onClick={() => refetchOAuth()}>刷新状态</Button>
-              </div>
-              <Show when={(oauthStatus().connections ?? []).length > 0}>
-                <div class="text-xs text-faint">已授权 {oauthStatus().connections.length} 个账号</div>
-              </Show>
-              <Show when={oauthStatus().flowType === 'import_token'}>
-                <div class="pt-2 border-t border-subtle">
-                  <div class="text-xs text-faint mb-2">导入 Token（适用于 device-code / 手动获取的场景）</div>
-                  <TokenImport provider={conn().provider} onDone={() => { refetchOAuth(); load() }} />
+                <div class="flex justify-between pt-1">
+                  <Button variant="danger" onClick={async () => { await store.deleteProvider(c()); history.back() }}>
+                    删除连接
+                  </Button>
+                  <Button variant="primary" loading={saving()} onClick={save}>保存</Button>
                 </div>
-              </Show>
+              </Card>
             </Show>
-          </Card>
-        </Show>
+
+            {/* 模型 */}
+            <Show when={tab() === 'models'}>
+              <div class="space-y-4">
+                <Card class="p-5">
+                  <div class="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 class="text-sm font-semibold">自定义模型</h3>
+                      <p class="text-xs text-faint mt-0.5">注册未在官方列表中的模型 ID，供网关路由匹配</p>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
+                    <Input placeholder="模型 ID，例如 my-finetune-v1" />
+                    <Button variant="secondary" onClick={() => {
+                      const el = document.querySelector<HTMLInputElement>('input[placeholder^="模型 ID"]')
+                      if (el?.value) { addCustomModel(el.value, ''); el.value = '' }
+                    }}>添加</Button>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <Show when={(models()?.customModels?.length ?? 0) > 0} fallback={
+                      <span class="text-xs text-faint">暂无自定义模型</span>
+                    }>
+                      <For each={models()?.customModels ?? []}>
+                        {m => (
+                          <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs">
+                            <span class="font-mono">{m.id || m.name}</span>
+                            <button class="text-faint hover:text-danger" onClick={() => removeCustomModel(m.id || m.name)}>×</button>
+                          </span>
+                        )}
+                      </For>
+                    </Show>
+                  </div>
+                </Card>
+
+                <Card class="p-5">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold">可用模型</h3>
+                    <span class="text-xs text-faint">{models()?.registryModels?.length ?? 0} 个</span>
+                  </div>
+                  <Show when={(models()?.registryModels?.length ?? 0) > 0} fallback={<Empty message="该提供商未上报模型列表。" />}>
+                    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <For each={models()?.registryModels ?? []}>
+                        {m => (
+                          <div class="px-3 py-2 rounded-control border border-subtle bg-bg-elevated">
+                            <div class="text-sm truncate">{m.name || m.id}</div>
+                            <div class="text-[11px] text-faint font-mono truncate">{m.id || m.name}</div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </Card>
+              </div>
+            </Show>
+
+            {/* 授权 */}
+            <Show when={tab() === 'oauth'}>
+              <Card class="p-5 space-y-3">
+                <Show when={oauthStatus()} fallback={<Empty message="该提供商无需 OAuth 授权。" />}>
+                  {oa => (
+                    <div class="space-y-3">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-sm">授权方式：</span>
+                        <Badge tone="blue">{oa().flowType || 'none'}</Badge>
+                        <Button size="sm" variant="secondary" onClick={() => refetchOAuth()}>刷新状态</Button>
+                      </div>
+                      <Show when={(oa().connections ?? []).length > 0}>
+                        <div class="text-xs text-faint">已授权 {oa().connections!.length} 个账号</div>
+                      </Show>
+                      <Show when={oa().flowType === 'import_token'}>
+                        <div class="pt-2 border-t border-subtle">
+                          <div class="text-xs text-faint mb-2">导入 Token（适用于 device-code / 手动获取的场景）</div>
+                          <TokenImport provider={c().provider} onDone={() => { refetchOAuth(); load() }} />
+                        </div>
+                      </Show>
+                    </div>
+                  )}
+                </Show>
+              </Card>
+            </Show>
+          </div>
+        )}
       </Show>
     </div>
   )
@@ -276,8 +300,8 @@ function TokenImport(props: { provider: string; onDone: () => void }) {
     try {
       await store.oauthImport(props.provider, { accessToken: token().trim() })
       setMsg('导入成功'); setToken(''); props.onDone()
-    } catch (e: any) {
-      setMsg(e?.message || '导入失败')
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : '导入失败')
     } finally { setBusy(false) }
   }
 
