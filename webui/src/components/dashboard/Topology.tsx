@@ -102,7 +102,7 @@ export const GatewayTopology: Component<CanvasTopologyProps> = props => {
   })
   return (
     <Card
-      class={`overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl transition-all duration-200 select-none ${
+      class={`overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl animate-fade-in select-none ${
         fullscreen()
           ? 'fixed inset-0 z-[100] !rounded-none !border-0 bg-bg/95 backdrop-blur-2xl flex flex-col w-screen h-screen'
           : 'h-[460px] sm:h-[500px]'
@@ -169,12 +169,11 @@ export const GatewayTopology: Component<CanvasTopologyProps> = props => {
           }}
         />
 
-        {/* 核心画布世界 (平移与缩放图层) */}
+        {/* 核心画布世界 (绝对中心定位 + 原点缩放) */}
         <div
-          class="relative transition-transform duration-75 ease-out"
+          class="absolute top-1/2 left-1/2 w-0 h-0 transition-transform duration-75 ease-out"
           style={{
             transform: `translate(${pan().x}px, ${pan().y}px) scale(${zoom()})`,
-            'transform-origin': 'center center',
           }}
         >
           {/* SVG 曲线连接层 (贝塞尔平滑流向曲线 + 粒子脉冲) */}
