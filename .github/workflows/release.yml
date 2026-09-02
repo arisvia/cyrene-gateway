@@ -21,20 +21,25 @@ jobs:
           go-version: '1.27'
           cache: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-          cache-dependency-path: webui/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: webui/pnpm-lock.yaml
 
       - name: Install WebUI dependencies & Build Panel
         run: |
           cd webui
-          npm ci
-          npx tsc --noEmit
-          npm test
-          npm run build
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build
 
       - name: Run Go Formatter, Vet & Tests
         run: |
