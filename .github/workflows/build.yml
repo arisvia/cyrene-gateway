@@ -1,83 +1,56 @@
-name: Build & Release
+name: CI / PR Checks
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+  pull_request:
+    branches: [main]
 
 jobs:
-  build:
+  validate:
+    name: Lint, Test & Smoke Build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            suffix: linux-amd64
-          - goos: linux
-            goarch: arm64
-            suffix: linux-arm64
-          - goos: windows
-            goarch: amd64
-            suffix: windows-amd64.exe
-          - goos: darwin
-            goarch: amd64
-            suffix: darwin-amd64
-          - goos: darwin
-            goarch: arm64
-            suffix: darwin-arm64
-
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: webui/package-lock.json
 
-      - name: Build WebUI
-        run: cd webui && npm ci && npm run build
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version: "1.27"
-
-      - name: Build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
+      - name: WebUI Lint, Test & Build
         run: |
-          # Only tag refs (v*) become the version; branch builds show "dev"
-          if [[ "${GITHUB_REF_NAME}" == v* ]]; then VERSION="${GITHUB_REF_NAME}"; else VERSION="dev"; fi
-          OUTPUT="cyrene-gateway-${{ matrix.suffix }}"
-          go build -ldflags="-s -w -X github.com/arisvia/cyrene-gateway/internal/handler.version=${VERSION}" -o "$OUTPUT" ./cmd/gateway/
-          echo "Built: $OUTPUT (${VERSION})"
+          cd webui
+          npm ci
+          npx tsc --noEmit
+          npm test
+          npm run build
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          name: cyrene-gateway-${{ matrix.suffix }}
-          path: cyrene-gateway-${{ matrix.suffix }}
-          retention-days: 30
+          go-version: '1.27'
+          cache: true
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
+      - name: Go Format & Vet
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Unformatted Go code found:"
+            gofmt -d .
+            exit 1
+          fi
+          go vet ./...
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts/
+      - name: Go Test with Race Detector
+        run: go test -race ./...
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: artifacts/**/*
-          generate_release_notes: true
+      - name: Smoke Build Binary
+        run: |
+          CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/arisvia/cyrene-gateway/internal/handler.version=ci-smoke" -o cyrene-gateway ./cmd/gateway/
+          ./cyrene-gateway -host 127.0.0.1 -port 29999 &
+          PID=$!
+          sleep 2
+          curl -fsS http://127.0.0.1:29999/api/health || (kill -9 $PID && exit 1)
+          kill -9 $PID
