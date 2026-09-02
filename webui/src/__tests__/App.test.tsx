@@ -33,8 +33,7 @@ describe('App 根组件（白屏回归）', () => {
     expect(text).toContain('Cyrene Gateway')
     expect(text).toContain('提供商')
     expect(text).toContain('用量')
-    expect(text).toContain('设置')
-    // 默认路由渲染 Home
+    expect(document.body.querySelector('a[href*="settings"]')).toBeTruthy()
     expect(text).toContain('运行中')
     expect(container).toBeTruthy()
     cleanup()

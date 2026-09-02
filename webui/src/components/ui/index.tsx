@@ -11,7 +11,7 @@ export const Card: Component<{ class?: string; hover?: boolean; onClick?: () => 
   </div>
 )
 
-export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blue'; children?: JSX.Element }> = props => {
+export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blue'; class?: string; children?: JSX.Element }> = props => {
   const tones: Record<string, string> = {
     green: 'text-success bg-success/10',
     amber: 'text-warning bg-warning/10',
@@ -20,7 +20,7 @@ export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blu
     gray: 'text-faint bg-hover',
   }
   return (
-    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${tones[props.tone ?? 'gray']}`}>
+    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${tones[props.tone ?? 'gray']} ${props.class ?? ''}`}>
       {props.children}
     </span>
   )

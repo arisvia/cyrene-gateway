@@ -1,4 +1,5 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
+import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field } from '@/components/ui'
@@ -9,9 +10,6 @@ const Settings: Component = () => {
   const [local, setLocal] = createSignal<Record<string, unknown>>({})
   const [pw, setPw] = createSignal('')
   const [pwMsg, setPwMsg] = createSignal('')
-  const [keyName, setKeyName] = createSignal('')
-  const [creatingKey, setCreatingKey] = createSignal(false)
-
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
   const [bgMsg, setBgMsg] = createSignal('')
@@ -271,8 +269,14 @@ const Settings: Component = () => {
       {/* 密钥管理 */}
       <Card class="p-5 space-y-4">
         <div class="flex items-center justify-between">
-          <h3 class="text-sm font-semibold">API 密钥</h3>
-          <Button size="sm" variant="secondary" onClick={() => store.loadKeys()}>刷新</Button>
+          <div>
+            <h3 class="text-sm font-semibold">API 密钥</h3>
+            <p class="text-xs text-faint mt-0.5">API 密钥已升级为首页一等公民快捷功能，支持一键生成与便捷复制</p>
+          </div>
+          <A href="/" class="text-xs font-medium text-accent hover:underline flex items-center gap-1">
+            <span>前往首页管理</span>
+            <span>→</span>
+          </A>
         </div>
 
         <Show when={store.apiKeys().length > 0} fallback={
@@ -282,7 +286,7 @@ const Settings: Component = () => {
             <For each={store.apiKeys()}>
               {k => (
                 <div class="flex items-center gap-2 text-xs">
-                  <span class="truncate">{k.name || '(未命名)'}</span>
+                  <span class="truncate font-medium">{k.name || '(未命名)'}</span>
                   <code class="flex-1 truncate text-faint font-mono">{k.key}</code>
                   <Button size="sm" variant="danger" onClick={() => store.deleteKey(k.id)}>删除</Button>
                 </div>
@@ -290,28 +294,6 @@ const Settings: Component = () => {
             </For>
           </div>
         </Show>
-
-        <div class="flex gap-2 pt-1">
-          <Input
-            value={keyName()}
-            placeholder="新密钥名称"
-            onInput={setKeyName}
-            disabled={creatingKey()}
-          />
-          <Button
-            variant="secondary"
-            loading={creatingKey()}
-            disabled={!keyName().trim()}
-            onClick={async () => {
-              const n = keyName().trim()
-              if (!n) return
-              setCreatingKey(true)
-              try { await store.createKey(n); setKeyName('') }
-              catch (e) { console.error('[settings] createKey failed:', e) }
-              finally { setCreatingKey(false) }
-            }}
-          >创建</Button>
-        </div>
       </Card>
 
       {/* 改密码 */}
