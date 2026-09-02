@@ -153,22 +153,78 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
   )
 }
 
-// 容器化 Provider Avatar 组件（支持品牌色渐变背景与发光）
+// 映射已有 public/providers/*.png 资源
+const PROVIDER_IMAGE_MAP: Record<string, string> = {
+  openai: '/providers/openai.png',
+  claude: '/providers/claude.png',
+  anthropic: '/providers/anthropic.png',
+  gemini: '/providers/gemini.png',
+  google: '/providers/gemini.png',
+  vertex: '/providers/vertex.png',
+  opencode: '/providers/opencode.png',
+  deepseek: '/providers/deepseek.png',
+  copilot: '/providers/copilot.png',
+  github: '/providers/github.png',
+  openrouter: '/providers/openrouter.png',
+  qoder: '/providers/qoder.png',
+  groq: '/providers/groq.png',
+  kimi: '/providers/kimi.png',
+  glm: '/providers/glm.png',
+  minimax: '/providers/minimax.png',
+  mistral: '/providers/mistral.png',
+  ollama: '/providers/ollama.png',
+  siliconflow: '/providers/siliconflow.png',
+  together: '/providers/together.png',
+  cohere: '/providers/cohere.png',
+  perplexity: '/providers/perplexity.png',
+  huggingface: '/providers/huggingface.png',
+  cerebras: '/providers/cerebras.png',
+  xai: '/providers/xai.png',
+  grok: '/providers/xai.png',
+  novita: '/providers/novita.png',
+  fireworks: '/providers/fireworks.png',
+  elevenlabs: '/providers/elevenlabs.png',
+  fal: '/providers/fal-ai.png',
+  cursor: '/providers/cursor.png',
+  cline: '/providers/cline.png',
+  roo: '/providers/roo.png',
+  alicode: '/providers/alicode.png',
+  kilocode: '/providers/kilocode.png',
+}
+
+// 容器化 Provider Avatar 组件（支持 public PNG 图像或品牌色渐变背景 SVG）
 export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const sizeClass = () => SIZES[props.size ?? 'md']
   const iconPx = () => ICON_SIZES[props.size ?? 'md']
   const name = () => props.name || props.provider
-  const initials = () => name().slice(0, 2).toUpperCase()
+  const normalized = () => props.provider.toLowerCase().replace(/[-_]/g, '')
+  const imgSrc = () => {
+    const key = Object.keys(PROVIDER_IMAGE_MAP).find(k => normalized().includes(k))
+    return key ? PROVIDER_IMAGE_MAP[key] : null
+  }
 
   return (
     <div
-      class={`shrink-0 flex items-center justify-center font-bold text-white shadow-sm transition-transform group-hover:scale-105 ${sizeClass()} ${props.class ?? ''}`}
+      class={`shrink-0 flex items-center justify-center rounded-xl overflow-hidden shadow-sm transition-transform group-hover:scale-105 bg-card border border-subtle ${sizeClass()} ${props.class ?? ''}`}
       style={{
-        background: props.color || 'var(--gradient)',
+        background: imgSrc() ? 'transparent' : (props.color || 'var(--gradient)'),
       }}
       title={name()}
     >
-      <ProviderBrandIcon provider={props.provider} size={iconPx()} />
+      <Show
+        when={imgSrc()}
+        fallback={<ProviderBrandIcon provider={props.provider} size={iconPx()} />}
+      >
+        <img
+          src={imgSrc()!}
+          alt={name()}
+          class="w-full h-full object-contain p-1 rounded-xl"
+          onError={e => {
+            // 图片加载失败时隐藏并显示矢量 fallback
+            (e.currentTarget as HTMLElement).style.display = 'none'
+          }}
+        />
+      </Show>
     </div>
   )
 }

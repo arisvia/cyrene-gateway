@@ -66,8 +66,8 @@ export const Button: Component<{
   children?: JSX.Element
 }> = props => {
   const base =
-    'inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors select-none active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring'
-  const sizes = { sm: 'h-7 px-2.5 text-xs', md: 'h-9 px-3.5 text-sm' }
+    'inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring'
+  const sizes = { sm: 'h-7 px-3 text-xs min-w-fit', md: 'h-9 px-4 text-sm min-w-fit' }
   const variants = {
     primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
     secondary: 'border border-subtle text-muted hover:text-text hover:border-accent',

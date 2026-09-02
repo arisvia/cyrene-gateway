@@ -145,9 +145,7 @@ const App: Component = () => {
       {/* 桌面侧栏 */}
       <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-[var(--sidebar-w)] glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
         <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
-          <div class="w-8 h-8 rounded-xl gradient-brand shadow-accent flex items-center justify-center font-bold text-white text-xs">
-            CG
-          </div>
+          <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
           <div class="min-w-0">
             <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
             <div class="text-[11px] text-faint leading-tight font-mono">v{store.version()}</div>
@@ -172,9 +170,7 @@ const App: Component = () => {
           <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
           <aside class="absolute inset-y-0 left-0 w-[260px] bg-bg-elevated border-r border-subtle flex flex-col animate-slide-up shadow-2xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
-              <div class="w-8 h-8 rounded-xl gradient-brand shadow-accent flex items-center justify-center font-bold text-white text-xs">
-                CG
-              </div>
+              <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
               <button
                 type="button"
