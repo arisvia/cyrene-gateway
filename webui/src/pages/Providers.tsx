@@ -465,8 +465,8 @@ const Providers: Component = () => {
 
       {/* 视窗 2：提供商市场 (Catalog Grid) */}
       <Show when={activeTab() === 'catalog'}>
-        <div class="max-h-[calc(100vh-210px)] overflow-y-auto pr-1">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-6">
+        <div class="max-h-[calc(100vh-220px)] overflow-y-auto pr-1 pb-16">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-12">
             <For each={brandGroups()}>
             {group => {
               // 当前选中的变体（默认第一项）

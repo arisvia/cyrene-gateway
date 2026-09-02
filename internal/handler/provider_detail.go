@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
@@ -38,7 +39,7 @@ func (s *Server) saveCustomModels(connID string, models []customModel) error {
 	return s.DB.KVSet(customModelsScope, connID, string(data))
 }
 
-// handleGetProviderModels returns registry models + custom models for a connection.
+// handleGetProviderModels returns registry models + live synced models + custom models for a connection.
 func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	conn, err := s.DB.GetConnection(id)
@@ -47,10 +48,41 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// 1. 获取硬编码备用 / 默认 Registry 模型
 	registryModels := provider.GetRegistryModels(conn.Provider)
 	if registryModels == nil {
 		registryModels = []provider.ModelRef{}
 	}
+
+	// 2. 获取实时同步抓取的 Live 缓存模型并合并
+	seen := make(map[string]bool)
+	var unifiedModels []provider.ModelRef
+
+	if raw, err := s.DB.KVGet("providerModelCache", conn.Provider); err == nil && raw != "" {
+		var cached model.CachedModels
+		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
+			for _, m := range cached.Models {
+				seen[m.ID] = true
+				name := m.DisplayName
+				if name == "" {
+					name = m.ID
+				}
+				unifiedModels = append(unifiedModels, provider.ModelRef{
+					ID:   m.ID,
+					Name: name,
+				})
+			}
+		}
+	}
+
+	// 若无 Live 模型或补齐 Registry 中独特项
+	for _, rm := range registryModels {
+		if !seen[rm.ID] {
+			seen[rm.ID] = true
+			unifiedModels = append(unifiedModels, rm)
+		}
+	}
+
 	customModels := s.loadCustomModels(conn.ID)
 	if customModels == nil {
 		customModels = []customModel{}
@@ -58,7 +90,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider":       conn.Provider,
-		"registryModels": registryModels,
+		"registryModels": unifiedModels,
 		"customModels":   customModels,
 	})
 }

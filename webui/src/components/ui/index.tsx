@@ -97,6 +97,7 @@ export const Input: Component<{
   type?: string
   disabled?: boolean
   onInput?: (v: string) => void
+  onKeyDown?: (e: KeyboardEvent) => void
   class?: string
   ariaLabel?: string
 }> = props => (
@@ -107,6 +108,7 @@ export const Input: Component<{
     disabled={props.disabled}
     aria-label={props.ariaLabel}
     onInput={e => props.onInput?.(e.currentTarget.value)}
+    onKeyDown={props.onKeyDown}
     class={`w-full px-3 py-1.5 rounded-control bg-bg-elevated border border-subtle text-sm text-text placeholder:text-faint focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-colors disabled:opacity-50 ${props.class ?? ''}`}
   />
 )

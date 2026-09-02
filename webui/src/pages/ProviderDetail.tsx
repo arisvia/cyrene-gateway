@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createResource, onMount } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { api } from '@/lib/api'
+import { api, apiPost } from '@/lib/api'
 import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton } from '@/components/ui'
 
@@ -15,7 +15,39 @@ const ProviderDetail: Component = () => {
   const [saving, setSaving] = createSignal(false)
   const [testing, setTesting] = createSignal(false)
   const [testResult, setTestResult] = createSignal<{ ok: boolean; msg: string } | null>(null)
-  const [tab, setTab] = createSignal<'overview' | 'models' | 'oauth'>('overview')
+  const [tab, setTab] = createSignal<'overview' | 'models' | 'oauth' | 'chat'>('overview')
+  // Chat 测试状态
+  const [selectedModel, setSelectedModel] = createSignal('')
+  const [prompt, setPrompt] = createSignal('')
+  const [chatBusy, setChatBusy] = createSignal(false)
+  const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string }>>([])
+  const [chatErr, setChatErr] = createSignal('')
+
+  async function sendChat() {
+    const text = prompt().trim()
+    if (!text || chatBusy() || !conn()) return
+    setChatErr('')
+    setChatHistory(h => [...h, { role: 'user', content: text }])
+    setPrompt('')
+    setChatBusy(true)
+    try {
+      // 如果未指定具体模型，使用该提供商第一个可用模型或前缀通配
+      const available = (models()?.registryModels ?? []).concat(models()?.customModels ?? [])
+      const targetModel = selectedModel() || available[0]?.id || `${conn()!.provider}/default`
+      const fullModel = targetModel.includes('/') ? targetModel : `${conn()!.provider}/${targetModel}`
+      const r = await apiPost('/v1/chat/completions', {
+        model: fullModel,
+        messages: [...chatHistory(), { role: 'user', content: text }],
+      }) as { choices?: Array<{ message?: { content?: string } }> } | null
+      const reply = r?.choices?.[0]?.message?.content ?? '(无返回)'
+      setChatHistory(h => [...h, { role: 'assistant', content: reply }])
+    } catch (e: unknown) {
+      setChatErr(e instanceof Error ? e.message : '请求失败')
+      setChatHistory(h => h.slice(0, -1))
+    } finally {
+      setChatBusy(false)
+    }
+  }
 
   // 编辑字段
   const [name, setName] = createSignal('')
@@ -150,14 +182,16 @@ const ProviderDetail: Component = () => {
             {/* Tab */}
             <div class="flex gap-1 border-b border-subtle">
               <For each={[
-                { id: 'overview' as const, label: '配置' },
-                { id: 'models' as const, label: '模型' },
-                { id: 'oauth' as const, label: '授权' },
+                { id: 'overview' as const, label: '连接配置' },
+                { id: 'models' as const, label: '可用模型' },
+                { id: 'chat' as const, label: '会话测试' },
+                { id: 'oauth' as const, label: '授权管理' },
               ]}>
                 {t => (
                   <button
-                    class={`px-3.5 py-2 text-sm border-b-2 transition-colors ${tab() === t.id
-                      ? 'border-[color:var(--accent)] text-text'
+                    type="button"
+                    class={`px-3.5 py-2 text-sm font-medium border-b-2 transition-colors ${tab() === t.id
+                      ? 'border-[color:var(--accent)] text-foreground font-semibold'
                       : 'border-transparent text-faint hover:text-muted'}`}
                     onClick={() => setTab(t.id)}
                   >
@@ -255,7 +289,87 @@ const ProviderDetail: Component = () => {
                 </Card>
               </div>
             </Show>
+            {/* 会话测试 */}
+            <Show when={tab() === 'chat'}>
+              <div class="space-y-4">
+                <Card class="p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div class="flex items-center gap-3 flex-1 min-w-[240px]">
+                    <span class="text-xs text-faint shrink-0">测试模型：</span>
+                    <select
+                      class="h-9 px-3 text-xs bg-bg border border-subtle rounded-control flex-1 focus:border-accent focus:outline-none"
+                      value={selectedModel()}
+                      onChange={e => setSelectedModel(e.currentTarget.value)}
+                    >
+                      <option value="">默认模型（首个可用）</option>
+                      <For each={(models()?.registryModels ?? []).concat(models()?.customModels ?? [])}>
+                        {m => (
+                          <option value={m.id}>{m.name ? `${m.name} (${m.id})` : m.id}</option>
+                        )}
+                      </For>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <Show when={selectedModel()}>
+                      <Badge tone="blue">{selectedModel()}</Badge>
+                    </Show>
+                    <Button size="sm" variant="ghost" onClick={() => setChatHistory([])}>清空对话</Button>
+                  </div>
+                </Card>
 
+                <Card class="p-5 min-h-[300px] max-h-[500px] overflow-y-auto space-y-3">
+                  <Show
+                    when={chatHistory().length > 0}
+                    fallback={<Empty message={`向 ${c().name || c().provider} 发送一条消息，验证该连接的连通性与模型输出。`} />}
+                  >
+                    <For each={chatHistory()}>
+                      {t => (
+                        <div class={`flex ${t.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div class={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
+                            t.role === 'user'
+                              ? 'bg-accent text-on-accent'
+                              : 'bg-hover text-foreground border border-subtle'
+                          }`}>
+                            {t.content}
+                          </div>
+                        </div>
+                      )}
+                    </For>
+                    <Show when={chatBusy()}>
+                      <div class="flex justify-start">
+                        <div class="px-4 py-2.5 rounded-2xl bg-hover text-sm text-faint flex items-center gap-2">
+                          <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse" />
+                          思考与接收回复中…
+                        </div>
+                      </div>
+                    </Show>
+                  </Show>
+                </Card>
+
+                <Show when={chatErr()}>
+                  <div class="px-3.5 py-2.5 rounded-xl text-xs bg-danger/10 text-danger border border-danger/20">
+                    {chatErr()}
+                  </div>
+                </Show>
+
+                <Card class="p-3 flex gap-2">
+                  <Input
+                    value={prompt()}
+                    placeholder="输入测试提示词，回车或点击发送…"
+                    onInput={setPrompt}
+                    disabled={chatBusy()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        sendChat()
+                      }
+                    }}
+                  />
+                  <Button variant="primary" loading={chatBusy()} disabled={!prompt().trim()} onClick={sendChat}>
+                    发送
+                  </Button>
+                </Card>
+              </div>
+            </Show>
             {/* 授权 */}
             <Show when={tab() === 'oauth'}>
               <Card class="p-5 space-y-3">
