@@ -116,14 +116,16 @@ func TestRegistryOfficialNames(t *testing.T) {
 		"grok-cli":       "Grok Build",
 		"kimi":           "Kimi Code",
 		"antigravity":    "Google Antigravity",
-		"codebuddy-intl": "Tencent Cloud CodeBuddy",
-		"codebuddy-cn":   "Tencent Cloud CodeBuddy (CN)",
+		"codebuddy-intl": "CodeBuddy (Intl)",
+		"codebuddy-cn":   "CodeBuddy (CN)",
 		"cursor":         "Cursor",
-		"opencode":       "opencode",
+		"opencode":       "OpenCode",
 		"claude":         "Claude Code",
 		"codex":          "OpenAI Codex",
 		"github":         "GitHub Copilot",
 		"openrouter":     "OpenRouter",
+		"alicode":        "Alibaba (China)",
+		"alicode-intl":   "Alibaba (Intl)",
 	}
 	for id, want := range names {
 		p, ok := Registry[id]

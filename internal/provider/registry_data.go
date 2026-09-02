@@ -10,7 +10,7 @@ func init() {
 	Registry = make(map[string]ProviderInfo, 40)
 
 	Registry["alicode-intl"] = ProviderInfo{
-		ID: "alicode-intl", Name: "Alibaba Coding",
+		ID: "alicode-intl", Name: "Alibaba (Intl)",
 		Alias: "alicode-intl", Aliases: []string{"alicode-intl"},
 		BaseURL: "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
@@ -22,7 +22,7 @@ func init() {
 		TextIcon: "ALi",
 	}
 	Registry["alicode"] = ProviderInfo{
-		ID: "alicode", Name: "Alibaba",
+		ID: "alicode", Name: "Alibaba (China)",
 		Alias: "alicode", Aliases: []string{"alicode"},
 		BaseURL: "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
@@ -93,7 +93,7 @@ func init() {
 		ClientID:     "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 	}
 	Registry["codebuddy-cn"] = ProviderInfo{
-		ID: "codebuddy-cn", Name: "Tencent Cloud CodeBuddy (CN)",
+		ID: "codebuddy-cn", Name: "CodeBuddy (CN)",
 		Alias: "cbcn", Aliases: []string{"cbcn"},
 		BaseURL: "https://copilot.tencent.com/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
@@ -115,7 +115,7 @@ func init() {
 		ThinkingFormat: "openai",
 	}
 	Registry["codebuddy-intl"] = ProviderInfo{
-		ID: "codebuddy-intl", Name: "Tencent Cloud CodeBuddy",
+		ID: "codebuddy-intl", Name: "CodeBuddy (Intl)",
 		Alias: "cbai", Aliases: []string{"cbai"},
 		BaseURL: "https://www.codebuddy.ai/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
@@ -142,7 +142,6 @@ func init() {
 		Alias: "cx", Aliases: []string{"cx"},
 		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
 		APIType: "openai", AuthType: "oauth",
-		// Phase 36 T4: dual-auth (OAuth preferred, API key fallback).
 		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 30,
 		Color:        "#3B82F6",
 		Website:      "https://chatgpt.com/codex",
@@ -369,12 +368,13 @@ func init() {
 		ForceStream: true,
 	}
 	Registry["opencode"] = ProviderInfo{
-		ID: "opencode", Name: "opencode",
+		ID: "opencode", Name: "OpenCode",
 		Alias: "oc", Aliases: []string{"oc", "opencode-go", "ocg"},
 		BaseURL: "https://opencode.ai/zen/v1/chat/completions",
 		APIType: "openai", AuthType: "none",
-		Category: "free", AuthModes: []string{"none"}, Priority: 40,
+		Category: "free", AuthModes: []string{"none", "api-key"}, Priority: 40,
 		Color:    "#E87040",
+		Website:  "https://opencode.ai",
 		Icon:     "terminal",
 		TextIcon: "OC",
 		HasFree:  true,

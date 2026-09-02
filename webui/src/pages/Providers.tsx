@@ -71,19 +71,52 @@ const Providers: Component = () => {
     })
   })
 
-  // 过滤后的市场提供商
-  const filteredCatalog = createMemo(() => {
+  // 按品牌归集或单例展示的市场提供商列表
+  interface CatalogBrandGroup {
+    brandKey: string
+    name: string
+    items: RegistryProvider[]
+  }
+
+  const brandGroups = createMemo<CatalogBrandGroup[]>(() => {
+    const list = store.registryList()
     const q = query().toLowerCase().trim()
-    return store.registryList().filter(r => {
-      if (catFilter() && r.category !== catFilter()) return false
+    const cat = catFilter()
+
+    // 先按过滤条件筛选
+    const matched = list.filter(r => {
+      if (cat && r.category !== cat) return false
       if (!q) return true
       return (
         r.name.toLowerCase().includes(q) ||
         r.id.toLowerCase().includes(q) ||
+        (r.brand || '').toLowerCase().includes(q) ||
         (r.category || '').toLowerCase().includes(q)
       )
     })
+
+    // 按 Brand 或 单例 ID 分组
+    const groups: Record<string, RegistryProvider[]> = {}
+    for (const r of matched) {
+      const key = r.brand || r.id
+      if (!groups[key]) groups[key] = []
+      groups[key].push(r)
+    }
+
+    return Object.entries(groups).map(([key, items]) => {
+      // 首选主名称，如果有带品牌名则用品牌名
+      const first = items[0]
+      const displayName = first.brand ? first.brand : first.name
+      return {
+        brandKey: key,
+        name: displayName,
+        items,
+      }
+    })
   })
+
+  // 选中的区域版本 (brandKey -> provider.id)
+  const [selectedVariants, setSelectedVariants] = createSignal<Record<string, string>>({})
 
   // 打开添加向导
   function openWizard(reg: RegistryProvider) {
@@ -97,7 +130,6 @@ const Providers: Component = () => {
     })
     setWizardOpen(true)
   }
-
   // 一键接入免密提供商
   async function quickEnableFree(reg: RegistryProvider) {
     if (store.providers().some(p => p.provider === reg.id)) {
@@ -281,7 +313,7 @@ const Providers: Component = () => {
 
           <div class="flex items-center gap-3 text-xs text-faint">
             <span class="hidden sm:inline">
-              匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? filteredConnections().length : filteredCatalog().length}</strong> 项
+              匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? filteredConnections().length : brandGroups().length}</strong> 项
             </span>
             <Button size="sm" variant="secondary" loading={refreshing()} onClick={handleRefreshAll}>
               刷新
@@ -435,10 +467,22 @@ const Providers: Component = () => {
       <Show when={activeTab() === 'catalog'}>
         <div class="max-h-[calc(100vh-210px)] overflow-y-auto pr-1">
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-6">
-            <For each={filteredCatalog()}>
-            {reg => {
-              const connected = () => store.providers().some(p => p.provider === reg.id)
-              const isFree = reg.noAuth || reg.category === 'free'
+            <For each={brandGroups()}>
+            {group => {
+              // 当前选中的变体（默认第一项）
+              const activeReg = () => {
+                const selectedId = selectedVariants()[group.brandKey]
+                if (selectedId) {
+                  const found = group.items.find(it => it.id === selectedId)
+                  if (found) return found
+                }
+                return group.items[0]
+              }
+
+              const reg = activeReg
+              const connected = () => store.providers().some(p => p.provider === reg().id)
+              const isFree = () => reg().noAuth || reg().category === 'free'
+              const hasVariants = () => group.items.length > 1
 
               return (
                 <Card class="p-4 flex flex-col justify-between hover:border-accent/40 transition-all space-y-4 group">
@@ -446,52 +490,81 @@ const Providers: Component = () => {
                     <div class="flex items-start justify-between gap-2">
                       <div class="flex items-center gap-3">
                         <ProviderAvatar
-                          provider={reg.id}
-                          name={reg.name}
-                          color={reg.color}
+                          provider={reg().id}
+                          name={group.name}
+                          color={reg().color}
                           size="md"
                         />
                         <div>
                           <div class="font-semibold text-sm text-foreground flex items-center gap-1.5">
-                            {reg.name}
-                            <Show when={reg.region}>
-                              <span class="text-[10px] px-1 py-0.5 rounded bg-hover text-faint uppercase font-mono">
-                                {reg.region}
-                              </span>
-                            </Show>
+                            {group.name}
                           </div>
-                          <div class="text-xs text-faint font-mono">{reg.id}</div>
+                          <div class="text-xs text-faint font-mono">{reg().id}</div>
                         </div>
                       </div>
 
-                      <Badge tone={isFree ? 'green' : 'blue' as BadgeTone}>
-                        {CATEGORY_LABEL[reg.category] || reg.category}
+                      <Badge tone={isFree() ? 'green' : 'blue' as BadgeTone}>
+                        {CATEGORY_LABEL[reg().category] || reg().category}
                       </Badge>
                     </div>
 
+                    {/* 区域 / 渠道小标签切换器 (如 cn / intl) */}
+                    <Show when={hasVariants()}>
+                      <div class="mt-2.5 flex items-center gap-1 p-1 bg-hover rounded-lg border border-subtle">
+                        <For each={group.items}>
+                          {variant => {
+                            const isSelected = () => reg().id === variant.id
+                            const label = () => {
+                              if (variant.region === 'cn') return '国内版 (CN)'
+                              if (variant.region === 'intl') return '国际版 (Intl)'
+                              return variant.name.replace(group.name, '').trim() || variant.id
+                            }
+                            return (
+                              <button
+                                type="button"
+                                class={`flex-1 text-[11px] py-1 px-2 rounded-md font-medium transition-all ${
+                                  isSelected()
+                                    ? 'bg-card text-foreground shadow-xs font-semibold'
+                                    : 'text-faint hover:text-foreground'
+                                }`}
+                                onClick={() => {
+                                  setSelectedVariants(prev => ({
+                                    ...prev,
+                                    [group.brandKey]: variant.id,
+                                  }))
+                                }}
+                              >
+                                {label()}
+                              </button>
+                            )
+                          }}
+                        </For>
+                      </div>
+                    </Show>
+
                     <div class="mt-3 text-xs text-faint space-y-1">
                       <div class="flex items-center justify-between">
-                        <span>协议: <code class="font-mono text-foreground">{reg.apiType || 'openai'}</code></span>
-                        <span>默认优先级: {reg.priority ?? 50}</span>
+                        <span>协议: <code class="font-mono text-foreground">{reg().apiType || 'openai'}</code></span>
+                        <span>默认优先级: {reg().priority ?? 50}</span>
                       </div>
-                      <Show when={reg.authHint}>
-                        <div class="text-[11px] text-muted italic line-clamp-1">{reg.authHint}</div>
+                      <Show when={reg().authHint}>
+                        <div class="text-[11px] text-muted italic line-clamp-1">{reg().authHint}</div>
                       </Show>
                     </div>
                   </div>
 
                   <div class="pt-3 border-t border-subtle flex items-center justify-between gap-2">
                     <Show
-                      when={reg.apiKeyUrl || reg.website}
+                      when={reg().apiKeyUrl || reg().website}
                       fallback={<span class="text-[11px] text-faint">原生内置</span>}
                     >
                       <a
-                        href={reg.apiKeyUrl || reg.website}
+                        href={reg().apiKeyUrl || reg().website}
                         target="_blank"
                         rel="noreferrer"
                         class="text-xs text-accent hover:underline inline-flex items-center gap-1"
                       >
-                        {reg.apiKeyUrl ? '获取密钥 ↗' : '官网 ↗'}
+                        {reg().apiKeyUrl ? '获取密钥 ↗' : '官网 ↗'}
                       </a>
                     </Show>
 
@@ -499,12 +572,12 @@ const Providers: Component = () => {
                       <Show when={connected()}>
                         <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">已接入</span>
                       </Show>
-                      <Show when={isFree && !connected()}>
+                      <Show when={isFree() && !connected()}>
                         <Button
                           size="sm"
                           variant="secondary"
                           loading={saving()}
-                          onClick={() => quickEnableFree(reg)}
+                          onClick={() => quickEnableFree(reg())}
                         >
                           一键启用
                         </Button>
@@ -512,7 +585,7 @@ const Providers: Component = () => {
                       <Button
                         size="sm"
                         variant={connected() ? 'secondary' : 'primary'}
-                        onClick={() => openWizard(reg)}
+                        onClick={() => openWizard(reg())}
                       >
                         {connected() ? '再加一个' : '接入配置'}
                       </Button>

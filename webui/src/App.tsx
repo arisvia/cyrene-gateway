@@ -143,7 +143,7 @@ const App: Component = () => {
       <ToastHost />
 
       {/* 桌面侧栏 */}
-      <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-[var(--sidebar-w)] glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
+      <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
         <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
           <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
           <div class="min-w-0">
@@ -167,7 +167,7 @@ const App: Component = () => {
       <Show when={open()}>
         <div class="md:hidden fixed inset-0 z-50">
           <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
-          <aside class="absolute inset-y-0 left-0 w-[260px] bg-bg-elevated border-r border-subtle flex flex-col animate-slide-up shadow-2xl">
+          <aside class="absolute inset-y-0 left-0 w-65 bg-bg-elevated border-r border-subtle flex flex-col animate-slide-up shadow-2xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
               <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
@@ -186,7 +186,7 @@ const App: Component = () => {
       </Show>
 
       {/* 主区 */}
-      <div class="flex flex-col md:pl-[var(--sidebar-w)] min-h-screen">
+      <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen">
         <header class="h-16 sticky top-0 z-30 flex items-center justify-between gap-3 px-4 lg:px-10 border-b border-subtle bg-bg/80 backdrop-blur-xl">
           <button
             type="button"
