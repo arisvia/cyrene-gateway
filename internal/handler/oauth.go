@@ -79,22 +79,23 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate state and retrieve session
-	var codeVerifier, redirectURI string
-	if state != "" {
-		session, ok := provider.GetSession(state)
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or expired state"})
-			return
-		}
-		if session.Provider != providerID {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "state provider mismatch"})
-			return
-		}
-		codeVerifier = session.PKCE.CodeVerifier
-		redirectURI = session.RedirectURI
-		provider.ClearSession(state)
+	// State is mandatory for OAuth callback to prevent CSRF / code injection
+	if state == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing state parameter"})
+		return
 	}
+	session, ok := provider.GetSession(state)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or expired state"})
+		return
+	}
+	if session.Provider != providerID {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "state provider mismatch"})
+		return
+	}
+	codeVerifier := session.PKCE.CodeVerifier
+	redirectURI := session.RedirectURI
+	provider.ClearSession(state)
 
 	// Exchange code for tokens
 	tokens, err := provider.ExchangeCode(providerID, code, redirectURI, codeVerifier, nil)
@@ -166,16 +167,23 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use session data if state provided and no explicit verifier
+	// If state provided without explicit codeVerifier, session must exist
 	if req.State != "" && req.CodeVerifier == "" {
-		if session, ok := provider.GetSession(req.State); ok {
-			req.CodeVerifier = session.PKCE.CodeVerifier
-			if req.RedirectURI == "" {
-				req.RedirectURI = session.RedirectURI
-			}
-			provider.ClearSession(req.State)
+		session, ok := provider.GetSession(req.State)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or expired state"})
+			return
 		}
+		if session.Provider != providerID {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "state provider mismatch"})
+			return
+		}
+		req.CodeVerifier = session.PKCE.CodeVerifier
+		if req.RedirectURI == "" {
+			req.RedirectURI = session.RedirectURI
+		}
+		provider.ClearSession(req.State)
 	}
-
 	tokens, err := provider.ExchangeCode(providerID, req.Code, req.RedirectURI, req.CodeVerifier, nil)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})

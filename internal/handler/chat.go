@@ -303,6 +303,13 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
+		// Qoder 需要专属 COSY 签名执行器；通用 transport 未签名会被上游 RST
+		if modelInfo.Provider == "qoder" {
+			slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
+			s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
+			return
+		}
+
 		// Build and execute upstream request — use raw body to preserve unknown fields
 		var comboBody map[string]any
 		json.Unmarshal(rawBody, &comboBody)

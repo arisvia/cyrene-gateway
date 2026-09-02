@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -150,9 +151,129 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		StartedAt:    start,
 		Status:       resp.StatusCode,
 	}
+	// 非流式请求（OpenAI 契约 stream 默认 false）：上游只有 SSE，
+	// 在网关侧聚合 chunks 后拼成标准 chat.completion JSON 返回。
+	if !req.Stream {
+		s.proxyQoderNonStreaming(w, r, resp, qoderKey, uc)
+		return
+	}
 
 	// Stream with envelope unwrapping
 	s.proxyQoderStreaming(w, r, resp, qoderKey, uc)
+}
+
+// proxyQoderNonStreaming aggregates the upstream SSE envelope into a single
+// OpenAI chat.completion JSON object for stream=false clients.
+func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var lastUsage usage.Usage
+	var content strings.Builder
+	var reasoning strings.Builder
+	var toolCalls []map[string]any
+	finishReason := ""
+	id, created := "", int64(0)
+	role := "assistant"
+
+	for scanner.Scan() {
+		select {
+		case <-r.Context().Done():
+			slog.Info("Client disconnected during Qoder non-stream aggregation", slog.String("model", model))
+			return
+		default:
+		}
+
+		data, done := provider.UnwrapQoderSSELine(scanner.Text(), "qoder/"+model)
+		if done {
+			break
+		}
+		if data == "" {
+			continue
+		}
+		if u := usage.ExtractFromSSELine([]byte(data)); u.TotalTokens > 0 {
+			lastUsage = u
+		}
+
+		var chunk struct {
+			ID      string `json:"id"`
+			Created int64  `json:"created"`
+			Choices []struct {
+				Delta struct {
+					Role             string          `json:"role"`
+					Content          string          `json:"content"`
+					ReasoningContent string          `json:"reasoning_content"`
+					ToolCalls        json.RawMessage `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if chunk.ID != "" {
+			id = chunk.ID
+		}
+		if chunk.Created > 0 {
+			created = chunk.Created
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		c := chunk.Choices[0]
+		if c.Delta.Role != "" {
+			role = c.Delta.Role
+		}
+		content.WriteString(c.Delta.Content)
+		reasoning.WriteString(c.Delta.ReasoningContent)
+		if c.FinishReason != "" {
+			finishReason = c.FinishReason
+		}
+		if len(c.Delta.ToolCalls) > 0 {
+			var tcs []map[string]any
+			if err := json.Unmarshal(c.Delta.ToolCalls, &tcs); err == nil {
+				toolCalls = append(toolCalls, tcs...)
+			}
+		}
+	}
+
+	if lastUsage.TotalTokens > 0 {
+		s.recordUsage(uc, lastUsage)
+	}
+
+	if id == "" {
+		id = "chatcmpl-qoder-" + generateID()[:12]
+	}
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+
+	msg := map[string]any{"role": role, "content": content.String()}
+	if reasoning.Len() > 0 {
+		msg["reasoning_content"] = reasoning.String()
+	}
+	if len(toolCalls) > 0 {
+		msg["tool_calls"] = toolCalls
+	}
+	respBody := map[string]any{
+		"id":      id,
+		"object":  "chat.completion",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{{
+			"index":         0,
+			"message":       msg,
+			"finish_reason": finishReason,
+		}},
+		"usage": map[string]any{
+			"prompt_tokens":     lastUsage.PromptTokens,
+			"completion_tokens": lastUsage.CompletionTokens,
+			"total_tokens":      lastUsage.TotalTokens,
+		},
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(respBody)
 }
 
 // proxyQoderStreaming unwraps Qoder's {statusCodeValue, body} SSE envelope

@@ -715,6 +715,10 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider is required"})
+		return
+	}
 	if req.ID == "" {
 		req.ID = generateID()
 	}
@@ -725,11 +729,32 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	// Convert generic data map to ConnectionData
 	dataBytes, _ := json.Marshal(req.Data)
 	var connData model.ConnectionData
-	json.Unmarshal(dataBytes, &connData)
+	if err := json.Unmarshal(dataBytes, &connData); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid data payload"})
+		return
+	}
+
+	if req.AuthType == "api-key" && connData.APIKey == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "apiKey is required for api-key auth"})
+		return
+	}
 
 	if connData.BaseURL != "" {
 		if _, err := provider.ValidateUpstreamURL(connData.BaseURL, false); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid baseUrl: " + err.Error()})
+			return
+		}
+	}
+
+	// Duplicate guard: one active connection per provider+authType
+	existing, err := s.DB.ListConnectionsByProvider(req.Provider)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check existing connections"})
+		return
+	}
+	for _, c := range existing {
+		if c.AuthType == req.AuthType {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "connection for this provider already exists"})
 			return
 		}
 	}
