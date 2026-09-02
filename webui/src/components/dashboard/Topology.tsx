@@ -1,206 +1,311 @@
-import { type Component, For, Show, createSignal, createMemo } from 'solid-js'
-import { Card, Badge, ProviderAvatar } from '@/components/ui'
-import type { Provider, Endpoint } from '@/types/domain'
+import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
+import { Card, Badge, Button, ProviderAvatar } from '@/components/ui'
+import type { Provider } from '@/types/domain'
 
-interface TopologyProps {
+interface CanvasTopologyProps {
   providers: Provider[]
-  endpoints?: Endpoint[]
+  endpoints?: any[]
   activeConnections?: number
   liveEvents?: Array<{
     timestamp?: string
     provider?: string
     model?: string
-    endpoint?: string
     status?: string
     latencyMs?: number
   }>
 }
 
-export const GatewayTopology: Component<TopologyProps> = props => {
-  const [selectedNode, setSelectedNode] = createSignal<string | null>(null)
+export const GatewayTopology: Component<CanvasTopologyProps> = props => {
+  let containerRef: HTMLDivElement | undefined
+  const [zoom, setZoom] = createSignal(1)
+  const [pan, setPan] = createSignal({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = createSignal(false)
+  const [dragStart, setDragStart] = createSignal({ x: 0, y: 0 })
+  const [fullscreen, setFullscreen] = createSignal(false)
+  const [hoveredNode, setHoveredNode] = createSignal<string | null>(null)
 
-  // 活跃与待命上游分类
-  const providerNodes = createMemo(() => {
-    const list = props.providers || []
-    return list.map(p => {
-      // 检查最近是否有实时事件命中该上游
-      const recentHit = (props.liveEvents || []).find(e => 
+  const providers = createMemo(() => props.providers || [])
+  const activeCount = createMemo(() => providers().filter(p => p.isActive).length)
+
+  // 计算节点放射状圆形排布坐标 (以中心 0,0 为原点)
+  const nodePositions = createMemo(() => {
+    const list = providers()
+    const count = list.length
+    if (count === 0) return []
+
+    // 半径随节点数量自适应扩大，保证不拥挤
+    const radius = Math.max(180, Math.min(320, 140 + count * 18))
+    
+    return list.map((p, i) => {
+      // 角度均匀分布（从 -90 度/正上方开始顺时针分布）
+      const angle = (i / count) * 2 * Math.PI - Math.PI / 2
+      const x = Math.round(Math.cos(angle) * radius)
+      const y = Math.round(Math.sin(angle) * radius)
+
+      const recentHit = (props.liveEvents || []).find(e =>
         e.provider === p.provider || e.provider === p.id || (e.model && p.name && e.model.toLowerCase().includes(p.name.toLowerCase()))
       )
+
       return {
         ...p,
+        x,
+        y,
         isHitting: !!recentHit,
-        recentStatus: recentHit?.status,
         recentLatency: recentHit?.latencyMs,
       }
     })
   })
 
-  const activeCount = createMemo(() => providerNodes().filter(p => p.isActive).length)
+  // 缩放控制
+  const zoomIn = () => setZoom(z => Math.min(2.0, Number((z + 0.15).toFixed(2))))
+  const zoomOut = () => setZoom(z => Math.max(0.5, Number((z - 0.15).toFixed(2))))
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  // 鼠标拖拽平移
+  const handleMouseDown = (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - pan().x, y: e.clientY - pan().y })
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging()) return
+    setPan({ x: e.clientX - dragStart().x, y: e.clientY - dragStart().y })
+  }
+
+  const handleMouseUp = () => setIsDragging(false)
+
+  // 滚轮缩放
+  const handleWheel = (e: WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY < 0 ? 0.08 : -0.08
+    setZoom(z => Math.max(0.5, Math.min(2.0, Number((z + delta).toFixed(2)))))
+  }
+
+  onMount(() => {
+    window.addEventListener('mouseup', handleMouseUp)
+  })
+
+  onCleanup(() => {
+    window.removeEventListener('mouseup', handleMouseUp)
+  })
 
   return (
-    <Card class="p-5 overflow-hidden relative border border-subtle/80 bg-card/70 backdrop-blur-xl">
-      {/* 顶部标题与状态汇总 */}
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <div class="flex items-center gap-3">
+    <Card
+      class={`overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl transition-all duration-300 select-none ${
+        fullscreen()
+          ? 'fixed inset-4 z-50 rounded-2xl shadow-2xl bg-bg/95 flex flex-col'
+          : 'h-[460px] sm:h-[500px]'
+      }`}
+    >
+      {/* 顶部标题栏与状态指示 */}
+      <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
+        <div class="flex items-center gap-3 bg-bg/80 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
           <div class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shadow-accent shadow-sm" />
           <div>
-            <h3 class="text-sm font-semibold flex items-center gap-2">
-              实时路由拓扑与上游连接
+            <h3 class="text-xs font-semibold flex items-center gap-2 text-foreground">
+              实时路由拓扑
               <Badge tone="green" class="text-[10px] px-1.5 py-0">
                 {activeCount()} 活跃通道
               </Badge>
             </h3>
-            <p class="text-xs text-faint mt-0.5">
-              可视化客户端流量分发、网关调度核心与模型上游连接状态
+            <p class="text-[11px] text-faint">
+              支持无限平移与滚轮缩放 · 实时呈现调度流向
             </p>
           </div>
         </div>
 
-        {/* 状态图例 */}
-        <div class="flex items-center gap-3 text-[11px] text-faint">
-          <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-success animate-pulse" /> 活跃响应中
-          </span>
-          <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-info" /> 就绪备用
-          </span>
-          <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-zinc-600" /> 未激活
-          </span>
+        {/* 状态图例与全屏切换 */}
+        <div class="flex items-center gap-2 pointer-events-auto">
+          <div class="hidden sm:flex items-center gap-3 text-[11px] text-faint bg-bg/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-subtle">
+            <span class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-accent animate-pulse shadow-accent" /> 调度中
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-success" /> 活跃
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-zinc-600" /> 未激活
+            </span>
+          </div>
+
+          <button
+            type="button"
+            class="h-8 px-2.5 rounded-control text-muted hover:text-text hover:bg-hover bg-bg/80 backdrop-blur-md border border-subtle transition-colors flex items-center justify-center"
+            onClick={() => setFullscreen(!fullscreen())}
+            title={fullscreen() ? '退出全屏' : '全屏展开'}
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d={fullscreen() ? 'M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3' : 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'} />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* 拓扑交互容器 */}
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center relative py-2">
-        {/* 1. 客户端入口层 (Left 3 cols) */}
-        <div class="lg:col-span-3 space-y-3">
-          <div class="text-xs font-semibold text-faint uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect width="20" height="14" x="2" y="3" rx="2" />
-              <line x1="8" x2="16" y1="21" y2="21" />
-              <line x1="12" x2="12" y1="17" y2="21" />
-            </svg>
-            客户端协议端点
-          </div>
+      {/* 9router 风格画布视窗 (含网格背景图层与可拖拽平移图层) */}
+      <div
+        ref={containerRef}
+        class="w-full h-full relative cursor-grab active:cursor-grabbing overflow-hidden flex items-center justify-center"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+      >
+        {/* 点阵网格背景 (Grid Canvas Background) */}
+        <div
+          class="absolute inset-0 pointer-events-none opacity-25 dark:opacity-15"
+          style={{
+            'background-image': 'radial-gradient(currentColor 1px, transparent 1px)',
+            'background-size': '24px 24px',
+            'background-position': `${pan().x}px ${pan().y}px`,
+          }}
+        />
 
-          <div class="space-y-2">
-            <div class="p-3 rounded-xl bg-hover/50 border border-subtle/60 text-xs flex items-center justify-between group hover:border-accent/40 transition-colors">
-              <div>
-                <div class="font-medium text-foreground">OpenAI 兼容端点</div>
-                <div class="text-[11px] text-faint font-mono mt-0.5">/v1/chat/completions</div>
-              </div>
-              <Badge tone="blue">Ready</Badge>
-            </div>
-
-            <div class="p-3 rounded-xl bg-hover/50 border border-subtle/60 text-xs flex items-center justify-between group hover:border-accent/40 transition-colors">
-              <div>
-                <div class="font-medium text-foreground">Anthropic 协议端点</div>
-                <div class="text-[11px] text-faint font-mono mt-0.5">/v1/messages</div>
-              </div>
-              <Badge tone="blue">Ready</Badge>
-            </div>
-
-            <div class="p-3 rounded-xl bg-hover/50 border border-subtle/60 text-xs flex items-center justify-between group hover:border-accent/40 transition-colors">
-              <div>
-                <div class="font-medium text-foreground">CLI / IDE 专线</div>
-                <div class="text-[11px] text-faint font-mono mt-0.5">Claude / Cursor / Codex</div>
-              </div>
-              <Badge tone="green">Active</Badge>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. 中间流向指示与核心网关枢纽 (Middle 3 cols) */}
-        <div class="lg:col-span-3 flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-b from-accent/5 via-accent-2/5 to-transparent border border-accent/20 relative shadow-accent/5 shadow-lg">
-          {/* 光晕背景 */}
-          <div class="absolute inset-0 bg-accent/5 rounded-2xl blur-xl -z-10 pointer-events-none" />
-
-          <div class="w-12 h-12 rounded-2xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent mb-3 shadow-accent shadow-sm">
-            <svg class="w-6 h-6 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-            </svg>
-          </div>
-
-          <h4 class="text-xs font-bold text-foreground">Cyrene Core Gateway</h4>
-          <p class="text-[10px] text-faint mt-0.5 text-center">智能路由调度与故障回退枢纽</p>
-
-          <div class="mt-3 pt-3 border-t border-subtle/60 w-full flex items-center justify-around text-center">
-            <div>
-              <div class="text-[10px] text-faint">活跃通道</div>
-              <div class="text-sm font-bold text-accent tabular-nums">{activeCount()}</div>
-            </div>
-            <div class="w-px h-6 bg-subtle/60" />
-            <div>
-              <div class="text-[10px] text-faint">接入提供商</div>
-              <div class="text-sm font-bold text-foreground tabular-nums">{providerNodes().length}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. 右侧上游节点网格 (Right 6 cols) */}
-        <div class="lg:col-span-6 space-y-3">
-          <div class="text-xs font-semibold text-faint uppercase tracking-wider mb-2 flex items-center justify-between">
-            <span class="flex items-center gap-1.5">
-              <svg class="w-3.5 h-3.5 text-accent-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-              </svg>
-              已接入模型上游通道 ({providerNodes().length})
-            </span>
-            <span class="text-[10px] text-faint">点击节点查看状态</span>
-          </div>
-
-          <Show
-            when={providerNodes().length > 0}
-            fallback={<div class="p-6 text-center text-xs text-faint border border-dashed border-subtle rounded-xl">暂无已配置的模型提供商</div>}
+        {/* 核心画布世界 (平移与缩放图层) */}
+        <div
+          class="relative transition-transform duration-75 ease-out"
+          style={{
+            transform: `translate(${pan().x}px, ${pan().y}px) scale(${zoom()})`,
+            'transform-origin': 'center center',
+          }}
+        >
+          {/* SVG 曲线连接层 (贝塞尔平滑流向曲线 + 粒子脉冲) */}
+          <svg
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1000px] h-[1000px] pointer-events-none overflow-visible -z-10"
+            viewBox="-500 -500 1000 1000"
           >
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
-              <For each={providerNodes()}>
-                {p => {
-                  const isSelected = () => selectedNode() === p.id
-                  return (
-                    <div
-                      class={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
-                        p.isActive
-                          ? p.isHitting
-                            ? 'bg-accent/10 border-accent shadow-accent/20 shadow-md ring-1 ring-accent/40'
-                            : 'bg-hover/60 border-subtle/80 hover:border-accent/40'
-                          : 'bg-hover/20 border-subtle/40 opacity-60 hover:opacity-100'
-                      } ${isSelected() ? 'ring-2 ring-accent' : ''}`}
-                      onClick={() => setSelectedNode(isSelected() ? null : p.id)}
-                    >
-                      <div class="flex items-center gap-2.5 min-w-0">
-                        <ProviderAvatar provider={p.provider} name={p.name} size="sm" class="shrink-0" />
-                        <div class="min-w-0">
-                          <div class="text-xs font-semibold truncate text-foreground flex items-center gap-1.5">
-                            {p.name || p.provider}
-                            <Show when={p.isActive}>
-                              <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0 animate-pulse" />
-                            </Show>
-                          </div>
-                          <div class="text-[10px] text-faint font-mono truncate">
-                            {p.authType || 'API Key'}
-                          </div>
-                        </div>
-                      </div>
+            <defs>
+              <linearGradient id="activeLineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.8" />
+                <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0.8" />
+              </linearGradient>
+            </defs>
 
-                      <div class="text-right shrink-0">
-                        <Show
-                          when={p.isActive}
-                          fallback={<span class="text-[10px] text-faint">未启用</span>}
-                        >
-                          <Badge tone={p.isHitting ? 'green' : 'blue'} class="text-[10px]">
-                            {p.isHitting ? (p.recentLatency ? `${p.recentLatency}ms` : '响应中') : '就绪'}
-                          </Badge>
+            <For each={nodePositions()}>
+              {node => {
+                const isHovered = () => hoveredNode() === node.id
+                // 贝塞尔曲线连接 (从 0,0 中心拉出平滑弧线到节点 x,y)
+                const cpx = node.x * 0.45
+                const cpy = node.y * 0.45
+                const d = `M 0 0 Q ${cpx} ${cpy} ${node.x} ${node.y}`
+
+                return (
+                  <g class="transition-opacity duration-200">
+                    {/* 底层连接阴影线 */}
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={node.isHitting ? 'url(#activeLineGrad)' : (node.isActive ? 'rgba(45, 212, 191, 0.3)' : 'rgba(150, 150, 150, 0.15)')}
+                      stroke-width={node.isHitting ? 3 : (node.isActive ? 2 : 1.2)}
+                      stroke-dasharray={node.isActive ? 'none' : '4 4'}
+                    />
+
+                    {/* 命中时的光斑脉冲粒子 */}
+                    <Show when={node.isHitting || isHovered()}>
+                      <circle r="4" fill="var(--accent)">
+                        <animateMotion path={d} dur="1.2s" repeatCount="indefinite" />
+                      </circle>
+                    </Show>
+                  </g>
+                )
+              }}
+            </For>
+          </svg>
+
+          {/* 1. 中心枢纽：Cyrene Gateway (9router 风格中心卡片) */}
+          <div
+            class="absolute -translate-x-1/2 -translate-y-1/2 z-10 px-4 py-2.5 rounded-xl bg-bg-elevated border border-accent/40 shadow-xl shadow-accent/10 flex items-center gap-2.5 min-w-[130px] justify-center hover:scale-105 transition-transform duration-200"
+          >
+            <div class="w-6 h-6 rounded-lg bg-accent text-on-accent font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
+              C
+            </div>
+            <div class="font-bold text-xs tracking-tight text-foreground">
+              Cyrene Gateway
+            </div>
+          </div>
+
+          {/* 2. 周围辐射排布的模型上游卡片 (9router 风格节点胶囊) */}
+          <For each={nodePositions()}>
+            {node => {
+              return (
+                <div
+                  class="absolute -translate-x-1/2 -translate-y-1/2 z-10 transition-all duration-200 group"
+                  style={{
+                    left: `${node.x}px`,
+                    top: `${node.y}px`,
+                  }}
+                  onMouseEnter={() => setHoveredNode(node.id)}
+                  onMouseLeave={() => setHoveredNode(null)}
+                >
+                  <div
+                    class={`px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-md flex items-center gap-2.5 whitespace-nowrap transition-all duration-200 cursor-pointer ${
+                      node.isActive
+                        ? node.isHitting
+                          ? 'border-accent ring-2 ring-accent/40 shadow-accent/20 scale-105'
+                          : 'border-subtle hover:border-accent/50 hover:scale-105'
+                        : 'border-subtle/50 opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <ProviderAvatar provider={node.provider} name={node.name} size="sm" class="shrink-0" />
+                    <div class="min-w-0">
+                      <div class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        {node.name || node.provider}
+                        <Show when={node.isActive}>
+                          <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
                         </Show>
                       </div>
+                      <div class="text-[10px] text-faint font-mono truncate">
+                        {node.authType || 'API Key'}
+                      </div>
                     </div>
-                  )
-                }}
-              </For>
-            </div>
-          </Show>
+
+                    <Show when={node.isHitting}>
+                      <Badge tone="green" class="text-[9px] px-1 py-0 ml-1 shrink-0 animate-pulse">
+                        {node.recentLatency ? `${node.recentLatency}ms` : '响应中'}
+                      </Badge>
+                    </Show>
+                  </div>
+                </div>
+              )
+            }}
+          </For>
         </div>
+      </div>
+
+      {/* 左下角画布视窗控制器 (缩放/重置/自适应) */}
+      <div class="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-bg/85 backdrop-blur-md p-1 rounded-xl border border-subtle shadow-sm">
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"
+          onClick={zoomIn}
+          title="放大 (+)"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"
+          onClick={zoomOut}
+          title="缩小 (-)"
+        >
+          −
+        </button>
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-xs"
+          onClick={resetView}
+          title="重置视图"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </button>
+        <span class="text-[10px] text-faint px-1.5 tabular-nums font-mono">
+          {Math.round(zoom() * 100)}%
+        </span>
       </div>
     </Card>
   )
