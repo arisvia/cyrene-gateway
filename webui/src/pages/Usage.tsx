@@ -34,12 +34,21 @@ const Usage: Component = () => {
       es?.close(); es = null; setLive(false); return
     }
     es = new EventSource('/api/usage/stream')
-    es.onmessage = ev => {
+    
+    const handleData = (ev: MessageEvent) => {
       try {
         const d = JSON.parse(ev.data)
-        setLiveEvents(list => [d, ...list].slice(0, 30))
-      } catch { /* 忽略心跳 */ }
+        if (d && (d.model || d.provider || d.endpoint)) {
+          setLiveEvents(list => [d, ...list].slice(0, 30))
+        }
+      } catch { /* 忽略心跳与解析错误 */ }
     }
+
+    es.onmessage = handleData
+    es.addEventListener('request', handleData as EventListener)
+    es.addEventListener('connected', () => {
+      setLive(true)
+    })
     es.onerror = () => { setLive(false); es?.close(); es = null }
     setLive(true)
   }
@@ -94,9 +103,6 @@ const Usage: Component = () => {
             </button>
           </div>
 
-          <Show when={subTab() === 'overview'}>
-            <Select value={period()} options={PERIODS} onChange={v => { setPeriod(v); load() }} />
-          </Show>
           <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive}>
             {live() ? '■ 停止实时' : '● 实时事件'}
           </Button>
@@ -131,10 +137,15 @@ const Usage: Component = () => {
             </For>
           </div>
         </Show>
-
         {/* 图表 */}
         <Card class="p-5">
-          <h3 class="text-sm font-semibold mb-4">Token 趋势</h3>
+          <div class="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-sm font-semibold">Token 趋势</h3>
+              <p class="text-xs text-faint mt-0.5">按时间段聚合的 Prompt 与 Completion 吞吐</p>
+            </div>
+            <Select value={period()} options={PERIODS} onChange={v => { setPeriod(v); load() }} />
+          </div>
           <Show when={chart().length > 0} fallback={<Empty message="该周期暂无数据。" />}>
             <div class="flex items-end gap-1.5 h-40">
               <For each={chart()}>
