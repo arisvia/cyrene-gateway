@@ -207,7 +207,6 @@ export const GatewayTopology: Component<CanvasTopologyProps> = props => {
                       stroke-width={node.isHitting ? 3 : (node.isActive ? 2 : 1.2)}
                       stroke-dasharray={node.isActive ? 'none' : '4 4'}
                     />
-
                     {/* 命中时的光斑脉冲粒子 */}
                     <Show when={node.isHitting || isHovered()}>
                       <circle r="4" fill="var(--accent)">
@@ -220,26 +219,16 @@ export const GatewayTopology: Component<CanvasTopologyProps> = props => {
             </For>
           </svg>
 
-          {/* 1. 中心枢纽：Cyrene Core Gateway (精致现代网关状态中心指示牌) */}
+          {/* 1. 中心枢纽：Cyrene Gateway (纯净简约胶囊牌) */}
           <div
-            class="absolute -translate-x-1/2 -translate-y-1/2 z-20 p-3.5 rounded-2xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-2xl shadow-accent/15 flex flex-col items-center gap-2 min-w-[150px] justify-center hover:scale-105 transition-transform duration-200 group cursor-default"
+            class="absolute -translate-x-1/2 -translate-y-1/2 z-20 px-4 py-2.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-xl shadow-accent/15 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
           >
-            {/* 顶栏：图标 + 名称 */}
-            <div class="flex items-center gap-2.5">
-              <img src="/icon.png" alt="Cyrene" class="w-6 h-6 rounded-lg object-contain shadow-accent shadow-sm shrink-0" />
-              <div class="font-bold text-xs tracking-tight text-foreground">
-                Cyrene Gateway
-              </div>
-            </div>
-
-            {/* 底栏状态指示与活跃指标胶囊 */}
-            <div class="w-full pt-2 border-t border-subtle/60 flex items-center justify-around gap-2 text-[10px]">
-              <div class="flex items-center gap-1.5 text-accent font-medium">
-                <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                <span>{activeCount()} 通道就绪</span>
-              </div>
+            <img src="/icon.png" alt="Cyrene" class="w-5 h-5 rounded-lg object-contain shadow-accent shadow-sm shrink-0" />
+            <div class="font-bold text-xs tracking-tight text-foreground whitespace-nowrap">
+              Cyrene Gateway
             </div>
           </div>
+
           {/* 2. 周围辐射排布的模型上游卡片 (9router 风格节点胶囊) */}
           <For each={nodePositions()}>
             {node => {
