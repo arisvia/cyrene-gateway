@@ -1,18 +1,27 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
+import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field } from '@/components/ui'
-
 const Settings: Component = () => {
   const store = useGatewayStore()
+  const bgStore = useBackgroundStore()
   const [saving, setSaving] = createSignal(false)
   const [local, setLocal] = createSignal<Record<string, unknown>>({})
   const [pw, setPw] = createSignal('')
   const [pwMsg, setPwMsg] = createSignal('')
   const [keyName, setKeyName] = createSignal('')
   const [creatingKey, setCreatingKey] = createSignal(false)
+
+  // 背景自定义状态
+  const [bgUrlInput, setBgUrlInput] = createSignal('')
+  const [bgMsg, setBgMsg] = createSignal('')
+
   onMount(async () => {
     await store.loadSettings()
     setLocal({ ...store.settings() })
+    if (bgStore.bgConfig().type === 'url') {
+      setBgUrlInput(bgStore.bgConfig().value)
+    }
   })
 
   const dirty = () => {
@@ -49,6 +58,149 @@ const Settings: Component = () => {
           {dirty() ? '保存更改' : '已是最新'}
         </Button>
       </div>
+
+      {/* 界面与背景自定义 */}
+      <Card class="p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold">界面与壁纸</h3>
+            <p class="text-xs text-faint mt-0.5">支持上传本地图片或远程图片链接作为网关背景，数据存储于浏览器 IndexedDB</p>
+          </div>
+          <Show when={bgStore.bgConfig().type !== 'none'}>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={async () => {
+                await bgStore.resetBackground()
+                setBgUrlInput('')
+                setBgMsg('已恢复默认背景')
+              }}
+            >
+              清除壁纸
+            </Button>
+          </Show>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {/* 远程图片链接 */}
+          <div class="space-y-2">
+            <label class="text-xs font-medium text-muted">远程图片 URL</label>
+            <div class="flex gap-2">
+              <Input
+                value={bgUrlInput()}
+                placeholder="https://example.com/wallpaper.jpg"
+                onInput={setBgUrlInput}
+              />
+              <Button
+                variant="secondary"
+                disabled={!bgUrlInput().trim()}
+                onClick={async () => {
+                  const url = bgUrlInput().trim()
+                  if (!url) return
+                  await bgStore.setBackground({
+                    type: 'url',
+                    value: url,
+                    blur: bgStore.bgConfig().blur ?? 0,
+                    opacity: bgStore.bgConfig().opacity ?? 1,
+                  })
+                  setBgMsg('已应用远程壁纸')
+                }}
+              >
+                应用
+              </Button>
+            </div>
+          </div>
+
+          {/* 本地图片上传 */}
+          <div class="space-y-2">
+            <label class="text-xs font-medium text-muted">本地图片上传</label>
+            <div class="flex items-center gap-2">
+              <label class="flex-1 cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control border border-dashed border-subtle hover:border-accent text-xs text-muted hover:text-text transition-colors bg-card/40">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                  <circle cx="9" cy="9" r="2" />
+                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                </svg>
+                <span>选择本地图片...</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  onChange={e => {
+                    const file = e.currentTarget.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = async () => {
+                      const dataUrl = reader.result as string
+                      await bgStore.setBackground({
+                        type: 'image',
+                        value: dataUrl,
+                        blur: bgStore.bgConfig().blur ?? 0,
+                        opacity: bgStore.bgConfig().opacity ?? 1,
+                      })
+                      setBgMsg(`已加载本地图片 (${file.name})`)
+                    }
+                    reader.readAsDataURL(file)
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* 壁纸虚化与透明度微调 */}
+        <Show when={bgStore.bgConfig().type !== 'none'}>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-subtle/50">
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-muted">背景虚化 (Blur)</span>
+                <span class="font-mono text-faint">{bgStore.bgConfig().blur || 0}px</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                step="1"
+                class="w-full accent-accent cursor-pointer"
+                value={bgStore.bgConfig().blur || 0}
+                onInput={async e => {
+                  const val = Number(e.currentTarget.value)
+                  await bgStore.setBackground({
+                    ...bgStore.bgConfig(),
+                    blur: val,
+                  })
+                }}
+              />
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-muted">背景不透明度 (Opacity)</span>
+                <span class="font-mono text-faint">{Math.round((bgStore.bgConfig().opacity ?? 1) * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                class="w-full accent-accent cursor-pointer"
+                value={bgStore.bgConfig().opacity ?? 1}
+                onInput={async e => {
+                  const val = Number(e.currentTarget.value)
+                  await bgStore.setBackground({
+                    ...bgStore.bgConfig(),
+                    opacity: val,
+                  })
+                }}
+              />
+            </div>
+          </div>
+        </Show>
+
+        <Show when={bgMsg()}>
+          <p class="text-xs text-accent mt-1">{bgMsg()}</p>
+        </Show>
+      </Card>
 
       {/* 访问控制 */}
       <Card class="p-5 space-y-4">

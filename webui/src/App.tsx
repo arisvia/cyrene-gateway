@@ -1,9 +1,9 @@
 import { type Component, type JSX, For, Show, createSignal, onMount } from 'solid-js'
 import { HashRouter, Route, A } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
+import { useBackgroundStore } from './stores/background'
 import { ThemeToggle } from './components/layout/Sidebar'
 import { ToastHost } from './components/ui'
-
 import Home from './pages/Home'
 import Providers from './pages/Providers'
 import ProviderDetail from './pages/ProviderDetail'
@@ -134,24 +134,51 @@ const NAV = [
 
 const App: Component = () => {
   const store = useGatewayStore()
+  const bgStore = useBackgroundStore()
   const [open, setOpen] = createSignal(false)
-  onMount(() => store.loadCore())
+  onMount(() => {
+    store.loadCore()
+    bgStore.init()
+  })
 
   // 布局作为 root 传入 Router：这样侧栏/头部里的 <A> 处于路由上下文内
-  const Layout: Component<{ children?: JSX.Element }> = props => (
-    <div class="min-h-screen bg-bg text-text relative overflow-x-hidden selection:bg-accent/25">
-      {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
-      <div class="fixed top-[-10%] left-[20%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
-      <div class="fixed bottom-[-10%] right-[10%] w-[600px] h-[600px] bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
-      <ToastHost />
-      {/* 桌面侧栏 */}
-      <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
-        <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
-          <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
-          <div class="min-w-0">
-            <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
+  const Layout: Component<{ children?: JSX.Element }> = props => {
+    const hasCustomBg = () => bgStore.bgConfig().type !== 'none' && !!bgStore.bgConfig().value
+    const bgStyle = () => {
+      if (!hasCustomBg()) return {}
+      const conf = bgStore.bgConfig()
+      return {
+        'background-image': `url("${conf.value}")`,
+        'background-size': 'cover',
+        'background-position': 'center',
+        'background-attachment': 'fixed',
+        'filter': conf.blur ? `blur(${conf.blur}px)` : undefined,
+        'opacity': conf.opacity ?? 1,
+        'transform': conf.blur ? 'scale(1.05)' : undefined, // 防止边缘虚化留白
+      }
+    }
+
+    return (
+      <div class="min-h-screen bg-bg text-text relative overflow-x-hidden selection:bg-accent/25">
+        {/* 自定义全屏壁纸图层（支持虚化与不透明度） */}
+        <Show when={hasCustomBg()}>
+          <div
+            class="fixed inset-0 pointer-events-none -z-20 transition-all duration-300 ease-out"
+            style={bgStyle()}
+          />
+        </Show>
+        {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
+        <div class="fixed top-[-10%] left-[20%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+        <div class="fixed bottom-[-10%] right-[10%] w-[600px] h-[600px] bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
+        <ToastHost />
+        {/* 桌面侧栏 */}
+        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
+          <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
+            <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
+            <div class="min-w-0">
+              <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
+            </div>
           </div>
-        </div>
         <SidebarNav onNavigate={() => setOpen(false)} />
         <div class="p-3.5 border-t border-subtle flex items-center justify-between bg-card/30">
           <ThemeToggle />
@@ -211,7 +238,8 @@ const App: Component = () => {
         </main>
       </div>
     </div>
-  )
+    )
+  }
 
   return (
     <HashRouter root={Layout}>
