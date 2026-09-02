@@ -284,10 +284,10 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Object        string   `json:"object"`
 		OwnedBy       string   `json:"owned_by"`
 		DisplayName   string   `json:"display_name,omitempty"`
-		ContextLength int      `json:"context_length,omitempty"`
-		MaxOutput     int      `json:"max_output_tokens,omitempty"`
 		Capabilities  []string `json:"capabilities,omitempty"`
 		Modalities    []string `json:"modalities,omitempty"`
+		ContextLength int      `json:"context_length,omitempty"`
+		MaxOutput     int      `json:"max_output_tokens,omitempty"`
 	}
 
 	var models []ModelEntry
@@ -705,13 +705,13 @@ func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	var req struct {
+		Data     map[string]any `json:"data"`
 		ID       string         `json:"id"`
 		Provider string         `json:"provider"`
 		AuthType string         `json:"authType"`
 		Name     string         `json:"name"`
 		Email    string         `json:"email"`
 		Priority int            `json:"priority"`
-		Data     map[string]any `json:"data"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -1227,8 +1227,8 @@ func (s *Server) handleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		ProxyURL    string `json:"proxyUrl"`
 		NoProxy     string `json:"noProxy"`
-		StrictProxy bool   `json:"strictProxy"`
 		Type        string `json:"type"`
+		StrictProxy bool   `json:"strictProxy"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})

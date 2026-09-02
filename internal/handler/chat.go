@@ -36,31 +36,31 @@ func isHopByHopHeader(h string) bool {
 
 // usageContext carries metadata for recording usage after a proxied response.
 type usageContext struct {
+	StartedAt    time.Time
 	Provider     string
 	Model        string
 	ConnectionID string
 	APIKey       string
 	Endpoint     string
-	StartedAt    time.Time // upstream attempt start (metrics duration)
-	Status       int       // final HTTP status returned to the client
+	Status       int
 }
 
 // ChatCompletionRequest represents an OpenAI-compatible chat request
 type ChatCompletionRequest struct {
-	Model       string          `json:"model"`
-	Messages    []Message       `json:"messages"`
-	Stream      bool            `json:"stream,omitempty"`
 	Temperature *float64        `json:"temperature,omitempty"`
 	MaxTokens   *int            `json:"max_tokens,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []Message       `json:"messages"`
 	Tools       json.RawMessage `json:"tools,omitempty"`
 	ToolChoice  json.RawMessage `json:"tool_choice,omitempty"`
+	Stream      bool            `json:"stream,omitempty"`
 }
 
 type Message struct {
 	Role       string          `json:"role"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
 	Content    json.RawMessage `json:"content"`
 	ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -823,10 +823,14 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 				flusher.Flush()
 				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", translated)
+			w.Write([]byte("data: "))
+			w.Write(translated)
+			w.Write([]byte("\n\n"))
 		} else {
 			// OpenAI format passthrough
-			fmt.Fprintf(w, "data: %s\n\n", dataStr)
+			w.Write([]byte("data: "))
+			w.Write(event.Data)
+			w.Write([]byte("\n\n"))
 		}
 		flusher.Flush()
 	}

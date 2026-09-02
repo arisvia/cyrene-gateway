@@ -205,10 +205,10 @@ func TestBuildTransportURLOpenAIFullEndpoint(t *testing.T) {
 // mock upstream that echoes the received headers.
 func TestApplyAuthFormats(t *testing.T) {
 	cases := []struct {
-		name  string
-		tr    Transport
 		creds Credentials
 		check func(*testing.T, *http.Request)
+		name  string
+		tr    Transport
 	}{
 		{
 			name:  "bearer",

@@ -16,10 +16,10 @@ import (
 
 // ExecutionCandidate represents a resolved model & connection attempt candidate.
 type ExecutionCandidate struct {
-	ModelStr     string
-	ModelInfo    model.ModelInfo
-	ProviderInfo ProviderInfo
 	Connection   *model.ProviderConnection
+	ModelInfo    model.ModelInfo
+	ModelStr     string
+	ProviderInfo ProviderInfo
 }
 
 // ExecutionRequest holds the normalized request payload and metadata.
@@ -35,11 +35,11 @@ type ExecutionRequest struct {
 // ExecutionResult is the outcome of executing against an upstream provider.
 type ExecutionResult struct {
 	Response       *http.Response
-	TargetFormat   translator.Format
-	ModelInfo      model.ModelInfo
 	Connection     *model.ProviderConnection
-	StatusCode     int
+	ModelInfo      model.ModelInfo
+	TargetFormat   translator.Format
 	ErrorBody      []byte
+	StatusCode     int
 	ShouldFallback bool
 }
 

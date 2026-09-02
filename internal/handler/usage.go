@@ -269,11 +269,11 @@ func (s *Server) handleUsageLogs(w http.ResponseWriter, r *http.Request) {
 		Timestamp        string  `json:"timestamp"`
 		Provider         string  `json:"provider"`
 		Model            string  `json:"model"`
+		Status           string  `json:"status"`
+		Endpoint         string  `json:"endpoint"`
 		PromptTokens     int     `json:"promptTokens"`
 		CompletionTokens int     `json:"completionTokens"`
 		Cost             float64 `json:"cost"`
-		Status           string  `json:"status"`
-		Endpoint         string  `json:"endpoint"`
 	}
 
 	logs := make([]LogEntry, 0, len(entries))

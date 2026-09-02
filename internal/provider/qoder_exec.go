@@ -379,8 +379,8 @@ func UnwrapQoderSSELine(line, model string) (data string, done bool) {
 	}
 
 	var envelope struct {
-		StatusCodeValue int    `json:"statusCodeValue"`
 		Body            string `json:"body"`
+		StatusCodeValue int    `json:"statusCodeValue"`
 	}
 	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
 		return "", false

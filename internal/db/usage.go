@@ -10,19 +10,19 @@ import (
 
 // UsageEntry represents a row in usageHistory.
 type UsageEntry struct {
-	ID               int64   `json:"id,omitempty"`
+	Endpoint         string  `json:"endpoint,omitempty"`
 	Timestamp        string  `json:"timestamp"`
 	Provider         string  `json:"provider"`
 	Model            string  `json:"model"`
 	ConnectionID     string  `json:"connectionId,omitempty"`
 	APIKey           string  `json:"apiKey,omitempty"`
-	Endpoint         string  `json:"endpoint,omitempty"`
-	PromptTokens     int     `json:"promptTokens"`
-	CompletionTokens int     `json:"completionTokens"`
-	Cost             float64 `json:"cost"`
 	Status           string  `json:"status"`
 	Tokens           string  `json:"tokens,omitempty"`
 	Meta             string  `json:"meta,omitempty"`
+	ID               int64   `json:"id,omitempty"`
+	PromptTokens     int     `json:"promptTokens"`
+	CompletionTokens int     `json:"completionTokens"`
+	Cost             float64 `json:"cost"`
 }
 
 // UsageFilter for querying usage history.
@@ -45,12 +45,12 @@ type DayCounter struct {
 
 // DayData is the JSON blob stored in usageDaily.
 type DayData struct {
+	ByProvider       map[string]DayCounter `json:"byProvider"`
+	ByModel          map[string]DayCounter `json:"byModel"`
 	Requests         int                   `json:"requests"`
 	PromptTokens     int                   `json:"promptTokens"`
 	CompletionTokens int                   `json:"completionTokens"`
 	Cost             float64               `json:"cost"`
-	ByProvider       map[string]DayCounter `json:"byProvider"`
-	ByModel          map[string]DayCounter `json:"byModel"`
 }
 
 // SaveUsageEntry inserts a usage record and updates the daily aggregation in one transaction.

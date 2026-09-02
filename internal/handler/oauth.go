@@ -253,11 +253,11 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 	providerID := r.PathValue("provider")
 
 	var req struct {
+		ExtraData    map[string]any `json:"extraData"`
 		DeviceCode   string         `json:"deviceCode"`
 		CodeVerifier string         `json:"codeVerifier"`
 		Nonce        string         `json:"nonce"`
 		MachineID    string         `json:"machineId"`
-		ExtraData    map[string]any `json:"extraData"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})

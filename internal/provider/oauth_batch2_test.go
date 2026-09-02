@@ -96,12 +96,12 @@ func refreshCodebuddyWithServer(providerID string, conn *model.ProviderConnectio
 	defer resp.Body.Close()
 
 	var data struct {
-		Code int `json:"code"`
 		Data struct {
 			AccessToken  string `json:"accessToken"`
 			RefreshToken string `json:"refreshToken"`
 			ExpiresIn    int    `json:"expiresIn"`
 		} `json:"data"`
+		Code int `json:"code"`
 	}
 	json.NewDecoder(resp.Body).Decode(&data)
 	if data.Code != 0 || data.Data.AccessToken == "" {

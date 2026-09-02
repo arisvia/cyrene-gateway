@@ -21,8 +21,8 @@ type rotationState struct {
 
 // ComboManager handles combo model rotation and fallback logic.
 type ComboManager struct {
-	mu       sync.Mutex
 	rotation map[string]*rotationState
+	mu       sync.Mutex
 }
 
 // NewComboManager creates a new ComboManager.
@@ -101,10 +101,10 @@ func rotateFromIndex(models []string, index int) []string {
 
 // ComboResult represents the outcome of a combo attempt.
 type ComboResult struct {
-	Success    bool
-	Status     int
 	ErrorText  string
 	RetryAfter string
+	Status     int
+	Success    bool
 }
 
 // HandleComboFallback iterates through models, calling tryFunc for each.

@@ -197,16 +197,16 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 
 		var chunk struct {
 			ID      string `json:"id"`
-			Created int64  `json:"created"`
 			Choices []struct {
-				Delta struct {
+				FinishReason string `json:"finish_reason"`
+				Delta        struct {
 					Role             string          `json:"role"`
 					Content          string          `json:"content"`
 					ReasoningContent string          `json:"reasoning_content"`
 					ToolCalls        json.RawMessage `json:"tool_calls"`
 				} `json:"delta"`
-				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
+			Created int64 `json:"created"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue

@@ -374,11 +374,11 @@ func PollQoderDeviceToken(nonce, codeVerifier string, client *http.Client) (*Qod
 	}
 
 	var tokenResp struct {
+		ExpiresAt    any    `json:"expires_at"`
+		ExpiresIn    any    `json:"expires_in"`
 		Token        string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 		UserID       string `json:"user_id"`
-		ExpiresAt    any    `json:"expires_at"`
-		ExpiresIn    any    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, fmt.Errorf("qoder poll: invalid JSON response: %w", err)

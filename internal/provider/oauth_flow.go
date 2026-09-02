@@ -57,10 +57,10 @@ func GeneratePKCE() (*PKCE, error) {
 
 // OAuthSession stores in-flight OAuth session data (PKCE + redirect URI).
 type OAuthSession struct {
-	Provider    string
-	PKCE        *PKCE
-	RedirectURI string
 	CreatedAt   time.Time
+	PKCE        *PKCE
+	Provider    string
+	RedirectURI string
 }
 
 // sessionStore holds in-flight OAuth sessions keyed by state.
@@ -175,12 +175,12 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 
 // TokenExchangeResult holds the result of a token exchange.
 type TokenExchangeResult struct {
+	ProviderSpecificData map[string]any `json:"providerSpecificData,omitempty"`
 	AccessToken          string         `json:"accessToken"`
 	RefreshToken         string         `json:"refreshToken,omitempty"`
-	ExpiresIn            int            `json:"expiresIn,omitempty"`
 	Email                string         `json:"email,omitempty"`
 	DisplayName          string         `json:"displayName,omitempty"`
-	ProviderSpecificData map[string]any `json:"providerSpecificData,omitempty"`
+	ExpiresIn            int            `json:"expiresIn,omitempty"`
 }
 
 // ExchangeCode exchanges an authorization code for tokens.
@@ -259,15 +259,14 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 
 // DeviceCodeResponse holds the response from a device code request.
 type DeviceCodeResponse struct {
-	DeviceCode              string `json:"device_code"`
-	UserCode                string `json:"user_code"`
-	VerificationURI         string `json:"verification_uri"`
-	VerificationURIComplete string `json:"verification_uri_complete,omitempty"`
-	ExpiresIn               int    `json:"expires_in"`
-	Interval                int    `json:"interval"`
-	CodeVerifier            string `json:"codeVerifier,omitempty"`
-	// Extra data for polling (provider-specific)
-	ExtraData map[string]any `json:"extraData,omitempty"`
+	ExtraData               map[string]any `json:"extraData,omitempty"`
+	DeviceCode              string         `json:"device_code"`
+	UserCode                string         `json:"user_code"`
+	VerificationURI         string         `json:"verification_uri"`
+	VerificationURIComplete string         `json:"verification_uri_complete,omitempty"`
+	CodeVerifier            string         `json:"codeVerifier,omitempty"`
+	ExpiresIn               int            `json:"expires_in"`
+	Interval                int            `json:"interval"`
 }
 
 // RequestDeviceCode initiates a device code flow for a provider.
@@ -411,10 +410,10 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 
 // PollDeviceCodeResult holds the result of polling for a device code token.
 type PollDeviceCodeResult struct {
+	Tokens  *TokenExchangeResult `json:"tokens,omitempty"`
+	Error   string               `json:"error,omitempty"`
 	Success bool                 `json:"success"`
 	Pending bool                 `json:"pending"`
-	Error   string               `json:"error,omitempty"`
-	Tokens  *TokenExchangeResult `json:"tokens,omitempty"`
 }
 
 // PollDeviceCode polls the token endpoint for a device code flow.

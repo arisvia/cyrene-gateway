@@ -14,8 +14,8 @@ import (
 type SSEEvent struct {
 	ID    string
 	Event string
-	Data  []byte
 	Retry string
+	Data  []byte
 }
 
 // SSEReader parses server-sent events according to standard SSE spec.

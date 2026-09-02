@@ -136,8 +136,8 @@ func GetProvider(id string) (ProviderInfo, bool) {
 // RegistryByCategory groups providers by category with counts
 type RegistryByCategory struct {
 	Category  string         `json:"category"`
-	Count     int            `json:"count"`
 	Providers []ProviderInfo `json:"providers"`
+	Count     int            `json:"count"`
 }
 
 // GetRegistryByCategory returns providers grouped by category

@@ -50,13 +50,12 @@ func mockOpenAIUpstream(t *testing.T, wantAuth func(r *http.Request) error) *htt
 
 // e2eCase defines a single E2E provider verification.
 type e2eCase struct {
+	WantAuth func(r *http.Request) error
 	Provider string
 	Model    string
 	AuthType string
 	APIKey   string
 	Token    string
-	// WantAuth validates the upstream request auth. Nil = skip check.
-	WantAuth func(r *http.Request) error
 }
 
 func TestE2EChatCompletion(t *testing.T) {

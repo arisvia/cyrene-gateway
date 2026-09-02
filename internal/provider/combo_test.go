@@ -180,13 +180,13 @@ func TestRotateFromIndex(t *testing.T) {
 	models := []string{"a", "b", "c", "d"}
 
 	tests := []struct {
-		index    int
 		expected []string
+		index    int
 	}{
-		{0, []string{"a", "b", "c", "d"}},
-		{1, []string{"b", "c", "d", "a"}},
-		{2, []string{"c", "d", "a", "b"}},
-		{3, []string{"d", "a", "b", "c"}},
+		{expected: []string{"a", "b", "c", "d"}, index: 0},
+		{expected: []string{"b", "c", "d", "a"}, index: 1},
+		{expected: []string{"c", "d", "a", "b"}, index: 2},
+		{expected: []string{"d", "a", "b", "c"}, index: 3},
 	}
 
 	for _, tt := range tests {

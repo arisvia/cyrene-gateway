@@ -47,26 +47,19 @@ type Transport struct {
 // AuthDescriptor describes how a credential token is attached to an upstream
 // request. Ported from 9router transport.auth + AUTH_DESCRIPTORS.
 type AuthDescriptor struct {
-	// Header is the header name carrying the token (ignored for AuthQuery).
-	Header string
-	// Scheme is one of AuthBearer, AuthRaw, AuthQuery.
-	Scheme string
-	// QueryParam is the query parameter name when Scheme == AuthQuery.
-	QueryParam string
-	// AnthropicVersion injects the anthropic-version header when set.
+	Header           string
+	Scheme           string
+	QueryParam       string
+	Hooks            []string
 	AnthropicVersion bool
-	// Hooks are provider-specific header overlays run BEFORE auth is applied
-	// (e.g. kimiHeaders), so dynamic overlays cannot clobber the token.
-	Hooks []string
 }
 
 // Credentials is the subset of connection data the transport layer needs to
 // authenticate an upstream request.
 type Credentials struct {
-	APIKey      string
-	AccessToken string
-	// ProviderSpecificData carries per-connection metadata (e.g. kimi deviceId).
 	ProviderSpecificData map[string]any
+	APIKey               string
+	AccessToken          string
 }
 
 // credentialsFromConn projects a connection onto the transport Credentials view.

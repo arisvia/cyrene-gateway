@@ -14,16 +14,16 @@ type RequestEvent struct {
 	Provider  string `json:"provider,omitempty"`
 	Model     string `json:"model,omitempty"`
 	Status    string `json:"status,omitempty"`
+	Endpoint  string `json:"endpoint,omitempty"`
 	Prompt    int    `json:"promptTokens,omitempty"`
 	Compl     int    `json:"completionTokens,omitempty"`
 	LatencyMs int64  `json:"latencyMs,omitempty"`
-	Endpoint  string `json:"endpoint,omitempty"`
 }
 
 // EventBroadcaster is a simple pub/sub for request events.
 type EventBroadcaster struct {
-	mu   sync.RWMutex
 	subs map[chan RequestEvent]struct{}
+	mu   sync.RWMutex
 }
 
 func NewEventBroadcaster() *EventBroadcaster {

@@ -64,9 +64,9 @@ func IsQoderPAT(token string) bool {
 
 // QoderResolvedCredential is the COSY-signable form of a qoder connection.
 type QoderResolvedCredential struct {
+	ExpiresAt   time.Time
 	AccessToken string
 	UserID      string
-	ExpiresAt   time.Time
 }
 
 type qoderPATCacheEntry struct {
@@ -172,10 +172,10 @@ func qoderExchangeJobToken(pat string, client *http.Client) (jobToken string, ex
 	}
 
 	var data struct {
+		ExpiresIn    any    `json:"expires_in"`
 		Token        string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 		ExpiresAt    string `json:"expires_at"`
-		ExpiresIn    any    `json:"expires_in"`
 	}
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return "", time.Time{}, fmt.Errorf("qoder PAT exchange returned invalid JSON")

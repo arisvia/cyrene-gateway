@@ -58,21 +58,21 @@ func ShouldRefresh(conn *model.ProviderConnection) bool {
 
 // RefreshResult holds the outcome of a token refresh.
 type RefreshResult struct {
+	Extra        map[string]any `json:"extra,omitempty"`
 	AccessToken  string         `json:"access_token"`
 	RefreshToken string         `json:"refresh_token"`
-	ExpiresIn    int            `json:"expires_in"`
 	IDToken      string         `json:"id_token,omitempty"`
-	Extra        map[string]any `json:"extra,omitempty"`
+	ExpiresIn    int            `json:"expires_in"`
 }
 
 // --- Error Classification ---
 
 // RefreshError classifies an OAuth refresh failure.
 type RefreshError struct {
-	Status      int
 	Code        string
 	Description string
-	Permanent   bool // true = re-auth required, token is unrecoverable
+	Status      int
+	Permanent   bool
 }
 
 func (e *RefreshError) Error() string {
@@ -128,18 +128,12 @@ func IsUnrecoverableRefreshError(err error) bool {
 
 // refreshProfile describes how a provider's token refresh request is built.
 type refreshProfile struct {
-	// URL override; if empty, uses registry TokenURL.
-	url string
-	// bodyFormat: "form" (default) or "json".
-	bodyFormat string
-	// includeClientSecret adds client_secret to the body.
+	extraHeaders        func(conn *model.ProviderConnection) map[string]string
+	parse               func(raw map[string]any) map[string]any
+	url                 string
+	bodyFormat          string
+	clientSecret        string
 	includeClientSecret bool
-	// clientSecret value (for providers with static secrets).
-	clientSecret string
-	// extraHeaders returns additional headers for the request.
-	extraHeaders func(conn *model.ProviderConnection) map[string]string
-	// parse extracts extra data from the token response.
-	parse func(raw map[string]any) map[string]any
 }
 
 var refreshProfiles = map[string]refreshProfile{
@@ -440,13 +434,13 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 	}
 
 	var data struct {
-		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
 			AccessToken  string `json:"accessToken"`
 			RefreshToken string `json:"refreshToken"`
 			ExpiresIn    int    `json:"expiresIn"`
 		} `json:"data"`
+		Code int `json:"code"`
 	}
 	if err := json.Unmarshal(respBody, &data); err != nil {
 		return nil, fmt.Errorf("codebuddy decode failed: %w", err)
@@ -555,12 +549,12 @@ func ApplyRefreshResult(conn *model.ProviderConnection, result *RefreshResult) {
 // --- Token Refresh Dedup Lock ---
 
 type refreshEntry struct {
-	mu        sync.Mutex
-	doneChan  chan struct{}
-	done      bool
-	result    *RefreshResult
-	err       error
 	expiresAt time.Time
+	err       error
+	doneChan  chan struct{}
+	result    *RefreshResult
+	mu        sync.Mutex
+	done      bool
 }
 
 var (

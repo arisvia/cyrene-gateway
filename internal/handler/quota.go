@@ -13,8 +13,8 @@ type QuotaEntry struct {
 	ConnectionID     string `json:"connectionId"`
 	Provider         string `json:"provider"`
 	Name             string `json:"name,omitempty"`
-	QuotaLimit       int    `json:"quotaLimit"`
 	QuotaPeriod      string `json:"quotaPeriod"`
+	QuotaLimit       int    `json:"quotaLimit"`
 	UsedRequests     int    `json:"usedRequests"`
 	UsedPromptTokens int    `json:"usedPromptTokens"`
 	UsedCompTokens   int    `json:"usedCompletionTokens"`

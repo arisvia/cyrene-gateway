@@ -43,10 +43,10 @@ func (s *Server) handleTestBatch(w http.ResponseWriter, r *http.Request) {
 	type result struct {
 		ID      string `json:"id"`
 		Name    string `json:"name"`
-		OK      bool   `json:"ok"`
 		Latency string `json:"latency,omitempty"`
-		Code    int    `json:"code,omitempty"`
 		Error   string `json:"error,omitempty"`
+		Code    int    `json:"code,omitempty"`
+		OK      bool   `json:"ok"`
 	}
 
 	var targets []string
@@ -183,11 +183,11 @@ func (s *Server) handleEnableFreeProviders(w http.ResponseWriter, r *http.Reques
 
 // testResult is the internal result of a single connection test.
 type testResult struct {
-	OK        bool
 	Latency   string
+	Error     string
 	LatencyMS int64
 	Code      int
-	Error     string
+	OK        bool
 }
 
 // testConnection performs a single provider connection test (extracted from handleTestProvider).
