@@ -185,6 +185,8 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/usage/request-details/{id}", s.handleUsageRequestDetailByID)
 	s.Router.HandleFunc("GET /api/usage/stream", s.handleUsageStream)
 	s.Router.HandleFunc("GET /api/usage/logs", s.handleUsageLogs)
+	s.Router.HandleFunc("GET /api/system/logs", s.handleSystemLogs)
+	s.Router.HandleFunc("GET /api/system/logs/stream", s.handleSystemLogsStream)
 	s.Router.HandleFunc("GET /api/usage/providers", s.handleUsageProviders)
 
 	// Quota tracker

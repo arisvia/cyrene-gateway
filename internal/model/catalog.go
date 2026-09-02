@@ -71,13 +71,14 @@ var StaticCatalog = []CatalogEntry{
 	// Anthropic Claude
 	{Pattern: "claude-opus-5", DisplayName: "Claude Opus 5", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-fable-5", DisplayName: "Claude Fable 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
-	{Pattern: "claude-sonnet-5", DisplayName: "Claude Sonnet 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-sonnet-5", DisplayName: "Claude Sonnet 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-haiku-4-5", DisplayName: "Claude 4.5 Haiku", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-opus-4", DisplayName: "Claude Opus 4", ContextLength: 200000, MaxOutput: 32768, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-sonnet-4", DisplayName: "Claude Sonnet 4", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
-	{Pattern: "claude-haiku-4", DisplayName: "Claude Haiku 4", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-3-7-sonnet", DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude", DisplayName: "Claude", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
-
 	// Google Gemini
 	{Pattern: "gemini-3.6-flash", DisplayName: "Gemini 3.6 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
 	{Pattern: "gemini-3.5-flash-lite", DisplayName: "Gemini 3.5 Flash Lite", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
@@ -126,16 +127,17 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "kimi-k2.5", DisplayName: "Kimi K2.5", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 
 	// GLM (Zhipu)
+	{Pattern: "glm-5.2", DisplayName: "GLM 5.2", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "glm"},
+	{Pattern: "glm-5.1", DisplayName: "GLM 5.1", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
 	{Pattern: "glm-5", DisplayName: "GLM 5", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
 	{Pattern: "glm-4.7", DisplayName: "GLM 4.7", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "glm"},
 	{Pattern: "glm-4", DisplayName: "GLM 4", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "glm"},
 
 	// MiniMax
-	{Pattern: "minimax-m3", DisplayName: "MiniMax M3", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
+	{Pattern: "minimax-m3", DisplayName: "MiniMax M3", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "minimax"},
+	{Pattern: "minimax-m2.7", DisplayName: "MiniMax M2.7", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
+	{Pattern: "minimax-m2.5", DisplayName: "MiniMax M2.5", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
 	{Pattern: "minimax-m2", DisplayName: "MiniMax M2", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
-
-	// Mistral
-	{Pattern: "mistral-large", DisplayName: "Mistral Large", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
 	{Pattern: "codestral", DisplayName: "Codestral", ContextLength: 256000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
 	{Pattern: "mistral-medium", DisplayName: "Mistral Medium", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
 	{Pattern: "mistral-embed", DisplayName: "Mistral Embed", ContextLength: 8192, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "mistral"},

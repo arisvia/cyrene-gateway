@@ -15,7 +15,7 @@ func TestLookupCatalog(t *testing.T) {
 		{"gemini-2.5-pro", "Gemini 2.5 Pro", 1048576, "gemini"},
 		{"deepseek-v4-pro", "DeepSeek V4 Pro", 128000, "deepseek"},
 		{"kimi-k2.6", "Kimi K2.6", 131072, "kimi"},
-		{"glm-5.2", "GLM 5", 128000, "glm"},
+		{"glm-5.2", "GLM 5.2", 128000, "glm"},
 		{"o3", "O3", 200000, "o-series"},
 		{"text-embedding-3-large", "Text Embedding 3 Large", 8191, "embedding"},
 		{"unknown-model-xyz", "", 0, ""},

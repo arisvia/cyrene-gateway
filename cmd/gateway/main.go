@@ -23,10 +23,10 @@ func main() {
 	auth.SetSecret(cfg.Secret)
 	auth.InitSecretFile(cfg.DataDir)
 
-	// Structured logging
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	// Structured logging with web SSE broadcast
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	logger := slog.New(handler.NewBroadcastLogHandler(jsonHandler))
 	slog.SetDefault(logger)
-
 	slog.Info("Starting cyrene-gateway",
 		slog.String("host", cfg.Host),
 		slog.Int("port", cfg.Port),
