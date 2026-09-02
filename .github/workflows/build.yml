@@ -18,11 +18,13 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: 'npm'
+          cache-dependency-path: webui/package-lock.json
 
       - name: WebUI Lint, Test & Build
         run: |
           cd webui
-          npm install
+          npm ci
           npm run typecheck
           npm test
           npm run build

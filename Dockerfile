@@ -3,8 +3,8 @@
 # ---------- 1) 面板构建 ----------
 FROM node:24-alpine AS webui
 WORKDIR /src/webui
-COPY webui/package.json ./
-RUN npm install
+COPY webui/package*.json ./
+RUN npm ci
 COPY webui/ ./
 RUN npm run build
 
