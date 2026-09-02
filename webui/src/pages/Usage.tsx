@@ -88,7 +88,7 @@ const Usage: Component = () => {
               }`}
               onClick={() => setSubTab('overview')}
             >
-              拓扑与概览
+              概览
             </button>
             <button
               type="button"
