@@ -14,25 +14,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: 'pnpm'
-          cache-dependency-path: webui/pnpm-lock.yaml
+          cache: 'npm'
+          cache-dependency-path: webui/package-lock.json
 
       - name: WebUI Lint, Test & Build
         run: |
           cd webui
-          pnpm install --frozen-lockfile
-          pnpm run typecheck
-          pnpm test
-          pnpm run build
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
 
       - name: Setup Go
         uses: actions/setup-go@v7

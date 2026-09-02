@@ -1,10 +1,17 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
-export default defineConfig({
-  plugins: [solid(), tailwindcss()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    solid({
+      hot: mode !== 'test',
+      ssr: false,
+    }),
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -23,4 +30,14 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
-})
+  test: {
+    environment: 'happy-dom',
+    globals: true,
+    include: ['src/**/*.test.{ts,tsx}'],
+    server: {
+      deps: {
+        inline: [/solid-js/],
+      },
+    },
+  },
+}))
