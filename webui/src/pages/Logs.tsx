@@ -106,7 +106,7 @@ const LogsPage: Component = () => {
       {/* 头部与状态栏 */}
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>
-          <h1 class="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
+          <h1 class="text-xl font-semibold flex items-center gap-2.5">
             网关系统日志
             <span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm' : 'bg-zinc-600'}`} />
           </h1>

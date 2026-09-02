@@ -127,7 +127,6 @@
   html {
     font-size: 15px;
   }
-
   body {
     font-family: var(--font);
     background-color: var(--bg);
@@ -135,7 +134,7 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overflow-x: hidden;
+    min-height: 100vh;
   }
 
   /* Tailwind v4 移除了 button 的 pointer 光标，按 9router 做法恢复 */

@@ -159,8 +159,7 @@ const App: Component = () => {
     }
 
     return (
-      <div class="min-h-screen bg-bg text-text relative overflow-x-hidden selection:bg-accent/25">
-        {/* 自定义全屏壁纸图层（支持虚化与不透明度） */}
+      <div class="min-h-screen bg-bg text-text relative selection:bg-accent/25">
         <Show when={hasCustomBg()}>
           <div
             class="fixed inset-0 pointer-events-none -z-20 transition-all duration-300 ease-out"

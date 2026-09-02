@@ -234,13 +234,13 @@ const Providers: Component = () => {
   }
 
   return (
-    <div class="space-y-4">
+    <div class="space-y-5 stagger">
       {/* 头部标题与视窗切换 (吸顶固定) */}
-      <div class="sticky top-0 z-20 bg-bg/95 backdrop-blur-md pt-1 pb-3 space-y-3">
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 space-y-3 border-b border-subtle/50">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">模型提供商接入</h1>
-            <p class="text-sm text-faint mt-1">
+            <h1 class="text-xl font-semibold">模型提供商接入</h1>
+            <p class="text-sm text-faint mt-0.5">
               统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池
             </p>
           </div>
