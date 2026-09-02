@@ -22,11 +22,10 @@ go test -count=1 ./...
 
 # 前端类型检查、测试与生产打包
 cd webui
-pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
-```
+npm install    # 或 pnpm / bun / yarn
+npm run typecheck
+npm test
+npm run build
 
 ## 代码规范与约束
 

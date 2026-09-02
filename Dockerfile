@@ -2,12 +2,11 @@
 
 # ---------- 1) 面板构建 ----------
 FROM node:24-alpine AS webui
-RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /src/webui
-COPY webui/package.json webui/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY webui/package.json ./
+RUN npm install
 COPY webui/ ./
-RUN pnpm build
+RUN npm run build
 
 # ---------- 2) Go 构建 ----------
 FROM golang:1.27-alpine AS build
