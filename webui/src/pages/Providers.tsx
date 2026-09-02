@@ -202,96 +202,98 @@ const Providers: Component = () => {
   }
 
   return (
-    <div class="space-y-6">
-      {/* 头部标题与视窗切换 */}
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 class="text-2xl font-bold tracking-tight text-foreground">模型提供商接入</h1>
-          <p class="text-sm text-faint mt-1">
-            统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池
-          </p>
+    <div class="space-y-4">
+      {/* 头部标题与视窗切换 (吸顶固定) */}
+      <div class="sticky top-0 z-20 bg-bg/95 backdrop-blur-md pt-1 pb-3 space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-bold tracking-tight text-foreground">模型提供商接入</h1>
+            <p class="text-sm text-faint mt-1">
+              统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池
+            </p>
+          </div>
+
+          {/* 现代分段切换药丸 (Segmented Control) */}
+          <div class="inline-flex p-1 rounded-xl bg-card border border-subtle shadow-sm">
+            <button
+              type="button"
+              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                activeTab() === 'connections'
+                  ? 'bg-accent text-on-accent shadow-sm'
+                  : 'text-muted hover:text-foreground'
+              }`}
+              onClick={() => { setActiveTab('connections'); setCatFilter(''); }}
+            >
+              我的连接 ({store.providers().length})
+            </button>
+            <button
+              type="button"
+              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+                activeTab() === 'catalog'
+                  ? 'bg-accent text-on-accent shadow-sm'
+                  : 'text-muted hover:text-foreground'
+              }`}
+              onClick={() => { setActiveTab('catalog'); setCatFilter(''); }}
+            >
+              提供商市场 ({store.registryList().length})
+            </button>
+          </div>
         </div>
 
-        {/* 现代分段切换药丸 (Segmented Control) */}
-        <div class="inline-flex p-1 rounded-xl bg-card border border-subtle shadow-sm">
-          <button
-            type="button"
-            class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-              activeTab() === 'connections'
-                ? 'bg-accent text-on-accent shadow-sm'
-                : 'text-muted hover:text-foreground'
-            }`}
-            onClick={() => { setActiveTab('connections'); setCatFilter(''); }}
-          >
-            我的连接 ({store.providers().length})
-          </button>
-          <button
-            type="button"
-            class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-              activeTab() === 'catalog'
-                ? 'bg-accent text-on-accent shadow-sm'
-                : 'text-muted hover:text-foreground'
-            }`}
-            onClick={() => { setActiveTab('catalog'); setCatFilter(''); }}
-          >
-            提供商市场 ({store.registryList().length})
-          </button>
-        </div>
-      </div>
-
-      {/* 搜索与过滤工具栏 */}
-      <Card class="p-3.5 flex flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-wrap items-center gap-3 flex-1">
-          <Input
-            class="!w-64"
-            placeholder={activeTab() === 'connections' ? '搜索已连接提供商…' : '搜索提供商市场/模型…'}
-            value={query()}
-            onInput={setQuery}
-          />
-
-          <Show when={activeTab() === 'connections'}>
-            <Select
-              value={catFilter()}
-              options={[
-                { value: '', label: '全部认证类型' },
-                { value: 'api-key', label: 'API Key' },
-                { value: 'oauth', label: 'OAuth 授权' },
-                { value: 'none', label: '免密免费' },
-                { value: 'cookie', label: 'Cookie' },
-              ]}
-              onChange={setCatFilter}
+        {/* 搜索与过滤工具栏 */}
+        <Card class="p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+          <div class="flex flex-wrap items-center gap-3 flex-1">
+            <Input
+              class="!w-64"
+              placeholder={activeTab() === 'connections' ? '搜索已连接提供商…' : '搜索提供商市场/模型…'}
+              value={query()}
+              onInput={setQuery}
             />
-          </Show>
 
-          <Show when={activeTab() === 'catalog'}>
-            <Select
-              value={catFilter()}
-              options={[
-                { value: '', label: '全部分类' },
-                { value: 'free', label: '免密免费' },
-                { value: 'freeTier', label: '免费额度' },
-                { value: 'apikey', label: 'API Key' },
-                { value: 'oauth', label: 'OAuth 渠道' },
-              ]}
-              onChange={setCatFilter}
-            />
-          </Show>
-        </div>
+            <Show when={activeTab() === 'connections'}>
+              <Select
+                value={catFilter()}
+                options={[
+                  { value: '', label: '全部认证类型' },
+                  { value: 'api-key', label: 'API Key' },
+                  { value: 'oauth', label: 'OAuth 授权' },
+                  { value: 'none', label: '免密免费' },
+                  { value: 'cookie', label: 'Cookie' },
+                ]}
+                onChange={setCatFilter}
+              />
+            </Show>
 
-        <div class="flex items-center gap-3 text-xs text-faint">
-          <span class="hidden sm:inline">
-            匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? filteredConnections().length : filteredCatalog().length}</strong> 项
-          </span>
-          <Button size="sm" variant="secondary" loading={refreshing()} onClick={handleRefreshAll}>
-            刷新
-          </Button>
-          <Show when={activeTab() === 'connections'}>
-            <Button size="sm" variant="primary" onClick={() => setActiveTab('catalog')}>
-              + 接入新提供商
+            <Show when={activeTab() === 'catalog'}>
+              <Select
+                value={catFilter()}
+                options={[
+                  { value: '', label: '全部分类' },
+                  { value: 'free', label: '免密免费' },
+                  { value: 'freeTier', label: '免费额度' },
+                  { value: 'apikey', label: 'API Key' },
+                  { value: 'oauth', label: 'OAuth 渠道' },
+                ]}
+                onChange={setCatFilter}
+              />
+            </Show>
+          </div>
+
+          <div class="flex items-center gap-3 text-xs text-faint">
+            <span class="hidden sm:inline">
+              匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? filteredConnections().length : filteredCatalog().length}</strong> 项
+            </span>
+            <Button size="sm" variant="secondary" loading={refreshing()} onClick={handleRefreshAll}>
+              刷新
             </Button>
-          </Show>
-        </div>
-      </Card>
+            <Show when={activeTab() === 'connections'}>
+              <Button size="sm" variant="primary" onClick={() => setActiveTab('catalog')}>
+                + 接入新提供商
+              </Button>
+            </Show>
+          </div>
+        </Card>
+      </div>
 
       {/* 视窗 1：我的连接列表 */}
       <Show when={activeTab() === 'connections'}>
@@ -431,8 +433,9 @@ const Providers: Component = () => {
 
       {/* 视窗 2：提供商市场 (Catalog Grid) */}
       <Show when={activeTab() === 'catalog'}>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <For each={filteredCatalog()}>
+        <div class="max-h-[calc(100vh-210px)] overflow-y-auto pr-1">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-6">
+            <For each={filteredCatalog()}>
             {reg => {
               const connected = () => store.providers().some(p => p.provider === reg.id)
               const isFree = reg.noAuth || reg.category === 'free'
@@ -518,7 +521,8 @@ const Providers: Component = () => {
                 </Card>
               )
             }}
-          </For>
+            </For>
+          </div>
         </div>
       </Show>
 

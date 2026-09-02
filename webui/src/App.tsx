@@ -252,8 +252,8 @@ function SidebarNav(props: { onNavigate?: () => void }) {
                     href={item.href}
                     end={item.end}
                     onClick={props.onNavigate}
-                    class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium text-muted hover:text-text hover:bg-hover transition-all"
-                    activeClass="!text-foreground !bg-accent/15 !border-accent/30 border text-accent shadow-sm font-semibold"
+                    class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium text-muted hover:text-text hover:bg-hover transition-all border border-transparent"
+                    activeClass="!text-foreground !bg-accent/15 !border-accent/30 text-accent shadow-sm font-semibold"
                   >
                     <item.icon />
                     <span>{item.label}</span>

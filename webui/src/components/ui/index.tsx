@@ -135,13 +135,15 @@ export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange
     aria-checked={props.checked ?? false}
     disabled={props.disabled}
     onClick={() => props.onChange?.(!props.checked)}
-    class={`relative w-9 h-5 shrink-0 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-      props.checked ? 'bg-accent' : 'bg-hover ring-1 ring-subtle'
+    class={`relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+      props.checked
+        ? 'bg-accent border-accent'
+        : 'bg-hover border-subtle'
     }`}
   >
     <span
-      class={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform duration-200 ${
-        props.checked ? 'translate-x-[18px]' : 'translate-x-0.5'
+      class={`pointer-events-none block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+        props.checked ? 'translate-x-[16px]' : 'translate-x-0'
       }`}
     />
   </button>
@@ -202,11 +204,11 @@ export const Skeleton: Component<{ class?: string }> = props => (
 )
 
 export const Field: Component<{ label: string; hint?: string; children?: JSX.Element }> = props => (
-  <label class="block space-y-1.5">
-    <span class="text-xs font-medium text-muted">{props.label}</span>
-    {props.children}
+  <label class="block space-y-2">
+    <span class="block text-xs font-medium text-muted/90 select-none">{props.label}</span>
+    <div class="mt-1">{props.children}</div>
     <Show when={props.hint}>
-      <span class="block text-[11px] text-faint">{props.hint}</span>
+      <span class="block text-[11px] text-faint mt-1.5 leading-relaxed">{props.hint}</span>
     </Show>
   </label>
 )

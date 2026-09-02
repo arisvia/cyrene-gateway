@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   server: {
-    port: 5173,
+    port: 20127,
     // 后端端口可注入：默认 20128，与网关默认启动端口一致
     // 用法：GW_PORT=20128 npm run dev
     proxy: {
