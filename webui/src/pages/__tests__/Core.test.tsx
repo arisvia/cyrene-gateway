@@ -86,13 +86,23 @@ describe('Usage 页', () => {
     await useGatewayStore().loadRequestDetails(1, 20)
     mount(Usage)
     await tick()
-    const text = document.body.textContent || ''
+    let text = document.body.textContent || ''
     expect(text).toContain('用量统计')
     expect(text).toContain('总请求')
     expect(text).toContain('估算成本')
     expect(text).toContain('Token 趋势')
-    expect(text).toContain('claude-x')
     expect(text).toContain('请求明细')
+    // 切换到详情 Tab
+    const detailsBtn = document.querySelectorAll('button')
+    for (const btn of detailsBtn) {
+      if (btn.textContent?.includes('请求明细')) {
+        btn.click()
+        break
+      }
+    }
+    await tick()
+    text = document.body.textContent || ''
+    expect(text).toContain('claude-x')
   })
 })
 

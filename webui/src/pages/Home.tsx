@@ -42,8 +42,6 @@ const Home: Component = () => {
               </div>
               <p class="text-xs text-faint mt-1 flex items-center gap-3">
                 <span>高并发统一 API 代理与模型路由枢纽</span>
-                <span class="hidden sm:inline">·</span>
-                <span class="hidden sm:inline">SQLite WAL 单二进制</span>
               </p>
             </div>
           </div>
