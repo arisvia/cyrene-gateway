@@ -2,7 +2,7 @@
 
 Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(OpenAI / Anthropic / Gemini / GitHub Copilot / Qoder 等数十家)统一收敛到一套 OpenAI 兼容 API 之后,并为它们补上连接池、故障回退(fallback)、配额冷却、用量统计与一块内置管理面板。
 
-单二进制、零外部依赖(SQLite 内嵌)、Go + Vue 3 实现。
+单二进制、零外部依赖(SQLite 内嵌)、Go + Solid.js 实现。
 
 ## 功能总览
 
@@ -54,13 +54,13 @@ go build -o cyrene-gateway ./cmd/gateway
 |---|---|---|---|
 | `-host` | `CYRENE_HOST` | `127.0.0.1` | 绑定地址(默认仅本机) |
 | `-port` | `CYRENE_PORT` | `20128` | 网关端口 |
+| `-data-dir` | `CYRENE_DATA_DIR` | `~/.cyrene-gateway` | 数据目录(数据库、密钥与面板缓存) |
 | `-secret` | `CYRENE_SECRET` | 空 | 面板访问密码;空则自动生成并持久化 |
 | `-dashboard` | `CYRENE_DASHBOARD` | 空 | 本地面板目录(开发用),空则用嵌入式面板 |
 | `-panel-url` | `CYRENE_PANEL_URL` | 空 | 面板更新包 URL(dist.zip 或单 HTML),空则用嵌入式 |
 | `-mitm` | — | `false` | 启用 MITM 代理(强制要求 localhost 绑定) |
 | `-mitm-port` | `CYRENE_MITM_PORT` | `443` | MITM 代理端口 |
 | `-allow-private-networks` | `CYRENE_ALLOW_PRIVATE_NETWORKS` | `false` | 允许出站访问私网地址(本地 mock 测试用) |
-
 ### 使用示例
 
 ```bash
@@ -89,11 +89,11 @@ go test ./...          # CI 另会跑 go test -race ./...
 
 # 前端
 cd webui
-npm ci
-npm run build          # vue-tsc 类型检查 + vite 构建
-npm test               # vitest
-npm run dev            # dev server :5173,已代理 /api 与 /v1 到 :20128
-```
+pnpm install
+pnpm typecheck        # tsc --noEmit
+pnpm test             # vitest
+pnpm build            # vite 构建生产产物
+pnpm dev              # dev server :5173，自动代理 /api 到 :20128
 
 ### 目录结构
 
@@ -114,8 +114,7 @@ internal/
   cli/              # CLI 工具适配器(claude/codex/opencode/cline/…)
   skills/           # cyrene-* 技能清单(chat/search/fetch/tts/stt/image/embeddings)
   loopguard/        # 对话死循环检测
-  rtk/              # 令牌压缩/节省实现
-webui/              # Vue 3 + Vite + Pinia 管理面板(构建产物嵌入二进制)
+webui/              # Solid.js + Vite 管理面板（构建产物由 CI 嵌入二进制，源码不提交 dist）
 schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 ```
 
