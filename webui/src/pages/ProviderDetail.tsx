@@ -141,7 +141,7 @@ const ProviderDetail: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       {/* 面包屑 + 标题 */}
       <div>
         <A href="/providers" class="text-xs text-faint hover:text-accent">← 返回连接列表</A>

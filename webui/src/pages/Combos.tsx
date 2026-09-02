@@ -65,7 +65,7 @@ const Combos: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold">模型组合</h1>
@@ -85,7 +85,7 @@ const Combos: Component = () => {
         <div class="grid gap-3">
           <For each={store.combos()}>
             {c => (
-              <Card class="p-4">
+              <Card hover class="p-4">
                 <div class="flex items-start justify-between gap-4">
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">

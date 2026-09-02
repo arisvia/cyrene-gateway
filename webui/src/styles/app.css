@@ -25,15 +25,15 @@
   --danger: #f87171;
   --info: #60a5fa;
 
-  /* 表面 / 玻璃拟态 */
-  --glass-blur: 20px;
-  --glass: rgba(255, 255, 255, 0.03);
-  --glass-hover: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.07);
-  --glass-border-hover: rgba(255, 255, 255, 0.14);
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
-  --glass-depth: 0 8px 32px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
-
+  /* 表面 / 2026 现代液态玻璃拟态 (Liquid Glass / Frosted Acrylic) */
+  --glass-blur: 24px;
+  --glass: rgba(255, 255, 255, 0.04);
+  --glass-hover: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.16);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%);
+  --glass-depth: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  --glass-depth-hover: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
   /* 底色 / 文字 */
   --bg: #0a0a10;
   --bg-elevated: #12121a;
@@ -59,13 +59,13 @@
 }
 
 .light {
-  --glass: rgba(255, 255, 255, 0.65);
-  --glass-hover: rgba(255, 255, 255, 0.85);
+  --glass: rgba(255, 255, 255, 0.7);
+  --glass-hover: rgba(255, 255, 255, 0.9);
   --glass-border: rgba(15, 23, 42, 0.08);
-  --glass-border-hover: rgba(15, 23, 42, 0.15);
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, transparent 50%);
-  --glass-depth: 0 8px 32px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
-  --bg: #f1f5f9;
+  --glass-border-hover: rgba(15, 23, 42, 0.16);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%);
+  --glass-depth: 0 10px 30px -10px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  --glass-depth-hover: 0 20px 40px -15px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.95) inset;
   --bg-elevated: #ffffff;
   --code-bg: rgba(15, 23, 42, 0.04);
   --text: #0f172a;
@@ -102,16 +102,17 @@
   --font-sans: var(--font);
   --font-mono: var(--font-mono);
 
-  --radius-card: 12px;
-  --radius-control: 8px;
+  --radius-card: 16px;
+  --radius-control: 10px;
 
   --shadow-glass: var(--glass-depth);
+  --shadow-glass-hover: var(--glass-depth-hover);
   --shadow-accent: var(--shadow-accent);
 
-  --animate-fade-in: fadeIn 0.2s ease-out both;
-  --animate-slide-up: slideUp 0.25s var(--ease-out-expo) both;
-  --animate-scale-in: scaleIn 0.18s var(--ease-out-expo) both;
-  --animate-stagger: slideUp 0.3s var(--ease-out-expo) backwards;
+  --animate-fade-in: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slide-up: slideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-scale-in: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-stagger: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* ---- 基础样式：全部进 @layer base（v4 会自动追加到 preflight 之后） ---- */
@@ -252,6 +253,15 @@
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
+}
+
+@utility glass-card {
+  background-color: var(--glass);
+  background-image: var(--glass-sheen);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-depth);
 }
 
 @utility gradient-brand {

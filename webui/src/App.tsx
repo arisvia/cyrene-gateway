@@ -139,9 +139,11 @@ const App: Component = () => {
 
   // 布局作为 root 传入 Router：这样侧栏/头部里的 <A> 处于路由上下文内
   const Layout: Component<{ children?: JSX.Element }> = props => (
-    <div class="min-h-screen bg-bg text-text">
+    <div class="min-h-screen bg-bg text-text relative overflow-x-hidden selection:bg-accent/25">
+      {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
+      <div class="fixed top-[-10%] left-[20%] w-[500px] h-[500px] bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+      <div class="fixed bottom-[-10%] right-[10%] w-[600px] h-[600px] bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
       <ToastHost />
-
       {/* 桌面侧栏 */}
       <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) glass-panel border-y-0 border-l-0 z-40 bg-card/60 backdrop-blur-xl">
         <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
@@ -204,7 +206,7 @@ const App: Component = () => {
             </div>
           </div>
         </header>
-        <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-10 py-6 lg:py-8">
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-10 py-6 lg:py-8 animate-fade-in">
           {props.children}
         </main>
       </div>

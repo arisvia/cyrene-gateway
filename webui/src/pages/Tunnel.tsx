@@ -64,7 +64,7 @@ const Tunnel: Component = () => {
   )
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div>
         <h1 class="text-xl font-semibold">内网穿透</h1>
         <p class="text-sm text-faint mt-0.5">通过 Tailscale 把网关暴露到远程</p>

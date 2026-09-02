@@ -62,7 +62,7 @@ const CliTools: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold">CLI 工具接入</h1>
@@ -88,7 +88,7 @@ const CliTools: Component = () => {
           <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <For each={rows()}>
               {t => (
-                <Card class="p-4 hover:border-accent/50 transition-colors">
+                <Card hover class="p-4">
                   <div class="flex items-start gap-3">
                     <Show when={t.icon} fallback={
                       <div class="w-9 h-9 rounded-control shrink-0" style={{ background: t.color || 'var(--accent)' }} />

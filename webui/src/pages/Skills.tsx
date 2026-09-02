@@ -25,7 +25,7 @@ const Skills: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div>
         <h1 class="text-xl font-semibold">技能清单</h1>
         <p class="text-sm text-faint mt-0.5">
@@ -40,7 +40,7 @@ const Skills: Component = () => {
           <div class="grid gap-3">
             <For each={filtered()}>
               {s => (
-                <Card class="p-4">
+                <Card hover class="p-4">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-2">

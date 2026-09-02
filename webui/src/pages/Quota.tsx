@@ -70,7 +70,7 @@ const Quota: Component = () => {
   )
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-semibold">配额</h1>
@@ -87,7 +87,7 @@ const Quota: Component = () => {
               {c => {
                 const d = () => details()[c.id]
                 return (
-                  <Card class="p-4">
+                  <Card hover class="p-4">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-medium text-sm">{c.name || c.provider}</span>
                       <Badge tone="gray">{c.provider}</Badge>
@@ -115,7 +115,7 @@ const Quota: Component = () => {
           <div class="grid gap-3">
             <For each={rows()}>
               {r => (
-                <Card class="p-4">
+                <Card hover class="p-4">
                   <div class="flex items-center justify-between gap-4 flex-wrap">
                     <div class="flex items-center gap-2">
                       <span class="font-mono text-sm">{r.provider}</span>

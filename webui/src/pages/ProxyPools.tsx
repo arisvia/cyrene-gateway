@@ -39,7 +39,7 @@ const ProxyPools: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-semibold">代理池</h1>
@@ -54,7 +54,7 @@ const ProxyPools: Component = () => {
         <div class="grid gap-3">
           <For each={store.proxyPools()}>
             {p => (
-              <Card class="p-4">
+              <Card hover class="p-4">
                 <div class="flex items-center justify-between gap-4 flex-wrap">
                   <div class="min-w-0">
                     <div class="flex items-center gap-2">

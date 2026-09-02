@@ -368,7 +368,7 @@ const Providers: Component = () => {
                 const test = () => testResult()?.id === p.id ? testResult() : null
 
                 return (
-                  <Card class="p-4 hover:border-accent/40 transition-all group">
+                  <Card hover class="p-4 group">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       {/* 左侧：图标 + 标题与标签 */}
                       <div class="flex items-start sm:items-center gap-3.5 min-w-0">
@@ -485,7 +485,7 @@ const Providers: Component = () => {
               const hasVariants = () => group.items.length > 1
 
               return (
-                <Card class="p-4 flex flex-col justify-between hover:border-accent/40 transition-all space-y-4 group">
+                <Card hover class="p-4 flex flex-col justify-between space-y-4 group">
                   <div>
                     <div class="flex items-start justify-between gap-2">
                       <div class="flex items-center gap-3">

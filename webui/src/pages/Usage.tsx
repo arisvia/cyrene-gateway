@@ -61,7 +61,7 @@ const Usage: Component = () => {
   )
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold">用量统计</h1>

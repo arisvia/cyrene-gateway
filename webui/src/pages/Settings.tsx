@@ -39,7 +39,7 @@ const Settings: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
+    <div class="space-y-5 stagger">
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-semibold">设置</h1>
