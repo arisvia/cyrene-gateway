@@ -12,6 +12,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   freeTier: '免费额度',
   free: '免密免费',
   webCookie: '网页 Cookie',
+  custom: '自定义通用',
 }
 
 const AUTHTYPE_LABEL: Record<string, string> = {
@@ -377,6 +378,7 @@ const Providers: Component = () => {
                 value={catFilter()}
                 options={[
                   { value: '', label: '全部分类' },
+                  { value: 'custom', label: '自定义通用 API' },
                   { value: 'free', label: '免密免费' },
                   { value: 'freeTier', label: '免费额度' },
                   { value: 'apikey', label: 'API Key' },

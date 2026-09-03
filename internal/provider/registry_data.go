@@ -452,6 +452,30 @@ func init() {
 		TokenURL:     "https://auth.x.ai/oauth2/token",
 		ClientID:     "b1a00492-073a-47ea-816f-4c329264a828",
 	}
+	Registry["custom-openai"] = ProviderInfo{
+		ID: "custom-openai", Name: "OpenAI Compatible",
+		Alias: "custom-openai", Aliases: []string{"custom-openai", "openai-custom", "generic-openai"},
+		BaseURL: "https://api.openai.com/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "custom", AuthModes: []string{"api-key"}, Priority: 50,
+		Color:    "#10A37F",
+		Website:  "https://platform.openai.com",
+		Icon:     "tune",
+		TextIcon: "OA",
+		AuthHint: "输入支持 OpenAI 规范的标准接口 Base URL（例如 https://my-llm.com/v1）与对应 API Key",
+	}
+	Registry["custom-anthropic"] = ProviderInfo{
+		ID: "custom-anthropic", Name: "Anthropic Compatible",
+		Alias: "custom-anthropic", Aliases: []string{"custom-anthropic", "anthropic-custom", "generic-anthropic"},
+		BaseURL: "https://api.anthropic.com/v1/messages",
+		APIType: "anthropic", AuthType: "api-key",
+		Category: "custom", AuthModes: []string{"api-key"}, Priority: 50,
+		Color:    "#D97706",
+		Website:  "https://anthropic.com",
+		Icon:     "tune",
+		TextIcon: "AN",
+		AuthHint: "输入支持 Anthropic /v1/messages 规范的标准接口 Base URL 与对应 API Key",
+	}
 
 	aliasMap = buildAliasMap()
 }

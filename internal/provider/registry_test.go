@@ -18,8 +18,9 @@ func TestRegistryCompleteness(t *testing.T) {
 		"deepseek", "cerebras", "groq", "nvidia",
 		// Brand pairs / quota-ported (3)
 		"codebuddy-cn", "minimax", "minimax-cn",
+		// Generic custom providers (2)
+		"custom-openai", "custom-anthropic",
 	}
-
 	for _, id := range expectedProviders {
 		if _, ok := Registry[id]; !ok {
 			t.Errorf("Registry missing provider %q", id)
@@ -39,6 +40,7 @@ func TestRegistryCategories(t *testing.T) {
 		"oauth":    11,
 		"freeTier": 4,
 		"free":     1,
+		"custom":   2,
 	}
 
 	for _, c := range cats {
@@ -71,7 +73,7 @@ func TestRegistryProviderFields(t *testing.T) {
 		if p.Category == "" {
 			t.Errorf("Provider %q has empty Category", id)
 		}
-		validCats := map[string]bool{"apikey": true, "oauth": true, "freeTier": true, "free": true, "webCookie": true}
+		validCats := map[string]bool{"apikey": true, "oauth": true, "freeTier": true, "free": true, "webCookie": true, "custom": true}
 		if !validCats[p.Category] {
 			t.Errorf("Provider %q has invalid Category %q", id, p.Category)
 		}

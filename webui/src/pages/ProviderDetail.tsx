@@ -2,6 +2,7 @@ import { type Component, For, Show, createSignal, createResource, createEffect, 
 import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
+import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar } from '@/components/ui'
 
@@ -9,13 +10,14 @@ const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
   const navigate = useNavigate()
   const store = useGatewayStore()
+  const toast = useToast()
   const [conn, setConn] = createSignal<Provider | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [notFound, setNotFound] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
   const [testing, setTesting] = createSignal(false)
   const [testResult, setTestResult] = createSignal<{ ok: boolean; msg: string } | null>(null)
-  const [tab, setTab] = createSignal<'overview' | 'models' | 'oauth' | 'chat'>('overview')
+  const [tab, setTab] = createSignal<'overview' | 'models' | 'chat'>('overview')
   // Chat 测试状态
   const [selectedModel, setSelectedModel] = createSignal('')
   const [prompt, setPrompt] = createSignal('')
@@ -74,6 +76,23 @@ const ProviderDetail: Component = () => {
   const [priority, setPriority] = createSignal('0')
   const [showAdvanced, setShowAdvanced] = createSignal(false)
   const [customHeadersText, setCustomHeadersText] = createSignal('')
+  const [syncingModels, setSyncingModels] = createSignal(false)
+
+  async function handleSyncModels() {
+    const p = conn()?.provider
+    if (!p) return
+    setSyncingModels(true)
+    try {
+      await apiPost(`/api/providers/${p}/refresh-models`)
+      toast.success('已成功从官方上游同步最新模型列表')
+      await refetchModels()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      toast.error(`同步模型失败: ${msg}`)
+    } finally {
+      setSyncingModels(false)
+    }
+  }
 
   // 模型元数据编辑状态
   const [editingModel, setEditingModel] = createSignal<ProviderModel | null>(null)
@@ -216,6 +235,8 @@ const ProviderDetail: Component = () => {
             pollTimer = undefined
             setDevicePolling(false)
             setDeviceSuccess(true)
+            setDeviceFlow(null)
+            toast.success('OAuth 授权成功！已绑定并刷新账号凭据。')
             await store.loadProvidersOnly()
             await load()
             refetchOAuth()
@@ -287,7 +308,7 @@ const ProviderDetail: Component = () => {
     const hash = window.location.hash
     if (hash.includes('tab=')) {
       const t = hash.split('tab=')[1]?.split('&')[0]
-      if (t && ['overview', 'models', 'oauth', 'chat'].includes(t)) {
+      if (t && ['overview', 'models', 'chat'].includes(t)) {
         setTab(t as any)
       }
     }
@@ -525,9 +546,6 @@ const ProviderDetail: Component = () => {
                 { id: 'overview' as const, label: '账号与连接' },
                 { id: 'models' as const, label: '可用模型' },
                 { id: 'chat' as const, label: '会话测试' },
-                ...(c().authType === 'oauth' || (modelsData().authModes?.includes('oauth') ?? false) || (regInfo()?.authModes?.includes('oauth') ?? false) || regInfo()?.category === 'oauth'
-                  ? [{ id: 'oauth' as const, label: '授权管理' }]
-                  : []),
               ]}>
                 {t => (
                   <button
@@ -644,19 +662,25 @@ const ProviderDetail: Component = () => {
                                 </div>
                               </div>
 
-                              <div class="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-faint font-mono">
-                                <Badge tone="blue" class="text-[10px] px-1.5 py-0">
+                              <div class="mt-2.5 flex items-center gap-2 flex-wrap text-xs">
+                                <Badge tone="blue" class="text-[10px] px-2 py-0.5 font-medium rounded-full">
                                   {acc.authType === 'api-key' || acc.authType === 'apikey' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth' : acc.authType}
                                 </Badge>
-                                <span class="px-1.5 py-0.2 rounded bg-bg text-faint border border-subtle">
-                                  优先级 {acc.priority} {idx() === 0 ? '(主)' : '(备用)'}
+                                <span class={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-mono ${
+                                  idx() === 0
+                                    ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
+                                    : 'bg-hover/80 border-subtle text-muted'
+                                }`}>
+                                  <span class={`w-1.5 h-1.5 rounded-full ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
+                                  <span>优先级 {acc.priority}</span>
+                                  <span class="opacity-70 font-sans">{idx() === 0 ? '(主)' : '(备用)'}</span>
                                 </span>
                                 <Show when={cooling()}>
                                   <Badge tone="amber" class="text-[10px]">限流冷却中</Badge>
                                 </Show>
                                 <Show when={acc.data?.credentialHint}>
-                                  <span class="truncate max-w-[140px]" title={String(acc.data?.credentialHint)}>
-                                    凭证: {String(acc.data?.credentialHint)}
+                                  <span class="truncate max-w-[140px] text-[11px] text-faint font-mono" title={String(acc.data?.credentialHint)}>
+                                    {String(acc.data?.credentialHint)}
                                   </span>
                                 </Show>
                               </div>
@@ -718,10 +742,41 @@ const ProviderDetail: Component = () => {
                         <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
                       </Field>
 
-                      {/* API Key / 凭据输入 */}
-                      <Show when={c().authType === 'api-key' || c().authType === 'apikey' || c().provider === 'opencode' || (modelsData().authModes?.includes('api-key') ?? false)}>
+                      {/* API Key / 凭据输入 (仅非纯 OAuth 模式，或为 OpenCode 时显示) */}
+                      <Show
+                        when={
+                          c().authType !== 'oauth' ||
+                          (c().provider === 'opencode' && c().authType !== 'none') ||
+                          (modelsData().authModes?.includes('api-key') && c().authType !== 'oauth')
+                        }
+                        fallback={
+                          <div class="p-3.5 rounded-control bg-accent/10 border border-accent/30 space-y-2 text-xs">
+                            <div class="flex items-center justify-between">
+                              <span class="font-medium text-accent flex items-center gap-1.5">
+                                <span>✓</span> 当前为 OAuth 授权账号
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                class="text-accent hover:border-accent"
+                                onClick={() => {
+                                  setDeviceFlow(null)
+                                  setDeviceSuccess(false)
+                                  setDeviceError('')
+                                  startDeviceFlow()
+                                }}
+                              >
+                                重新发起授权 ↗
+                              </Button>
+                            </div>
+                            <p class="text-faint leading-relaxed">
+                              本账号凭证由官方 OAuth 单点登录/设备码颁发管理，无需手动输入 API Key。如需更新授权请点击上方重新授权。
+                            </p>
+                          </div>
+                        }
+                      >
                         <Field
-                          label="API Key / 访问凭据 (PAT)"
+                          label={c().provider === 'qoder' ? 'Personal Access Token (PAT) / API Key' : 'API Key / 访问凭据'}
                           hint={
                             c().provider === 'qoder'
                               ? '支持填入 Qoder Personal Access Token (pt-...) 或 API Key'
@@ -939,19 +994,30 @@ const ProviderDetail: Component = () => {
 
                 <Card class="p-5 flex flex-col">
                   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                       <h3 class="text-sm font-semibold">可用模型</h3>
                       <span class="text-xs text-faint">
                         共 {(modelsData().registryModels ?? models()?.registryModels ?? []).length} 个 · 开放中 {(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length} 个
                       </span>
                     </div>
-                    <div class="w-full sm:w-64">
-                      <Input
-                        value={modelSearch()}
-                        onInput={setModelSearch}
-                        placeholder="搜索模型 ID 或名称…"
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                      <div class="flex-1 sm:w-64">
+                        <Input
+                          value={modelSearch()}
+                          onInput={setModelSearch}
+                          placeholder="搜索模型 ID 或名称…"
+                          size="sm"
+                        />
+                      </div>
+                      <Button
                         size="sm"
-                      />
+                        variant="secondary"
+                        loading={syncingModels()}
+                        onClick={handleSyncModels}
+                        title="向官方上游或端点发起查询并更新本地模型缓存"
+                      >
+                        同步上游模型
+                      </Button>
                     </div>
                   </div>
 
@@ -1141,138 +1207,6 @@ const ProviderDetail: Component = () => {
                 </Card>
               </div>
             </Show>
-            {/* 授权管理 */}
-            <Show when={tab() === 'oauth'}>
-              <div class="space-y-4">
-                <Card class="p-5 space-y-4">
-                  <div class="flex items-center justify-between gap-3 pb-3 border-b border-subtle">
-                    <div>
-                      <h3 class="text-sm font-semibold flex items-center gap-2">
-                        <span>OAuth 快捷授权登录</span>
-                        <Badge tone="blue">{oauthStatus()?.flowType || 'device_code'}</Badge>
-                      </h3>
-                      <p class="text-xs text-faint mt-0.5">
-                        通过官方设备码或浏览器单点登录，自动完成凭据颁发与定期刷新
-                      </p>
-                    </div>
-                    <Button size="sm" variant="secondary" onClick={() => refetchOAuth()}>
-                      刷新授权状态
-                    </Button>
-                  </div>
-
-                  {/* 设备码登录工作流 (Qoder / GitHub / Grok-CLI 等) */}
-                  <Show when={oauthStatus()?.flowType === 'device_code' || !oauthStatus()?.flowType || (regInfo()?.deviceCodeUrl)}>
-                    <div class="p-4 rounded-control border border-accent/30 bg-accent/5 space-y-4">
-                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div>
-                          <div class="font-semibold text-sm text-foreground">设备码授权登录 (Device Code Flow)</div>
-                          <div class="text-xs text-faint mt-0.5">
-                            点击发起后将在新标签页打开官方授权页面，填入/确认验证码后即可自动接入为新账号
-                          </div>
-                        </div>
-                        <Show when={!devicePolling()}>
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={startDeviceFlow}
-                          >
-                            发起设备码登录
-                          </Button>
-                        </Show>
-                      </div>
-
-                      {/* 正在进行中的设备码授权卡片 */}
-                      <Show when={deviceFlow()}>
-                        {flow => (
-                          <div class="p-4 rounded-control bg-bg-elevated border border-subtle shadow-sm space-y-3.5">
-                            <div class="flex items-center justify-between gap-2">
-                              <span class="text-xs font-semibold text-accent flex items-center gap-1.5">
-                                <span class="animate-pulse">●</span> 等待在浏览器中确认授权
-                              </span>
-                              <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
-                                取消授权
-                              </Button>
-                            </div>
-
-                            <div class="grid sm:grid-cols-2 gap-3 pt-1">
-                              <div class="p-3 rounded bg-hover border border-subtle space-y-1">
-                                <div class="text-[11px] text-faint">步骤 1: 打开授权网址</div>
-                                <a
-                                  href={flow().verificationUriComplete || flow().verificationUri}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  class="text-xs text-accent underline font-mono break-all font-semibold"
-                                >
-                                  {flow().verificationUri} ↗
-                                </a>
-                              </div>
-
-                              <Show when={flow().userCode}>
-                                <div class="p-3 rounded bg-hover border border-subtle space-y-1">
-                                  <div class="text-[11px] text-faint">步骤 2: 验证码 (若提示要求输入)</div>
-                                  <div class="flex items-center justify-between gap-2">
-                                    <span class="font-mono text-base font-bold text-foreground tracking-wider">
-                                      {flow().userCode}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="secondary"
-                                      onClick={() => {
-                                        if (flow().userCode) {
-                                          navigator.clipboard.writeText(flow().userCode!)
-                                          setCopiedCode(true)
-                                          setTimeout(() => setCopiedCode(false), 2000)
-                                        }
-                                      }}
-                                    >
-                                      {copiedCode() ? '已复制 ✓' : '复制验证码'}
-                                    </Button>
-                                  </div>
-                                </div>
-                              </Show>
-                            </div>
-
-                            <div class="text-xs text-faint flex items-center gap-2 pt-1">
-                              <span class="inline-block w-2 h-2 rounded-full bg-accent animate-ping" />
-                              <span>网关正在自动轮询等待授权结果，完成授权后将自动关闭并入库...</span>
-                            </div>
-                          </div>
-                        )}
-                      </Show>
-
-                      {/* 授权成功提示 */}
-                      <Show when={deviceSuccess()}>
-                        <div class="p-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 font-medium flex items-center justify-between">
-                          <span>✓ 设备码授权成功！已自动添加并刷新该供应商的账号列表。</span>
-                          <Button size="sm" variant="secondary" onClick={() => setDeviceSuccess(false)}>
-                            知道了
-                          </Button>
-                        </div>
-                      </Show>
-
-                      {/* 授权错误提示 */}
-                      <Show when={deviceError()}>
-                        <div class="p-3 rounded bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-medium flex items-center justify-between">
-                          <span>授权失败: {deviceError()}</span>
-                          <Button size="sm" variant="secondary" onClick={() => setDeviceError('')}>
-                            关闭
-                          </Button>
-                        </div>
-                      </Show>
-                    </div>
-                  </Show>
-
-                  {/* Token / PAT 导入 (适用于 Qoder PAT pt-... 或 Access Token) */}
-                  <div class="pt-3 border-t border-subtle space-y-2">
-                    <div class="text-xs font-semibold text-foreground">手动凭证 / Token 导入</div>
-                    <div class="text-xs text-faint leading-relaxed">
-                      适用于 Personal Access Token (如 Qoder 的 <code class="font-mono text-accent">pt-...</code> 密钥，将自动兑换为短期 Job Token 进行 COSY 签名) 或自建代理获取的 Access Token。
-                    </div>
-                    <TokenImport provider={c().provider} onDone={() => { refetchOAuth(); load(); store.loadProvidersOnly() }} />
-                  </div>
-                </Card>
-              </div>
-            </Show>
           </div>
         )}
       </Show>
@@ -1393,7 +1327,7 @@ const ProviderDetail: Component = () => {
           <Show when={newAccountAuthType() === 'oauth'}>
             <div class="p-3 rounded-control bg-accent/10 border border-accent/30 text-xs text-accent space-y-1">
               <div class="font-medium">✓ OAuth 授权模式</div>
-              <p class="text-faint">创建后可直接切换到「授权管理」Tab 发起设备码一键登录。</p>
+              <p class="text-faint">保存创建后可直接在当前页发起设备码一键授权，新标签页登录后自动完成绑定。</p>
             </div>
           </Show>
           <Field label="调度优先级" hint="数值越小越优先调度。主账号设为 10，备用账号设为 20">
@@ -1414,34 +1348,107 @@ const ProviderDetail: Component = () => {
           </div>
         </div>
       </Modal>
-    </div>
-  )
-}
+      {/* 统一设备码 OAuth 授权弹窗 (9router 同款弹窗体验) */}
+      <Modal
+        open={!!deviceFlow() || devicePolling()}
+        title={`连接 ${conn()?.name || conn()?.provider || '供应商'}`}
+        onClose={cancelDeviceFlow}
+      >
+        <div class="space-y-4 text-center py-2">
+          <Show when={deviceFlow()} fallback={
+            <div class="py-8 flex flex-col items-center justify-center gap-3">
+              <span class="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+              <p class="text-xs text-faint">正在向上游申请授权验证码...</p>
+            </div>
+          }>
+            {flow => (
+              <div class="space-y-4">
+                <p class="text-xs text-faint leading-relaxed">
+                  请访问下方登录授权网址并在浏览器中确认授权：
+                </p>
 
-function TokenImport(props: { provider: string; onDone: () => void }) {
-  const store = useGatewayStore()
-  const [token, setToken] = createSignal('')
-  const [busy, setBusy] = createSignal(false)
-  const [msg, setMsg] = createSignal('')
+                {/* 登录 URL 卡片 */}
+                <div class="p-3.5 rounded-card bg-hover/80 border border-subtle text-left space-y-2">
+                  <div class="text-[11px] text-faint font-medium text-center">Login URL</div>
+                  <div class="font-mono text-xs break-all text-foreground select-all bg-bg/70 p-2.5 rounded border border-subtle leading-relaxed">
+                    {flow().verificationUriComplete || flow().verificationUri}
+                  </div>
+                  <div class="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const url = flow().verificationUriComplete || flow().verificationUri
+                        if (url) {
+                          navigator.clipboard.writeText(url)
+                          toast.success('登录网址已复制')
+                        }
+                      }}
+                    >
+                      复制网址
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const url = flow().verificationUriComplete || flow().verificationUri
+                        if (url) window.open(url, '_blank')
+                      }}
+                    >
+                      打开网页 ↗
+                    </Button>
+                  </div>
+                </div>
 
-  async function submit() {
-    if (!token().trim()) return
-    setBusy(true); setMsg('')
-    try {
-      await store.oauthImport(props.provider, { accessToken: token().trim() })
-      setMsg('导入成功'); setToken(''); props.onDone()
-    } catch (e: unknown) {
-      setMsg(e instanceof Error ? e.message : '导入失败')
-    } finally { setBusy(false) }
-  }
+                {/* 验证码卡片 */}
+                <Show when={flow().userCode}>
+                  <div class="p-4 rounded-card bg-accent/10 border border-accent/30 space-y-1.5">
+                    <div class="text-[11px] text-faint font-medium">Your Code / 授权验证码</div>
+                    <div class="flex items-center justify-center gap-3">
+                      <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
+                        {flow().userCode}
+                      </span>
+                      <button
+                        type="button"
+                        class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
+                        title="复制验证码"
+                        onClick={() => {
+                          if (flow().userCode) {
+                            navigator.clipboard.writeText(flow().userCode!)
+                            setCopiedCode(true)
+                            toast.success('验证码已复制')
+                            setTimeout(() => setCopiedCode(false), 2000)
+                          }
+                        }}
+                      >
+                        {copiedCode() ? '✓' : '📋'}
+                      </button>
+                    </div>
+                  </div>
+                </Show>
 
-  return (
-    <div class="space-y-2">
-      <Input type="password" value={token()} onInput={setToken} placeholder="粘贴 access token" />
-      <div class="flex items-center gap-2">
-        <Button size="sm" variant="primary" loading={busy()} onClick={submit}>导入</Button>
-        <Show when={msg()}><span class="text-xs text-faint">{msg()}</span></Show>
-      </div>
+                {/* 轮询等待状态 */}
+                <div class="flex items-center justify-center gap-2 pt-2 text-xs text-faint">
+                  <span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                  <span>Waiting for authorization / 等待浏览器授权完成...</span>
+                </div>
+
+                <Show when={deviceError()}>
+                  <div class="p-3 rounded bg-danger/10 border border-danger/30 text-xs text-danger">
+                    {deviceError()}
+                  </div>
+                </Show>
+
+                <div class="pt-2 border-t border-subtle flex justify-end">
+                  <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
+                    取消
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Show>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -993,6 +993,10 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update connection"})
 		return
 	}
+
+	// Trigger async dynamic model catalog discovery for updated connection
+	go s.syncConnectionModels(existing)
+
 	writeJSON(w, http.StatusOK, existing.ToDTO())
 }
 

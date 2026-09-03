@@ -148,7 +148,7 @@ func GetRegistryByCategory() []RegistryByCategory {
 	}
 
 	// Fixed category order
-	order := []string{"apikey", "oauth", "freeTier", "free", "webCookie"}
+	order := []string{"apikey", "oauth", "freeTier", "free", "webCookie", "custom"}
 	result := make([]RegistryByCategory, 0, len(order))
 	for _, cat := range order {
 		if providers, ok := catMap[cat]; ok {
