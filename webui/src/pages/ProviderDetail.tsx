@@ -144,7 +144,7 @@ const ProviderDetail: Component = () => {
     if (!p) return
     const aType = newAccountAuthType()
     if (aType === 'api-key' && !newAccountApiKey().trim() && p !== 'opencode') {
-      await alert('请填写 API Key', '验证失败')
+      toast.error('请填写 API Key')
       return
     }
     setAddingAccount(true)
@@ -167,7 +167,7 @@ const ProviderDetail: Component = () => {
         navigate(`/providers/${added.id}`)
       }
     } catch (e: unknown) {
-      await alert(e instanceof Error ? e.message : '添加账号失败', '操作失败')
+      toast.error(e instanceof Error ? e.message : '添加账号失败')
     } finally {
       setAddingAccount(false)
     }
