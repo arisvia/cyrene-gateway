@@ -26,15 +26,15 @@ const Skills: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div>
-        <h1 class="text-xl font-semibold">技能清单</h1>
-        <p class="text-sm text-faint mt-0.5">
-          供 AI 客户端发现的 cyrene-* 技能{data()?.count ? ` · 共 ${data()?.count} 个` : ''}
-        </p>
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-subtle/50">
+        <div>
+          <h1 class="text-xl font-semibold">技能清单</h1>
+          <p class="text-sm text-faint mt-0.5">
+            供 AI 客户端发现的 cyrene-* 技能{data()?.count ? ` · 共 ${data()?.count} 个` : ''}
+          </p>
+        </div>
+        <Input class="!w-72" placeholder="搜索技能…" value={q()} onInput={setQ} />
       </div>
-
-      <Input class="!w-72" placeholder="搜索技能…" value={q()} onInput={setQ} />
-
       <Show when={!data.loading} fallback={<Card class="p-6"><Skeleton class="h-40 w-full" /></Card>}>
         <Show when={filtered().length > 0} fallback={<Card class="p-6"><Empty message="没有匹配的技能。" /></Card>}>
           <div class="grid gap-3">

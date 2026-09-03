@@ -127,6 +127,5 @@ describe('Settings 页', () => {
     expect(text).toContain('要求 API Key')
     expect(text).toContain('API Key 速率限制')
     expect(text).toContain('Token 节省')
-    expect(text).toContain('调度策略')
   })
 })

@@ -460,14 +460,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		appendProviderModels(providerID, isUnauthOpenCode, pConns)
 	}
 
-	// Add NoAuth (free) providers even without connections
-	for id, p := range provider.Registry {
-		if p.NoAuth && !p.Hidden && !seenProviders[id] {
-			isUnauthOpenCode := id == "opencode"
-			appendProviderModels(id, isUnauthOpenCode, nil)
-		}
-	}
-
+	// Only exposed models for providers that actually have configured active connections
 	if models == nil {
 		models = []ModelEntry{}
 	}

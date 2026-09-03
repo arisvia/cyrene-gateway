@@ -66,7 +66,7 @@ const Combos: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50">
         <div>
           <h1 class="text-xl font-semibold">模型组合</h1>
           <p class="text-sm text-faint mt-0.5">

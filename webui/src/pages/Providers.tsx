@@ -759,10 +759,6 @@ const Providers: Component = () => {
                                           <span>凭证: {String(p.data?.credentialHint)}</span>
                                           <span>·</span>
                                         </Show>
-                                        <Show when={p.data?.hasApiKey}>
-                                          <span class="text-emerald-400">已配密钥</span>
-                                          <span>·</span>
-                                        </Show>
                                         <span class="opacity-60">{p.id.slice(0, 8)}...</span>
                                         <Show when={test()}>
                                           <span>·</span>

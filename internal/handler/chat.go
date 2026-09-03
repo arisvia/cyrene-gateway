@@ -466,13 +466,6 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	// Auto-provision a connection for NoAuth providers (e.g. OpenCode Free, MiMo Free)
-	if len(conns) == 0 && providerInfo.NoAuth {
-		conn := s.autoProvisionNoAuthConnection(providerInfo)
-		if conn != nil {
-			conns = []model.ProviderConnection{*conn}
-		}
-	}
 
 	if len(conns) == 0 {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{

@@ -228,21 +228,6 @@ const Settings: Component = () => {
         </Field>
       </Card>
 
-      {/* 调度 */}
-      <Card class="p-5 space-y-4">
-        <h3 class="text-sm font-semibold">调度策略</h3>
-        <Field label="组合默认策略" hint="新建组合时使用的默认调度方式">
-          <Select
-            value={String(local().comboStrategy || 'fallback')}
-            options={[
-              { value: 'fallback', label: '故障回退' },
-              { value: 'round-robin', label: '轮询' },
-            ]}
-            onChange={v => set('comboStrategy', v)}
-          />
-        </Field>
-      </Card>
-
       {/* Token 节省 */}
       <Card class="p-5 space-y-4">
         <h3 class="text-sm font-semibold">Token 节省</h3>

@@ -217,7 +217,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                   onMouseLeave={() => setHoveredNode(null)}
                 >
                   <div
-                    class={`px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-md flex items-center gap-2.5 whitespace-nowrap transition-all duration-200 cursor-pointer ${
+                    class={`w-44 h-12 px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-md flex items-center gap-2.5 transition-all duration-200 cursor-pointer ${
                       node.isActive
                         ? node.isHitting
                           ? 'border-accent ring-2 ring-accent/40 shadow-accent/20 scale-105'
@@ -226,9 +226,9 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                     }`}
                   >
                     <ProviderAvatar provider={node.provider} name={node.name} size="sm" class="shrink-0" />
-                    <div class="min-w-0">
-                      <div class="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        {node.name || node.provider}
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs font-semibold text-foreground flex items-center gap-1.5 truncate">
+                        <span class="truncate">{node.name || node.provider}</span>
                         <Show when={node.isActive}>
                           <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
                         </Show>
@@ -237,7 +237,6 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                         {node.authType || 'API Key'}
                       </div>
                     </div>
-
                     <Show when={node.isHitting}>
                       <Badge tone="green" class="text-[9px] px-1 py-0 ml-1 shrink-0 animate-pulse">
                         {node.recentLatency ? `${node.recentLatency}ms` : '响应中'}

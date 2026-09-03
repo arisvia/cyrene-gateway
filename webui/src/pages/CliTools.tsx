@@ -123,8 +123,8 @@ const CliTools: Component = () => {
 
   return (
     <div class="space-y-6 stagger">
-      {/* 顶部标题与状态统计 */}
-      <div class="flex flex-wrap items-center justify-between gap-4">
+      {/* 顶部标题与状态统计 (吸顶固定) */}
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-wrap items-center justify-between gap-4 border-b border-subtle/50">
         <div>
           <h1 class="text-2xl font-bold tracking-tight text-foreground">CLI 工具接入</h1>
           <p class="text-sm text-faint mt-1">
@@ -140,7 +140,6 @@ const CliTools: Component = () => {
           </Button>
         </div>
       </div>
-
       {/* 网关接入参数基准配置卡片 */}
       <Card class="p-5 flex flex-wrap items-center justify-between gap-4 glass-card">
         <div class="space-y-1">

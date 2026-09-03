@@ -205,10 +205,9 @@ func TestE2EChatCompletion(t *testing.T) {
 	}
 }
 
-// TestE2ENoAuthAutoProvision verifies that NoAuth providers (free category)
-// work out-of-the-box without any pre-existing connection: the gateway
-// auto-provisions a connection and sends "Bearer public".
-func TestE2ENoAuthAutoProvision(t *testing.T) {
+// TestE2ENoAuth verifies that NoAuth providers (e.g. OpenCode) work with "none" auth
+// and send "Bearer public".
+func TestE2ENoAuth(t *testing.T) {
 	upstream := mockOpenAIUpstream(t, func(r *http.Request) error {
 		if got := r.Header.Get("Authorization"); got != "Bearer public" {
 			return fmt.Errorf("want Bearer public, got %q", got)
@@ -225,8 +224,14 @@ func TestE2ENoAuthAutoProvision(t *testing.T) {
 	patched.BaseURL = upstream.URL
 	provider.Registry["opencode"] = patched
 	t.Cleanup(func() { provider.Registry["opencode"] = orig })
+	// Explicitly create an unauthenticated connection (as user now controls in Market)
+	_ = database.CreateConnection(&model.ProviderConnection{
+		ID:       "test-opencode-none",
+		Provider: "opencode",
+		AuthType: "none",
+		IsActive: true,
+	})
 
-	// No connection exists — auto-provision should kick in.
 	body := `{"model":"opencode/big-pickle","messages":[{"role":"user","content":"hello"}]}`
 	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -237,10 +242,9 @@ func TestE2ENoAuthAutoProvision(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Verify a connection was auto-provisioned.
 	conns, _ := database.ListConnectionsByProvider("opencode")
 	if len(conns) == 0 {
-		t.Fatal("expected auto-provisioned connection for opencode")
+		t.Fatal("expected connection for opencode")
 	}
 	if conns[0].AuthType != "none" {
 		t.Fatalf("expected authType=none, got %s", conns[0].AuthType)
