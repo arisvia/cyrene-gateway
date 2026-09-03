@@ -24,24 +24,18 @@ func (m *Manager) Adapter(id string) Adapter {
 		return &codexAdapter{}
 	case "opencode":
 		return &opencodeAdapter{}
+	case "aider":
+		return &aiderAdapter{}
 	case "cline":
 		return &clineAdapter{}
+	case "continue":
+		return &continueAdapter{}
 	case "copilot":
 		return &copilotAdapter{}
-	case "kilo":
-		return &kiloAdapter{}
-	case "openclaw":
-		return &openclawAdapter{}
-	case "hermes":
-		return &hermesAdapter{}
-	case "droid":
-		return &droidAdapter{}
-	case "grok-build":
-		return &grokBuildAdapter{}
 	case "deepseek-tui":
 		return &deepseekTuiAdapter{}
-	case "jcode":
-		return &jcodeAdapter{}
+	case "grok-cli", "grok-build":
+		return &grokCliAdapter{}
 	default:
 		return nil
 	}

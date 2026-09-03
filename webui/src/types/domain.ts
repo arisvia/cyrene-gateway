@@ -138,10 +138,16 @@ export interface ProviderUsage {
 export interface CLITool {
   id: string
   name: string
+  category?: 'cli' | 'extension' | 'ide' | string
   description?: string
   icon?: string
+  color?: string
   configType?: string
   configured?: boolean
+  docsUrl?: string
+  defaultModels?: Array<{ id: string; name: string; alias?: string }>
+  notes?: Array<{ type: string; text: string }>
+  guideSteps?: Array<{ step: number; title: string; desc?: string; value?: string; type?: string }>
 }
 
 export interface Skill {

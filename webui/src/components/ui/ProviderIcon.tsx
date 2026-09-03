@@ -1,5 +1,4 @@
-import { type Component, Show } from 'solid-js'
-
+import { type Component, Show, createSignal } from 'solid-js'
 interface ProviderIconProps {
   provider: string
   name?: string
@@ -134,13 +133,37 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
       </Show>
 
       {/* Default fallback icon */}
+      {/* Aider */}
+      <Show when={p().includes('aider')}>
+        <svg width={sz()} height={sz()} viewBox="0 0 24 24" fill="none" class={props.class}>
+          <path d="M7 8l4 4-4 4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          <line x1="13" y1="16" x2="17" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+        </svg>
+      </Show>
+
+      {/* Windsurf */}
+      <Show when={p().includes('windsurf')}>
+        <svg width={sz()} height={sz()} viewBox="0 0 24 24" fill="currentColor" class={props.class}>
+          <path fill-rule="evenodd" clip-rule="evenodd" d="M23.78 5.004h-.228a2.187 2.187 0 00-2.18 2.196v4.912c0 .98-.804 1.775-1.76 1.775a1.818 1.818 0 01-1.472-.773L13.168 5.95a2.197 2.197 0 00-1.81-.95c-1.134 0-2.154.972-2.154 2.173v4.94c0 .98-.797 1.775-1.76 1.775-.57 0-1.136-.289-1.472-.773L.408 5.098C.282 4.918 0 5.007 0 5.228v4.284c0 .216.066.426.188.604l5.475 7.889c.324.466.8.812 1.351.938 1.377.316 2.645-.754 2.645-2.117V11.89c0-.98.787-1.775 1.76-1.775h.002c.586 0 1.135.288 1.472.773l4.972 7.163a2.15 2.15 0 001.81.95c1.158 0 2.151-.973 2.151-2.173v-4.939c0-.98.787-1.775 1.76-1.775h.194c.122 0 .22-.1.22-.222V5.225a.221.221 0 00-.22-.222z" />
+        </svg>
+      </Show>
+
+      {/* Trae */}
+      <Show when={p().includes('trae')}>
+        <svg width={sz()} height={sz()} viewBox="0 0 24 24" fill="currentColor" class={props.class}>
+          <path d="M24 20.541H3.428v-3.426H0V3.4h24V20.54zM3.428 17.115h17.144V6.827H3.428v10.288zm8.573-5.196l-2.425 2.424-2.424-2.424 2.424-2.424 2.425 2.424zm6.857-.001l-2.424 2.423-2.425-2.423 2.425-2.425 2.424 2.425z" />
+        </svg>
+      </Show>
+
+      {/* Default fallback icon */}
       <Show when={
         !p().includes('openai') && !p().includes('claude') && !p().includes('anthropic') &&
         !p().includes('gemini') && !p().includes('google') && !p().includes('vertex') &&
         !p().includes('opencode') && !p().includes('deepseek') && !p().includes('github') &&
         !p().includes('copilot') && !p().includes('openrouter') && !p().includes('qoder') &&
         !p().includes('groq') && !p().includes('kimi') && !p().includes('glm') &&
-        !p().includes('minimax') && !p().includes('tencent') && !p().includes('mistral')
+        !p().includes('minimax') && !p().includes('tencent') && !p().includes('mistral') &&
+        !p().includes('aider') && !p().includes('windsurf') && !p().includes('trae')
       }>
         <svg width={sz()} height={sz()} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={props.class}>
           <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
@@ -153,7 +176,7 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
   )
 }
 
-// 映射已有 public/providers/*.png 资源
+// 映射当前活跃 provider 与 cli 工具的静态资源
 const PROVIDER_IMAGE_MAP: Record<string, string> = {
   openai: '/providers/openai.png',
   claude: '/providers/claude.png',
@@ -171,25 +194,21 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   kimi: '/providers/kimi.png',
   glm: '/providers/glm.png',
   minimax: '/providers/minimax.png',
-  mistral: '/providers/mistral.png',
-  ollama: '/providers/ollama.png',
-  siliconflow: '/providers/siliconflow.png',
-  together: '/providers/together.png',
-  cohere: '/providers/cohere.png',
-  perplexity: '/providers/perplexity.png',
-  huggingface: '/providers/huggingface.png',
   cerebras: '/providers/cerebras.png',
+  nvidia: '/providers/nvidia.png',
   xai: '/providers/xai.png',
-  grok: '/providers/xai.png',
-  novita: '/providers/novita.png',
-  fireworks: '/providers/fireworks.png',
-  elevenlabs: '/providers/elevenlabs.png',
-  fal: '/providers/fal-ai.png',
+  grok: '/providers/grok-cli.png',
   cursor: '/providers/cursor.png',
   cline: '/providers/cline.png',
   roo: '/providers/roo.png',
+  continue: '/providers/continue.png',
   alicode: '/providers/alicode.png',
-  kilocode: '/providers/kilocode.png',
+  codebuddy: '/providers/codebuddy-cn.png',
+  antigravity: '/providers/antigravity.png',
+  aider: '/providers/aider.svg',
+  windsurf: '/providers/windsurf.svg',
+  trae: '/providers/trae.svg',
+  tencent: '/providers/tencent.svg',
 }
 
 // 容器化 Provider Avatar 组件（支持 public PNG 图像或品牌色渐变背景 SVG）
@@ -198,7 +217,9 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const iconPx = () => ICON_SIZES[props.size ?? 'md']
   const name = () => props.name || props.provider
   const normalized = () => props.provider.toLowerCase().replace(/[-_]/g, '')
+  const [imgFailed, setImgFailed] = createSignal(false)
   const imgSrc = () => {
+    if (imgFailed()) return null
     const key = Object.keys(PROVIDER_IMAGE_MAP).find(k => normalized().includes(k))
     return key ? PROVIDER_IMAGE_MAP[key] : null
   }
@@ -219,10 +240,7 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
           src={imgSrc()!}
           alt={name()}
           class="w-full h-full object-contain p-1 rounded-xl"
-          onError={e => {
-            // 图片加载失败时隐藏并显示矢量 fallback
-            (e.currentTarget as HTMLElement).style.display = 'none'
-          }}
+          onError={() => setImgFailed(true)}
         />
       </Show>
     </div>

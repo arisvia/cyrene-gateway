@@ -19,10 +19,10 @@ func useTempHome(t *testing.T) string {
 }
 
 func TestRegistryCompleteness(t *testing.T) {
-	// The 12 configurable tools must all resolve to an adapter.
+	// The 9 configurable tools must all resolve to an adapter.
 	configurable := []string{
-		"claude", "codex", "opencode", "cline", "copilot", "kilo",
-		"openclaw", "hermes", "droid", "grok-build", "deepseek-tui", "jcode",
+		"claude", "codex", "opencode", "aider", "cline", "continue",
+		"copilot", "deepseek-tui", "grok-cli",
 	}
 	m := NewManager()
 	for _, id := range configurable {
@@ -34,7 +34,7 @@ func TestRegistryCompleteness(t *testing.T) {
 		}
 	}
 	// guide/mitm tools exist in registry but have no adapter.
-	for _, id := range []string{"cursor", "antigravity"} {
+	for _, id := range []string{"cursor", "roo-code", "windsurf", "trae", "qoder", "antigravity"} {
 		if GetTool(id) == nil {
 			t.Errorf("tool %q missing from registry", id)
 		}
@@ -98,7 +98,7 @@ func TestCodexAdapterRoundTrip(t *testing.T) {
 		t.Fatalf("expected gateway after apply, got %+v", s)
 	}
 	content := readText(a.configPath())
-	if base, _ := tomlGetField(content, "model_providers.9router", "base_url"); base != "http://localhost:20128/v1" {
+	if base, _ := tomlGetField(content, "model_providers.cyrene", "base_url"); base != "http://localhost:20128/v1" {
 		t.Errorf("codex base_url = %q", base)
 	}
 	auth := readJSON(a.authPath())
@@ -141,6 +141,55 @@ func TestClineAdapterRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAiderAdapterRoundTrip(t *testing.T) {
+	useTempHome(t)
+	a := &aiderAdapter{}
+
+	_, err := a.Apply(ApplyRequest{BaseURL: "http://localhost:20128", APIKey: "sk-aider", Model: "deepseek/deepseek-chat"})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	s := a.Status()
+	if !s.HasGateway {
+		t.Fatalf("expected gateway after apply, got %+v", s)
+	}
+	content := readText(a.configPath())
+	if !strings.Contains(content, "openai-api-base: http://localhost:20128/v1") {
+		t.Errorf("aider config missing base url:\n%s", content)
+	}
+	if !strings.Contains(content, "openai-api-key: sk-aider") {
+		t.Errorf("aider config missing api key:\n%s", content)
+	}
+
+	if _, err := a.Reset(); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if s := a.Status(); s.HasGateway {
+		t.Error("gateway config should be gone after reset")
+	}
+}
+
+func TestContinueAdapterRoundTrip(t *testing.T) {
+	useTempHome(t)
+	a := &continueAdapter{}
+
+	_, err := a.Apply(ApplyRequest{BaseURL: "http://localhost:20128", APIKey: "sk-cont", Model: "gpt-5-mini"})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	s := a.Status()
+	if !s.HasGateway {
+		t.Fatalf("expected gateway after apply, got %+v", s)
+	}
+
+	if _, err := a.Reset(); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if s := a.Status(); s.HasGateway {
+		t.Error("gateway config should be gone after reset")
+	}
+}
+
 func TestDeepSeekTuiAdapterRoundTrip(t *testing.T) {
 	useTempHome(t)
 	a := &deepseekTuiAdapter{}
@@ -161,9 +210,9 @@ func TestDeepSeekTuiAdapterRoundTrip(t *testing.T) {
 	}
 }
 
-func TestGrokBuildAdapterRoundTrip(t *testing.T) {
+func TestGrokCliAdapterRoundTrip(t *testing.T) {
 	useTempHome(t)
-	a := &grokBuildAdapter{}
+	a := &grokCliAdapter{}
 
 	_, err := a.Apply(ApplyRequest{BaseURL: "http://localhost:20128", APIKey: "sk-g", Model: "grok-4"})
 	if err != nil {
@@ -174,7 +223,7 @@ func TestGrokBuildAdapterRoundTrip(t *testing.T) {
 		t.Fatalf("expected gateway, got %+v", s)
 	}
 	content := readText(a.configPath())
-	if def, _ := tomlGetField(content, "models", "default"); def != "9router" {
+	if def, _ := tomlGetField(content, "models", "default"); def != "cyrene" {
 		t.Errorf("grok default = %q", def)
 	}
 
@@ -185,32 +234,6 @@ func TestGrokBuildAdapterRoundTrip(t *testing.T) {
 	content = readText(a.configPath())
 	if def, _ := tomlGetField(content, "models", "default"); def != "grok-build" {
 		t.Errorf("grok default after reset = %q", def)
-	}
-}
-
-func TestHermesAdapterRoundTrip(t *testing.T) {
-	useTempHome(t)
-	a := &hermesAdapter{}
-
-	_, err := a.Apply(ApplyRequest{BaseURL: "http://localhost:20128", APIKey: "sk-h", Model: "hermes-4"})
-	if err != nil {
-		t.Fatalf("apply: %v", err)
-	}
-	if s := a.Status(); !s.HasGateway {
-		t.Fatalf("expected gateway, got %+v", s)
-	}
-	yaml := readText(a.configPath())
-	if !strings.Contains(yaml, "base_url: \"http://localhost:20128/v1\"") {
-		t.Errorf("hermes yaml missing base_url:\n%s", yaml)
-	}
-	env := readText(a.envPath())
-	if !strings.Contains(env, "OPENAI_API_KEY=sk-h") {
-		t.Errorf("hermes env missing key:\n%s", env)
-	}
-
-	a.Reset()
-	if s := a.Status(); s.HasGateway {
-		t.Error("expected reset")
 	}
 }
 
