@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Empty, Button, Input } from '@/components/ui'
+import { Card, Badge, Empty, Button, Input, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 
 const Home: Component = () => {
@@ -179,7 +179,12 @@ const Home: Component = () => {
                             size="sm"
                             variant="danger"
                             onClick={async () => {
-                              if (confirm(`确定删除 API Key「${k.name || k.key}」吗？`)) {
+                              const ok = await confirm({
+                                title: '删除 API Key',
+                                message: `确定删除 API Key「${k.name || k.key}」吗？删除后调用将失效。`,
+                                variant: 'danger',
+                              })
+                              if (ok) {
                                 await store.deleteKey(k.id)
                                 toast.info('密钥已删除')
                               }

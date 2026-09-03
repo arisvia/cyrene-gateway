@@ -40,14 +40,13 @@ const ProxyPools: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="flex items-center justify-between">
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
         <div>
           <h1 class="text-xl font-semibold">代理池</h1>
           <p class="text-sm text-faint mt-0.5">出站请求的 HTTP 代理轮换</p>
         </div>
         <Button variant="primary" onClick={openCreate}>+ 新建代理池</Button>
       </div>
-
       <Show when={store.proxyPools().length > 0} fallback={
         <Card class="p-6"><Empty message="尚未配置代理池。" /></Card>
       }>

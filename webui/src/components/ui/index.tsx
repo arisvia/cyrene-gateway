@@ -1,7 +1,7 @@
 import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup } from 'solid-js'
 import { useToast } from '@/lib/toast'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
-
+export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
 export const Card: Component<{
   class?: string
   hover?: boolean
@@ -47,6 +47,56 @@ export const Spinner: Component<{ size?: 'sm' | 'md' | 'lg' }> = props => {
       class={`${sizes[props.size ?? 'md']} shrink-0 rounded-full border-2 border-subtle border-t-accent animate-spin`}
       aria-hidden="true"
     />
+  )
+}
+export const StatusPulse: Component<{
+  status?: 'active' | 'paused' | 'error' | 'idle'
+  tone?: 'green' | 'amber' | 'red' | 'blue' | 'accent' | 'gray'
+  size?: 'xs' | 'sm' | 'md'
+  class?: string
+}> = props => {
+  const isPulsing = () => props.status === 'active' || (!props.status && props.tone !== 'gray')
+  const tone = () => {
+    if (props.tone) return props.tone
+    if (props.status === 'active') return 'accent'
+    if (props.status === 'error') return 'red'
+    if (props.status === 'paused') return 'gray'
+    return 'green'
+  }
+
+  const dotColors: Record<string, string> = {
+    accent: 'bg-accent',
+    green: 'bg-success',
+    amber: 'bg-warning',
+    red: 'bg-danger',
+    blue: 'bg-info',
+    gray: 'bg-zinc-500',
+  }
+
+  const pingColors: Record<string, string> = {
+    accent: 'bg-accent/75',
+    green: 'bg-success/75',
+    amber: 'bg-warning/75',
+    red: 'bg-danger/75',
+    blue: 'bg-info/75',
+    gray: 'bg-zinc-500/50',
+  }
+
+  const sizeClasses: Record<string, string> = {
+    xs: 'w-1.5 h-1.5',
+    sm: 'w-2 h-2',
+    md: 'w-2.5 h-2.5',
+  }
+
+  const sz = () => sizeClasses[props.size ?? 'sm']
+
+  return (
+    <span class={`relative inline-flex shrink-0 items-center justify-center self-center ${sz()} ${props.class ?? ''}`}>
+      <Show when={isPulsing()}>
+        <span class={`absolute inline-flex h-full w-full rounded-full animate-ping opacity-75 ${pingColors[tone()]}`} />
+      </Show>
+      <span class={`relative inline-flex rounded-full ${sz()} ${dotColors[tone()]}`} />
+    </span>
   )
 }
 
@@ -365,15 +415,15 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
   return (
     <Show when={props.open}>
       <div class="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={props.onClose} aria-hidden="true" />
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in" onClick={props.onClose} aria-hidden="true" />
         <div
           ref={setPanel}
           role="dialog"
           aria-modal="true"
           aria-label={props.title}
-          class="relative w-full max-w-lg rounded-card border border-subtle bg-bg-elevated shadow-glass animate-scale-in"
+          class="relative w-full max-w-lg rounded-2xl border border-subtle bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover animate-scale-in"
         >
-          <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle">
+          <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle bg-card/40 rounded-t-2xl">
             <h3 class="text-sm font-semibold">{props.title}</h3>
             <button
               type="button"

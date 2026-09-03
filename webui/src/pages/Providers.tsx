@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, ProviderAvatar } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, ProviderAvatar, confirm } from '@/components/ui'
 import { apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, RegistryProvider, BadgeTone } from '@/types/domain'
@@ -789,7 +789,12 @@ const Providers: Component = () => {
                                       size="sm"
                                       variant="danger"
                                       onClick={async () => {
-                                        if (confirm(`确定要删除账号「${p.name || p.provider}」吗？`)) {
+                                        const ok = await confirm({
+                                          title: '删除账号',
+                                          message: `确定要删除账号「${p.name || p.provider}」吗？`,
+                                          variant: 'danger',
+                                        })
+                                        if (ok) {
                                           await store.deleteProvider(p)
                                         }
                                       }}

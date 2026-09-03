@@ -27,26 +27,69 @@ export const GatewayTopology: Component<TopologyProps> = props => {
   const activeCount = createMemo(() => providers().filter(p => p.isActive).length)
 
   // 计算节点放射状环形排布坐标 (以中心 0,0 为原点)
+  // 按 provider 唯一归属分组：同品牌合并为一个卡片，右侧动态显示当前激活账号/总账号数
   const nodePositions = createMemo(() => {
     const list = providers()
-    const count = list.length
+    if (list.length === 0) return []
+
+    // 聚合同一 provider 的连接
+    const map = new Map<string, {
+      id: string
+      provider: string
+      name: string
+      accounts: Provider[]
+      activeAccount?: Provider
+      isActive: boolean
+      isHitting: boolean
+      recentLatency?: number
+    }>()
+
+    for (const p of list) {
+      const key = p.provider
+      const existing = map.get(key)
+      if (!existing) {
+        map.set(key, {
+          id: p.id,
+          provider: p.provider,
+          name: p.name || p.provider,
+          accounts: [p],
+          activeAccount: p.isActive ? p : undefined,
+          isActive: p.isActive,
+          isHitting: false,
+        })
+      } else {
+        existing.accounts.push(p)
+        // 优先采纳激活的账号
+        if (p.isActive) {
+          existing.isActive = true
+          if (!existing.activeAccount) {
+            existing.activeAccount = p
+          }
+        }
+      }
+    }
+
+    const grouped = Array.from(map.values())
+    const count = grouped.length
     if (count === 0) return []
 
     // 基础半径自适应
-    const radius = Math.min(220, Math.max(140, 120 + count * 10))
+    const radius = Math.min(230, Math.max(150, 130 + count * 12))
 
-    return list.map((p, i) => {
+    return grouped.map((g, i) => {
       // 角度均匀分布（从 -90 度/正上方开始顺时针分布）
       const angle = (i / count) * 2 * Math.PI - Math.PI / 2
       const x = Math.round(Math.cos(angle) * radius)
       const y = Math.round(Math.sin(angle) * radius)
 
       const recentHit = (props.liveEvents || []).find(e =>
-        e.provider === p.provider || e.provider === p.id || (e.model && p.name && e.model.toLowerCase().includes(p.name.toLowerCase()))
+        e.provider === g.provider ||
+        g.accounts.some(a => a.id === e.provider) ||
+        (e.model && g.name && e.model.toLowerCase().includes(g.name.toLowerCase()))
       )
 
       return {
-        ...p,
+        ...g,
         x,
         y,
         isHitting: !!recentHit,
@@ -193,19 +236,34 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             </For>
           </svg>
 
-          {/* 1. 中心枢纽：Cyrene Gateway (简约精致胶囊牌) */}
+          {/* 1. 中心枢纽：Cyrene Gateway (尺寸与周围供应商节点严格统一为 w-44 h-12) */}
           <div
-            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 px-4 py-2.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-xl shadow-accent/15 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
+            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-44 h-12 px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/50 shadow-xl shadow-accent/20 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
           >
             <img src="/icon.png" alt="Cyrene" class="w-5 h-5 rounded-lg object-contain shadow-accent shadow-sm shrink-0" />
-            <div class="font-bold text-xs tracking-tight text-foreground whitespace-nowrap">
-              Cyrene Gateway
+            <div class="min-w-0 flex-1">
+              <div class="font-bold text-xs tracking-tight text-foreground truncate flex items-center gap-1.5">
+                <span>Cyrene Gateway</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+              </div>
+              <div class="text-[10px] text-faint font-mono truncate">
+                核心调度枢纽
+              </div>
             </div>
           </div>
 
-          {/* 2. 周围辐射排布的模型上游卡片 (9router 风格节点胶囊) */}
+          {/* 2. 周围辐射排布的模型上游卡片 (同品牌合并，右侧动态显示激活账号) */}
           <For each={nodePositions()}>
             {node => {
+              const activeAcc = () => node.activeAccount || node.accounts[0]
+              const accountLabel = () => {
+                const acc = activeAcc()
+                if (!acc) return '未配置'
+                if (acc.email) return acc.email
+                if (acc.name && acc.name !== node.provider) return acc.name
+                return acc.authType || 'API Key'
+              }
+
               return (
                 <div
                   class="absolute -translate-x-1/2 -translate-y-1/2 z-10 transition-all duration-200 group"
@@ -227,19 +285,24 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                   >
                     <ProviderAvatar provider={node.provider} name={node.name} size="sm" class="shrink-0" />
                     <div class="min-w-0 flex-1">
-                      <div class="text-xs font-semibold text-foreground flex items-center gap-1.5 truncate">
+                      <div class="text-xs font-semibold text-foreground flex items-center justify-between gap-1">
                         <span class="truncate">{node.name || node.provider}</span>
-                        <Show when={node.isActive}>
-                          <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
-                        </Show>
+                        <div class="flex items-center gap-1 shrink-0">
+                          <Show when={node.accounts.length > 1}>
+                            <span class="text-[9px] text-muted bg-hover px-1 py-0.2 rounded font-mono" title={`${node.accounts.length} 个账号`}>
+                              {node.accounts.length}
+                            </span>
+                          </Show>
+                          <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${node.isActive ? 'bg-success' : 'bg-zinc-600'}`} />
+                        </div>
                       </div>
-                      <div class="text-[10px] text-faint font-mono truncate">
-                        {node.authType || 'API Key'}
+                      <div class="text-[10px] text-faint font-mono truncate flex items-center gap-1">
+                        <span class="truncate">{accountLabel()}</span>
                       </div>
                     </div>
                     <Show when={node.isHitting}>
-                      <Badge tone="green" class="text-[9px] px-1 py-0 ml-1 shrink-0 animate-pulse">
-                        {node.recentLatency ? `${node.recentLatency}ms` : '响应中'}
+                      <Badge tone="green" class="text-[9px] px-1 py-0 ml-0.5 shrink-0 animate-pulse">
+                        {node.recentLatency ? `${node.recentLatency}ms` : '响应'}
                       </Badge>
                     </Show>
                   </div>

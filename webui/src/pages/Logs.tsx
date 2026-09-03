@@ -103,12 +103,12 @@ const LogsPage: Component = () => {
 
   return (
     <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
-      {/* 头部与状态栏 */}
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+      {/* 头部与状态栏 (吸顶固定) */}
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 border-b border-subtle/50">
         <div>
           <h1 class="text-xl font-semibold flex items-center gap-2.5">
-            网关系统日志
-            <span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm' : 'bg-zinc-600'}`} />
+            <span>网关系统日志</span>
+            <span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm animate-pulse' : 'bg-zinc-600'}`} />
           </h1>
           <p class="text-sm text-faint mt-0.5">
             实时捕获与推送 Cyrene Gateway 后端请求转发、上游故障重试与轮转事件

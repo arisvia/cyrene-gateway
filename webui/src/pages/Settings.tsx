@@ -47,7 +47,7 @@ const Settings: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="flex items-center justify-between">
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
         <div>
           <h1 class="text-xl font-semibold">设置</h1>
           <p class="text-sm text-faint mt-0.5">网关运行参数与访问控制</p>
@@ -56,7 +56,6 @@ const Settings: Component = () => {
           {dirty() ? '保存更改' : '已是最新'}
         </Button>
       </div>
-
       {/* 界面与背景自定义 */}
       <Card class="p-5 space-y-4">
         <div class="flex items-center justify-between">

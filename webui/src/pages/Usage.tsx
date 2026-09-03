@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Button, Select, Empty, Skeleton } from '@/components/ui'
+import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -105,8 +105,13 @@ const Usage: Component = () => {
             </button>
           </div>
 
-          <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive}>
-            {live() ? '■ 停止实时' : '● 实时事件'}
+          <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
+            <StatusPulse
+              status={live() ? 'active' : 'paused'}
+              tone={live() ? 'red' : 'accent'}
+              size="sm"
+            />
+            <span>{live() ? '停止实时' : '实时事件'}</span>
           </Button>
         </div>
       </div>

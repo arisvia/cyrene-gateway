@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, confirm, alert } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -144,7 +144,7 @@ const ProviderDetail: Component = () => {
     if (!p) return
     const aType = newAccountAuthType()
     if (aType === 'api-key' && !newAccountApiKey().trim() && p !== 'opencode') {
-      alert('请填写 API Key')
+      await alert('请填写 API Key', '验证失败')
       return
     }
     setAddingAccount(true)
@@ -167,7 +167,7 @@ const ProviderDetail: Component = () => {
         navigate(`/providers/${added.id}`)
       }
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : '添加账号失败')
+      await alert(e instanceof Error ? e.message : '添加账号失败', '操作失败')
     } finally {
       setAddingAccount(false)
     }
@@ -642,7 +642,12 @@ const ProviderDetail: Component = () => {
                                       class="text-muted hover:text-danger text-xs p-1 rounded hover:bg-hover transition-colors"
                                       title="删除此账号"
                                       onClick={async () => {
-                                        if (confirm(`确定要删除账号「${acc.name || acc.provider}」吗？`)) {
+                                        const ok = await confirm({
+                                          title: '删除账号',
+                                          message: `确定要删除账号「${acc.name || acc.provider}」吗？`,
+                                          variant: 'danger',
+                                        })
+                                        if (ok) {
                                           await store.deleteProvider(acc)
                                           await store.loadProvidersOnly()
                                           if (isCurrent()) {
@@ -874,7 +879,12 @@ const ProviderDetail: Component = () => {
                         variant="danger"
                         size="sm"
                         onClick={async () => {
-                          if (confirm(`确定要删除此账号「${c().name || c().provider}」吗？`)) {
+                          const ok = await confirm({
+                            title: '删除账号',
+                            message: `确定要删除此账号「${c().name || c().provider}」吗？`,
+                            variant: 'danger',
+                          })
+                          if (ok) {
                             await store.deleteProvider(c())
                             await store.loadProvidersOnly()
                             const remaining = accounts().filter(a => a.id !== c().id)

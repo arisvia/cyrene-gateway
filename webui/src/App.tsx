@@ -3,7 +3,7 @@ import { HashRouter, Route, A } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle } from './components/layout/Sidebar'
-import { ToastHost } from './components/ui'
+import { ToastHost, ConfirmDialogHost } from './components/ui'
 import Home from './pages/Home'
 import Providers from './pages/Providers'
 import ProviderDetail from './pages/ProviderDetail'
@@ -170,8 +170,9 @@ const App: Component = () => {
         <div class="fixed top-[-10%] left-[20%] w-125 h-125 bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
         <div class="fixed bottom-[-10%] right-[10%] w-150 h-150 bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
         <ToastHost />
+        <ConfirmDialogHost />
         {/* 桌面侧栏 */}
-        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 bg-card/60 backdrop-blur-xl border-r border-subtle">
+        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 bg-bg/85 backdrop-blur-xl border-r border-subtle">
           <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
             <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
             <div class="min-w-0">
@@ -179,7 +180,7 @@ const App: Component = () => {
             </div>
           </div>
           <SidebarNav onNavigate={() => setOpen(false)} />
-          <div class="h-14 px-4 border-t border-subtle flex items-center justify-between bg-card/30">
+          <div class="h-14 px-4 border-t border-subtle flex items-center justify-between bg-bg/40">
             <ThemeToggle />
             <A
               href="/settings"
@@ -198,8 +199,7 @@ const App: Component = () => {
       {/* 移动端抽屉 */}
       <Show when={open()}>
         <div class="md:hidden fixed inset-0 z-50">
-          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
-          <aside class="absolute inset-y-0 left-0 w-65 bg-bg-elevated border-r border-subtle flex flex-col animate-slide-up shadow-2xl">
+          <aside class="absolute inset-y-0 left-0 w-65 bg-bg/95 backdrop-blur-xl border-r border-subtle flex flex-col animate-slide-up shadow-2xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
               <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
