@@ -227,12 +227,16 @@ const Providers: Component = () => {
     if (!reg) return
 
     const f = form()
+    const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
+    if (isCustom && !f.baseUrl.trim()) {
+      toast.error('通用自定义接口必须填写有效的 Base URL 端点')
+      return
+    }
     const normAuth = f.authType === 'apikey' ? 'api-key' : f.authType
     if (normAuth === 'api-key' && !f.apiKey.trim()) {
       toast.error('请填写 API Key')
       return
     }
-
     setSaving(true)
     try {
       const created = await store.addProvider({
@@ -875,7 +879,10 @@ const Providers: Component = () => {
                       onInput={v => setForm(f => ({ ...f, priority: v }))}
                     />
                   </Field>
-                  <Field label="自定义 Base URL (可选)" hint="私有化或中转端点">
+                  <Field
+                    label={reg().category === 'custom' || reg().id.startsWith('custom-') ? 'Base URL (必填)' : '自定义 Base URL (可选)'}
+                    hint={reg().category === 'custom' || reg().id.startsWith('custom-') ? '标准端点地址，如 https://api.my-host.com/v1' : '私有化或中转端点'}
+                  >
                     <Input
                       value={form().baseUrl}
                       placeholder={reg().baseUrl || 'https://...'}

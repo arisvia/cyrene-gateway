@@ -501,27 +501,55 @@ func (s *Server) loadModelCacheIndex() map[string]*model.ModelMetadata {
 
 // handleRefreshModels triggers a live model fetch for a provider and caches the result.
 func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
-	providerID := r.PathValue("id")
+	targetID := r.PathValue("id")
 
-	providerInfo, ok := provider.GetProvider(providerID)
-	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider"})
-		return
-	}
-	// Find an active connection for this provider, or use NoAuth default for free providers
-	conns, err := s.DB.ListConnectionsByProvider(providerID)
-	baseURL := providerInfo.BaseURL
 	var conn model.ProviderConnection
-	if err == nil && len(conns) > 0 {
-		conn = conns[0]
-		if conn.Data.BaseURL != "" {
-			baseURL = conn.Data.BaseURL
+	var providerInfo provider.ProviderInfo
+	var ok bool
+
+	// 1. Check if targetID is an existing connection ID
+	if existingConn, err := s.DB.GetConnection(targetID); err == nil && existingConn != nil {
+		conn = *existingConn
+		providerInfo, ok = provider.GetProvider(conn.Provider)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider for connection: " + conn.Provider})
+			return
 		}
-	} else if !providerInfo.NoAuth && providerInfo.Category != "free" {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "no active connection for provider: " + providerID,
-		})
-		return
+	} else {
+		// 2. targetID is a provider ID (e.g. "qoder", "openai", "custom-openai")
+		providerID := targetID
+		providerInfo, ok = provider.GetProvider(providerID)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider"})
+			return
+		}
+		// Find an active connection with credentials for this provider, or use NoAuth default for free providers
+		conns, err := s.DB.ListConnectionsByProvider(providerID)
+		if err == nil && len(conns) > 0 {
+			// Pick first connection with credentials; fallback to first active connection
+			found := false
+			for _, c := range conns {
+				if c.IsActive && (c.Data.APIKey != "" || c.Data.AccessToken != "") {
+					conn = c
+					found = true
+					break
+				}
+			}
+			if !found {
+				conn = conns[0]
+			}
+		} else if !providerInfo.NoAuth && providerInfo.Category != "free" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": "no active connection for provider: " + providerID,
+			})
+			return
+		}
+	}
+
+	providerID := providerInfo.ID
+	baseURL := providerInfo.BaseURL
+	if conn.Data.BaseURL != "" {
+		baseURL = conn.Data.BaseURL
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 
