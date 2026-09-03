@@ -1,4 +1,4 @@
-import { type Component, Show, createSignal } from 'solid-js'
+import { type Component, Show, createSignal, createEffect } from 'solid-js'
 interface ProviderIconProps {
   provider: string
   name?: string
@@ -226,6 +226,13 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const name = () => props.name || props.provider
   const normalized = () => props.provider.toLowerCase().replace(/[-_]/g, '')
   const [imgFailed, setImgFailed] = createSignal(false)
+
+  // 当 provider 属性变化时自动复位失败状态
+  createEffect(() => {
+    props.provider
+    setImgFailed(false)
+  })
+
   const imgSrc = () => {
     if (imgFailed()) return null
     const norm = normalized()

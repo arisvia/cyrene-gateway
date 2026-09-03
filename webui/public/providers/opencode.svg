@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none">
-  <rect width="24" height="24" rx="5" fill="#E87040"/>
-  <path fill="#FFFFFF" d="M8.5 7 5 10.5l3.5 3.5 1.4-1.4L7.8 10.5l2.1-2.1L8.5 7zm7 0-1.4 1.4 2.1 2.1-2.1 2.1 1.4 1.4 3.5-3.5L15.5 7zM13 6l-3 12h1.8l3-12H13z"/>
-</svg>
+<svg fill="currentColor" fill-rule="evenodd" height="1em" style="flex:none;line-height:1" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg"><title>opencode</title><path d="M16 6H8v12h8V6zm4 16H4V2h16v20z"></path></svg>
