@@ -34,26 +34,45 @@ const Usage: Component = () => {
 
   function toggleLive() {
     if (live()) {
-      es?.close(); es = null; setLive(false); return
-    }
-    es = new EventSource('/api/usage/stream')
-    
-    const handleData = (ev: MessageEvent) => {
-      try {
-        const d = JSON.parse(ev.data)
-        if (d && (d.model || d.provider || d.endpoint)) {
-          setLiveEvents(list => [d, ...list].slice(0, 30))
-        }
-      } catch { /* 忽略心跳与解析错误 */ }
+      es?.close()
+      es = null
+      setLive(false)
+      return
     }
 
-    es.onmessage = handleData
-    es.addEventListener('request', handleData as EventListener)
-    es.addEventListener('connected', () => {
+    try {
+      es = new EventSource('/api/usage/stream')
+
+      const handleData = (ev: MessageEvent) => {
+        try {
+          const d = JSON.parse(ev.data)
+          if (d && (d.model || d.provider || d.endpoint)) {
+            setLiveEvents(list => [d, ...list].slice(0, 30))
+          }
+        } catch { /* 忽略心跳与解析错误 */ }
+      }
+
+      es.onmessage = handleData
+      es.addEventListener('request', handleData as EventListener)
+      es.addEventListener('connected', () => {
+        setLive(true)
+      })
+      es.onopen = () => {
+        setLive(true)
+      }
+      es.onerror = () => {
+        // SSE 断开或重试
+        if (es?.readyState === EventSource.CLOSED) {
+          setLive(false)
+          es?.close()
+          es = null
+        }
+      }
       setLive(true)
-    })
-    es.onerror = () => { setLive(false); es?.close(); es = null }
-    setLive(true)
+    } catch (e: unknown) {
+      console.error('[usage] failed to start live events stream:', e)
+      setLive(false)
+    }
   }
 
   const chart = () => store.usageChart()

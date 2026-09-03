@@ -106,7 +106,7 @@ const CliToolDetail: Component = () => {
               <ProviderAvatar provider={tool().id} name={tool().name} color={tool().color} size="lg" />
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-3 flex-wrap">
-                  <h1 class="text-2xl font-bold text-foreground">{tool().name}</h1>
+                  <h1 class="text-xl font-semibold text-foreground">{tool().name}</h1>
                   <Badge tone={status().installed ? 'blue' : 'gray'}>
                     {status().installed ? '已检测到安装' : '未在本地环境检测到'}
                   </Badge>

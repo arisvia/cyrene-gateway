@@ -1,4 +1,5 @@
 import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup } from 'solid-js'
+import { Portal } from 'solid-js/web'
 import { useToast } from '@/lib/toast'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
@@ -414,29 +415,31 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
 
   return (
     <Show when={props.open}>
-      <div class="fixed inset-0 z-[70] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in" onClick={props.onClose} aria-hidden="true" />
-        <div
-          ref={setPanel}
-          role="dialog"
-          aria-modal="true"
-          aria-label={props.title}
-          class="relative w-full max-w-lg rounded-2xl border border-subtle bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover animate-scale-in"
-        >
-          <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle bg-card/40 rounded-t-2xl">
-            <h3 class="text-sm font-semibold">{props.title}</h3>
-            <button
-              type="button"
-              class="flex h-7 w-7 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover transition-colors"
-              onClick={props.onClose}
-              aria-label="关闭"
-            >
-              ×
-            </button>
+      <Portal>
+        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in" onClick={props.onClose} aria-hidden="true" />
+          <div
+            ref={setPanel}
+            role="dialog"
+            aria-modal="true"
+            aria-label={props.title}
+            class="relative w-full max-w-lg rounded-2xl border border-subtle bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover animate-scale-in"
+          >
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle bg-card/40 rounded-t-2xl">
+              <h3 class="text-sm font-semibold">{props.title}</h3>
+              <button
+                type="button"
+                class="flex h-7 w-7 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover transition-colors"
+                onClick={props.onClose}
+                aria-label="关闭"
+              >
+                ×
+              </button>
+            </div>
+            <div class="p-5 max-h-[calc(85vh-100px)] overflow-y-auto">{props.children}</div>
           </div>
-          <div class="p-5 max-h-[calc(85vh-100px)] overflow-y-auto">{props.children}</div>
         </div>
-      </div>
+      </Portal>
     </Show>
   )
 }

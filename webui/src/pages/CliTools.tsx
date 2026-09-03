@@ -126,8 +126,8 @@ const CliTools: Component = () => {
       {/* 顶部标题与状态统计 (吸顶固定) */}
       <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-wrap items-center justify-between gap-4 border-b border-subtle/50">
         <div>
-          <h1 class="text-2xl font-bold tracking-tight text-foreground">CLI 工具接入</h1>
-          <p class="text-sm text-faint mt-1">
+          <h1 class="text-xl font-semibold">CLI 工具接入</h1>
+          <p class="text-sm text-faint mt-0.5">
             一键将 Cyrene Gateway 模型调度能力注入本地 AI 编程工具与主流编辑器
           </p>
         </div>

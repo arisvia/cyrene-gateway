@@ -1,4 +1,5 @@
 import { createSignal, Show, type Component, onMount, onCleanup } from 'solid-js'
+import { Portal } from 'solid-js/web'
 import { Button } from '@/components/ui'
 
 export interface ConfirmOptions {
@@ -73,8 +74,8 @@ export const ConfirmDialogHost: Component = () => {
 
   return (
     <Show when={s().isOpen}>
-      <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        {/* 背景毛玻璃遮罩 */}
+      <Portal>
+        <div class="fixed inset-0 z-[120] flex items-center justify-center p-4">
         <div
           class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in"
           onClick={() => handleClose(false)}
@@ -143,6 +144,7 @@ export const ConfirmDialogHost: Component = () => {
           </div>
         </div>
       </div>
+      </Portal>
     </Show>
   )
 }

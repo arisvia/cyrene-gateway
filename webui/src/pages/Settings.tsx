@@ -250,35 +250,6 @@ const Settings: Component = () => {
         </div>
       </Card>
 
-      {/* 密钥管理 */}
-      <Card class="p-5 space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-sm font-semibold">API 密钥</h3>
-            <p class="text-xs text-faint mt-0.5">API 密钥已升级为首页一等公民快捷功能，支持一键生成与便捷复制</p>
-          </div>
-          <A href="/" class="text-xs font-medium text-accent hover:underline flex items-center gap-1">
-            <span>前往首页管理</span>
-            <span>→</span>
-          </A>
-        </div>
-
-        <Show when={store.apiKeys().length > 0} fallback={
-          <div class="text-xs text-faint">尚未创建密钥</div>
-        }>
-          <div class="space-y-1.5">
-            <For each={store.apiKeys()}>
-              {k => (
-                <div class="flex items-center gap-2 text-xs">
-                  <span class="truncate font-medium">{k.name || '(未命名)'}</span>
-                  <code class="flex-1 truncate text-faint font-mono">{k.key}</code>
-                  <Button size="sm" variant="danger" onClick={() => store.deleteKey(k.id)}>删除</Button>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
-      </Card>
 
       {/* 改密码 */}
       <Card class="p-5 space-y-3">

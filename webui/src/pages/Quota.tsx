@@ -89,7 +89,15 @@ const Quota: Component = () => {
       props.quota.total > 0 ? (props.quota.remaining / props.quota.total) * 100 : 0
     ))
     const isExhausted = () => props.quota.remaining <= 0 && props.quota.total > 0
-    const isLow = () => pct() < 20
+
+    // 梯度配额健康色彩：>=50% 翠绿充足，20%~49% 暖橙适中，<20% 警戒红，0% 或耗尽暗红警报
+    const colorClass = () => {
+      if (isExhausted() || pct() <= 0) return { dot: 'bg-red-500 shadow-xs shadow-red-500/50', bar: 'bg-red-500', text: 'text-red-500' }
+      if (pct() < 20) return { dot: 'bg-red-400 shadow-xs shadow-red-400/50', bar: 'bg-red-400', text: 'text-red-400' }
+      if (pct() < 50) return { dot: 'bg-amber-400 shadow-xs shadow-amber-400/50', bar: 'bg-amber-400', text: 'text-amber-400' }
+      if (pct() < 80) return { dot: 'bg-cyan-400 shadow-xs shadow-cyan-400/50', bar: 'bg-cyan-400', text: 'text-cyan-400' }
+      return { dot: 'bg-emerald-500 shadow-xs shadow-emerald-500/50', bar: 'bg-emerald-500', text: 'text-emerald-500' }
+    }
 
     const resetHint = () => {
       if (!props.quota.resetAt) return ''
@@ -108,11 +116,7 @@ const Quota: Component = () => {
 
     return (
       <div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-hover/60 transition-colors text-xs">
-        <span
-          class={`w-2 h-2 rounded-full shrink-0 ${
-            isExhausted() ? 'bg-red-500 shadow-xs shadow-red-500/50' : 'bg-emerald-500 shadow-xs shadow-emerald-500/50'
-          }`}
-        />
+        <span class={`w-2 h-2 rounded-full shrink-0 ${colorClass().dot}`} />
         <span class="w-24 sm:w-28 font-medium text-foreground truncate shrink-0">
           {props.name}
         </span>
@@ -121,17 +125,11 @@ const Quota: Component = () => {
         </span>
         <div class="flex-1 min-w-[60px] h-1.5 rounded-full bg-hover overflow-hidden mx-1">
           <div
-            class={`h-full rounded-full transition-all ${
-              isExhausted() ? 'bg-red-500/60' : isLow() ? 'bg-amber-400' : 'bg-emerald-500'
-            }`}
-            style={{ width: `${Math.min(100, pct())}%` }}
+            class={`h-full rounded-full transition-all ${colorClass().bar}`}
+            style={{ width: `${Math.min(100, Math.max(0, pct()))}%` }}
           />
         </div>
-        <span
-          class={`w-10 text-right font-mono text-[11px] font-medium shrink-0 ${
-            isExhausted() ? 'text-danger' : isLow() ? 'text-amber-400' : 'text-emerald-500'
-          }`}
-        >
+        <span class={`w-10 text-right font-mono text-[11px] font-medium shrink-0 ${colorClass().text}`}>
           {pct()}%
         </span>
         <span class="w-20 text-right text-[11px] text-faint truncate shrink-0 font-mono">
