@@ -43,8 +43,8 @@ const ProviderDetail: Component = () => {
     setPrompt('')
     setChatBusy(true)
     try {
-      // 如果未指定具体模型，使用该提供商第一个可用模型或前缀通配
-      const available = (models()?.registryModels ?? []).concat(models()?.customModels ?? [])
+      // 如果未指定具体模型，使用该提供商第一个可用模型
+      const available = activeModels()
       const targetModel = selectedModel() || available[0]?.id || `${conn()!.provider}/default`
       const fullModel = targetModel.includes('/') ? targetModel : `${conn()!.provider}/${targetModel}`
       const r = await apiPost('/v1/chat/completions', {
@@ -93,16 +93,62 @@ const ProviderDetail: Component = () => {
 
   onMount(load)
 
+  const [modelsData, setModelsData] = createSignal<{
+    registryModels?: ProviderModel[]
+    customModels?: ProviderModel[]
+    isFreeMode?: boolean
+    authType?: string
+    hasApiKey?: boolean
+  }>({})
+
   const [models, { refetch: refetchModels }] = createResource(
     () => params.id,
     async id => {
       try {
-        const r = await api(`/api/providers/${id}/models`)
-        return r as { registryModels?: ProviderModel[]; customModels?: ProviderModel[] }
-      } catch { return { registryModels: [], customModels: [] } }
+        const r = await api(`/api/providers/${id}/models`) as {
+          registryModels?: ProviderModel[]
+          customModels?: ProviderModel[]
+          isFreeMode?: boolean
+          authType?: string
+          hasApiKey?: boolean
+        }
+        setModelsData(r)
+        return r
+      } catch {
+        const fallback = { registryModels: [], customModels: [] }
+        setModelsData(fallback)
+        return fallback
+      }
     },
   )
 
+  const activeModels = () =>
+    (modelsData().registryModels ?? models()?.registryModels ?? [])
+      .concat(modelsData().customModels ?? models()?.customModels ?? [])
+      .filter(m => Boolean(m.id) && m.enabled !== false)
+
+  async function toggleModel(modelId: string, currentEnabled: boolean) {
+    if (!conn()) return
+    const fullModel = `${conn()!.provider}/${modelId}`
+    const nextState = !currentEnabled
+
+    // 立即乐观更新本地响应式状态
+    setModelsData(prev => {
+      const updateList = (list?: ProviderModel[]) =>
+        (list ?? []).map(m => (m.id === modelId || m.name === modelId ? { ...m, enabled: nextState } : m))
+      return {
+        ...prev,
+        registryModels: updateList(prev.registryModels),
+        customModels: updateList(prev.customModels),
+      }
+    })
+
+    try {
+      await store.setModelDisabled(fullModel, !nextState)
+    } catch {
+      refetchModels()
+    }
+  }
   const [oauthStatus, { refetch: refetchOAuth }] = createResource(
     () => conn()?.provider,
     async p => {
@@ -259,11 +305,47 @@ const ProviderDetail: Component = () => {
             {/* 模型 */}
             <Show when={tab() === 'models'}>
               <div class="space-y-4">
+                {/* OpenCode 专用套餐与免密提示横幅 */}
+                <Show when={c().provider === 'opencode'}>
+                  <div class="p-4 rounded-control border border-subtle bg-bg-elevated/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-glass">
+                    <div class="flex items-start sm:items-center gap-2.5 text-text">
+                      <Show
+                        when={modelsData().isFreeMode}
+                        fallback={
+                          <>
+                            <span class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shrink-0 mt-0.5 sm:mt-0" />
+                            <div>
+                              <span class="font-medium text-foreground">商业授权模式：</span>
+                              <span class="text-muted">已配置 API Key，网关已解锁 OpenCode Go 套餐与 Zen 充值额度的全量商业模型。</span>
+                            </div>
+                          </>
+                        }
+                      >
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
+                        <div>
+                          <span class="font-medium text-emerald-400">免密体验模式（Zen Free）：</span>
+                          <span class="text-muted">当前未填写 API Key，网关严格锁定并仅激活官方免费模型（Big Pickle、Mimo Free、Ling Free 等）。填入 API Key 即可解锁全量商业模型。</span>
+                        </div>
+                      </Show>
+                    </div>
+                    <Show when={modelsData().isFreeMode}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        class="shrink-0 self-start sm:self-auto text-accent hover:border-accent"
+                        onClick={() => setTab('overview')}
+                      >
+                        配置 API Key →
+                      </Button>
+                    </Show>
+                  </div>
+                </Show>
+
                 <Card class="p-5">
                   <div class="flex items-center justify-between mb-3">
                     <div>
                       <h3 class="text-sm font-semibold">自定义模型</h3>
-                      <p class="text-xs text-faint mt-0.5">注册未在官方列表中的模型 ID，供网关路由匹配</p>
+                      <p class="text-xs text-faint mt-0.5">注册未在官方列表中的模型 ID，供网关路由匹配与对外转发</p>
                     </div>
                   </div>
                   <div class="flex gap-2">
@@ -291,14 +373,20 @@ const ProviderDetail: Component = () => {
                     </Button>
                   </div>
                   <div class="mt-3 flex flex-wrap gap-2">
-                    <Show when={(models()?.customModels?.length ?? 0) > 0} fallback={
+                    <Show when={(modelsData().customModels ?? models()?.customModels ?? []).length > 0} fallback={
                       <span class="text-xs text-faint">暂无自定义模型</span>
                     }>
-                      <For each={models()?.customModels ?? []}>
+                      <For each={modelsData().customModels ?? models()?.customModels ?? []}>
                         {m => (
-                          <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs">
-                            <span class="font-mono">{m.id || m.name}</span>
-                            <button class="text-faint hover:text-danger" onClick={() => removeCustomModel(m.id || m.name)}>×</button>
+                          <span class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-control border text-xs transition-colors ${
+                            m.enabled !== false ? 'bg-hover border-subtle text-text' : 'bg-bg-elevated/40 border-subtle/30 text-faint opacity-60'
+                          }`}>
+                            <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.id || m.name}</span>
+                            <Toggle
+                              checked={m.enabled !== false}
+                              onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
+                            />
+                            <button class="text-faint hover:text-danger ml-0.5" title="删除" onClick={() => removeCustomModel(m.id || m.name)}>×</button>
                           </span>
                         )}
                       </For>
@@ -310,34 +398,64 @@ const ProviderDetail: Component = () => {
                   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                     <div class="flex items-center gap-2">
                       <h3 class="text-sm font-semibold">可用模型</h3>
-                      <span class="text-xs text-faint">共 {models()?.registryModels?.length ?? 0} 个</span>
+                      <span class="text-xs text-faint">
+                        共 {(modelsData().registryModels ?? models()?.registryModels ?? []).length} 个 · 开放中 {(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length} 个
+                      </span>
                     </div>
                     <div class="w-full sm:w-64">
                       <Input
                         value={modelSearch()}
                         onInput={setModelSearch}
-                        placeholder="搜索可用模型 ID 或名称…"
-                        class="h-8 text-xs"
+                        placeholder="搜索模型 ID 或名称…"
+                        size="sm"
                       />
                     </div>
                   </div>
 
                   <Show
-                    when={(models()?.registryModels?.length ?? 0) > 0}
+                    when={(modelsData().registryModels ?? models()?.registryModels ?? []).length > 0}
                     fallback={<Empty message="该提供商未上报模型列表。" />}
                   >
-                    {/* 独立可滚动区域：避免整个页面下拉，使上方自定义模型常驻可见 */}
-                    <div class="max-h-[380px] overflow-y-auto pr-1">
-                      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        <For each={(models()?.registryModels ?? []).filter(m => {
+                    {/* 独立可滚动区域：带对外开放开关的 Liquid Glass 卡片网格 */}
+                    <div class="max-h-[420px] overflow-y-auto pr-1">
+                      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        <For each={(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
                           const q = modelSearch().trim().toLowerCase()
                           if (!q) return true
                           return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
                         })}>
                           {m => (
-                            <div class="px-3 py-2 rounded-control border border-subtle bg-bg-elevated/60 hover:bg-hover transition-colors">
-                              <div class="text-sm truncate font-medium text-foreground">{m.name || m.id}</div>
-                              <div class="text-[11px] text-faint font-mono truncate">{m.id || m.name}</div>
+                            <div
+                              class={`flex items-center justify-between p-3 rounded-control border transition-all ${
+                                m.enabled !== false
+                                  ? 'border-subtle bg-bg-elevated/70 hover:border-accent/40 shadow-sm'
+                                  : 'border-subtle/30 bg-bg-elevated/25 opacity-55 hover:opacity-80'
+                              }`}
+                            >
+                              <div class="min-w-0 flex-1 pr-2.5">
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                  <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
+                                    {m.name || m.id}
+                                  </span>
+                                  <Show when={m.isFree}>
+                                    <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                      免费
+                                    </span>
+                                  </Show>
+                                  <Show when={m.enabled === false}>
+                                    <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
+                                      不对外
+                                    </span>
+                                  </Show>
+                                </div>
+                                <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
+                              </div>
+                              <div class="shrink-0 flex items-center" title={m.enabled !== false ? '点击关闭，禁止对外提供' : '点击开启，恢复对外提供'}>
+                                <Toggle
+                                  checked={m.enabled !== false}
+                                  onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
+                                />
+                              </div>
                             </div>
                           )}
                         </For>
@@ -358,14 +476,11 @@ const ProviderDetail: Component = () => {
                       value={selectedModel()}
                       options={[
                         { value: '', label: '默认模型（首个可用）' },
-                        ...((models()?.registryModels ?? []).concat(models()?.customModels ?? []))
-                          .filter(m => Boolean(m.id))
-                          .map(m => ({
-                            value: m.id || '',
-                            label: m.name ? `${m.name} (${m.id})` : m.id || '',
-                          })),
+                        ...activeModels().map(m => ({
+                          value: m.id || '',
+                          label: m.name ? `${m.name} (${m.id})` : m.id || '',
+                        })),
                       ]}
-                      onChange={setSelectedModel}
                     />
                   </div>
                   <div class="flex items-center gap-2">

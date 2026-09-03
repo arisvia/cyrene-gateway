@@ -109,11 +109,29 @@ func ResolveCombo(modelStr string, database *db.DB) (*model.Combo, bool) {
 }
 
 // IsModelDisabled checks if a model is in the disabled models list.
+// It checks both the full identifier (e.g. "opencode/big-pickle") and bare identifier (e.g. "big-pickle").
 func IsModelDisabled(modelStr string, database *db.DB) bool {
 	disabled, err := database.KVList(model.KVScopeDisabledModels)
-	if err != nil {
+	if err != nil || len(disabled) == 0 {
 		return false
 	}
-	_, ok := disabled[modelStr]
-	return ok
+	if _, ok := disabled[modelStr]; ok {
+		return true
+	}
+	// If modelStr is "provider/model", check bare model as well
+	if idx := strings.Index(modelStr, "/"); idx != -1 {
+		bare := modelStr[idx+1:]
+		if _, ok := disabled[bare]; ok {
+			return true
+		}
+	} else {
+		// If modelStr is bare, check if any "*/bare" entry is disabled
+		suffix := "/" + modelStr
+		for k := range disabled {
+			if strings.HasSuffix(k, suffix) {
+				return true
+			}
+		}
+	}
+	return false
 }

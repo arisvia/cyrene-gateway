@@ -297,9 +297,21 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	// Load cached model metadata for all providers
 	cacheIndex := s.loadModelCacheIndex()
 
-	// Add aliases as models
+	// Load disabled models mapping to gate out models marked not public / disabled
+	disabledMap, _ := s.DB.KVList("disabledModels")
+	isModelDisabled := func(fullID, bareID string) bool {
+		if disabledMap == nil {
+			return false
+		}
+		return disabledMap[fullID] != "" || disabledMap[bareID] != ""
+	}
+
+	// Add aliases as models (filtering out disabled ones)
 	aliases, _ := s.DB.KVList("aliases")
 	for alias := range aliases {
+		if isModelDisabled(alias, alias) {
+			continue
+		}
 		models = append(models, ModelEntry{
 			ID:      alias,
 			Object:  "model",
@@ -307,9 +319,12 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Add combo names as models
+	// Add combo names as models (filtering out disabled ones)
 	combos, _ := s.DB.ListCombos()
 	for _, c := range combos {
+		if isModelDisabled(c.Name, c.Name) {
+			continue
+		}
 		models = append(models, ModelEntry{
 			ID:      c.Name,
 			Object:  "model",
@@ -317,73 +332,125 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// Add provider wildcard entries from active connections
-	seen := make(map[string]bool)
+	// Group active connections by provider
+	activeConnsByProvider := make(map[string][]model.ProviderConnection)
 	for _, conn := range conns {
-		if !conn.IsActive || seen[conn.Provider] {
-			continue
-		}
-		seen[conn.Provider] = true
-		if _, ok := provider.GetProvider(conn.Provider); ok {
-			models = append(models, ModelEntry{
-				ID:      conn.Provider + "/*",
-				Object:  "model",
-				OwnedBy: conn.Provider,
-			})
+		if conn.IsActive {
+			activeConnsByProvider[conn.Provider] = append(activeConnsByProvider[conn.Provider], conn)
 		}
 	}
 
-	// Add registry models for providers with active connections (enriched with metadata)
-	for providerID := range seen {
+	seenProviders := make(map[string]bool)
+	seenFullIDs := make(map[string]bool)
+
+	// Helper to extract and append models for a provider
+	appendProviderModels := func(providerID string, isUnauthOpenCode bool, pConns []model.ProviderConnection) {
+		var unifiedModels []provider.ModelRef
+		seenModel := make(map[string]bool)
+
+		// 1. Live cached models
+		if raw, err := s.DB.KVGet("providerModelCache", providerID); err == nil && raw != "" {
+			var cached model.CachedModels
+			if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
+				for _, m := range cached.Models {
+					if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(m.ID) {
+						continue
+					}
+					seenModel[m.ID] = true
+					name := m.DisplayName
+					if name == "" {
+						name = m.ID
+					}
+					unifiedModels = append(unifiedModels, provider.ModelRef{ID: m.ID, Name: name})
+				}
+			}
+		}
+
+		// 2. Fallback registry models
 		if regModels, ok := provider.RegistryModels[providerID]; ok {
 			for _, m := range regModels {
-				fullID := providerID + "/" + m.ID
-				meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
-				// Use registry display name as fallback
-				if meta.DisplayName == m.ID && m.Name != "" {
-					meta.DisplayName = m.Name
+				if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(m.ID) {
+					continue
 				}
-				models = append(models, ModelEntry{
-					ID:            fullID,
-					Object:        "model",
-					OwnedBy:       providerID,
-					DisplayName:   meta.DisplayName,
-					ContextLength: meta.ContextLength,
-					MaxOutput:     meta.MaxOutput,
-					Capabilities:  meta.Capabilities,
-					Modalities:    meta.Modalities,
-				})
+				if !seenModel[m.ID] {
+					seenModel[m.ID] = true
+					unifiedModels = append(unifiedModels, m)
+				}
 			}
+		}
+
+		// 3. Fallback for unauthenticated OpenCode if no models found
+		if isUnauthOpenCode && len(unifiedModels) == 0 {
+			for _, fm := range provider.GetOpenCodeFreeModels() {
+				if !seenModel[fm.ID] {
+					seenModel[fm.ID] = true
+					unifiedModels = append(unifiedModels, fm)
+				}
+			}
+		}
+
+		// 4. Custom models from connections of this provider
+		for _, conn := range pConns {
+			for _, cm := range s.loadCustomModels(conn.ID) {
+				if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(cm.ID) {
+					continue
+				}
+				if !seenModel[cm.ID] {
+					seenModel[cm.ID] = true
+					name := cm.Name
+					if name == "" {
+						name = cm.ID
+					}
+					unifiedModels = append(unifiedModels, provider.ModelRef{ID: cm.ID, Name: name})
+				}
+			}
+		}
+
+		// Append to models list with metadata and disable-check
+		for _, m := range unifiedModels {
+			fullID := providerID + "/" + m.ID
+			if seenFullIDs[fullID] || isModelDisabled(fullID, m.ID) {
+				continue
+			}
+			seenFullIDs[fullID] = true
+
+			meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
+			displayName := meta.DisplayName
+			if displayName == m.ID && m.Name != "" {
+				displayName = m.Name
+			}
+			models = append(models, ModelEntry{
+				ID:            fullID,
+				Object:        "model",
+				OwnedBy:       providerID,
+				DisplayName:   displayName,
+				ContextLength: meta.ContextLength,
+				MaxOutput:     meta.MaxOutput,
+				Capabilities:  meta.Capabilities,
+				Modalities:    meta.Modalities,
+			})
 		}
 	}
 
-	// Add NoAuth (free) providers even without connections — they work out of the box
-	for id, p := range provider.Registry {
-		if p.NoAuth && !p.Hidden && !seen[id] {
-			models = append(models, ModelEntry{
-				ID:      id + "/*",
-				Object:  "model",
-				OwnedBy: id,
-			})
-			if regModels, ok := provider.RegistryModels[id]; ok {
-				for _, m := range regModels {
-					fullID := id + "/" + m.ID
-					meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
-					if meta.DisplayName == m.ID && m.Name != "" {
-						meta.DisplayName = m.Name
-					}
-					models = append(models, ModelEntry{
-						ID:            fullID,
-						Object:        "model",
-						OwnedBy:       id,
-						DisplayName:   meta.DisplayName,
-						ContextLength: meta.ContextLength,
-						MaxOutput:     meta.MaxOutput,
-						Capabilities:  meta.Capabilities,
-						Modalities:    meta.Modalities,
-					})
-				}
+	// Add models for all providers with active connections
+	for providerID, pConns := range activeConnsByProvider {
+		seenProviders[providerID] = true
+		hasApiKey := false
+		for _, c := range pConns {
+			if c.Data.APIKey != "" {
+				hasApiKey = true
+				break
 			}
+		}
+		isUnauthOpenCode := providerID == "opencode" && !hasApiKey
+		appendProviderModels(providerID, isUnauthOpenCode, pConns)
+	}
+
+	// Add NoAuth (free) providers even without connections
+	for id, p := range provider.Registry {
+		if p.NoAuth && !p.Hidden && !seenProviders[id] {
+			isUnauthOpenCode := id == "opencode"
+			appendProviderModels(id, isUnauthOpenCode, nil)
 		}
 	}
 

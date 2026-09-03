@@ -128,7 +128,7 @@ func TestE2EChatCompletion(t *testing.T) {
 		// Gemini uses a different wire format; tested separately below.
 		// --- free category (NoAuth, zero-config) ---
 		{
-			Provider: "opencode", Model: "opencode/claude-sonnet-4-20250514",
+			Provider: "opencode", Model: "opencode/big-pickle",
 			AuthType: "none",
 			WantAuth: func(r *http.Request) error {
 				if got := r.Header.Get("Authorization"); got != "Bearer public" {
@@ -227,7 +227,7 @@ func TestE2ENoAuthAutoProvision(t *testing.T) {
 	t.Cleanup(func() { provider.Registry["opencode"] = orig })
 
 	// No connection exists — auto-provision should kick in.
-	body := `{"model":"opencode/claude-sonnet-4-20250514","messages":[{"role":"user","content":"hello"}]}`
+	body := `{"model":"opencode/big-pickle","messages":[{"role":"user","content":"hello"}]}`
 	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

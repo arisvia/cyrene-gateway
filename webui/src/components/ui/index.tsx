@@ -71,6 +71,14 @@ export function ToastHost() {
   )
 }
 
+export const controlSizes = {
+  sm: 'h-8 text-xs',
+  md: 'h-9 text-sm',
+  lg: 'h-11 text-base',
+} as const
+
+export type ControlSize = keyof typeof controlSizes
+
 export const Button: Component<{
   variant?: 'primary' | 'ghost' | 'danger' | 'secondary'
   size?: 'sm' | 'md' | 'lg'
@@ -84,10 +92,10 @@ export const Button: Component<{
 }> = props => {
   const base =
     'inline-flex items-center justify-center font-medium transition-all duration-150 select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
-  const sizes = {
-    sm: 'h-8 px-3 text-xs min-w-fit gap-1.5',
-    md: 'h-9 px-4 text-sm min-w-fit gap-2',
-    lg: 'h-11 px-5 text-base min-w-fit gap-2.5',
+  const sizes: Record<ControlSize, string> = {
+    sm: `${controlSizes.sm} px-3 min-w-fit gap-1.5`,
+    md: `${controlSizes.md} px-4 min-w-fit gap-2`,
+    lg: `${controlSizes.lg} px-5 min-w-fit gap-2.5`,
   }
   const variants = {
     primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
@@ -123,10 +131,10 @@ export const Input: Component<{
   class?: string
   ariaLabel?: string
 }> = props => {
-  const sizes = {
-    sm: 'h-8 px-2.5 text-xs',
-    md: 'h-9 px-3 text-sm',
-    lg: 'h-11 px-4 text-base',
+  const sizes: Record<ControlSize, string> = {
+    sm: `${controlSizes.sm} px-2.5`,
+    md: `${controlSizes.md} px-3`,
+    lg: `${controlSizes.lg} px-4`,
   }
   return (
     <input
@@ -202,10 +210,10 @@ export const Select: Component<{
   const isSelected = () => !!selectedOption()
   const displayLabel = () => selectedOption()?.label || props.placeholder || (props.options[0]?.label ?? '')
 
-  const triggerSizes = {
-    sm: 'h-8 pl-3 pr-2.5 text-xs gap-2',
-    md: 'h-9 pl-3.5 pr-3 text-sm gap-2.5',
-    lg: 'h-11 pl-4 pr-3.5 text-base gap-3',
+  const triggerSizes: Record<ControlSize, string> = {
+    sm: `${controlSizes.sm} pl-3 pr-2.5 gap-2`,
+    md: `${controlSizes.md} pl-3.5 pr-3 gap-2.5`,
+    lg: `${controlSizes.lg} pl-4 pr-3.5 gap-3`,
   }
 
   const chevronSizes = {

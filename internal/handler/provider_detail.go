@@ -39,6 +39,14 @@ func (s *Server) saveCustomModels(connID string, models []customModel) error {
 	return s.DB.KVSet(customModelsScope, connID, string(data))
 }
 
+// ProviderModelItem represents a model in the provider detail response with its enabled and free status.
+type ProviderModelItem struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	IsFree  bool   `json:"isFree,omitempty"`
+}
+
 // handleGetProviderModels returns registry models + live synced models + custom models for a connection.
 func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -54,6 +62,9 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		registryModels = []provider.ModelRef{}
 	}
 
+	// 判断是否为免密未授权的 OpenCode 连接（仅允许免费模型）
+	isUnauthOpenCode := conn.Provider == "opencode" && (conn.AuthType == "none" || conn.Data.APIKey == "")
+
 	// 2. 获取实时同步抓取的 Live 缓存模型并合并
 	seen := make(map[string]bool)
 	var unifiedModels []provider.ModelRef
@@ -62,6 +73,10 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		var cached model.CachedModels
 		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
 			for _, m := range cached.Models {
+				// 若 OpenCode 未填 API Key，过滤只留下免费模型
+				if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(m.ID) {
+					continue
+				}
 				seen[m.ID] = true
 				name := m.DisplayName
 				if name == "" {
@@ -77,21 +92,64 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 
 	// 若无 Live 模型或补齐 Registry 中独特项
 	for _, rm := range registryModels {
+		if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(rm.ID) {
+			continue
+		}
 		if !seen[rm.ID] {
 			seen[rm.ID] = true
 			unifiedModels = append(unifiedModels, rm)
 		}
 	}
 
+	// 如果处于 OpenCode 免密模式且尚未抓取或未命中任何免费模型，使用 OpenCode 标准免费兜底模型
+	if isUnauthOpenCode && len(unifiedModels) == 0 {
+		for _, fm := range provider.GetOpenCodeFreeModels() {
+			if !seen[fm.ID] {
+				seen[fm.ID] = true
+				unifiedModels = append(unifiedModels, fm)
+			}
+		}
+	}
+
+	// 获取全局禁用模型映射
+	disabledMap, _ := s.DB.KVList("disabledModels")
+	isModelDisabled := func(modelID string) bool {
+		if disabledMap == nil {
+			return false
+		}
+		fullID := conn.Provider + "/" + modelID
+		return disabledMap[fullID] != "" || disabledMap[modelID] != ""
+	}
+
+	registryItems := []ProviderModelItem{}
+	for _, m := range unifiedModels {
+		registryItems = append(registryItems, ProviderModelItem{
+			ID:      m.ID,
+			Name:    m.Name,
+			Enabled: !isModelDisabled(m.ID),
+			IsFree:  conn.Provider == "opencode" && provider.IsOpenCodeFreeModel(m.ID),
+		})
+	}
+
 	customModels := s.loadCustomModels(conn.ID)
-	if customModels == nil {
-		customModels = []customModel{}
+	customItems := []ProviderModelItem{}
+	for _, cm := range customModels {
+		registryItemsID := cm.ID
+		customItems = append(customItems, ProviderModelItem{
+			ID:      registryItemsID,
+			Name:    cm.Name,
+			Enabled: !isModelDisabled(registryItemsID),
+			IsFree:  conn.Provider == "opencode" && provider.IsOpenCodeFreeModel(registryItemsID),
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider":       conn.Provider,
-		"registryModels": unifiedModels,
-		"customModels":   customModels,
+		"authType":       conn.AuthType,
+		"hasApiKey":      conn.Data.APIKey != "",
+		"isFreeMode":     isUnauthOpenCode,
+		"registryModels": registryItems,
+		"customModels":   customItems,
 	})
 }
 

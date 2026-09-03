@@ -78,8 +78,8 @@ export interface ProviderModel {
   id?: string
   name: string
   enabled?: boolean
+  isFree?: boolean
   alias?: string
-  contextLength?: number
   maxOutputTokens?: number
   capabilities?: string[]
   modalities?: string[]

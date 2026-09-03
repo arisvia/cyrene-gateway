@@ -12,6 +12,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func setupTestServer(t *testing.T) (*Server, *db.DB) {
@@ -340,6 +341,98 @@ func TestDisabledModel(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for disabled model, got %d", w.Code)
+	}
+}
+
+func TestDisabledModelExcludedFromV1Models(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "test-openai-conn",
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data:     model.ConnectionData{APIKey: "sk-test"},
+	}
+	database.CreateConnection(conn)
+
+	// Disable a model
+	database.KVSet("disabledModels", "openai/gpt-4o", "true")
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+
+	for _, m := range resp.Data {
+		if m.ID == "openai/gpt-4o" {
+			t.Fatalf("disabled model openai/gpt-4o should NOT be present in /v1/models")
+		}
+		if strings.HasSuffix(m.ID, "/*") {
+			t.Fatalf("wildcard model %s should NEVER appear in /v1/models", m.ID)
+		}
+	}
+}
+
+func TestOpenCodeUnauthenticatedGatesModels(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "test-opencode-conn",
+		Provider: "opencode",
+		AuthType: "none",
+		IsActive: true,
+		Data:     model.ConnectionData{},
+	}
+	database.CreateConnection(conn)
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+
+	for _, m := range resp.Data {
+		if strings.HasPrefix(m.ID, "opencode/") {
+			modelName := strings.TrimPrefix(m.ID, "opencode/")
+			if !provider.IsOpenCodeFreeModel(modelName) {
+				t.Fatalf("unauthenticated opencode connection exposed non-free model: %s", m.ID)
+			}
+		}
+	}
+
+	// Test chat completions: paid model should be rejected with 403
+	body := `{"model":"opencode/claude-sonnet-4","messages":[{"role":"user","content":"hi"}]}`
+	reqChat := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	reqChat.Header.Set("Content-Type", "application/json")
+	wChat := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(wChat, reqChat)
+
+	if wChat.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for paid model on unauth OpenCode, got %d: %s", wChat.Code, wChat.Body.String())
 	}
 }
 

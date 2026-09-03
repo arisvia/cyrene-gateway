@@ -269,6 +269,24 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
+		// Skip commercial models on unauthenticated OpenCode connections
+		if modelInfo.Provider == "opencode" && !provider.IsOpenCodeFreeModel(modelInfo.Model) {
+			hasCreds := false
+			if pConns, err := s.DB.ListConnectionsByProvider("opencode"); err == nil {
+				for _, c := range pConns {
+					if c.Data.APIKey != "" {
+						hasCreds = true
+						break
+					}
+				}
+			}
+			if !hasCreds {
+				lastError = fmt.Sprintf("OpenCode model %s requires an API key", modelInfo.Model)
+				lastStatus = 403
+				continue
+			}
+		}
+
 		providerInfo, ok := provider.GetProvider(modelInfo.Provider)
 		if !ok {
 			lastError = fmt.Sprintf("unknown provider: %s", modelInfo.Provider)
@@ -464,6 +482,16 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
 		})
 		return
+	}
+
+	// Server-side guard: if OpenCode connection has no credentials, reject commercial models
+	if modelInfo.Provider == "opencode" && (conn.AuthType == "none" || conn.Data.APIKey == "") {
+		if !provider.IsOpenCodeFreeModel(modelInfo.Model) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error": fmt.Sprintf("OpenCode model '%s' requires an API key (Go plan or Zen plan). Only free models (e.g. big-pickle, mimo-v2.5-free, ling-3.0-flash-fin-free) are available in unauthenticated mode.", modelInfo.Model),
+			})
+			return
+		}
 	}
 
 	// Phase 9: Pre-check OAuth token refresh
