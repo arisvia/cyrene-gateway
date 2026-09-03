@@ -10,7 +10,10 @@ export const Card: Component<{
   ref?: HTMLDivElement | ((el: HTMLDivElement) => void)
 }> = props => (
   <div
-    ref={props.ref}
+    ref={el => {
+      if (typeof props.ref === 'function') props.ref(el)
+      else if (props.ref) (props as unknown as { ref: HTMLDivElement }).ref = el
+    }}
     class={`rounded-card glass-card ${props.hover ? 'hover:bg-hover hover:border-accent/40 hover:-translate-y-0.5 hover:shadow-glass-hover' : ''} transition-all duration-200 ${props.class ?? ''}`}
     onClick={props.onClick}
   >
@@ -37,9 +40,15 @@ export const Empty: Component<{ message: string; children?: JSX.Element }> = pro
   <div class="py-16 text-center text-sm text-faint">{props.message}</div>
 )
 
-export const Spinner: Component = () => (
-  <div class="h-4 w-4 shrink-0 rounded-full border-2 border-subtle border-t-accent animate-spin" aria-hidden="true" />
-)
+export const Spinner: Component<{ size?: 'sm' | 'md' | 'lg' }> = props => {
+  const sizes = { sm: 'h-3.5 w-3.5', md: 'h-4 w-4', lg: 'h-5 w-5' }
+  return (
+    <div
+      class={`${sizes[props.size ?? 'md']} shrink-0 rounded-full border-2 border-subtle border-t-accent animate-spin`}
+      aria-hidden="true"
+    />
+  )
+}
 
 export function ToastHost() {
   const { toasts } = useToast()
@@ -64,20 +73,25 @@ export function ToastHost() {
 
 export const Button: Component<{
   variant?: 'primary' | 'ghost' | 'danger' | 'secondary'
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   loading?: boolean
   onClick?: (e: MouseEvent) => void
   type?: 'button' | 'submit'
   title?: string
   children?: JSX.Element
+  class?: string
 }> = props => {
   const base =
-    'inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring'
-  const sizes = { sm: 'h-7 px-3 text-xs min-w-fit', md: 'h-9 px-4 text-sm min-w-fit' }
+    'inline-flex items-center justify-center font-medium transition-all duration-150 select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
+  const sizes = {
+    sm: 'h-8 px-3 text-xs min-w-fit gap-1.5',
+    md: 'h-9 px-4 text-sm min-w-fit gap-2',
+    lg: 'h-11 px-5 text-base min-w-fit gap-2.5',
+  }
   const variants = {
     primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
-    secondary: 'border border-subtle text-muted hover:text-text hover:border-accent',
+    secondary: 'border border-subtle text-muted hover:text-text hover:border-accent hover:bg-hover/50',
     ghost: 'text-muted hover:text-text hover:bg-hover',
     danger: 'border border-danger/30 text-danger hover:bg-danger/10',
   }
@@ -85,13 +99,13 @@ export const Button: Component<{
     <button
       type={props.type ?? 'button'}
       title={props.title}
-      class={`${base} ${sizes[props.size ?? 'md']} ${variants[props.variant ?? 'secondary']}`}
+      class={`${base} ${sizes[props.size ?? 'md']} ${variants[props.variant ?? 'secondary']} ${props.class ?? ''}`}
       disabled={props.disabled || props.loading}
       aria-busy={props.loading || undefined}
       onClick={props.onClick}
     >
       <Show when={props.loading}>
-        <Spinner />
+        <Spinner size={props.size} />
       </Show>
       {props.children}
     </button>
@@ -102,28 +116,37 @@ export const Input: Component<{
   value?: string
   placeholder?: string
   type?: string
+  size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   onInput?: (v: string) => void
   onKeyDown?: (e: KeyboardEvent) => void
   class?: string
   ariaLabel?: string
-}> = props => (
-  <input
-    type={props.type ?? 'text'}
-    value={props.value ?? ''}
-    placeholder={props.placeholder}
-    disabled={props.disabled}
-    aria-label={props.ariaLabel}
-    onInput={e => props.onInput?.(e.currentTarget.value)}
-    onKeyDown={props.onKeyDown}
-    class={`w-full px-3 py-1.5 rounded-control bg-bg-elevated border border-subtle text-sm text-text placeholder:text-faint focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-colors disabled:opacity-50 ${props.class ?? ''}`}
-  />
-)
+}> = props => {
+  const sizes = {
+    sm: 'h-8 px-2.5 text-xs',
+    md: 'h-9 px-3 text-sm',
+    lg: 'h-11 px-4 text-base',
+  }
+  return (
+    <input
+      type={props.type ?? 'text'}
+      value={props.value ?? ''}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+      aria-label={props.ariaLabel}
+      onInput={e => props.onInput?.(e.currentTarget.value)}
+      onKeyDown={props.onKeyDown}
+      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-bg-elevated border border-subtle text-text placeholder:text-faint focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+    />
+  )
+}
 
 export const Select: Component<{
   value?: string
   options: { value: string; label: string }[]
   onChange?: (v: string) => void
+  size?: 'sm' | 'md' | 'lg'
   class?: string
   ariaLabel?: string
   placeholder?: string
@@ -179,6 +202,24 @@ export const Select: Component<{
   const isSelected = () => !!selectedOption()
   const displayLabel = () => selectedOption()?.label || props.placeholder || (props.options[0]?.label ?? '')
 
+  const triggerSizes = {
+    sm: 'h-8 pl-3 pr-2.5 text-xs gap-2',
+    md: 'h-9 pl-3.5 pr-3 text-sm gap-2.5',
+    lg: 'h-11 pl-4 pr-3.5 text-base gap-3',
+  }
+
+  const chevronSizes = {
+    sm: 'w-3 h-3',
+    md: 'w-3.5 h-3.5',
+    lg: 'w-4 h-4',
+  }
+
+  const optionSizes = {
+    sm: 'px-2.5 py-1.5 text-xs',
+    md: 'px-3 py-2 text-sm',
+    lg: 'px-3.5 py-2.5 text-base',
+  }
+
   return (
     <div
       ref={rootRef}
@@ -194,7 +235,7 @@ export const Select: Component<{
         onClick={() => {
           if (!props.disabled) setOpen(o => !o)
         }}
-        class={`w-full flex items-center justify-between gap-3 pl-3.5 pr-3 py-1.5 min-h-[36px] rounded-control bg-bg-elevated border border-subtle text-sm text-text hover:border-accent/40 hover:bg-hover/50 focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 ${
+        class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-bg-elevated border border-subtle text-text hover:border-accent/40 hover:bg-hover/50 focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 ${
           open() ? 'border-accent ring-2 ring-ring-soft' : ''
         } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
@@ -202,9 +243,9 @@ export const Select: Component<{
           {displayLabel()}
         </span>
         {/* 精致内嵌居中的 Chevron 矢量箭头：预留呼吸空间，完全消除原生靠死右侧的视觉不协调感 */}
-        <div class="flex items-center justify-center shrink-0 w-4 h-4 text-faint ml-1">
+        <div class="flex items-center justify-center shrink-0 text-faint ml-1">
           <svg
-            class={`w-3.5 h-3.5 transition-transform duration-200 ${
+            class={`${chevronSizes[props.size ?? 'md']} transition-transform duration-200 ${
               open() ? 'rotate-180 text-accent' : ''
             }`}
             viewBox="0 0 24 24"
@@ -236,7 +277,7 @@ export const Select: Component<{
                   type="button"
                   role="option"
                   aria-selected={active()}
-                  class={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-xs sm:text-sm text-left transition-all duration-150 cursor-pointer ${
+                  class={`w-full flex items-center justify-between gap-3 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
                     active()
                       ? 'bg-accent/15 text-accent font-medium'
                       : 'text-text hover:bg-hover hover:text-text'
