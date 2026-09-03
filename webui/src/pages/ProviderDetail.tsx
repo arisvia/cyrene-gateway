@@ -1,4 +1,4 @@
-import { type Component, For, Show, createSignal, createResource, onMount } from 'solid-js'
+import { type Component, For, Show, createSignal, createResource, createEffect, onMount } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
@@ -22,7 +22,17 @@ const ProviderDetail: Component = () => {
   const [chatBusy, setChatBusy] = createSignal(false)
   const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string }>>([])
   const [chatErr, setChatErr] = createSignal('')
+  const [modelSearch, setModelSearch] = createSignal('')
+  let chatBoxRef: HTMLDivElement | undefined
 
+  createEffect(() => {
+    chatHistory()
+    if (chatBoxRef) {
+      setTimeout(() => {
+        if (chatBoxRef) chatBoxRef.scrollTop = chatBoxRef.scrollHeight
+      }, 50)
+    }
+  })
   async function sendChat() {
     const text = prompt().trim()
     if (!text || chatBusy() || !conn()) return
@@ -149,17 +159,19 @@ const ProviderDetail: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      {/* 面包屑 + 标题 */}
-      <div>
-        <A href="/providers" class="text-xs text-faint hover:text-accent">← 返回连接列表</A>
+      {/* 顶部吸顶区：保证「← 返回连接列表」与操作栏永远触手可及 */}
+      <div class="sticky top-16 z-20 -mx-4 lg:-mx-10 px-4 lg:px-10 py-3 bg-bg/85 backdrop-blur-xl border-b border-subtle">
+        <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 mb-1">
+          ← 返回连接列表
+        </A>
         <Show when={!loading() && conn()}>
           {c => (
-            <div class="flex items-center gap-3 mt-2 flex-wrap">
+            <div class="flex items-center gap-3 mt-1 flex-wrap">
               <h1 class="text-xl font-semibold">{c().name || c().provider}</h1>
               <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? '启用' : '停用'}</Badge>
               <Badge tone="blue">{c().authType}</Badge>
               <span class="text-xs text-faint font-mono">{c().id.slice(0, 12)}…</span>
-              <div class="ml-auto flex gap-2">
+              <div class="ml-auto flex items-center gap-3">
                 <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
                 <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
@@ -276,21 +288,42 @@ const ProviderDetail: Component = () => {
                   </div>
                 </Card>
 
-                <Card class="p-5">
-                  <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-sm font-semibold">可用模型</h3>
-                    <span class="text-xs text-faint">{models()?.registryModels?.length ?? 0} 个</span>
+                <Card class="p-5 flex flex-col">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-sm font-semibold">可用模型</h3>
+                      <span class="text-xs text-faint">共 {models()?.registryModels?.length ?? 0} 个</span>
+                    </div>
+                    <div class="w-full sm:w-64">
+                      <Input
+                        value={modelSearch()}
+                        onInput={setModelSearch}
+                        placeholder="搜索可用模型 ID 或名称…"
+                        class="h-8 text-xs"
+                      />
+                    </div>
                   </div>
-                  <Show when={(models()?.registryModels?.length ?? 0) > 0} fallback={<Empty message="该提供商未上报模型列表。" />}>
-                    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                      <For each={models()?.registryModels ?? []}>
-                        {m => (
-                          <div class="px-3 py-2 rounded-control border border-subtle bg-bg-elevated">
-                            <div class="text-sm truncate">{m.name || m.id}</div>
-                            <div class="text-[11px] text-faint font-mono truncate">{m.id || m.name}</div>
-                          </div>
-                        )}
-                      </For>
+
+                  <Show
+                    when={(models()?.registryModels?.length ?? 0) > 0}
+                    fallback={<Empty message="该提供商未上报模型列表。" />}
+                  >
+                    {/* 独立可滚动区域：避免整个页面下拉，使上方自定义模型常驻可见 */}
+                    <div class="max-h-[380px] overflow-y-auto pr-1">
+                      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        <For each={(models()?.registryModels ?? []).filter(m => {
+                          const q = modelSearch().trim().toLowerCase()
+                          if (!q) return true
+                          return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
+                        })}>
+                          {m => (
+                            <div class="px-3 py-2 rounded-control border border-subtle bg-bg-elevated/60 hover:bg-hover transition-colors">
+                              <div class="text-sm truncate font-medium text-foreground">{m.name || m.id}</div>
+                              <div class="text-[11px] text-faint font-mono truncate">{m.id || m.name}</div>
+                            </div>
+                          )}
+                        </For>
+                      </div>
                     </div>
                   </Show>
                 </Card>
@@ -323,7 +356,11 @@ const ProviderDetail: Component = () => {
                   </div>
                 </Card>
 
-                <Card class="p-5 min-h-[300px] max-h-[500px] overflow-y-auto space-y-3">
+                {/* 独立可滚动对话气泡区：固定高度并在新消息到来时自动置底，绝不让整个页面下拉 */}
+                <Card
+                  ref={chatBoxRef}
+                  class="p-5 h-[420px] max-h-[calc(100vh-360px)] overflow-y-auto space-y-3 scroll-smooth"
+                >
                   <Show
                     when={chatHistory().length > 0}
                     fallback={<Empty message={`向 ${c().name || c().provider} 发送一条消息，验证该连接的连通性与模型输出。`} />}
