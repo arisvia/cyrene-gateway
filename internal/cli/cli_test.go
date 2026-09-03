@@ -22,7 +22,7 @@ func TestRegistryCompleteness(t *testing.T) {
 	// The 9 configurable tools must all resolve to an adapter.
 	configurable := []string{
 		"claude", "codex", "opencode", "aider", "cline", "continue",
-		"copilot", "deepseek-tui", "grok-cli",
+		"copilot", "dsh", "grok-cli",
 	}
 	m := NewManager()
 	for _, id := range configurable {
@@ -190,9 +190,9 @@ func TestContinueAdapterRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDeepSeekTuiAdapterRoundTrip(t *testing.T) {
+func TestDshAdapterRoundTrip(t *testing.T) {
 	useTempHome(t)
-	a := &deepseekTuiAdapter{}
+	a := &dshAdapter{}
 
 	_, err := a.Apply(ApplyRequest{BaseURL: "http://localhost:20128", APIKey: "sk-d", Model: "deepseek-chat"})
 	if err != nil {
@@ -201,12 +201,16 @@ func TestDeepSeekTuiAdapterRoundTrip(t *testing.T) {
 	if s := a.Status(); !s.HasGateway {
 		t.Fatalf("expected gateway, got %+v", s)
 	}
+	content := readText(a.configPath())
+	if !strings.Contains(content, "openai_api_base: http://localhost:20128/v1") {
+		t.Errorf("dsh config missing base url:\n%s", content)
+	}
 	if _, err := a.Reset(); err != nil {
 		t.Fatalf("reset: %v", err)
 	}
-	content := readText(a.configPath())
-	if v, _ := tomlGetTopLevel(content, "provider"); v != "deepseek" {
-		t.Errorf("provider after reset = %q", v)
+	content = readText(a.configPath())
+	if !strings.Contains(content, "model_provider: deepseek") {
+		t.Errorf("provider after reset = %q", content)
 	}
 }
 

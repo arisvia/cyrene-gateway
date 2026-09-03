@@ -25,7 +25,7 @@ func (a *claudeAdapter) Status() Status {
 			hasGW = true
 		}
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p, Settings: settings}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p, Settings: settings}
 }
 
 func (a *claudeAdapter) Apply(req ApplyRequest) (Status, error) {
@@ -96,7 +96,7 @@ func (a *clineAdapter) Status() Status {
 		base, _ := gs["openAiBaseUrl"].(string)
 		hasGW = act == "openai" && looksLikeGateway(base)
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p, Settings: gs}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p, Settings: gs}
 }
 
 func (a *clineAdapter) Apply(req ApplyRequest) (Status, error) {
@@ -168,7 +168,7 @@ func (a *opencodeAdapter) Status() Status {
 			hasGW = true
 		}
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p, Settings: config}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p, Settings: config}
 }
 
 func (a *opencodeAdapter) Apply(req ApplyRequest) (Status, error) {
@@ -261,7 +261,7 @@ func (a *copilotAdapter) Status() Status {
 			}
 		}
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p}
 }
 
 func (a *copilotAdapter) Apply(req ApplyRequest) (Status, error) {
@@ -355,7 +355,7 @@ func (a *continueAdapter) Status() Status {
 			}
 		}
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p, Settings: config}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p, Settings: config}
 }
 
 func (a *continueAdapter) Apply(req ApplyRequest) (Status, error) {

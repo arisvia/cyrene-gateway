@@ -25,7 +25,7 @@ const CliToolDetail: Component = () => {
 
   const tool = () => data()?.tool
   const status = () => data()?.status ?? {}
-  const hasGateway = () => !!(status().hasGateway ?? status().has9Router)
+  const hasGateway = () => !!status().hasGateway
 
   // guideSteps 里的 {{baseUrl}} 占位符需替换为实际地址
   const resolve = (v?: string) => (v || '').replace('{{baseUrl}}', baseUrl())

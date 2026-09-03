@@ -38,13 +38,13 @@ const CliTools: Component = () => {
       api('/api/cli-tools/all-statuses').catch(() => ({})),
     ])
     const tools = (reg?.tools ?? []) as CLITool[]
-    const st = (statuses ?? {}) as Record<string, { installed?: boolean; hasGateway?: boolean; has9Router?: boolean; configPath?: string; message?: string }>
+    const st = (statuses ?? {}) as Record<string, { installed?: boolean; hasGateway?: boolean; configPath?: string; message?: string }>
     return tools.map((t): ToolRow => {
       const s = st[t.id] ?? {}
       return {
         ...t,
         installed: !!s.installed,
-        hasGateway: !!(s.hasGateway ?? s.has9Router),
+        hasGateway: !!s.hasGateway,
         configPath: s.configPath,
         message: s.message,
       }

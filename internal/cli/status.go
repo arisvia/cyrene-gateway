@@ -13,7 +13,6 @@ import (
 type Status struct {
 	Installed  bool           `json:"installed"`
 	HasGateway bool           `json:"hasGateway"`
-	Has9Router bool           `json:"has9Router"` // legacy alias for backward compatibility
 	ConfigPath string         `json:"configPath,omitempty"`
 	Settings   map[string]any `json:"settings,omitempty"`
 	Message    string         `json:"message,omitempty"`

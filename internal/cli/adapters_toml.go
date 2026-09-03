@@ -24,7 +24,7 @@ func (a *codexAdapter) Status() Status {
 		strings.Contains(content, `[model_providers.cyrene]`) ||
 		strings.Contains(content, `model_provider = "9router"`) ||
 		strings.Contains(content, `[model_providers.9router]`)
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p}
 }
 
 func (a *codexAdapter) Apply(req ApplyRequest) (Status, error) {
@@ -112,7 +112,7 @@ func (a *aiderAdapter) Status() Status {
 			}
 		}
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p}
 }
 
 func (a *aiderAdapter) Apply(req ApplyRequest) (Status, error) {
@@ -179,30 +179,52 @@ func (a *aiderAdapter) Reset() (Status, error) {
 	return a.Status(), nil
 }
 
-// --- DeepSeek TUI (~/.deepseek/config.toml) ---
+// --- DeepSeek Harness dsh (~/.dsh/config.yaml) ---
 
-type deepseekTuiAdapter struct{}
+type dshAdapter struct{}
 
-func (a *deepseekTuiAdapter) configPath() string {
-	return filepath.Join(homeDir(), ".deepseek", "config.toml")
+func (a *dshAdapter) configPath() string {
+	return filepath.Join(homeDir(), ".dsh", "config.yaml")
 }
 
-func (a *deepseekTuiAdapter) Status() Status {
+func (a *dshAdapter) Status() Status {
 	p := a.configPath()
-	if !installed("deepseek", p) {
-		return Status{Installed: false, Message: "DeepSeek CLI is not installed"}
+	if !installed("dsh", p) {
+		return Status{Installed: false, Message: "DeepSeek Harness (dsh) is not installed"}
 	}
 	content := readText(p)
 	hasGW := false
-	if v, ok := tomlGetTopLevel(content, "provider"); ok && v == "openai" {
-		if base, ok := tomlGetField(content, "providers.openai", "base_url"); ok && looksLikeGateway(base) {
-			hasGW = true
+	if strings.Contains(content, "openai_api_base:") || strings.Contains(content, "base_url:") {
+		for _, line := range strings.Split(content, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "openai_api_base:") || strings.HasPrefix(line, "base_url:") {
+				val := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "openai_api_base:"), "base_url:"))
+				if looksLikeGateway(val) {
+					hasGW = true
+					break
+				}
+			}
 		}
 	}
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p}
 }
 
-func (a *deepseekTuiAdapter) Apply(req ApplyRequest) (Status, error) {
+func (a *dshAdapter) Apply(req ApplyRequest) (Status, error) {
+	p := a.configPath()
+	content := readText(p)
+	var lines []string
+	if content != "" {
+		for _, l := range strings.Split(content, "\n") {
+			trimmed := strings.TrimSpace(l)
+			if strings.HasPrefix(trimmed, "model_provider:") ||
+				strings.HasPrefix(trimmed, "openai_api_base:") ||
+				strings.HasPrefix(trimmed, "openai_api_key:") ||
+				strings.HasPrefix(trimmed, "default_model:") {
+				continue
+			}
+			lines = append(lines, l)
+		}
+	}
 	key := req.APIKey
 	if key == "" {
 		key = "sk-cyrene"
@@ -211,26 +233,47 @@ func (a *deepseekTuiAdapter) Apply(req ApplyRequest) (Status, error) {
 	if model == "" {
 		model = "deepseek-v4-pro"
 	}
-	base := ensureV1(req.BaseURL)
-	content := `provider = "openai"
-
-[providers.openai]
-base_url = ` + tomlString(base) + `
-api_key = ` + tomlString(key) + `
-model = ` + tomlString(model) + `
-`
-	if err := writeText(a.configPath(), content); err != nil {
+	newLines := []string{
+		"model_provider: openai",
+		"openai_api_base: " + ensureV1(req.BaseURL),
+		"openai_api_key: " + key,
+		"default_model: " + model,
+	}
+	result := strings.TrimSpace(strings.Join(lines, "\n"))
+	if result != "" {
+		result += "\n\n"
+	}
+	result += strings.Join(newLines, "\n") + "\n"
+	if err := writeText(p, result); err != nil {
 		return Status{}, err
 	}
 	return a.Status(), nil
 }
 
-func (a *deepseekTuiAdapter) Reset() (Status, error) {
+func (a *dshAdapter) Reset() (Status, error) {
 	p := a.configPath()
-	if !fileExists(p) {
+	content := readText(p)
+	if content == "" {
 		return Status{Installed: true, Message: "No config file to reset"}, nil
 	}
-	if err := writeText(p, "provider = \"deepseek\"\n"); err != nil {
+	var lines []string
+	for _, l := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "openai_api_base:") ||
+			strings.HasPrefix(trimmed, "openai_api_key:") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "model_provider:") {
+			lines = append(lines, "model_provider: deepseek")
+			continue
+		}
+		lines = append(lines, l)
+	}
+	result := strings.TrimSpace(strings.Join(lines, "\n"))
+	if result != "" {
+		result += "\n"
+	}
+	if err := writeText(p, result); err != nil {
 		return Status{}, err
 	}
 	return a.Status(), nil
@@ -253,7 +296,7 @@ func (a *grokCliAdapter) Status() Status {
 	_, hasCyrene := tomlGetField(content, "model.cyrene", "base_url")
 	_, has9R := tomlGetField(content, "model.9router", "base_url")
 	hasGW := hasCyrene || has9R
-	return Status{Installed: true, HasGateway: hasGW, Has9Router: hasGW, ConfigPath: p}
+	return Status{Installed: true, HasGateway: hasGW, ConfigPath: p}
 }
 
 func (a *grokCliAdapter) Apply(req ApplyRequest) (Status, error) {

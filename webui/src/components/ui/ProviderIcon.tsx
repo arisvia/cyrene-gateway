@@ -176,42 +176,50 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
   )
 }
 
-// 映射当前活跃 provider 与 cli 工具的静态资源
+// 映射当前活跃 provider 与 cli 工具的静态 SVG 矢量资产（按优先级由长到短匹配）
 const PROVIDER_IMAGE_MAP: Record<string, string> = {
-  openai: '/providers/openai.png',
-  claude: '/providers/claude.png',
-  anthropic: '/providers/anthropic.png',
-  gemini: '/providers/gemini.png',
-  google: '/providers/gemini.png',
-  vertex: '/providers/vertex.png',
-  opencode: '/providers/opencode.png',
-  deepseek: '/providers/deepseek.png',
-  copilot: '/providers/copilot.png',
-  github: '/providers/github.png',
-  openrouter: '/providers/openrouter.png',
-  qoder: '/providers/qoder.png',
-  groq: '/providers/groq.png',
-  kimi: '/providers/kimi.png',
-  glm: '/providers/glm.png',
-  minimax: '/providers/minimax.png',
-  cerebras: '/providers/cerebras.png',
-  nvidia: '/providers/nvidia.png',
-  xai: '/providers/xai.png',
-  grok: '/providers/grok-cli.png',
-  cursor: '/providers/cursor.png',
-  cline: '/providers/cline.png',
-  roo: '/providers/roo.png',
-  continue: '/providers/continue.png',
-  alicode: '/providers/alicode.png',
-  codebuddy: '/providers/codebuddy-cn.png',
-  antigravity: '/providers/antigravity.png',
+  'alicode-intl': '/providers/alicode-intl.svg',
+  alicode: '/providers/alicode.svg',
+  'codebuddy-intl': '/providers/codebuddy-intl.svg',
+  'codebuddy-cn': '/providers/codebuddy-cn.svg',
+  codebuddy: '/providers/codebuddy-cn.svg',
+  'glm-cn': '/providers/glm-cn.svg',
+  glm: '/providers/glm.svg',
+  'minimax-cn': '/providers/minimax-cn.svg',
+  minimax: '/providers/minimax.svg',
+  'grok-cli': '/providers/grok-cli.svg',
+  grok: '/providers/grok-cli.svg',
+  deepseek: '/providers/deepseek.svg',
+  dsh: '/providers/dsh.svg',
+  openai: '/providers/openai.svg',
+  claude: '/providers/claude.svg',
+  anthropic: '/providers/anthropic.svg',
+  gemini: '/providers/gemini.svg',
+  google: '/providers/gemini.svg',
+  vertex: '/providers/vertex.svg',
+  opencode: '/providers/opencode.svg',
+  copilot: '/providers/copilot.svg',
+  github: '/providers/github.svg',
+  openrouter: '/providers/openrouter.svg',
+  qoder: '/providers/qoder.svg',
+  groq: '/providers/groq.svg',
+  kimi: '/providers/kimi.svg',
+  cerebras: '/providers/cerebras.svg',
+  nvidia: '/providers/nvidia.svg',
+  xai: '/providers/xai.svg',
+  cursor: '/providers/cursor.svg',
+  cline: '/providers/cline.svg',
+  roo: '/providers/roo.svg',
+  continue: '/providers/continue.svg',
+  antigravity: '/providers/antigravity.svg',
   aider: '/providers/aider.svg',
   windsurf: '/providers/windsurf.svg',
   trae: '/providers/trae.svg',
   tencent: '/providers/tencent.svg',
+  codex: '/providers/codex.svg',
 }
 
-// 容器化 Provider Avatar 组件（支持 public PNG 图像或品牌色渐变背景 SVG）
+// 容器化 Provider Avatar 组件（支持 public SVG 图像或品牌色渐变背景 SVG）
 export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const sizeClass = () => SIZES[props.size ?? 'md']
   const iconPx = () => ICON_SIZES[props.size ?? 'md']
@@ -220,10 +228,10 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const [imgFailed, setImgFailed] = createSignal(false)
   const imgSrc = () => {
     if (imgFailed()) return null
-    const key = Object.keys(PROVIDER_IMAGE_MAP).find(k => normalized().includes(k))
+    const norm = normalized()
+    const key = Object.keys(PROVIDER_IMAGE_MAP).find(k => norm.includes(k.replace(/[-_]/g, '')))
     return key ? PROVIDER_IMAGE_MAP[key] : null
   }
-
   return (
     <div
       class={`shrink-0 flex items-center justify-center rounded-xl overflow-hidden shadow-sm transition-transform group-hover:scale-105 bg-card border border-subtle ${sizeClass()} ${props.class ?? ''}`}
