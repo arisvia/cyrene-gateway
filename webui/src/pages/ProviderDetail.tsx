@@ -1,13 +1,14 @@
 import { type Component, For, Show, createSignal, createResource, createEffect, onMount, onCleanup } from 'solid-js'
-import { A, useParams } from '@solidjs/router'
+import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar } from '@/components/ui'
+
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const store = useGatewayStore()
-
   const [conn, setConn] = createSignal<Provider | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [notFound, setNotFound] = createSignal(false)
@@ -80,7 +81,6 @@ const ProviderDetail: Component = () => {
   const [editContextLength, setEditContextLength] = createSignal('')
   const [editMaxOutput, setEditMaxOutput] = createSignal('')
   const [savingMeta, setSavingMeta] = createSignal(false)
-
   // ── 多账号管理状态 ──
   const accounts = () =>
     store
@@ -89,6 +89,29 @@ const ProviderDetail: Component = () => {
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
 
   const regInfo = () => store.registryList().find(r => r.id === conn()?.provider)
+
+  function switchAccount(targetId: string) {
+    if (!targetId || targetId === conn()?.id) return
+    navigate(`/providers/${targetId}`)
+  }
+
+  const accountAuthOptions = () => {
+    const p = conn()?.provider
+    if (p === 'opencode') {
+      return [
+        { value: 'none', label: '免密模式（激活 Zen / Big-Pickle 等免密模型）' },
+        { value: 'api-key', label: '商业授权模式（输入 Go / Zen 套餐 API Key）' },
+      ]
+    }
+    const modes = regInfo()?.authModes || [regInfo()?.authType || 'api-key']
+    const opts: Array<{ value: string; label: string }> = [
+      { value: 'api-key', label: 'API Key / 访问凭据 (PAT)' },
+    ]
+    if (modes.includes('oauth') || regInfo()?.category === 'oauth') {
+      opts.push({ value: 'oauth', label: 'OAuth 授权模式 (支持设备码一键登录)' })
+    }
+    return opts
+  }
 
   const [addAccountOpen, setAddAccountOpen] = createSignal(false)
   const [newAccountName, setNewAccountName] = createSignal('')
@@ -101,13 +124,13 @@ const ProviderDetail: Component = () => {
     const p = conn()?.provider
     if (!p) return
     const aType = newAccountAuthType()
-    if (aType === 'api-key' && !newAccountApiKey().trim()) {
+    if (aType === 'api-key' && !newAccountApiKey().trim() && p !== 'opencode') {
       alert('请填写 API Key')
       return
     }
     setAddingAccount(true)
     try {
-      await store.addProvider({
+      const added = await store.addProvider({
         provider: p,
         authType: aType,
         name: newAccountName().trim() || `${p} 备用账号`,
@@ -121,6 +144,9 @@ const ProviderDetail: Component = () => {
       setAddAccountOpen(false)
       setNewAccountName('')
       setNewAccountApiKey('')
+      if (added?.id) {
+        navigate(`/providers/${added.id}`)
+      }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : '添加账号失败')
     } finally {
@@ -217,12 +243,13 @@ const ProviderDetail: Component = () => {
     setDevicePolling(false)
     setDeviceFlow(null)
   }
-
-  async function load() {
+  async function load(idToLoad?: string) {
+    const target = idToLoad || params.id
+    if (!target) return
     setLoading(true)
     setNotFound(false)
     try {
-      const r = (await api(`/api/providers/${params.id}`)) as Provider | null
+      const r = (await api(`/api/providers/${target}`)) as Provider | null
       if (!r) {
         setNotFound(true)
         return
@@ -230,6 +257,7 @@ const ProviderDetail: Component = () => {
       setConn(r)
       setName(r.name || '')
       setPriority(String(r.priority ?? 0))
+      setApiKey('')
       const d = r.data as { baseUrl?: string; providerSpecificData?: Record<string, unknown> } | undefined
       setBaseUrl(d?.baseUrl || '')
       if (d?.providerSpecificData?.customHeaders) {
@@ -244,8 +272,15 @@ const ProviderDetail: Component = () => {
     }
   }
 
+  // 响应式监听路由 params.id 变更，切换编辑账号时立即热更新数据
+  createEffect(() => {
+    const currentId = params.id
+    if (currentId) {
+      load(currentId)
+    }
+  })
+
   onMount(async () => {
-    await load()
     if (store.providers().length === 0) {
       await store.loadProvidersOnly()
     }
@@ -510,227 +545,295 @@ const ProviderDetail: Component = () => {
 
             {/* 账号与连接配置 */}
             <Show when={tab() === 'overview'}>
-              <div class="space-y-4">
-                {/* 供应商名下多账号与调度看板 */}
-                <Card class="p-5 space-y-3.5">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-subtle">
-                    <div>
-                      <h3 class="text-sm font-semibold flex items-center gap-2">
-                        <span>已绑定的账号 / 凭证池</span>
-                        <Badge tone="blue">{accounts().length} 个账号</Badge>
-                      </h3>
-                      <p class="text-xs text-faint mt-0.5">
-                        基于账号优先级调度。数值越小越优先，限流时自动 Fallback 故障转移
-                      </p>
+              <div class="grid lg:grid-cols-12 gap-5 items-start">
+                {/* 左侧 (5 cols)：多账号与调度看板 (带独立滚动区，不会被挤出视野) */}
+                <div class="lg:col-span-5 space-y-3">
+                  <Card class="p-4 space-y-3">
+                    <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-subtle">
+                      <div>
+                        <h3 class="text-sm font-semibold flex items-center gap-2">
+                          <span>账号与凭据池</span>
+                          <Badge tone="blue">{accounts().length} 个</Badge>
+                        </h3>
+                        <p class="text-[11px] text-faint mt-0.5">
+                          优先级升序调度 · 限流时自动 Fallback
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => {
+                          setNewAccountName(`${conn()?.name || conn()?.provider} 备用账号`)
+                          setNewAccountAuthType(conn()?.provider === 'opencode' ? 'none' : 'api-key')
+                          setNewAccountApiKey('')
+                          setNewAccountPriority(String((Number(priority()) || 0) + 10))
+                          setAddAccountOpen(true)
+                        }}
+                      >
+                        + 加账号
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => setAddAccountOpen(true)}
-                    >
-                      + 添加备用账号 / 凭证
-                    </Button>
-                  </div>
 
-                  {/* 调度与容灾说明 Banner */}
-                  <div class="p-3 rounded-control border border-accent/25 bg-accent/5 text-xs text-text space-y-1">
-                    <div class="font-medium text-accent flex items-center gap-1.5">
-                      <span>💡</span> 多账号 Fallback 故障转移与负载均衡机制
-                    </div>
-                    <p class="text-faint leading-relaxed">
-                      当最高优先级账号（主账号）触发 429 限流或额度耗尽时，Cyrene Gateway 会自动 Fallback 切换至备用账号；同一优先级的多个账号自动进行 Round-Robin 均衡分摊并发压力与 Token 额度。
-                    </p>
-                  </div>
+                    {/* 账号列表滚动容器 */}
+                    <div class="max-h-[360px] lg:max-h-[calc(100vh-340px)] overflow-y-auto pr-1 space-y-2">
+                      <For each={accounts()}>
+                        {(acc, idx) => {
+                          const isCurrent = () => acc.id === c().id
+                          const cooling = () => !!acc.data?.rateLimitedUntil
 
-                  {/* 账号列表卡片 */}
-                  <div class="grid gap-2">
-                    <For each={accounts()}>
-                      {(acc, idx) => {
-                        const isCurrent = () => acc.id === c().id
-                        const cooling = () => !!acc.data?.rateLimitedUntil
-
-                        return (
-                          <div class={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-control border transition-all ${
-                            isCurrent()
-                              ? 'border-accent/60 bg-accent/10 shadow-xs'
-                              : acc.isActive
-                              ? 'border-subtle bg-bg-elevated/60'
-                              : 'border-subtle/40 bg-bg-elevated/20 opacity-60'
-                          }`}>
-                            <div class="flex items-center gap-3 min-w-0">
-                              <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-bg border border-subtle shrink-0">
-                                #{idx() + 1}
-                              </span>
-                              <div class="min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap">
+                          return (
+                            <div
+                              onClick={() => switchAccount(acc.id)}
+                              class={`p-3 rounded-control border transition-all cursor-pointer ${
+                                isCurrent()
+                                  ? 'border-accent/80 bg-accent/10 shadow-xs ring-1 ring-accent/40'
+                                  : acc.isActive
+                                  ? 'border-subtle bg-bg-elevated/60 hover:bg-hover hover:border-subtle/80'
+                                  : 'border-subtle/40 bg-bg-elevated/20 opacity-60 hover:opacity-100'
+                              }`}
+                            >
+                              <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-2 min-w-0">
+                                  <span class={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                                    isCurrent() ? 'bg-accent text-white border-accent' : 'bg-bg text-faint border-subtle'
+                                  }`}>
+                                    #{idx() + 1}
+                                  </span>
                                   <span class="text-xs font-semibold text-foreground truncate">
                                     {acc.name || acc.provider}
                                   </span>
                                   <Show when={isCurrent()}>
-                                    <span class="text-[10px] px-1.5 py-0.2 rounded bg-accent text-white font-medium">
-                                      当前配置中
+                                    <span class="text-[10px] px-1.5 py-0.2 rounded bg-accent/20 text-accent font-medium shrink-0">
+                                      编辑中
                                     </span>
                                   </Show>
-                                  <Badge tone="blue" class="text-[10px] px-1.5 py-0">
-                                    {acc.authType === 'api-key' || acc.authType === 'apikey' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth' : acc.authType}
-                                  </Badge>
-                                  <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-bg text-faint border border-subtle">
-                                    优先级 {acc.priority} {idx() === 0 ? '(主)' : '(备用)'}
-                                  </span>
-                                  <Show when={cooling()}>
-                                    <Badge tone="amber" class="text-[10px]">限流冷却中</Badge>
-                                  </Show>
                                 </div>
-                                <div class="text-[11px] text-faint font-mono mt-0.5 flex items-center gap-2 flex-wrap">
-                                  <Show when={acc.email}>
-                                    <span>邮箱: {acc.email}</span>
-                                    <span>·</span>
+
+                                <div class="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                                  <Toggle
+                                    checked={acc.isActive}
+                                    onChange={async () => {
+                                      await store.toggleProvider(acc)
+                                      await store.loadProvidersOnly()
+                                      await load()
+                                    }}
+                                  />
+                                  <Show when={accounts().length > 1}>
+                                    <button
+                                      type="button"
+                                      class="text-muted hover:text-danger text-xs p-1 rounded hover:bg-hover transition-colors"
+                                      title="删除此账号"
+                                      onClick={async () => {
+                                        if (confirm(`确定要删除账号「${acc.name || acc.provider}」吗？`)) {
+                                          await store.deleteProvider(acc)
+                                          await store.loadProvidersOnly()
+                                          if (isCurrent()) {
+                                            const remaining = accounts().filter(a => a.id !== acc.id)
+                                            if (remaining.length > 0) {
+                                              navigate(`/providers/${remaining[0].id}`)
+                                            } else {
+                                              navigate('/providers')
+                                            }
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
                                   </Show>
-                                  <Show when={acc.data?.credentialHint}>
-                                    <span>凭证: {String(acc.data?.credentialHint)}</span>
-                                    <span>·</span>
-                                  </Show>
-                                  <span class="opacity-60">ID: {acc.id.slice(0, 8)}...</span>
                                 </div>
                               </div>
-                            </div>
 
-                            <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                              <Show when={!isCurrent()}>
-                                <A href={`/providers/${acc.id}`}>
-                                  <Button size="sm" variant="secondary">
-                                    切换编辑
-                                  </Button>
-                                </A>
-                              </Show>
-                              <Toggle
-                                checked={acc.isActive}
-                                onChange={async () => {
-                                  await store.toggleProvider(acc)
-                                  await store.loadProvidersOnly()
-                                  await load()
-                                }}
+                              <div class="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-faint font-mono">
+                                <Badge tone="blue" class="text-[10px] px-1.5 py-0">
+                                  {acc.authType === 'api-key' || acc.authType === 'apikey' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth' : acc.authType}
+                                </Badge>
+                                <span class="px-1.5 py-0.2 rounded bg-bg text-faint border border-subtle">
+                                  优先级 {acc.priority} {idx() === 0 ? '(主)' : '(备用)'}
+                                </span>
+                                <Show when={cooling()}>
+                                  <Badge tone="amber" class="text-[10px]">限流冷却中</Badge>
+                                </Show>
+                                <Show when={acc.data?.credentialHint}>
+                                  <span class="truncate max-w-[140px]" title={String(acc.data?.credentialHint)}>
+                                    凭证: {String(acc.data?.credentialHint)}
+                                  </span>
+                                </Show>
+                              </div>
+                            </div>
+                          )
+                        }}
+                      </For>
+                    </div>
+
+                    {/* 容灾与 Fallback 调度说明 */}
+                    <div class="p-2.5 rounded bg-hover/70 border border-subtle/60 text-[11px] text-faint leading-relaxed">
+                      💡 <span class="text-foreground font-medium">调度机制：</span>主账号遇到 429 或配额耗尽时，网关自动 Fallback 转移至备用账号；同优先级多账号自动负载均衡分摊并发。
+                    </div>
+                  </Card>
+                </div>
+
+                {/* 右侧 (7 cols)：当前正在编辑的账号详情与端点配置 (高度受控，内部滚动，底部按钮绝对吸底可见) */}
+                <div class="lg:col-span-7">
+                  <Card class="p-5 flex flex-col max-h-[calc(100vh-220px)] min-h-[480px]">
+                    <div class="flex items-center justify-between pb-3 border-b border-subtle shrink-0">
+                      <div>
+                        <div class="text-sm font-semibold flex items-center gap-2">
+                          <span>编辑账号：{c().name || c().provider}</span>
+                          <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
+                        </div>
+                        <div class="text-xs text-faint mt-0.5 font-mono">节点 ID: {c().id}</div>
+                      </div>
+                      <Show when={regInfo()?.apiKeyUrl}>
+                        <a
+                          href={regInfo()!.apiKeyUrl!}
+                          target="_blank"
+                          rel="noreferrer"
+                          class="text-xs text-accent hover:underline inline-flex items-center gap-1"
+                        >
+                          获取官方密钥 ↗
+                        </a>
+                      </Show>
+                    </div>
+
+                    {/* 表单内容滚动区 */}
+                    <div class="flex-1 overflow-y-auto pr-1 py-3 space-y-4">
+                      {/* OpenCode 专用模式提示 */}
+                      <Show when={c().provider === 'opencode'}>
+                        <div class="p-3 rounded-control bg-accent/10 border border-accent/25 text-xs text-text space-y-1">
+                          <div class="font-medium text-accent">OpenCode 免密与商业授权说明</div>
+                          <p class="text-faint leading-relaxed">
+                            {c().authType === 'none'
+                              ? '当前处于免密模式，可免鉴权直接调用 Zen 系列与 Big-Pickle 等官方免密模型；填入 Go/Zen 套餐 API Key 后保存即可解锁全量进阶商业模型。'
+                              : '当前已配置 API Key 商业凭据，网关将使用该凭据鉴权并请求全量商业模型。'}
+                          </p>
+                        </div>
+                      </Show>
+
+                      <Field label="账号显示名称" hint="自定义名称，便于在调度日志和控制台中辨识">
+                        <Input value={name()} onInput={setName} placeholder="例如：主账号、备用 PAT、Team B" />
+                      </Field>
+
+                      <Field label="调度优先级" hint="数值越小越优先调度。例如：主账号设为 10，备用账号设为 20">
+                        <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
+                      </Field>
+
+                      {/* API Key / 凭据输入 */}
+                      <Show when={c().authType === 'api-key' || c().authType === 'apikey' || c().provider === 'opencode' || (modelsData().authModes?.includes('api-key') ?? false)}>
+                        <Field
+                          label="API Key / 访问凭据 (PAT)"
+                          hint={
+                            c().provider === 'qoder'
+                              ? '支持填入 Qoder Personal Access Token (pt-...) 或 API Key'
+                              : c().data?.hasApiKey
+                              ? '留空表示保持当前密钥不变；输入新密钥并点击保存后将安全覆盖'
+                              : '请输入有效 API Key'
+                          }
+                        >
+                          <Input
+                            type="password"
+                            value={apiKey()}
+                            onInput={setApiKey}
+                            placeholder={
+                              c().provider === 'qoder'
+                                ? 'pt-... (Personal Access Token)'
+                                : c().provider === 'opencode'
+                                ? '输入 OpenCode Go/Zen 套餐 API Key'
+                                : 'sk-...'
+                            }
+                          />
+                          <Show when={c().data?.hasApiKey}>
+                            <div class="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
+                              <span>✓ 当前账号已配置密钥</span>
+                            </div>
+                          </Show>
+                        </Field>
+                      </Show>
+
+                      <Field label="Base URL (接口端点)" hint="自定义上游 API 地址，留空使用官方默认地址">
+                        <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
+                      </Field>
+
+                      {/* 高级协议与客户端指纹覆盖 */}
+                      <div class="pt-2 border-t border-subtle">
+                        <button
+                          type="button"
+                          class="text-xs text-muted hover:text-foreground flex items-center gap-1.5 py-1 font-medium transition-colors"
+                          onClick={() => setShowAdvanced(!showAdvanced())}
+                        >
+                          <span>{showAdvanced() ? '▼' : '▶'}</span>
+                          <span>高级协议与客户端标识覆盖（Headers / 版本参数）</span>
+                        </button>
+
+                        <Show when={showAdvanced()}>
+                          <div class="mt-3 p-3.5 rounded-control bg-bg-elevated/50 border border-subtle/70 space-y-3 text-xs">
+                            <Show when={modelsData().defaultHeaders && Object.keys(modelsData().defaultHeaders!).length > 0}>
+                              <div>
+                                <div class="text-faint mb-1.5 font-medium">当前网关内置默认 Header（供参考）：</div>
+                                <div class="bg-bg/80 p-2 rounded border border-subtle font-mono text-[11px] space-y-1">
+                                  <For each={Object.entries(modelsData().defaultHeaders!)}>
+                                    {([k, v]) => (
+                                      <div class="flex gap-2">
+                                        <span class="text-accent">{k}:</span>
+                                        <span class="text-foreground truncate">{v}</span>
+                                      </div>
+                                    )}
+                                  </For>
+                                </div>
+                              </div>
+                            </Show>
+
+                            <Field
+                              label="自定义请求头覆盖 (JSON 格式)"
+                              hint="用于应对上游客户端强制校验新版本号。此处指定的 Header 会覆盖默认 Header 发送给上游。"
+                            >
+                              <textarea
+                                rows={4}
+                                value={customHeadersText()}
+                                onInput={e => setCustomHeadersText(e.currentTarget.value)}
+                                placeholder={'{\n  "User-Agent": "MyClient/2.0",\n  "anthropic-version": "2023-06-01"\n}'}
+                                class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
                               />
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={async () => {
-                                  if (confirm(`确定要删除账号「${acc.name || acc.provider}」吗？`)) {
-                                    await store.deleteProvider(acc)
-                                    await store.loadProvidersOnly()
-                                    if (isCurrent()) {
-                                      const remaining = accounts().filter(a => a.id !== acc.id)
-                                      if (remaining.length > 0) {
-                                        window.location.href = `#/providers/${remaining[0].id}`
-                                      } else {
-                                        window.location.href = '#/providers'
-                                      }
-                                    }
-                                  }
-                                }}
-                              >
-                                删除
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      }}
-                    </For>
-                  </div>
-                </Card>
-
-                {/* 当前选中账号的详细连接配置 */}
-                <Card class="p-5 space-y-4">
-                  <div class="text-sm font-semibold pb-2 border-b border-subtle">
-                    当前账号详情与协议配置 ({c().name || c().provider})
-                  </div>
-                  <Field label="账号显示名称">
-                    <Input value={name()} onInput={setName} placeholder="便于识别的名称" />
-                  </Field>
-                  <Field label="调度优先级" hint="数值越小越优先被调度。支持设置先后顺序依次消耗额度">
-                    <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
-                  </Field>
-                  <Show when={c().authType === 'api-key' || c().authType === 'apikey' || (modelsData().authModes?.includes('api-key') ?? false)}>
-                    <Field
-                      label="API Key / 凭据"
-                      hint={
-                        c().authType === 'none'
-                          ? '当前处于免密体验模式。填入 API Key 后点击保存即可升级为商业授权模式，解锁全量商业模型。'
-                          : '留空表示不修改；密钥写入后不在界面回显'
-                      }
-                    >
-                      <Input
-                        type="password"
-                        value={apiKey()}
-                        onInput={setApiKey}
-                        placeholder={c().authType === 'none' ? '输入商业授权 API Key' : 'sk-...'}
-                      />
-                    </Field>
-                  </Show>
-                  <Field label="Base URL" hint="自定义端点，留空使用默认">
-                    <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
-                  </Field>
-
-                  {/* 高级协议与客户端指纹覆盖 */}
-                  <div class="pt-2 border-t border-subtle">
-                    <button
-                      type="button"
-                      class="text-xs text-muted hover:text-foreground flex items-center gap-1.5 py-1 font-medium transition-colors"
-                      onClick={() => setShowAdvanced(!showAdvanced())}
-                    >
-                      <span>{showAdvanced() ? '▼' : '▶'}</span>
-                      <span>高级协议与客户端标识覆盖（Headers / 版本参数）</span>
-                    </button>
-
-                    <Show when={showAdvanced()}>
-                      <div class="mt-3 p-3.5 rounded-control bg-bg-elevated/50 border border-subtle/70 space-y-3 text-xs">
-                        <Show when={modelsData().defaultHeaders && Object.keys(modelsData().defaultHeaders!).length > 0}>
-                          <div>
-                            <div class="text-faint mb-1.5 font-medium">当前网关内置默认 Header（供参考）：</div>
-                            <div class="bg-bg/80 p-2 rounded border border-subtle font-mono text-[11px] space-y-1">
-                              <For each={Object.entries(modelsData().defaultHeaders!)}>
-                                {([k, v]) => (
-                                  <div class="flex gap-2">
-                                    <span class="text-accent">{k}:</span>
-                                    <span class="text-foreground truncate">{v}</span>
-                                  </div>
-                                )}
-                              </For>
-                            </div>
+                            </Field>
                           </div>
                         </Show>
-
-                        <Field
-                          label="自定义请求头覆盖 (JSON 格式)"
-                          hint="用于应对上游客户端强制校验新版本号（例如 Antigravity、Copilot、CodeBuddy 等）。此处指定的 Header 会覆盖默认 Header 发送给上游。"
-                        >
-                          <textarea
-                            rows={4}
-                            value={customHeadersText()}
-                            onInput={e => setCustomHeadersText(e.currentTarget.value)}
-                            placeholder={'{\n  "User-Agent": "MyClient/2.0",\n  "anthropic-version": "2023-06-01"\n}'}
-                            class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
-                          />
-                        </Field>
                       </div>
-                    </Show>
-                  </div>
 
-                  <Show when={c().data?.credentialHint}>
-                    <div class="text-xs text-faint">
-                      当前凭证：<span class="font-mono">{String(c().data?.credentialHint ?? '')}</span>
-                      <Show when={c().data?.hasAccessToken}> · Access Token 已配置</Show>
-                      <Show when={c().data?.hasRefreshToken}> · Refresh Token 已配置</Show>
+                      <Show when={c().data?.credentialHint}>
+                        <div class="text-xs text-faint">
+                          当前凭证标识：<span class="font-mono">{String(c().data?.credentialHint ?? '')}</span>
+                          <Show when={c().data?.hasAccessToken}> · Access Token 已就绪</Show>
+                          <Show when={c().data?.hasRefreshToken}> · Refresh Token 已就绪</Show>
+                        </div>
+                      </Show>
                     </div>
-                  </Show>
 
-                  <div class="flex justify-between pt-1">
-                    <Button variant="danger" onClick={async () => { await store.deleteProvider(c()); history.back() }}>
-                      删除此连接
-                    </Button>
-                    <Button variant="primary" loading={saving()} onClick={save}>保存当前配置</Button>
-                  </div>
-                </Card>
+                    {/* 固定吸底的操作栏 */}
+                    <div class="flex items-center justify-between pt-3 border-t border-subtle shrink-0">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={async () => {
+                          if (confirm(`确定要删除此账号「${c().name || c().provider}」吗？`)) {
+                            await store.deleteProvider(c())
+                            await store.loadProvidersOnly()
+                            const remaining = accounts().filter(a => a.id !== c().id)
+                            if (remaining.length > 0) {
+                              navigate(`/providers/${remaining[0].id}`)
+                            } else {
+                              navigate('/providers')
+                            }
+                          }
+                        }}
+                      >
+                        删除此账号
+                      </Button>
+                      <Button variant="primary" size="sm" loading={saving()} onClick={save}>
+                        保存当前配置
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
               </div>
             </Show>
 
@@ -960,6 +1063,7 @@ const ProviderDetail: Component = () => {
                     <Select
                       class="flex-1 min-w-[200px]"
                       value={selectedModel()}
+                      onChange={setSelectedModel}
                       options={[
                         { value: '', label: '默认模型（首个可用）' },
                         ...activeModels().map(m => ({
@@ -1249,22 +1353,41 @@ const ProviderDetail: Component = () => {
           <Field label="认证方式" hint="选择凭证模式">
             <Select
               value={newAccountAuthType()}
-              options={[
-                { value: 'api-key', label: 'API Key / 个人凭据 (PAT)' },
-                { value: 'oauth', label: 'OAuth 授权模式' },
-                { value: 'none', label: '免密模式' },
-              ]}
+              options={accountAuthOptions()}
               onChange={setNewAccountAuthType}
             />
           </Field>
           <Show when={newAccountAuthType() === 'api-key'}>
-            <Field label="API Key / 凭据 (PAT)" hint="凭据将安全加密存储">
-              <Input
-                type="password"
-                value={newAccountApiKey()}
-                onInput={setNewAccountApiKey}
-                placeholder={conn()?.provider === 'qoder' ? 'pt-... (Personal Access Token)' : 'sk-...'}
-              />
+            <Field
+              label={conn()?.provider === 'qoder' ? 'Personal Access Token (PAT) / API Key' : 'API Key / 访问凭据'}
+              hint="凭据将安全加密存储"
+            >
+              <div class="space-y-1.5">
+                <Input
+                  type="password"
+                  value={newAccountApiKey()}
+                  onInput={setNewAccountApiKey}
+                  placeholder={
+                    conn()?.provider === 'qoder'
+                      ? 'pt-... (Personal Access Token)'
+                      : conn()?.provider === 'opencode'
+                      ? '输入 OpenCode Go/Zen 套餐 API Key'
+                      : 'sk-...'
+                  }
+                />
+                <Show when={regInfo()?.apiKeyUrl}>
+                  <div class="flex justify-end">
+                    <a
+                      href={regInfo()!.apiKeyUrl!}
+                      target="_blank"
+                      rel="noreferrer"
+                      class="text-xs text-accent hover:underline inline-flex items-center gap-1"
+                    >
+                      前往官方控制台获取 Key ↗
+                    </a>
+                  </div>
+                </Show>
+              </div>
             </Field>
           </Show>
           <Show when={newAccountAuthType() === 'oauth'}>

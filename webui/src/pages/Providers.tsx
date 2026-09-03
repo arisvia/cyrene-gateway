@@ -122,6 +122,11 @@ const Providers: Component = () => {
     return groups.sort((a, b) => b.activeCount - a.activeCount || a.providerName.localeCompare(b.providerName))
   })
 
+  // 隐藏已添加的提供商过滤（默认只看尚未接入的供应商，市场更清爽）
+  const [hideAdded, setHideAdded] = createSignal(true)
+  const connectedProviderIds = createMemo(() => new Set(store.providers().map(p => p.provider)))
+  const connectedCount = () => connectedProviderIds().size
+
   // 按品牌归集或单例展示的市场提供商列表
   interface CatalogBrandGroup {
     brandKey: string
@@ -133,9 +138,12 @@ const Providers: Component = () => {
     const list = store.registryList()
     const q = query().toLowerCase().trim()
     const cat = catFilter()
+    const connected = connectedProviderIds()
+    const hide = hideAdded()
 
     // 先按过滤条件筛选
     const matched = list.filter(r => {
+      if (hide && connected.has(r.id)) return false
       if (cat && r.category !== cat) return false
       if (!q) return true
       return (
@@ -172,8 +180,8 @@ const Providers: Component = () => {
   // 打开添加向导
   function openWizard(reg: RegistryProvider) {
     setSelectedReg(reg)
-    const rawAuth = reg.noAuth || reg.category === 'free' ? 'none' : (reg.authType || 'api-key')
-    const defaultAuth = rawAuth === 'apikey' ? 'api-key' : rawAuth
+    const isOpencode = reg.id === 'opencode'
+    const defaultAuth = isOpencode ? 'none' : (reg.authType === 'oauth' ? 'oauth' : 'api-key')
     setForm({
       name: reg.name,
       authType: defaultAuth,
@@ -183,8 +191,12 @@ const Providers: Component = () => {
     })
     setWizardOpen(true)
   }
-  // 一键接入免密提供商
+  // 一键接入免密提供商（仅 OpenCode 原生支持完全免密免鉴权调用公共模型）
   async function quickEnableFree(reg: RegistryProvider) {
+    if (reg.id !== 'opencode') {
+      openWizard(reg)
+      return
+    }
     if (store.providers().some(p => p.provider === reg.id)) {
       toast.info(`${reg.name} 已经接入`)
       return
@@ -197,7 +209,7 @@ const Providers: Component = () => {
         name: reg.name,
         data: { baseUrl: reg.baseUrl || undefined },
       })
-      toast.success(`已启用免费提供商：${reg.name}`)
+      toast.success(`已启用免密提供商：${reg.name}`)
       await store.loadProvidersOnly()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -372,6 +384,23 @@ const Providers: Component = () => {
                 ]}
                 onChange={setCatFilter}
               />
+              <button
+                type="button"
+                onClick={() => setHideAdded(!hideAdded())}
+                class={`text-xs px-2.5 py-1.5 rounded-control border transition-all flex items-center gap-1.5 cursor-pointer ${
+                  hideAdded()
+                    ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                    : 'bg-hover border-subtle text-muted hover:text-foreground'
+                }`}
+                title={hideAdded() ? '点击显示所有提供商（含已接入）' : '点击只看尚未接入的提供商'}
+              >
+                <span>{hideAdded() ? '✓ 已隐藏已接入' : '显示全部市场'}</span>
+                <Show when={connectedCount() > 0}>
+                  <span class="text-[10px] opacity-75">
+                    ({hideAdded() ? `已藏 ${connectedCount()}` : `${connectedCount()} 已接入`})
+                  </span>
+                </Show>
+              </button>
             </Show>
           </div>
 
@@ -619,7 +648,7 @@ const Providers: Component = () => {
 
               const reg = activeReg
               const connected = () => store.providers().some(p => p.provider === reg().id)
-              const isFree = () => reg().noAuth || reg().category === 'free'
+              const isFree = () => reg().id === 'opencode' && reg().noAuth
               const hasVariants = () => group.items.length > 1
 
               return (
@@ -753,8 +782,16 @@ const Providers: Component = () => {
       >
         <Show when={selectedReg()}>
           {reg => {
-            const authModes = reg().authModes || [reg().authType || 'api-key']
-            const isFree = reg().noAuth || reg().category === 'free'
+            const authModes = () => {
+              const r = reg()
+              if (!r) return []
+              if (r.id === 'opencode') {
+                return ['none', 'api-key']
+              }
+              const raw = r.authModes || [r.authType || 'api-key']
+              return raw.map(m => m === 'apikey' ? 'api-key' : m).filter(m => m !== 'none')
+            }
+            const isFree = () => reg().id === 'opencode' && form().authType === 'none'
 
             return (
               <div class="space-y-4">
@@ -785,11 +822,11 @@ const Providers: Component = () => {
                 </Field>
 
                 {/* 如果支持多种认证模式 */}
-                <Show when={authModes.length > 1}>
+                <Show when={authModes().length > 1}>
                   <Field label="认证方式" hint="该上游支持多种鉴权模式">
                     <Select
                       value={form().authType === 'apikey' ? 'api-key' : form().authType}
-                      options={authModes.map(m => {
+                      options={authModes().map(m => {
                         const norm = m === 'apikey' ? 'api-key' : m
                         return { value: norm, label: AUTHTYPE_LABEL[norm] || norm }
                       })}
@@ -797,8 +834,6 @@ const Providers: Component = () => {
                     />
                   </Field>
                 </Show>
-
-                {/* API Key 模式字段 */}
                 <Show when={form().authType === 'api-key' || form().authType === 'apikey'}>
                   <Field label="API Key / 凭据" hint={reg().authHint || "凭证安全存储于服务端并进行掩码处理"}>
                     <Input
@@ -851,7 +886,7 @@ const Providers: Component = () => {
                     取消
                   </Button>
                   <Button variant="primary" loading={saving()} onClick={handleWizardSubmit}>
-                    {isFree ? '立即接入' : '保存并接入'}
+                    {isFree() ? '立即接入' : '保存并接入'}
                   </Button>
                 </div>
               </div>
