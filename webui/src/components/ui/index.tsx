@@ -2,8 +2,15 @@ import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup }
 import { useToast } from '@/lib/toast'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 
-export const Card: Component<{ class?: string; hover?: boolean; onClick?: () => void; children?: JSX.Element }> = props => (
+export const Card: Component<{
+  class?: string
+  hover?: boolean
+  onClick?: () => void
+  children?: JSX.Element
+  ref?: HTMLDivElement | ((el: HTMLDivElement) => void)
+}> = props => (
   <div
+    ref={props.ref}
     class={`rounded-card glass-card ${props.hover ? 'hover:bg-hover hover:border-accent/40 hover:-translate-y-0.5 hover:shadow-glass-hover' : ''} transition-all duration-200 ${props.class ?? ''}`}
     onClick={props.onClick}
   >

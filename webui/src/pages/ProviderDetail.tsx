@@ -23,6 +23,7 @@ const ProviderDetail: Component = () => {
   const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string }>>([])
   const [chatErr, setChatErr] = createSignal('')
   const [modelSearch, setModelSearch] = createSignal('')
+  const [newCustomModelId, setNewCustomModelId] = createSignal('')
   let chatBoxRef: HTMLDivElement | undefined
 
   createEffect(() => {
@@ -266,11 +267,28 @@ const ProviderDetail: Component = () => {
                     </div>
                   </div>
                   <div class="flex gap-2">
-                    <Input placeholder="模型 ID，例如 my-finetune-v1" />
-                    <Button variant="secondary" onClick={() => {
-                      const el = document.querySelector<HTMLInputElement>('input[placeholder^="模型 ID"]')
-                      if (el?.value) { addCustomModel(el.value, ''); el.value = '' }
-                    }}>添加</Button>
+                    <Input
+                      value={newCustomModelId()}
+                      onInput={setNewCustomModelId}
+                      placeholder="模型 ID，例如 my-finetune-v1"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const val = newCustomModelId().trim()
+                          if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="secondary"
+                      disabled={!newCustomModelId().trim()}
+                      onClick={() => {
+                        const val = newCustomModelId().trim()
+                        if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
+                      }}
+                    >
+                      添加
+                    </Button>
                   </div>
                   <div class="mt-3 flex flex-wrap gap-2">
                     <Show when={(models()?.customModels?.length ?? 0) > 0} fallback={
@@ -357,10 +375,11 @@ const ProviderDetail: Component = () => {
                 </Card>
 
                 {/* 独立可滚动对话气泡区：固定高度并在新消息到来时自动置底，绝不让整个页面下拉 */}
-                <Card
-                  ref={chatBoxRef}
-                  class="p-5 h-[420px] max-h-[calc(100vh-360px)] overflow-y-auto space-y-3 scroll-smooth"
-                >
+                <Card class="p-0 overflow-hidden">
+                  <div
+                    ref={chatBoxRef}
+                    class="p-5 h-[420px] max-h-[calc(100vh-360px)] overflow-y-auto space-y-3 scroll-smooth"
+                  >
                   <Show
                     when={chatHistory().length > 0}
                     fallback={<Empty message={`向 ${c().name || c().provider} 发送一条消息，验证该连接的连通性与模型输出。`} />}
@@ -387,6 +406,7 @@ const ProviderDetail: Component = () => {
                       </div>
                     </Show>
                   </Show>
+                  </div>
                 </Card>
 
                 <Show when={chatErr()}>
