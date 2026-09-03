@@ -230,8 +230,8 @@ const CliTools: Component = () => {
           <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <For each={filteredRows()}>
               {t => (
-                <Card hover class="p-5 flex flex-col justify-between glass-card transition-all duration-200">
-                  <div>
+                <Card hover class="p-5 flex flex-col h-full justify-between glass-card transition-all duration-200">
+                  <div class="flex-1 flex flex-col">
                     {/* 卡片头部：图标与基础信息 */}
                     <div class="flex items-start gap-3.5">
                       <ProviderAvatar provider={t.id} name={t.name} color={t.color} size="md" />
@@ -250,8 +250,8 @@ const CliTools: Component = () => {
                             <Badge tone="blue" class="text-[10px] shrink-0">MITM 代理</Badge>
                           </Show>
                         </div>
-                        <p class="text-xs text-muted mt-1 line-clamp-2 leading-relaxed">
-                          {t.description}
+                        <p class="text-xs text-muted mt-1.5 min-h-[2.5rem] line-clamp-2 leading-relaxed">
+                          {t.description || ''}
                         </p>
                       </div>
                     </div>
@@ -267,14 +267,20 @@ const CliTools: Component = () => {
                         </Show>
                       </div>
 
-                      <Show when={t.configPath}>
-                        <div class="text-[10px] text-faint font-mono truncate" title={t.configPath}>
-                          {t.configPath}
-                        </div>
-                      </Show>
-                      <Show when={t.message}>
-                        <div class="text-[10px] text-faint truncate">{t.message}</div>
-                      </Show>
+                      <div class="min-h-[1.25rem] flex items-center">
+                        <Show
+                          when={t.configPath}
+                          fallback={
+                            <Show when={t.message} fallback={<span class="text-[10px] text-faint">无需本地配置文件</span>}>
+                              <span class="text-[10px] text-faint truncate">{t.message}</span>
+                            </Show>
+                          }
+                        >
+                          <div class="text-[10px] text-faint font-mono truncate" title={t.configPath}>
+                            {t.configPath}
+                          </div>
+                        </Show>
+                      </div>
                     </div>
                   </div>
 

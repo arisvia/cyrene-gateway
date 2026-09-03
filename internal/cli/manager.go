@@ -32,7 +32,7 @@ func (m *Manager) Adapter(id string) Adapter {
 		return &continueAdapter{}
 	case "copilot":
 		return &copilotAdapter{}
-	case "dsh", "deepseek-tui":
+	case "dsh":
 		return &dshAdapter{}
 	case "grok-cli", "grok-build":
 		return &grokCliAdapter{}

@@ -485,110 +485,118 @@ const Providers: Component = () => {
               const hasVariants = () => group.items.length > 1
 
               return (
-                <Card hover class="p-4 flex flex-col justify-between space-y-4 group">
-                  <div>
+                <Card hover class="p-4 flex flex-col h-full justify-between group">
+                  {/* 上半部分：品牌基础信息 + 变体切换 + 说明 */}
+                  <div class="flex-1 flex flex-col">
                     <div class="flex items-start justify-between gap-2">
-                      <div class="flex items-center gap-3">
+                      <div class="flex items-center gap-3 min-w-0">
                         <ProviderAvatar
                           provider={reg().id}
                           name={group.name}
                           color={reg().color}
                           size="md"
                         />
-                        <div>
-                          <div class="font-semibold text-sm text-foreground flex items-center gap-1.5">
+                        <div class="min-w-0">
+                          <div class="font-semibold text-sm text-foreground truncate">
                             {group.name}
                           </div>
-                          <div class="text-xs text-faint font-mono">{reg().id}</div>
+                          <div class="text-xs text-faint font-mono truncate">{reg().id}</div>
                         </div>
                       </div>
 
-                      <Badge tone={isFree() ? 'green' : 'blue' as BadgeTone}>
+                      <Badge tone={isFree() ? 'green' : 'blue' as BadgeTone} class="shrink-0">
                         {CATEGORY_LABEL[reg().category] || reg().category}
                       </Badge>
                     </div>
 
-                    {/* 区域 / 渠道小标签切换器 (如 cn / intl) */}
-                    <Show when={hasVariants()}>
-                      <div class="mt-2.5 flex items-center gap-1 p-1 bg-hover rounded-lg border border-subtle">
-                        <For each={group.items}>
-                          {variant => {
-                            const isSelected = () => reg().id === variant.id
-                            const label = () => {
-                              if (variant.region === 'cn') return '国内版 (CN)'
-                              if (variant.region === 'intl') return '国际版 (Intl)'
-                              return variant.name.replace(group.name, '').trim() || variant.id
-                            }
-                            return (
-                              <button
-                                type="button"
-                                class={`flex-1 text-[11px] py-1 px-2 rounded-md font-medium transition-all ${
-                                  isSelected()
-                                    ? 'bg-card text-foreground shadow-xs font-semibold'
-                                    : 'text-faint hover:text-foreground'
-                                }`}
-                                onClick={() => {
-                                  setSelectedVariants(prev => ({
-                                    ...prev,
-                                    [group.brandKey]: variant.id,
-                                  }))
-                                }}
-                              >
-                                {label()}
-                              </button>
-                            )
-                          }}
-                        </For>
-                      </div>
-                    </Show>
+                    {/* 区域 / 渠道小标签切换器 (如 cn / intl) 或等高占位 */}
+                    <div class="mt-3 min-h-[32px] flex items-center">
+                      <Show when={hasVariants()} fallback={<div class="h-8" />}>
+                        <div class="w-full flex items-center gap-1 p-1 bg-hover rounded-lg border border-subtle">
+                          <For each={group.items}>
+                            {variant => {
+                              const isSelected = () => reg().id === variant.id
+                              const label = () => {
+                                if (variant.region === 'cn') return '国内版 (CN)'
+                                if (variant.region === 'intl') return '国际版 (Intl)'
+                                return variant.name.replace(group.name, '').trim() || variant.id
+                              }
+                              return (
+                                <button
+                                  type="button"
+                                  class={`flex-1 text-[11px] py-1 px-2 rounded-md font-medium transition-all ${
+                                    isSelected()
+                                      ? 'bg-card text-foreground shadow-xs font-semibold'
+                                      : 'text-faint hover:text-foreground'
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedVariants(prev => ({
+                                      ...prev,
+                                      [group.brandKey]: variant.id,
+                                    }))
+                                  }}
+                                >
+                                  {label()}
+                                </button>
+                              )
+                            }}
+                          </For>
+                        </div>
+                      </Show>
+                    </div>
 
-                    <div class="mt-3 text-xs text-faint space-y-1">
-                      <div class="flex items-center justify-between">
-                        <span>协议: <code class="font-mono text-foreground">{reg().apiType || 'openai'}</code></span>
-                        <span>默认优先级: {reg().priority ?? 50}</span>
-                      </div>
-                      <Show when={reg().authHint}>
-                        <div class="text-[11px] text-muted italic line-clamp-1">{reg().authHint}</div>
+                    {/* 说明提示：固定最小高度保证网格卡片严格等高 */}
+                    <div class="mt-2 min-h-[20px] flex items-center">
+                      <Show when={reg().authHint} fallback={<span class="text-[11px] text-faint/60">官方标准接口</span>}>
+                        <span class="text-[11px] text-muted italic line-clamp-1">{reg().authHint}</span>
                       </Show>
                     </div>
                   </div>
 
-                  <div class="pt-3 border-t border-subtle flex items-center justify-between gap-2">
-                    <Show
-                      when={reg().apiKeyUrl || reg().website}
-                      fallback={<span class="text-[11px] text-faint">原生内置</span>}
-                    >
-                      <a
-                        href={reg().apiKeyUrl || reg().website}
-                        target="_blank"
-                        rel="noreferrer"
-                        class="text-xs text-accent hover:underline inline-flex items-center gap-1"
-                      >
-                        {reg().apiKeyUrl ? '获取密钥 ↗' : '官网 ↗'}
-                      </a>
-                    </Show>
+                  {/* 下半部分：横向完全对齐的协议与优先级 */}
+                  <div class="mt-3 pt-3 border-t border-subtle space-y-3">
+                    <div class="flex items-center justify-between text-xs text-faint">
+                      <span>协议: <code class="font-mono text-foreground font-semibold">{reg().apiType || 'openai'}</code></span>
+                      <span>默认优先级: <span class="font-mono text-foreground font-medium">{reg().priority ?? 50}</span></span>
+                    </div>
 
-                    <div class="flex items-center gap-2">
-                      <Show when={connected()}>
-                        <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">已接入</span>
+                    <div class="flex items-center justify-between gap-2 pt-0.5">
+                      <Show
+                        when={reg().apiKeyUrl || reg().website}
+                        fallback={<span class="text-[11px] text-faint">原生内置</span>}
+                      >
+                        <a
+                          href={reg().apiKeyUrl || reg().website}
+                          target="_blank"
+                          rel="noreferrer"
+                          class="text-xs text-accent hover:underline inline-flex items-center gap-1 shrink-0"
+                        >
+                          {reg().apiKeyUrl ? '获取密钥 ↗' : '官网 ↗'}
+                        </a>
                       </Show>
-                      <Show when={isFree() && !connected()}>
+
+                      <div class="flex items-center gap-2">
+                        <Show when={connected()}>
+                          <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">已接入</span>
+                        </Show>
+                        <Show when={isFree() && !connected()}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={saving()}
+                            onClick={() => quickEnableFree(reg())}
+                          >
+                            一键启用
+                          </Button>
+                        </Show>
                         <Button
                           size="sm"
-                          variant="secondary"
-                          loading={saving()}
-                          onClick={() => quickEnableFree(reg())}
+                          variant={connected() ? 'secondary' : 'primary'}
+                          onClick={() => openWizard(reg())}
                         >
-                          一键启用
+                          {connected() ? '再加一个' : '接入配置'}
                         </Button>
-                      </Show>
-                      <Button
-                        size="sm"
-                        variant={connected() ? 'secondary' : 'primary'}
-                        onClick={() => openWizard(reg())}
-                      >
-                        {connected() ? '再加一个' : '接入配置'}
-                      </Button>
+                      </div>
                     </div>
                   </div>
                 </Card>

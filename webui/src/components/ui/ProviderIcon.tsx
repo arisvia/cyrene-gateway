@@ -178,14 +178,15 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
 
 // 映射当前活跃 provider 与 cli 工具的静态 SVG 矢量资产（按优先级由长到短匹配）
 const PROVIDER_IMAGE_MAP: Record<string, string> = {
-  'alicode-intl': '/providers/alicode-intl.svg',
+  // 品牌变体统一以官方国际版/规范标准标收敛
+  'alicode-intl': '/providers/alicode.svg',
   alicode: '/providers/alicode.svg',
-  'codebuddy-intl': '/providers/codebuddy-intl.svg',
-  'codebuddy-cn': '/providers/codebuddy-cn.svg',
-  codebuddy: '/providers/codebuddy-cn.svg',
-  'glm-cn': '/providers/glm-cn.svg',
+  'codebuddy-intl': '/providers/codebuddy.svg',
+  'codebuddy-cn': '/providers/codebuddy.svg',
+  codebuddy: '/providers/codebuddy.svg',
+  'glm-cn': '/providers/glm.svg',
   glm: '/providers/glm.svg',
-  'minimax-cn': '/providers/minimax-cn.svg',
+  'minimax-cn': '/providers/minimax.svg',
   minimax: '/providers/minimax.svg',
   'grok-cli': '/providers/grok-cli.svg',
   grok: '/providers/grok-cli.svg',
@@ -241,9 +242,9 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   }
   return (
     <div
-      class={`shrink-0 flex items-center justify-center rounded-xl overflow-hidden shadow-sm transition-transform group-hover:scale-105 bg-card border border-subtle ${sizeClass()} ${props.class ?? ''}`}
+      class={`shrink-0 flex items-center justify-center rounded-xl overflow-hidden glass-avatar transition-transform group-hover:scale-105 ${sizeClass()} ${props.class ?? ''}`}
       style={{
-        background: imgSrc() ? 'transparent' : (props.color || 'var(--gradient)'),
+        background: imgSrc() ? undefined : (props.color || 'var(--gradient)'),
       }}
       title={name()}
     >
@@ -254,7 +255,7 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
         <img
           src={imgSrc()!}
           alt={name()}
-          class="w-full h-full object-contain p-1 rounded-xl"
+          class="w-full h-full object-contain p-1.5 rounded-xl filter drop-shadow-xs"
           onError={() => setImgFailed(true)}
         />
       </Show>
