@@ -147,7 +147,7 @@ const Usage: Component = () => {
               <h3 class="text-sm font-semibold">Token 趋势</h3>
               <p class="text-xs text-faint mt-0.5">按时间段聚合的 Prompt 与 Completion 吞吐</p>
             </div>
-            <Select value={period()} options={PERIODS} onChange={v => { setPeriod(v); load() }} />
+            <Select value={period()} options={PERIODS} onChange={v => { setPeriod(v); load() }} align="right" />
           </div>
           <Show when={chart().length > 0} fallback={<Empty message="该周期暂无数据。" />}>
             <div class="flex items-end gap-1.5 h-40">

@@ -3,7 +3,7 @@ import { A, useParams } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -353,18 +353,20 @@ const ProviderDetail: Component = () => {
                 <Card class="p-4 flex flex-wrap items-center justify-between gap-3">
                   <div class="flex items-center gap-3 flex-1 min-w-[240px]">
                     <span class="text-xs text-faint shrink-0">测试模型：</span>
-                    <select
-                      class="h-9 px-3 text-xs bg-bg border border-subtle rounded-control flex-1 focus:border-accent focus:outline-none"
+                    <Select
+                      class="flex-1 min-w-[200px]"
                       value={selectedModel()}
-                      onChange={e => setSelectedModel(e.currentTarget.value)}
-                    >
-                      <option value="">默认模型（首个可用）</option>
-                      <For each={(models()?.registryModels ?? []).concat(models()?.customModels ?? [])}>
-                        {m => (
-                          <option value={m.id}>{m.name ? `${m.name} (${m.id})` : m.id}</option>
-                        )}
-                      </For>
-                    </select>
+                      options={[
+                        { value: '', label: '默认模型（首个可用）' },
+                        ...((models()?.registryModels ?? []).concat(models()?.customModels ?? []))
+                          .filter(m => Boolean(m.id))
+                          .map(m => ({
+                            value: m.id || '',
+                            label: m.name ? `${m.name} (${m.id})` : m.id || '',
+                          })),
+                      ]}
+                      onChange={setSelectedModel}
+                    />
                   </div>
                   <div class="flex items-center gap-2">
                     <Show when={selectedModel()}>

@@ -126,16 +126,150 @@ export const Select: Component<{
   onChange?: (v: string) => void
   class?: string
   ariaLabel?: string
-}> = props => (
-  <select
-    value={props.value ?? ''}
-    aria-label={props.ariaLabel}
-    onChange={e => props.onChange?.(e.currentTarget.value)}
-    class={`px-3 py-1.5 rounded-control bg-bg-elevated border border-subtle text-sm text-text focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft ${props.class ?? ''}`}
-  >
-    <For each={props.options}>{o => <option value={o.value}>{o.label}</option>}</For>
-  </select>
-)
+  placeholder?: string
+  disabled?: boolean
+  align?: 'left' | 'right'
+}> = props => {
+  const [open, setOpen] = createSignal(false)
+  let rootRef: HTMLDivElement | undefined
+
+  onMount(() => {
+    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
+      if (rootRef && !rootRef.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!open()) {
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') && rootRef?.contains(document.activeElement)) {
+          e.preventDefault()
+          setOpen(true)
+        }
+        return
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const idx = props.options.findIndex(o => o.value === (props.value ?? ''))
+        const next = idx < props.options.length - 1 ? idx + 1 : 0
+        if (props.options[next]) props.onChange?.(props.options[next].value)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        const idx = props.options.findIndex(o => o.value === (props.value ?? ''))
+        const prev = idx > 0 ? idx - 1 : props.options.length - 1
+        if (props.options[prev]) props.onChange?.(props.options[prev].value)
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        setOpen(false)
+      }
+    }
+
+    window.addEventListener('pointerdown', handleOutsideClick)
+    window.addEventListener('keydown', handleKeyDown)
+    onCleanup(() => {
+      window.removeEventListener('pointerdown', handleOutsideClick)
+      window.removeEventListener('keydown', handleKeyDown)
+    })
+  })
+
+  const selectedOption = () => props.options.find(o => o.value === (props.value ?? ''))
+  const isSelected = () => !!selectedOption()
+  const displayLabel = () => selectedOption()?.label || props.placeholder || (props.options[0]?.label ?? '')
+
+  return (
+    <div
+      ref={rootRef}
+      class={`relative ${props.class?.includes('flex-1') ? 'flex-1' : props.class?.includes('w-full') ? 'w-full' : 'inline-block'} ${props.class ?? ''}`}
+    >
+      <button
+        type="button"
+        role="combobox"
+        aria-expanded={open()}
+        aria-haspopup="listbox"
+        aria-label={props.ariaLabel || displayLabel()}
+        disabled={props.disabled}
+        onClick={() => {
+          if (!props.disabled) setOpen(o => !o)
+        }}
+        class={`w-full flex items-center justify-between gap-3 pl-3.5 pr-3 py-1.5 min-h-[36px] rounded-control bg-bg-elevated border border-subtle text-sm text-text hover:border-accent/40 hover:bg-hover/50 focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 ${
+          open() ? 'border-accent ring-2 ring-ring-soft' : ''
+        } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      >
+        <span class={`truncate text-left flex-1 ${isSelected() ? 'text-text' : 'text-faint'}`}>
+          {displayLabel()}
+        </span>
+        {/* 精致内嵌居中的 Chevron 矢量箭头：预留呼吸空间，完全消除原生靠死右侧的视觉不协调感 */}
+        <div class="flex items-center justify-center shrink-0 w-4 h-4 text-faint ml-1">
+          <svg
+            class={`w-3.5 h-3.5 transition-transform duration-200 ${
+              open() ? 'rotate-180 text-accent' : ''
+            }`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+      </button>
+
+      {/* 现代液态玻璃拟态下拉浮层（彻底淘汰浏览器原生黑灰选项框） */}
+      <Show when={open()}>
+        <div
+          role="listbox"
+          class={`absolute ${
+            props.align === 'right' ? 'right-0' : 'left-0'
+          } top-[calc(100%+6px)] z-50 min-w-full w-max max-w-[min(92vw,400px)] max-h-64 overflow-y-auto rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-xl shadow-glass-hover p-1.5 space-y-0.5 animate-scale-in`}
+        >
+          <For each={props.options}>
+            {o => {
+              const active = () => (props.value ?? '') === o.value
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active()}
+                  class={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-xs sm:text-sm text-left transition-all duration-150 cursor-pointer ${
+                    active()
+                      ? 'bg-accent/15 text-accent font-medium'
+                      : 'text-text hover:bg-hover hover:text-text'
+                  }`}
+                  onClick={() => {
+                    props.onChange?.(o.value)
+                    setOpen(false)
+                  }}
+                >
+                  <span class="truncate">{o.label}</span>
+                  <Show when={active()}>
+                    <svg
+                      class="w-4 h-4 text-accent shrink-0 animate-scale-in"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </Show>
+                </button>
+              )
+            }}
+          </For>
+        </div>
+      </Show>
+    </div>
+  )
+}
 
 export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange?: (v: boolean) => void }> = props => (
   <button
