@@ -352,7 +352,7 @@ function createGatewayStore() {
     return apiDelete('/api/models/disabled', { model })
   }
   return {
-    version, health, providers, combos, apiKeys, proxyPools, endpoints,
+    version, health, providers, setProviders, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings, aliases,
     usageStats, usageChart, requestDetails, requestDetailsPagination,
     providerUsage, usageLogs, quotaEntries, activeConnections,

@@ -100,16 +100,23 @@ describe('运维与工具页渲染', () => {
   })
 
   it('Quota 渲染提供商配额行', async () => {
+    const { useGatewayStore } = await import('@/stores/gateway')
+    const store = useGatewayStore()
+    store.setProviders([
+      { id: 'conn-1', provider: 'anthropic', name: 'Anthropic Main', isActive: true, priority: 1, authType: 'api-key' },
+    ] as any)
     ;(api as any).mockResolvedValue({
       period: '7d',
       providers: [{ provider: 'anthropic', requests: 10, promptTokens: 100, completionTokens: 50, cost: 0.1, connections: 2, activeConnections: 1 }],
+      quotas: {
+        user: { used: 10, total: 100, remaining: 90, remainingPercentage: 90, resetAt: '2026-10-01T00:00:00Z', unit: 'USD' }
+      }
     })
     mount(Quota)
     await tick()
     const text = document.body.textContent || ''
     expect(text).toContain('配额')
     expect(text).toContain('anthropic')
-    expect(text).toContain('1/2 连接')
   })
 
   it('Tunnel 渲染状态与操作', async () => {

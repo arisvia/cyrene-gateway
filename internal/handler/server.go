@@ -118,9 +118,9 @@ func (s *Server) registerRoutes() {
 	// OpenAI-compatible API surface
 	s.Router.HandleFunc("GET /v1/models", s.handleModels)
 	s.Router.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
+	s.Router.HandleFunc("POST /v1/responses", s.handleResponses)
 	s.Router.HandleFunc("POST /v1/embeddings", s.handleEmbeddings)
 	s.Router.HandleFunc("POST /v1/messages", s.handleMessages)
-
 	// Dashboard management API
 	s.Router.HandleFunc("GET /api/settings", s.handleGetSettings)
 	s.Router.HandleFunc("PUT /api/settings", s.handlePutSettings)

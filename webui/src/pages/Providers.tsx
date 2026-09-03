@@ -136,6 +136,34 @@ const Providers: Component = () => {
     items: RegistryProvider[]
   }
 
+  // 自定义通用接口分类组与主流供应商分组分开
+  const customBrandGroups = createMemo<CatalogBrandGroup[]>(() => {
+    const list = store.registryList()
+    const q = query().toLowerCase().trim()
+    const cat = catFilter()
+    const connected = connectedProviderIds()
+    const hide = hideAdded()
+
+    const matched = list.filter(r => {
+      const isCustom = r.category === 'custom' || r.id.startsWith('custom-')
+      if (!isCustom) return false
+      if (hide && connected.has(r.id)) return false
+      if (cat && r.category !== cat) return false
+      if (!q) return true
+      return (
+        r.name.toLowerCase().includes(q) ||
+        r.id.toLowerCase().includes(q) ||
+        (r.brand || '').toLowerCase().includes(q)
+      )
+    })
+
+    return matched.map(r => ({
+      brandKey: r.id,
+      name: r.name,
+      items: [r],
+    }))
+  })
+
   const brandGroups = createMemo<CatalogBrandGroup[]>(() => {
     const list = store.registryList()
     const q = query().toLowerCase().trim()
@@ -143,8 +171,10 @@ const Providers: Component = () => {
     const connected = connectedProviderIds()
     const hide = hideAdded()
 
-    // 先按过滤条件筛选
+    // 过滤掉通用自定义接口，只保留标准供应商
     const matched = list.filter(r => {
+      const isCustom = r.category === 'custom' || r.id.startsWith('custom-')
+      if (isCustom) return false
       if (hide && connected.has(r.id)) return false
       if (cat && r.category !== cat) return false
       if (!q) return true
@@ -165,7 +195,6 @@ const Providers: Component = () => {
     }
 
     return Object.entries(groups).map(([key, items]) => {
-      // 首选主名称，如果有带品牌名则用品牌名
       const first = items[0]
       const displayName = first.brand ? first.brand : first.name
       return {
@@ -789,9 +818,76 @@ const Providers: Component = () => {
 
       {/* 视窗 2：提供商市场 (Catalog Grid) */}
       <Show when={activeTab() === 'catalog'}>
-        <div class="max-h-[calc(100vh-220px)] overflow-y-auto pr-1 pb-16">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-1">
-            <For each={brandGroups()}>
+        <div class="max-h-[calc(100vh-220px)] overflow-y-auto pr-1 pb-16 space-y-6">
+          {/* 自定义通用兼容协议 (OpenAI Compatible & Anthropic Compatible) */}
+          <Show when={customBrandGroups().length > 0}>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between px-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-semibold text-foreground">自定义通用接口 (Compatible APIs)</span>
+                  <Badge tone="blue" class="text-[10px]">支持自定义 Base URL</Badge>
+                </div>
+                <span class="text-xs text-faint">接入私有化部署、开源代理或三方标准中转服务</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <For each={customBrandGroups()}>
+                  {group => {
+                    const reg = () => group.items[0]
+                    const connected = () => store.providers().some(p => p.provider === reg().id)
+                    return (
+                      <Card hover class="p-4 flex flex-col justify-between group border-accent/20 bg-accent/5">
+                        <div class="flex items-start justify-between gap-3">
+                          <div class="flex items-center gap-3 min-w-0">
+                            <ProviderAvatar
+                              provider={reg().id}
+                              name={group.name}
+                              color={reg().color}
+                              size="md"
+                            />
+                            <div class="min-w-0">
+                              <div class="font-semibold text-sm text-foreground flex items-center gap-2">
+                                <span>{group.name}</span>
+                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg text-faint border border-subtle">
+                                  {reg().id}
+                                </span>
+                              </div>
+                              <div class="text-xs text-faint mt-1 line-clamp-2">
+                                {reg().authHint || "标准协议兼容接入，需填写 Base URL 与对应 API Key"}
+                              </div>
+                            </div>
+                          </div>
+                          <Badge tone="blue" class="shrink-0">
+                            {reg().apiType === 'anthropic' ? 'Anthropic' : 'OpenAI'}
+                          </Badge>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-subtle/60 flex items-center justify-between">
+                          <span class="text-xs text-faint font-mono">
+                            {reg().id === 'custom-openai' ? 'Chat / Responses 兼容' : 'Messages 兼容'}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant={connected() ? 'secondary' : 'primary'}
+                            onClick={() => openWizard(reg())}
+                          >
+                            {connected() ? '+ 加节点' : '配置接入 →'}
+                          </Button>
+                        </div>
+                      </Card>
+                    )
+                  }}
+                </For>
+              </div>
+            </div>
+          </Show>
+
+          {/* 官方认证主流供应商列表 */}
+          <div class="space-y-3">
+            <div class="flex items-center justify-between px-1">
+              <span class="text-sm font-semibold text-foreground">认证提供商服务 (Official Providers)</span>
+              <span class="text-xs text-faint">开箱即用官方路由，无需手动维护端点</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-1">
+              <For each={brandGroups()}>
             {group => {
               // 当前选中的变体（默认第一项）
               const activeReg = () => {
@@ -927,6 +1023,7 @@ const Providers: Component = () => {
               )
             }}
             </For>
+            </div>
           </div>
         </div>
       </Show>
@@ -1097,7 +1194,7 @@ const Providers: Component = () => {
                   </div>
                 </Show>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Show when={reg().category === 'custom' || reg().id.startsWith('custom-')} fallback={
                   <Field label="调度优先级" hint="数值越小越优先调度">
                     <Input
                       type="number"
@@ -1105,17 +1202,27 @@ const Providers: Component = () => {
                       onInput={v => setForm(f => ({ ...f, priority: v }))}
                     />
                   </Field>
-                  <Field
-                    label={reg().category === 'custom' || reg().id.startsWith('custom-') ? 'Base URL (必填)' : '自定义 Base URL (可选)'}
-                    hint={reg().category === 'custom' || reg().id.startsWith('custom-') ? '标准端点地址，如 https://api.my-host.com/v1' : '私有化或中转端点'}
-                  >
-                    <Input
-                      value={form().baseUrl}
-                      placeholder={reg().baseUrl || 'https://...'}
-                      onInput={v => setForm(f => ({ ...f, baseUrl: v }))}
-                    />
-                  </Field>
-                </div>
+                }>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="调度优先级" hint="数值越小越优先调度">
+                      <Input
+                        type="number"
+                        value={form().priority}
+                        onInput={v => setForm(f => ({ ...f, priority: v }))}
+                      />
+                    </Field>
+                    <Field
+                      label="Base URL (必填)"
+                      hint="标准端点地址，如 https://api.my-host.com/v1"
+                    >
+                      <Input
+                        value={form().baseUrl}
+                        placeholder="https://api.example.com/v1"
+                        onInput={v => setForm(f => ({ ...f, baseUrl: v }))}
+                      />
+                    </Field>
+                  </div>
+                </Show>
                 <div class="pt-3 border-t border-subtle flex justify-end gap-2.5">
                   <Button variant="secondary" onClick={() => { cancelWizardOAuth(); setWizardOpen(false) }}>
                     取消

@@ -211,10 +211,15 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	// Phase 30: resolve the provider transport and use it for both URL building
 	// and auth injection so connection tests exercise the real upstream path.
 	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+	client := s.getHTTPClient(30 * time.Second)
+	creds := provider.Credentials{
+		APIKey:               conn.Data.APIKey,
+		AccessToken:          conn.Data.AccessToken,
+		ProviderSpecificData: conn.Data.ProviderSpecificData,
+	}
 
 	var targetURL string
 	var testBody []byte
-
 	switch effectiveAPIType {
 	case "anthropic":
 		targetURL = provider.BuildTransportURL(transport, "claude-3-haiku-20240307", false)
@@ -230,8 +235,16 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		})
 	default:
 		if conn.Provider == "qoder" {
-			// Qoder uses COSY /api/v1/models/chat or catalog with PAT
-			targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
+			// For Qoder PAT, exchange and test via model list or userInfo
+			if provider.IsQoderPAT(creds.APIKey) {
+				resolved, err := provider.ResolveQoderCredential(creds.APIKey, "", client)
+				if err != nil {
+					return testResult{OK: false, Error: "Qoder PAT 兑换失败: " + err.Error()}
+				}
+				targetURL = provider.QoderModelListURL(resolved.AccessToken)
+			} else {
+				targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
+			}
 			testBody = nil
 		} else {
 			// For OpenAI-compatible providers, test via the models endpoint.
@@ -258,17 +271,27 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	for k, v := range transport.Headers {
 		req.Header.Set(k, v)
 	}
-	creds := provider.Credentials{
-		APIKey:               conn.Data.APIKey,
-		AccessToken:          conn.Data.AccessToken,
-		ProviderSpecificData: conn.Data.ProviderSpecificData,
+	if conn.Provider == "qoder" && provider.IsQoderPAT(creds.APIKey) {
+		resolved, err := provider.ResolveQoderCredential(creds.APIKey, "", client)
+		if err == nil {
+			cosyCreds := provider.QoderCosyCreds{
+				UserID:    resolved.UserID,
+				AuthToken: resolved.AccessToken,
+			}
+			headers, err := provider.BuildQoderCosyHeaders(nil, targetURL, cosyCreds)
+			if err == nil {
+				for k, v := range headers {
+					req.Header.Set(k, v)
+				}
+			}
+		}
+	} else {
+		provider.ApplyAuth(req, transport, creds)
 	}
-	provider.ApplyAuth(req, transport, creds)
 	if providerInfo.NoAuth && creds.APIKey == "" && creds.AccessToken == "" {
 		req.Header.Set("Authorization", "Bearer public")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := s.getHTTPClient(30 * time.Second)
 	start := time.Now()
 	resp, err := client.Do(req)
 	latency := time.Since(start)

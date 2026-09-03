@@ -805,16 +805,14 @@ const ProviderDetail: Component = () => {
                         </Field>
                       </Show>
 
-                      <Field
-                        label={c().provider.startsWith('custom-') || regInfo()?.category === 'custom' ? 'Base URL (必填)' : 'Base URL (接口端点)'}
-                        hint={
-                          c().provider.startsWith('custom-') || regInfo()?.category === 'custom'
-                            ? '标准上游 API 地址，如 https://api.my-host.com/v1（必填）'
-                            : '自定义上游 API 地址，留空使用官方默认地址'
-                        }
-                      >
-                        <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
-                      </Field>
+                      <Show when={c().provider.startsWith('custom-') || regInfo()?.category === 'custom'}>
+                        <Field
+                          label="Base URL (必填)"
+                          hint="标准上游 API 地址，如 https://api.my-host.com/v1（必填）"
+                        >
+                          <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
+                        </Field>
+                      </Show>
 
                       {/* 高级协议与客户端指纹覆盖 */}
                       <div class="pt-2 border-t border-subtle">

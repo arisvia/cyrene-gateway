@@ -41,7 +41,9 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 	out := make([]model.ModelMetadata, 0, len(entry.rawConfigs))
 	for key, raw := range entry.rawConfigs {
 		m := model.ModelMetadata{ID: key}
-		if name, ok := raw["name"].(string); ok && name != "" {
+		if disp, ok := raw["display_name"].(string); ok && disp != "" {
+			m.DisplayName = disp
+		} else if name, ok := raw["name"].(string); ok && name != "" {
 			m.DisplayName = name
 		} else if label, ok := raw["label"].(string); ok && label != "" {
 			m.DisplayName = label
@@ -92,11 +94,11 @@ var qoderModelDisplayNames = map[string]string{
 	"qfmodel":       "Qwen3.7-Flash",
 	"kmodel_latest": "Kimi-K3",
 	"kmodel":        "Kimi-K2.7-Code",
-	"gmodel":        "GLM-5.2",
-	"gfmodel":       "GLM-5.1",
-	"gm51model":     "GLM-5.1",
+	"gmodel":        "GLM-5.3",
+	"gfmodel":       "GLM-5.3-Flash",
+	"gm51model":     "GLM-5.3",
 	"dmodel":        "DeepSeek-V4-Pro",
 	"dfmodel":       "DeepSeek-V4-Flash",
 	"mmodel":        "MiniMax-M3",
-	"cmodel":        "Claude-Sonnet-4",
+	"cmodel":        "Cantus",
 }

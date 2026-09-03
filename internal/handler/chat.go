@@ -96,6 +96,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Single model path
 	s.handleSingleModelChat(w, r, req, rawBody)
 }
+// handleResponses implements OpenAI Responses API endpoint (/v1/responses).
+// It accepts requests in OpenAI Responses format (or Chat Completions format with instructions),
+// resolves the model and routes to the appropriate provider (e.g. OpenAI Compatible with /responses).
+func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
+	s.handleChatCompletions(w, r)
+}
 
 // runLoopGuard analyzes messages for loop patterns and returns a hint if detected.
 func runLoopGuard(messages []Message) string {

@@ -68,8 +68,14 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			return
 		}
 		total := num(q["total"])
+		if total <= 0 {
+			total = num(q["cap"])
+		}
 		used := num(q["used"])
 		remaining := num(q["remaining"])
+		if total <= 0 && remaining > 0 {
+			total = used + remaining
+		}
 		if total <= 0 && used <= 0 && remaining <= 0 {
 			return
 		}

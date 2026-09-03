@@ -43,6 +43,20 @@ func BuildChatURL(baseURL, apiType string) string {
 		return base + "/chat/completions"
 	}
 }
+// BuildResponsesURL constructs the OpenAI Responses API endpoint URL from a base URL.
+func BuildResponsesURL(baseURL string) string {
+	base := strings.TrimRight(baseURL, "/")
+	if base == "" {
+		return ""
+	}
+	if IsFullEndpointURL(base) {
+		if strings.HasSuffix(strings.ToLower(base), "/responses") {
+			return base
+		}
+		base = StripEndpointPath(base)
+	}
+	return base + "/responses"
+}
 
 // BuildModelsURL constructs the models list endpoint URL from a base URL.
 // Strips known endpoint paths and appends /models.
