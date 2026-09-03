@@ -80,11 +80,14 @@ export interface ProviderModel {
   enabled?: boolean
   isFree?: boolean
   alias?: string
+  contextLength?: number
   maxOutputTokens?: number
   capabilities?: string[]
   modalities?: string[]
   displayName?: string
   source?: string
+  canEdit?: boolean
+  hasOverride?: boolean
 }
 
 export interface UsageStats {

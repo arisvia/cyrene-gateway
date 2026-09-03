@@ -3,8 +3,7 @@ import { A, useParams } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select } from '@/components/ui'
-
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal } from '@/components/ui'
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
   const store = useGatewayStore()
@@ -72,6 +71,15 @@ const ProviderDetail: Component = () => {
   const [apiKey, setApiKey] = createSignal('')
   const [baseUrl, setBaseUrl] = createSignal('')
   const [priority, setPriority] = createSignal('0')
+  const [showAdvanced, setShowAdvanced] = createSignal(false)
+  const [customHeadersText, setCustomHeadersText] = createSignal('')
+
+  // 模型元数据编辑状态
+  const [editingModel, setEditingModel] = createSignal<ProviderModel | null>(null)
+  const [editDisplayName, setEditDisplayName] = createSignal('')
+  const [editContextLength, setEditContextLength] = createSignal('')
+  const [editMaxOutput, setEditMaxOutput] = createSignal('')
+  const [savingMeta, setSavingMeta] = createSignal(false)
 
   async function load() {
     setLoading(true)
@@ -82,8 +90,13 @@ const ProviderDetail: Component = () => {
       setConn(r)
       setName(r.name || '')
       setPriority(String(r.priority ?? 0))
-      const d = r.data as { baseUrl?: string } | undefined
+      const d = r.data as { baseUrl?: string; providerSpecificData?: Record<string, unknown> } | undefined
       setBaseUrl(d?.baseUrl || '')
+      if (d?.providerSpecificData?.customHeaders) {
+        setCustomHeadersText(JSON.stringify(d.providerSpecificData.customHeaders, null, 2))
+      } else {
+        setCustomHeadersText('')
+      }
     } catch {
       setNotFound(true)
     } finally {
@@ -98,6 +111,8 @@ const ProviderDetail: Component = () => {
     customModels?: ProviderModel[]
     isFreeMode?: boolean
     authType?: string
+    authModes?: string[]
+    defaultHeaders?: Record<string, string>
     hasApiKey?: boolean
   }>({})
 
@@ -110,6 +125,8 @@ const ProviderDetail: Component = () => {
           customModels?: ProviderModel[]
           isFreeMode?: boolean
           authType?: string
+          authModes?: string[]
+          defaultHeaders?: Record<string, string>
           hasApiKey?: boolean
         }
         setModelsData(r)
@@ -162,14 +179,84 @@ const ProviderDetail: Component = () => {
     },
   )
 
+  function startEditModel(m: ProviderModel) {
+    setEditingModel(m)
+    setEditDisplayName(m.name || m.id || '')
+    setEditContextLength(m.contextLength ? String(m.contextLength) : '')
+    setEditMaxOutput(m.maxOutputTokens ? String(m.maxOutputTokens) : '')
+  }
+
+  async function handleSaveModelMeta() {
+    const m = editingModel()
+    if (!m || !m.id) return
+    setSavingMeta(true)
+    try {
+      await store.saveProviderModelMeta(params.id, {
+        id: m.id,
+        displayName: editDisplayName().trim(),
+        contextLength: Number(editContextLength()) || 0,
+        maxOutputTokens: Number(editMaxOutput()) || 0,
+      })
+      await refetchModels()
+      setEditingModel(null)
+    } catch (e) {
+      console.error('save meta failed:', e)
+    } finally {
+      setSavingMeta(false)
+    }
+  }
+
+  async function handleResetModelMeta() {
+    const m = editingModel()
+    if (!m || !m.id) return
+    setSavingMeta(true)
+    try {
+      await store.resetProviderModelMeta(params.id, m.id)
+      await refetchModels()
+      setEditingModel(null)
+    } catch (e) {
+      console.error('reset meta failed:', e)
+    } finally {
+      setSavingMeta(false)
+    }
+  }
+
   async function save() {
     setSaving(true)
     try {
       const current = conn()
       const patch: Partial<Provider> & { data?: Record<string, unknown> } = { name: name(), priority: Number(priority()) || 0 }
       const currData = (current?.data || {}) as Record<string, unknown>
-      if (apiKey()) patch.data = { ...currData, apiKey: apiKey() }
-      if (baseUrl()) patch.data = { ...(patch.data || currData), baseUrl: baseUrl() }
+      const nextData: Record<string, unknown> = { ...currData }
+      if (apiKey().trim()) {
+        nextData.apiKey = apiKey().trim()
+        if (current?.authType === 'none') {
+          patch.authType = 'api-key'
+        }
+      }
+      if (baseUrl().trim()) {
+        nextData.baseUrl = baseUrl().trim()
+      } else {
+        delete nextData.baseUrl
+      }
+
+      // 处理高级协议自定义请求头 (customHeaders)
+      const hStr = customHeadersText().trim()
+      if (hStr) {
+        try {
+          const parsed = JSON.parse(hStr)
+          const psData = ((currData.providerSpecificData as Record<string, unknown>) || {})
+          nextData.providerSpecificData = { ...psData, customHeaders: parsed }
+        } catch {
+          // invalid JSON, do not override
+        }
+      } else if (currData.providerSpecificData) {
+        const psData = { ...(currData.providerSpecificData as Record<string, unknown>) }
+        delete psData.customHeaders
+        nextData.providerSpecificData = psData
+      }
+
+      patch.data = nextData
       await store.updateProvider(params.id, patch)
       await load()
       setApiKey('')
@@ -251,7 +338,9 @@ const ProviderDetail: Component = () => {
                 { id: 'overview' as const, label: '连接配置' },
                 { id: 'models' as const, label: '可用模型' },
                 { id: 'chat' as const, label: '会话测试' },
-                { id: 'oauth' as const, label: '授权管理' },
+                ...(c().authType === 'oauth' || (modelsData().authModes?.includes('oauth') ?? false)
+                  ? [{ id: 'oauth' as const, label: '授权管理' }]
+                  : []),
               ]}>
                 {t => (
                   <button
@@ -276,14 +365,71 @@ const ProviderDetail: Component = () => {
                 <Field label="优先级" hint="数值越小越优先被调度">
                   <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
                 </Field>
-                <Show when={c().authType === 'api-key'}>
-                  <Field label="API Key" hint="留空表示不修改；密钥写入后不在界面回显">
-                    <Input type="password" value={apiKey()} onInput={setApiKey} placeholder="sk-…" />
+                <Show when={c().authType === 'api-key' || (modelsData().authModes?.includes('api-key') ?? false)}>
+                  <Field
+                    label="API Key / 凭据"
+                    hint={
+                      c().authType === 'none'
+                        ? '当前处于免密体验模式。填入 API Key 后点击保存即可升级为商业授权模式，解锁全量商业模型。'
+                        : '留空表示不修改；密钥写入后不在界面回显'
+                    }
+                  >
+                    <Input
+                      type="password"
+                      value={apiKey()}
+                      onInput={setApiKey}
+                      placeholder={c().authType === 'none' ? '输入商业授权 API Key' : 'sk-…'}
+                    />
                   </Field>
                 </Show>
                 <Field label="Base URL" hint="自定义端点，留空使用默认">
                   <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
                 </Field>
+
+                {/* 高级协议与客户端指纹覆盖 */}
+                <div class="pt-2 border-t border-subtle">
+                  <button
+                    type="button"
+                    class="text-xs text-muted hover:text-foreground flex items-center gap-1.5 py-1 font-medium transition-colors"
+                    onClick={() => setShowAdvanced(!showAdvanced())}
+                  >
+                    <span>{showAdvanced() ? '▼' : '▶'}</span>
+                    <span>高级协议与客户端标识覆盖（Headers / 版本参数）</span>
+                  </button>
+
+                  <Show when={showAdvanced()}>
+                    <div class="mt-3 p-3.5 rounded-control bg-bg-elevated/50 border border-subtle/70 space-y-3 text-xs">
+                      <Show when={modelsData().defaultHeaders && Object.keys(modelsData().defaultHeaders!).length > 0}>
+                        <div>
+                          <div class="text-faint mb-1.5 font-medium">当前网关内置默认 Header（供参考）：</div>
+                          <div class="bg-bg/80 p-2 rounded border border-subtle font-mono text-[11px] space-y-1">
+                            <For each={Object.entries(modelsData().defaultHeaders!)}>
+                              {([k, v]) => (
+                                <div class="flex gap-2">
+                                  <span class="text-accent">{k}:</span>
+                                  <span class="text-foreground truncate">{v}</span>
+                                </div>
+                              )}
+                            </For>
+                          </div>
+                        </div>
+                      </Show>
+
+                      <Field
+                        label="自定义请求头覆盖 (JSON 格式)"
+                        hint="用于应对上游客户端强制校验新版本号（例如 Antigravity、Copilot、CodeBuddy 等）。此处指定的 Header 会覆盖默认 Header 发送给上游。"
+                      >
+                        <textarea
+                          rows={4}
+                          value={customHeadersText()}
+                          onInput={e => setCustomHeadersText(e.currentTarget.value)}
+                          placeholder={'{\n  "User-Agent": "MyClient/2.0",\n  "anthropic-version": "2023-06-01"\n}'}
+                          class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
+                        />
+                      </Field>
+                    </div>
+                  </Show>
+                </div>
 
                 <Show when={c().data?.credentialHint}>
                   <div class="text-xs text-faint">
@@ -381,7 +527,15 @@ const ProviderDetail: Component = () => {
                           <span class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-control border text-xs transition-colors ${
                             m.enabled !== false ? 'bg-hover border-subtle text-text' : 'bg-bg-elevated/40 border-subtle/30 text-faint opacity-60'
                           }`}>
-                            <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.id || m.name}</span>
+                            <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.name || m.id}</span>
+                            <button
+                              type="button"
+                              class="text-faint hover:text-accent text-xs"
+                              title="编辑模型元数据"
+                              onClick={() => startEditModel(m)}
+                            >
+                              ✎
+                            </button>
                             <Toggle
                               checked={m.enabled !== false}
                               onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
@@ -426,35 +580,81 @@ const ProviderDetail: Component = () => {
                         })}>
                           {m => (
                             <div
-                              class={`flex items-center justify-between p-3 rounded-control border transition-all ${
+                              class={`flex flex-col justify-between p-3 rounded-control border transition-all ${
                                 m.enabled !== false
                                   ? 'border-subtle bg-bg-elevated/70 hover:border-accent/40 shadow-sm'
                                   : 'border-subtle/30 bg-bg-elevated/25 opacity-55 hover:opacity-80'
                               }`}
                             >
-                              <div class="min-w-0 flex-1 pr-2.5">
-                                <div class="flex items-center gap-1.5 flex-wrap">
-                                  <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
-                                    {m.name || m.id}
-                                  </span>
-                                  <Show when={m.isFree}>
-                                    <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
-                                      免费
+                              <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0 flex-1 pr-1">
+                                  <div class="flex items-center gap-1.5 flex-wrap">
+                                    <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
+                                      {m.name || m.id}
                                     </span>
-                                  </Show>
-                                  <Show when={m.enabled === false}>
-                                    <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
-                                      不对外
-                                    </span>
-                                  </Show>
+                                    <Show when={m.isFree}>
+                                      <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                        免费
+                                      </span>
+                                    </Show>
+                                    <Show when={m.enabled === false}>
+                                      <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
+                                        不对外
+                                      </span>
+                                    </Show>
+                                    <Show when={m.hasOverride}>
+                                      <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title="包含用户自定义元数据">
+                                        已改
+                                      </span>
+                                    </Show>
+                                  </div>
+                                  <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
                                 </div>
-                                <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
+                                <div class="shrink-0 flex items-center gap-1">
+                                  <Show
+                                    when={m.canEdit !== false}
+                                    fallback={
+                                      <span
+                                        class="text-faint px-1 text-[11px] cursor-not-allowed opacity-50"
+                                        title="官方动态同步元数据，已锁定保护"
+                                      >
+                                        🔒
+                                      </span>
+                                    }
+                                  >
+                                    <button
+                                      type="button"
+                                      class="text-faint hover:text-accent p-1 text-xs rounded transition-colors"
+                                      title="编辑模型元数据（名称、上下文长度等）"
+                                      onClick={() => startEditModel(m)}
+                                    >
+                                      ✎
+                                    </button>
+                                  </Show>
+                                  <div title={m.enabled !== false ? '点击关闭，禁止对外提供' : '点击开启，恢复对外提供'}>
+                                    <Toggle
+                                      checked={m.enabled !== false}
+                                      onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
+                                    />
+                                  </div>
+                                </div>
                               </div>
-                              <div class="shrink-0 flex items-center" title={m.enabled !== false ? '点击关闭，禁止对外提供' : '点击开启，恢复对外提供'}>
-                                <Toggle
-                                  checked={m.enabled !== false}
-                                  onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
-                                />
+
+                              {/* 元数据 Badge 栏 */}
+                              <div class="mt-2 pt-2 border-t border-subtle/40 flex items-center gap-1.5 flex-wrap text-[10px] text-faint">
+                                <Show when={m.contextLength && m.contextLength > 0}>
+                                  <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
+                                    {m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength} 上下文
+                                  </span>
+                                </Show>
+                                <Show when={m.maxOutputTokens && m.maxOutputTokens > 0}>
+                                  <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
+                                    {m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens} 输出
+                                  </span>
+                                </Show>
+                                <Show when={!m.contextLength && !m.maxOutputTokens}>
+                                  <span class="italic text-[10px] opacity-60">未定义上下文长度</span>
+                                </Show>
                               </div>
                             </div>
                           )}
@@ -579,6 +779,62 @@ const ProviderDetail: Component = () => {
           </div>
         )}
       </Show>
+
+      {/* 模型元数据编辑弹窗 */}
+      <Modal
+        open={Boolean(editingModel())}
+        title={`编辑模型元数据 - ${editingModel()?.id || ''}`}
+        onClose={() => setEditingModel(null)}
+      >
+        <div class="space-y-4">
+          <Field label="模型 ID" hint="路由匹配唯一标识（不可修改）">
+            <Input value={editingModel()?.id || ''} disabled class="bg-hover font-mono opacity-80" />
+          </Field>
+          <Field label="显示名称" hint="对外展现的模型友好名称">
+            <Input value={editDisplayName()} onInput={setEditDisplayName} placeholder="例如 GPT-4o Custom" />
+          </Field>
+          <div class="grid grid-cols-2 gap-3">
+            <Field label="上下文长度 (Tokens)" hint="例如 128000 或 200000">
+              <Input
+                type="number"
+                value={editContextLength()}
+                onInput={setEditContextLength}
+                placeholder="128000"
+              />
+            </Field>
+            <Field label="最大输出 (Tokens)" hint="例如 8192 或 16384">
+              <Input
+                type="number"
+                value={editMaxOutput()}
+                onInput={setEditMaxOutput}
+                placeholder="8192"
+              />
+            </Field>
+          </div>
+          <div class="flex items-center justify-between pt-3 border-t border-subtle">
+            <div>
+              <Show when={editingModel()?.hasOverride}>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={savingMeta()}
+                  onClick={handleResetModelMeta}
+                >
+                  恢复官方默认
+                </Button>
+              </Show>
+            </div>
+            <div class="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={() => setEditingModel(null)}>
+                取消
+              </Button>
+              <Button size="sm" variant="primary" loading={savingMeta()} onClick={handleSaveModelMeta}>
+                保存元数据
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

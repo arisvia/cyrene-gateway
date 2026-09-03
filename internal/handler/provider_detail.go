@@ -39,12 +39,23 @@ func (s *Server) saveCustomModels(connID string, models []customModel) error {
 	return s.DB.KVSet(customModelsScope, connID, string(data))
 }
 
+// ModelMetaOverride stores user-customized metadata for a model.
+type ModelMetaOverride struct {
+	DisplayName   string `json:"displayName,omitempty"`
+	ContextLength int    `json:"contextLength,omitempty"`
+	MaxOutput     int    `json:"maxOutputTokens,omitempty"`
+}
+
 // ProviderModelItem represents a model in the provider detail response with its enabled and free status.
 type ProviderModelItem struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
-	IsFree  bool   `json:"isFree,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Enabled       bool   `json:"enabled"`
+	IsFree        bool   `json:"isFree,omitempty"`
+	ContextLength int    `json:"contextLength,omitempty"`
+	MaxOutput     int    `json:"maxOutputTokens,omitempty"`
+	CanEdit       bool   `json:"canEdit"`
+	HasOverride   bool   `json:"hasOverride,omitempty"`
 }
 
 // handleGetProviderModels returns registry models + live synced models + custom models for a connection.
@@ -120,32 +131,66 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		fullID := conn.Provider + "/" + modelID
 		return disabledMap[fullID] != "" || disabledMap[modelID] != ""
 	}
+	cacheIndex := s.loadModelCacheIndex()
+	overrides, _ := s.DB.KVList("modelMetaOverrides")
+
+	buildModelItem := func(id, name string) ProviderModelItem {
+		fullID := conn.Provider + "/" + id
+		item := ProviderModelItem{
+			ID:      id,
+			Name:    name,
+			Enabled: !isModelDisabled(id),
+			IsFree:  conn.Provider == "opencode" && provider.IsOpenCodeFreeModel(id),
+		}
+
+		// 优先使用用户自定义设置的元数据覆盖
+		if overrides != nil && overrides[fullID] != "" {
+			var ov ModelMetaOverride
+			if err := json.Unmarshal([]byte(overrides[fullID]), &ov); err == nil {
+				if ov.DisplayName != "" {
+					item.Name = ov.DisplayName
+				}
+				item.ContextLength = ov.ContextLength
+				item.MaxOutput = ov.MaxOutput
+				item.CanEdit = true
+				item.HasOverride = true
+				return item
+			}
+		}
+
+		// 其次使用动态同步或内置模型元数据
+		if cachedMeta, ok := cacheIndex[fullID]; ok && cachedMeta != nil {
+			item.ContextLength = cachedMeta.ContextLength
+			item.MaxOutput = cachedMeta.MaxOutput
+			// 规则：若上游动态同步抓取已有确切元数据（如 ContextLength > 0），则锁定编辑，仅允许开关
+			if cachedMeta.ContextLength > 0 {
+				item.CanEdit = false
+			} else {
+				item.CanEdit = true
+			}
+		} else {
+			// 未包含确切动态元数据的内置或自定义模型，允许用户自由编辑
+			item.CanEdit = true
+		}
+		return item
+	}
 
 	registryItems := []ProviderModelItem{}
 	for _, m := range unifiedModels {
-		registryItems = append(registryItems, ProviderModelItem{
-			ID:      m.ID,
-			Name:    m.Name,
-			Enabled: !isModelDisabled(m.ID),
-			IsFree:  conn.Provider == "opencode" && provider.IsOpenCodeFreeModel(m.ID),
-		})
+		registryItems = append(registryItems, buildModelItem(m.ID, m.Name))
 	}
 
 	customModels := s.loadCustomModels(conn.ID)
 	customItems := []ProviderModelItem{}
 	for _, cm := range customModels {
-		registryItemsID := cm.ID
-		customItems = append(customItems, ProviderModelItem{
-			ID:      registryItemsID,
-			Name:    cm.Name,
-			Enabled: !isModelDisabled(registryItemsID),
-			IsFree:  conn.Provider == "opencode" && provider.IsOpenCodeFreeModel(registryItemsID),
-		})
+		customItems = append(customItems, buildModelItem(cm.ID, cm.Name))
 	}
-
+	regInfo, _ := provider.GetProvider(conn.Provider)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider":       conn.Provider,
 		"authType":       conn.AuthType,
+		"authModes":      regInfo.AuthModes,
+		"defaultHeaders": regInfo.Headers,
 		"hasApiKey":      conn.Data.APIKey != "",
 		"isFreeMode":     isUnauthOpenCode,
 		"registryModels": registryItems,
@@ -227,4 +272,63 @@ func (s *Server) handleDeleteProviderModel(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"customModels": filtered})
+}
+// handleSaveProviderModelMeta updates user-customized metadata for a model.
+// POST /api/providers/{id}/models/meta
+func (s *Server) handleSaveProviderModelMeta(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	conn, err := s.DB.GetConnection(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+
+	var req struct {
+		ID            string `json:"id"`
+		DisplayName   string `json:"displayName"`
+		ContextLength int    `json:"contextLength"`
+		MaxOutput     int    `json:"maxOutputTokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model id is required"})
+		return
+	}
+
+	fullID := conn.Provider + "/" + req.ID
+	ov := ModelMetaOverride{
+		DisplayName:   req.DisplayName,
+		ContextLength: req.ContextLength,
+		MaxOutput:     req.MaxOutput,
+	}
+	data, _ := json.Marshal(ov)
+	if err := s.DB.KVSet("modelMetaOverrides", fullID, string(data)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save model metadata"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleResetProviderModelMeta clears user-customized metadata for a model.
+// DELETE /api/providers/{id}/models/meta
+func (s *Server) handleResetProviderModelMeta(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	conn, err := s.DB.GetConnection(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model id is required"})
+		return
+	}
+
+	fullID := conn.Provider + "/" + req.ID
+	s.DB.KVDelete("modelMetaOverrides", fullID)
+
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

@@ -63,12 +63,23 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		return
 	}
 
+	ideVersion, _ := conn.Data.ProviderSpecificData["ideVersion"].(string)
+	if ideVersion == "" {
+		ideVersion, _ = conn.Data.ProviderSpecificData["qoderIDEVersion"].(string)
+	}
+	publicKeyPEM, _ := conn.Data.ProviderSpecificData["rsaPublicKeyPEM"].(string)
+	if publicKeyPEM == "" {
+		publicKeyPEM, _ = conn.Data.ProviderSpecificData["publicKeyPEM"].(string)
+	}
+
 	creds := provider.QoderCosyCreds{
-		UserID:    resolved.UserID,
-		AuthToken: resolved.AccessToken,
-		Name:      conn.Name,
-		Email:     conn.Email,
-		MachineID: machineID,
+		UserID:       resolved.UserID,
+		AuthToken:    resolved.AccessToken,
+		Name:         conn.Name,
+		Email:        conn.Email,
+		MachineID:    machineID,
+		IDEVersion:   ideVersion,
+		PublicKeyPEM: publicKeyPEM,
 	}
 
 	// Build the request body map from the raw body to preserve unknown fields

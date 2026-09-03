@@ -166,7 +166,8 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/providers/{id}/models", s.handleGetProviderModels)
 	s.Router.HandleFunc("POST /api/providers/{id}/models", s.handleAddProviderModel)
 	s.Router.HandleFunc("DELETE /api/providers/{id}/models", s.handleDeleteProviderModel)
-
+	s.Router.HandleFunc("POST /api/providers/{id}/models/meta", s.handleSaveProviderModelMeta)
+	s.Router.HandleFunc("DELETE /api/providers/{id}/models/meta", s.handleResetProviderModelMeta)
 	// OAuth authorization flow
 	s.Router.HandleFunc("GET /api/oauth/{provider}/authorize", s.handleOAuthAuthorize)
 	s.Router.HandleFunc("GET /api/oauth/{provider}/callback", s.handleOAuthCallback)
@@ -296,7 +297,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	// Load cached model metadata for all providers
 	cacheIndex := s.loadModelCacheIndex()
-
+	overrides, _ := s.DB.KVList("modelMetaOverrides")
 	// Load disabled models mapping to gate out models marked not public / disabled
 	disabledMap, _ := s.DB.KVList("disabledModels")
 	isModelDisabled := func(fullID, bareID string) bool {
@@ -419,9 +420,22 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			if displayName == m.ID && m.Name != "" {
 				displayName = m.Name
 			}
+			if overrides != nil && overrides[fullID] != "" {
+				var ov ModelMetaOverride
+				if err := json.Unmarshal([]byte(overrides[fullID]), &ov); err == nil {
+					if ov.DisplayName != "" {
+						displayName = ov.DisplayName
+					}
+					if ov.ContextLength > 0 {
+						meta.ContextLength = ov.ContextLength
+					}
+					if ov.MaxOutput > 0 {
+						meta.MaxOutput = ov.MaxOutput
+					}
+				}
+			}
 			models = append(models, ModelEntry{
 				ID:            fullID,
-				Object:        "model",
 				OwnedBy:       providerID,
 				DisplayName:   displayName,
 				ContextLength: meta.ContextLength,
@@ -962,6 +976,9 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		if incomingData.RefreshToken == "" {
 			incomingData.RefreshToken = existing.Data.RefreshToken
+		}
+		if incomingData.ProviderSpecificData == nil && existing.Data.ProviderSpecificData != nil {
+			incomingData.ProviderSpecificData = existing.Data.ProviderSpecificData
 		}
 		if incomingData.BaseURL != "" {
 			allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks

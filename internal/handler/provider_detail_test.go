@@ -150,3 +150,109 @@ func TestAddProviderModelValidation(t *testing.T) {
 		t.Fatalf("expected 400 for missing id, got %d", w.Code)
 	}
 }
+func TestModelMetadataOverride(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "meta-conn",
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data:     model.ConnectionData{APIKey: "sk-test"},
+	}
+	database.CreateConnection(conn)
+
+	// Save custom metadata for gpt-4o
+	metaBody := `{"id":"gpt-4o","displayName":"GPT-4o Custom","contextLength":128000,"maxOutputTokens":16384}`
+	req := httptest.NewRequest("POST", "/api/providers/meta-conn/models/meta", strings.NewReader(metaBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 saving meta, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify handleGetProviderModels reflects the override
+	req = httptest.NewRequest("GET", "/api/providers/meta-conn/models", nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var detailResp struct {
+		RegistryModels []struct {
+			ID            string `json:"id"`
+			Name          string `json:"name"`
+			ContextLength int    `json:"contextLength"`
+			MaxOutput     int    `json:"maxOutputTokens"`
+			HasOverride   bool   `json:"hasOverride"`
+			CanEdit       bool   `json:"canEdit"`
+		} `json:"registryModels"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &detailResp)
+	var found bool
+	for _, m := range detailResp.RegistryModels {
+		if m.ID == "gpt-4o" {
+			found = true
+			if m.Name != "GPT-4o Custom" {
+				t.Errorf("expected name 'GPT-4o Custom', got %q", m.Name)
+			}
+			if m.ContextLength != 128000 {
+				t.Errorf("expected contextLength 128000, got %d", m.ContextLength)
+			}
+			if m.MaxOutput != 16384 {
+				t.Errorf("expected maxOutput 16384, got %d", m.MaxOutput)
+			}
+			if !m.HasOverride {
+				t.Errorf("expected hasOverride=true")
+			}
+			if !m.CanEdit {
+				t.Errorf("expected canEdit=true for overridden model")
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("gpt-4o not found in registry models")
+	}
+
+	// Verify /v1/models reflects the override
+	req = httptest.NewRequest("GET", "/v1/models", nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	var v1Resp struct {
+		Data []struct {
+			ID            string `json:"id"`
+			DisplayName   string `json:"display_name"`
+			ContextLength int    `json:"context_length"`
+			MaxOutput     int    `json:"max_output_tokens"`
+		} `json:"data"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &v1Resp)
+	var v1Found bool
+	for _, m := range v1Resp.Data {
+		if m.ID == "openai/gpt-4o" {
+			v1Found = true
+			if m.DisplayName != "GPT-4o Custom" {
+				t.Errorf("v1/models expected display_name 'GPT-4o Custom', got %q", m.DisplayName)
+			}
+			if m.ContextLength != 128000 {
+				t.Errorf("v1/models expected context_length 128000, got %d", m.ContextLength)
+			}
+			break
+		}
+	}
+	if !v1Found {
+		t.Fatalf("openai/gpt-4o not found in v1/models")
+	}
+
+	// Reset meta override
+	resetBody := `{"id":"gpt-4o"}`
+	req = httptest.NewRequest("DELETE", "/api/providers/meta-conn/models/meta", strings.NewReader(resetBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 resetting meta, got %d", w.Code)
+	}
+}

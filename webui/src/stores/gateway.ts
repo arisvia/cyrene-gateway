@@ -291,6 +291,13 @@ function createGatewayStore() {
     return apiDelete(`/api/providers/${id}/models`, { id: modelId })
   }
 
+  async function saveProviderModelMeta(id: string, meta: { id: string; displayName?: string; contextLength?: number; maxOutputTokens?: number }) {
+    return apiPost(`/api/providers/${id}/models/meta`, meta)
+  }
+
+  async function resetProviderModelMeta(id: string, modelId: string) {
+    return apiDelete(`/api/providers/${id}/models/meta`, { id: modelId })
+  }
   // ── OAuth 流程 ──
   // authorize 后端只注册 GET（用 POST 会 405）；device-code 为 POST
   async function oauthStart(providerId: string, mode: 'authorize' | 'device-code', extra: Record<string, any> = {}) {
@@ -359,6 +366,7 @@ function createGatewayStore() {
     saveSettings, setPassword,
     updateProvider, testCredentials, testBatch, refreshModels,
     loadProviderModels, addProviderModel, deleteProviderModel,
+    saveProviderModelMeta, resetProviderModelMeta,
     oauthStart, oauthPoll, oauthImport, oauthStatus, oauthRefresh,
     loadNodes, saveNode, deleteNode,
     loadDisabledModels, setModelDisabled,

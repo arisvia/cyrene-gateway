@@ -116,8 +116,12 @@ func qoderAesEncryptCBCBase64(plaintext, key []byte) (string, error) {
 	return base64.StdEncoding.EncodeToString(encrypted), nil
 }
 
-func qoderRSAEncryptBase64(data []byte) (string, error) {
-	block, _ := pem.Decode([]byte(qoderRSAPublicKeyPEM))
+func qoderRSAEncryptBase64(data []byte, customPEM string) (string, error) {
+	pemStr := qoderRSAPublicKeyPEM
+	if customPEM != "" {
+		pemStr = customPEM
+	}
+	block, _ := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return "", fmt.Errorf("failed to parse RSA public key PEM")
 	}
@@ -156,11 +160,13 @@ func qoderComputeSigPath(requestURL string) string {
 
 // QoderCosyCreds holds the credentials needed for COSY signing.
 type QoderCosyCreds struct {
-	UserID    string
-	AuthToken string
-	Name      string
-	Email     string
-	MachineID string
+	UserID       string
+	AuthToken    string
+	Name         string
+	Email        string
+	MachineID    string
+	IDEVersion   string
+	PublicKeyPEM string
 }
 
 // BuildQoderCosyHeaders builds the full Cosy-* header set for a Qoder request.
@@ -185,23 +191,25 @@ func BuildQoderCosyHeaders(body []byte, requestURL string, creds QoderCosyCreds)
 	if err != nil {
 		return nil, fmt.Errorf("cosy: AES encrypt failed: %w", err)
 	}
-	cosyKeyB64, err := qoderRSAEncryptBase64(aesKey)
+	cosyKeyB64, err := qoderRSAEncryptBase64(aesKey, creds.PublicKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("cosy: RSA encrypt failed: %w", err)
 	}
-
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	requestID := uuid.New().String()
 
+	cosyVer := qoderIDEVersion
+	if creds.IDEVersion != "" {
+		cosyVer = creds.IDEVersion
+	}
 	payloadJSON, _ := json.Marshal(map[string]string{
 		"version":     "v1",
 		"requestId":   requestID,
 		"info":        infoB64,
-		"cosyVersion": qoderIDEVersion,
+		"cosyVersion": cosyVer,
 		"ideVersion":  "",
 	})
 	payloadB64 := base64.StdEncoding.EncodeToString(payloadJSON)
-
 	sigPath := qoderComputeSigPath(requestURL)
 	sigInput := payloadB64 + "\n" + cosyKeyB64 + "\n" + timestamp + "\n" + string(body) + "\n" + sigPath
 	sig := qoderMD5Hex([]byte(sigInput))
@@ -218,7 +226,7 @@ func BuildQoderCosyHeaders(body []byte, requestURL string, creds QoderCosyCreds)
 		"Cosy-Key":               cosyKeyB64,
 		"Cosy-User":              creds.UserID,
 		"Cosy-Date":              timestamp,
-		"Cosy-Version":           qoderIDEVersion,
+		"Cosy-Version":           cosyVer,
 		"Cosy-Machineid":         machineID,
 		"Cosy-Machinetoken":      machineID,
 		"Cosy-Machinetype":       qoderMachineType,

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -96,6 +97,11 @@ func ClearSession(state string) {
 func GetProviderFlowType(providerID string) OAuthFlowType {
 	info, ok := Registry[providerID]
 	if !ok {
+		return ""
+	}
+	// Only providers with oauth authType or oauth in AuthModes support OAuth flows.
+	isOAuth := info.AuthType == "oauth" || slices.Contains(info.AuthModes, "oauth")
+	if !isOAuth {
 		return ""
 	}
 	if info.DeviceCodeURL != "" {

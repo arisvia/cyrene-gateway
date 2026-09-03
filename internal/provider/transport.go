@@ -86,14 +86,29 @@ func (c Credentials) token() string {
 // with the format the caller selected for translation.
 func ResolveTransport(p ProviderInfo, baseURL, apiType string, conn *model.ProviderConnection) Transport {
 	creds := credentialsFromConn(conn)
+	// Clone default registry headers
+	headers := make(map[string]string, len(p.Headers))
+	for k, v := range p.Headers {
+		headers[k] = v
+	}
+	// Apply connection-level custom header overrides (e.g. updated version headers)
+	if conn != nil && conn.Data.ProviderSpecificData != nil {
+		if customHeaders, ok := conn.Data.ProviderSpecificData["customHeaders"].(map[string]any); ok {
+			for k, v := range customHeaders {
+				if strVal, ok := v.(string); ok && strVal != "" {
+					headers[k] = strVal
+				}
+			}
+		}
+	}
+
 	t := Transport{
 		BaseURL: baseURL,
 		Format:  apiType,
-		Headers: p.Headers,
+		Headers: headers,
 		// Default: derive auth from the effective format + credential type.
 		Auth: deriveAuthDescriptor(apiType, creds),
 	}
-
 	// Explicit registry transport config applies only when the request follows
 	// the provider's primary path (no auth-mode base URL override, no user base
 	// URL). This is what makes dual-auth work: kimi's OAuth path keeps its
