@@ -1,7 +1,8 @@
-import { type Component, For, Show, createSignal, createMemo, onMount } from 'solid-js'
+import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, ProviderAvatar } from '@/components/ui'
+import { apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, RegistryProvider, BadgeTone } from '@/types/domain'
 
@@ -178,9 +179,47 @@ const Providers: Component = () => {
   // 选中的区域版本 (brandKey -> provider.id)
   const [selectedVariants, setSelectedVariants] = createSignal<Record<string, string>>({})
 
+  // 向导中测试凭证状态与验证通过标记
+  const [testingCreds, setTestingCreds] = createSignal(false)
+  const [testedCreds, setTestedCreds] = createSignal<{ ok: boolean; msg: string } | null>(null)
+
+  // 向导直连 OAuth 流程状态
+  const [wizardOAuthFlow, setWizardOAuthFlow] = createSignal<{
+    verificationUri: string
+    verificationUriComplete?: string
+    userCode?: string
+    deviceCode?: string
+    nonce?: string
+    codeVerifier?: string
+    machineId?: string
+    expiresIn?: number
+    interval?: number
+  } | null>(null)
+  const [wizardOAuthPolling, setWizardOAuthPolling] = createSignal(false)
+  const [wizardOAuthError, setWizardOAuthError] = createSignal('')
+  const [wizardOAuthCopied, setWizardOAuthCopied] = createSignal(false)
+  let wizardPollTimer: ReturnType<typeof setInterval> | undefined
+
+  onCleanup(() => {
+    if (wizardPollTimer) clearInterval(wizardPollTimer)
+  })
+
+  function cancelWizardOAuth() {
+    if (wizardPollTimer) {
+      clearInterval(wizardPollTimer)
+      wizardPollTimer = undefined
+    }
+    setWizardOAuthPolling(false)
+    setWizardOAuthFlow(null)
+    setWizardOAuthError('')
+  }
+
   // 打开添加向导
   function openWizard(reg: RegistryProvider) {
+    cancelWizardOAuth()
     setSelectedReg(reg)
+    setTestedCreds(null)
+    setTestingCreds(false)
     const isOpencode = reg.id === 'opencode'
     const defaultAuth = isOpencode ? 'none' : (reg.authType === 'oauth' ? 'oauth' : 'api-key')
     setForm({
@@ -192,6 +231,7 @@ const Providers: Component = () => {
     })
     setWizardOpen(true)
   }
+
   // 一键接入免密提供商（仅 OpenCode 原生支持完全免密免鉴权调用公共模型）
   async function quickEnableFree(reg: RegistryProvider) {
     if (reg.id !== 'opencode') {
@@ -221,25 +261,146 @@ const Providers: Component = () => {
     }
   }
 
-  // 提交向导表单
-  async function handleWizardSubmit() {
+  // 向导中测试 API Key / 凭据有效性
+  async function handleTestWizardCreds() {
     const reg = selectedReg()
     if (!reg) return
-
     const f = form()
     const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
     if (isCustom && !f.baseUrl.trim()) {
       toast.error('通用自定义接口必须填写有效的 Base URL 端点')
       return
     }
-    const normAuth = f.authType === 'apikey' ? 'api-key' : f.authType
-    if (normAuth === 'api-key' && !f.apiKey.trim()) {
-      toast.error('请填写 API Key')
+    if (!f.apiKey.trim()) {
+      toast.error('请先输入要验证的 API Key / 访问凭证')
       return
     }
+
+    setTestingCreds(true)
+    setTestedCreds(null)
+    try {
+      const res = (await apiPost('/api/providers/test-credentials', {
+        provider: reg.id,
+        apiKey: f.apiKey.trim(),
+        baseUrl: f.baseUrl.trim() || undefined,
+      })) as { ok: boolean; error?: string; latency?: string }
+
+      if (res.ok) {
+        setTestedCreds({ ok: true, msg: `验证通过 (${res.latency || '正常'})` })
+        toast.success(`凭据测试成功！延时: ${res.latency || '正常'}`)
+      } else {
+        setTestedCreds({ ok: false, msg: res.error || '验证失败，请检查密钥或端点' })
+        toast.error(`验证失败: ${res.error || '上游响应错误'}`)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setTestedCreds({ ok: false, msg })
+      toast.error(`测试连接异常: ${msg}`)
+    } finally {
+      setTestingCreds(false)
+    }
+  }
+
+  // 启动向导中的直接 OAuth 授权流程
+  async function startWizardOAuth() {
+    const reg = selectedReg()
+    if (!reg) return
+    setWizardOAuthError('')
+    setWizardOAuthPolling(true)
+    try {
+      const res = (await apiPost(`/api/oauth/${reg.id}/device-code`)) as {
+        verificationUri: string
+        verificationUriComplete?: string
+        userCode?: string
+        deviceCode?: string
+        nonce?: string
+        codeVerifier?: string
+        machineId?: string
+        expiresIn?: number
+        interval?: number
+      }
+      setWizardOAuthFlow(res)
+      const targetUrl = res.verificationUriComplete || res.verificationUri
+      if (targetUrl) {
+        window.open(targetUrl, '_blank')
+      }
+
+      if (wizardPollTimer) clearInterval(wizardPollTimer)
+      const intervalMs = res.interval ? res.interval * 1000 : 2500
+      wizardPollTimer = setInterval(async () => {
+        try {
+          const pollRes = (await apiPost(`/api/oauth/${reg.id}/device-code/poll`, {
+            deviceCode: res.deviceCode,
+            nonce: res.nonce,
+            codeVerifier: res.codeVerifier,
+            machineId: res.machineId,
+          })) as { success?: boolean; error?: string; pending?: boolean; connection?: any }
+
+          if (pollRes?.success) {
+            clearInterval(wizardPollTimer)
+            wizardPollTimer = undefined
+            setWizardOAuthPolling(false)
+            setWizardOAuthFlow(null)
+            toast.success(`✓ ${reg.name} OAuth 授权成功！连接已自动建立。`)
+            setWizardOpen(false)
+            setActiveTab('connections')
+            await store.loadProvidersOnly()
+          } else if (pollRes?.error && !pollRes?.pending) {
+            clearInterval(wizardPollTimer)
+            wizardPollTimer = undefined
+            setWizardOAuthPolling(false)
+            setWizardOAuthError(pollRes.error)
+          }
+        } catch {
+          // 忽略轮询偶发错误
+        }
+      }, intervalMs)
+    } catch (e: unknown) {
+      setWizardOAuthPolling(false)
+      setWizardOAuthError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  // 提交向导表单
+  async function handleWizardSubmit() {
+    const reg = selectedReg()
+    if (!reg) return
+
+    const f = form()
+    const normAuth = f.authType === 'apikey' ? 'api-key' : f.authType
+
+    // 若是 OAuth 模式，直接点击即发起授权，不预存空账号
+    if (normAuth === 'oauth') {
+      await startWizardOAuth()
+      return
+    }
+
+    const isOpencode = reg.id === 'opencode'
+    if (normAuth === 'none') {
+      if (!isOpencode) {
+        toast.error('该提供商不支持免密模式')
+        return
+      }
+    } else if (normAuth === 'api-key') {
+      const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
+      if (isCustom && !f.baseUrl.trim()) {
+        toast.error('通用自定义接口必须填写有效的 Base URL 端点')
+        return
+      }
+      if (!f.apiKey.trim()) {
+        toast.error('请填写 API Key')
+        return
+      }
+      // 必须通过凭证测试才允许保存
+      if (!testedCreds() || !testedCreds()!.ok) {
+        toast.error('请先点击右侧「测试连接」验证凭据可用性，验证通过后方可接入')
+        return
+      }
+    }
+
     setSaving(true)
     try {
-      const created = await store.addProvider({
+      await store.addProvider({
         provider: reg.id,
         authType: normAuth,
         name: f.name || reg.name,
@@ -253,15 +414,6 @@ const Providers: Component = () => {
       setWizardOpen(false)
       setActiveTab('connections')
       await store.loadProvidersOnly()
-
-      // 若接入的是 OAuth 渠道，自动直接引导进入授权界面
-      if (normAuth === 'oauth') {
-        const id = created && typeof created === 'object' && 'id' in created ? (created as any).id : null
-        if (id) {
-          toast.info('正在前往授权管理界面完成登录授权...')
-          window.location.href = `#/providers/${id}?tab=oauth`
-        }
-      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       toast.error(`接入失败: ${msg}`)
@@ -270,7 +422,6 @@ const Providers: Component = () => {
       setSaving(false)
     }
   }
-
   // 测试连接健康度
   async function handleTest(p: Provider) {
     setTesting(p.id)
@@ -841,25 +992,100 @@ const Providers: Component = () => {
                   </Field>
                 </Show>
                 <Show when={form().authType === 'api-key' || form().authType === 'apikey'}>
-                  <Field label="API Key / 凭据" hint={reg().authHint || "凭证安全存储于服务端并进行掩码处理"}>
-                    <Input
-                      type="password"
-                      value={form().apiKey}
-                      placeholder={reg().authHint?.includes('pt-') ? "pt-... (Personal Access Token)" : "sk-..."}
-                      onInput={v => setForm(f => ({ ...f, apiKey: v }))}
-                    />
-                  </Field>
+                  <div class="space-y-2">
+                    <Field label="API Key / 访问凭据" hint={reg().authHint || "凭证安全存储于服务端并进行掩码处理"}>
+                      <div class="flex items-center gap-2">
+                        <div class="flex-1">
+                          <Input
+                            type="password"
+                            value={form().apiKey}
+                            placeholder={reg().authHint?.includes('pt-') ? "pt-... (Personal Access Token)" : "sk-..."}
+                            onInput={v => {
+                              setForm(f => ({ ...f, apiKey: v }))
+                              setTestedCreds(null)
+                            }}
+                          />
+                        </div>
+                        <Button
+                          size="md"
+                          variant="secondary"
+                          loading={testingCreds()}
+                          disabled={!form().apiKey.trim()}
+                          onClick={handleTestWizardCreds}
+                        >
+                          测试连接
+                        </Button>
+                      </div>
+                    </Field>
+                    <Show when={testedCreds()}>
+                      {res => (
+                        <div class={`text-xs px-3 py-1.5 rounded-control flex items-center justify-between ${
+                          res().ok ? 'bg-success/10 text-success border border-success/20' : 'bg-danger/10 text-danger border border-danger/20'
+                        }`}>
+                          <span>{res().ok ? `✓ ${res().msg}` : `✕ ${res().msg}`}</span>
+                          <span class="text-[11px] opacity-75">{res().ok ? '凭据有效，允许保存' : '请核对凭证与网络端点'}</span>
+                        </div>
+                      )}
+                    </Show>
+                  </div>
                 </Show>
 
-                {/* OAuth 模式说明 */}
+                {/* OAuth 模式说明与直接授权发起 */}
                 <Show when={form().authType === 'oauth'}>
-                  <div class="p-3.5 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-1.5 shadow-sm">
-                    <div class="font-medium text-accent flex items-center gap-1.5">
-                      <span>✓</span> 已选择 OAuth 快捷授权模式
-                    </div>
-                    <p class="text-faint leading-relaxed">
-                      接入完成后将直接引导您前往<strong>「授权管理」</strong>界面，支持<strong>浏览器一键授权 / 设备码快速登录</strong>，无需手动填写复杂密钥。
-                    </p>
+                  <div class="space-y-3">
+                    <Show
+                      when={wizardOAuthFlow()}
+                      fallback={
+                        <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
+                          <div class="font-medium text-accent flex items-center gap-1.5">
+                            <span>✓</span> 已选择 OAuth 快捷授权模式
+                          </div>
+                          <p class="text-faint leading-relaxed">
+                            点击下方「发起 OAuth 授权」后将直接呼出浏览器授权弹窗与设备码，<strong>在第三方平台成功授权通过后才保存连接</strong>，免去繁琐的密钥配置。
+                          </p>
+                        </div>
+                      }
+                    >
+                      {flow => (
+                        <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3 text-center">
+                          <div class="text-xs font-semibold text-accent">正在进行 OAuth 设备码授权</div>
+                          <div class="text-xs text-faint">请在新打开的页面中输入下方验证码完成授权：</div>
+                          <div class="flex items-center justify-center gap-2">
+                            <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
+                              {flow().userCode || '------'}
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                if (flow().userCode) {
+                                  navigator.clipboard.writeText(flow().userCode!)
+                                  setWizardOAuthCopied(true)
+                                  setTimeout(() => setWizardOAuthCopied(false), 2000)
+                                }
+                              }}
+                            >
+                              {wizardOAuthCopied() ? '已复制' : '复制码'}
+                            </Button>
+                          </div>
+                          <div class="text-[11px] text-faint break-all bg-bg/80 p-2 rounded border border-subtle">
+                            {flow().verificationUriComplete || flow().verificationUri}
+                          </div>
+                          <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
+                            <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
+                            <span>等待浏览器授权完成... 授权成功将自动保存</span>
+                          </div>
+                          <Show when={wizardOAuthError()}>
+                            <div class="text-xs text-danger">{wizardOAuthError()}</div>
+                          </Show>
+                          <div class="pt-2 flex justify-center">
+                            <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
+                              取消当前授权
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </Show>
                   </div>
                 </Show>
 
@@ -891,11 +1117,18 @@ const Providers: Component = () => {
                   </Field>
                 </div>
                 <div class="pt-3 border-t border-subtle flex justify-end gap-2.5">
-                  <Button variant="secondary" onClick={() => setWizardOpen(false)}>
+                  <Button variant="secondary" onClick={() => { cancelWizardOAuth(); setWizardOpen(false) }}>
                     取消
                   </Button>
-                  <Button variant="primary" loading={saving()} onClick={handleWizardSubmit}>
-                    {isFree() ? '立即接入' : '保存并接入'}
+                  <Button
+                    variant="primary"
+                    loading={saving() || wizardOAuthPolling()}
+                    disabled={
+                      (form().authType === 'api-key' || form().authType === 'apikey') && (!testedCreds() || !testedCreds()!.ok)
+                    }
+                    onClick={handleWizardSubmit}
+                  >
+                    {isFree() ? '立即接入' : form().authType === 'oauth' ? (wizardOAuthPolling() ? '正在授权中...' : '发起 OAuth 授权 ↗') : '验证并通过后保存'}
                   </Button>
                 </div>
               </div>

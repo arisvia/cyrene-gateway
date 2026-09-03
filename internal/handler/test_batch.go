@@ -229,13 +229,19 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
 	default:
-		// For OpenAI-compatible providers, test via the models endpoint.
-		// Full endpoint URLs (e.g. .../v1/chat/completions) are stripped first.
-		targetURL = provider.BuildModelsURL(baseURL)
-		if transport.URLSuffix != "" {
-			targetURL = strings.TrimRight(baseURL, "/") + transport.URLSuffix
+		if conn.Provider == "qoder" {
+			// Qoder uses COSY /api/v1/models/chat or catalog with PAT
+			targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
+			testBody = nil
+		} else {
+			// For OpenAI-compatible providers, test via the models endpoint.
+			// Full endpoint URLs (e.g. .../v1/chat/completions) are stripped first.
+			targetURL = provider.BuildModelsURL(baseURL)
+			if transport.URLSuffix != "" {
+				targetURL = strings.TrimRight(baseURL, "/") + transport.URLSuffix
+			}
+			testBody = nil
 		}
-		testBody = nil
 	}
 
 	var req *http.Request
@@ -270,7 +276,9 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	if err != nil {
 		conn.Data.TestStatus = "error"
 		conn.Data.LastError = err.Error()
-		s.DB.UpdateConnection(conn)
+		if conn.ID != "" {
+			s.DB.UpdateConnection(conn)
+		}
 		return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
 	}
 	defer resp.Body.Close()
@@ -278,12 +286,16 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		provider.ResetAccountState(conn)
-		s.DB.UpdateConnection(conn)
+		if conn.ID != "" {
+			s.DB.UpdateConnection(conn)
+		}
 		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
 	}
 
 	conn.Data.TestStatus = "error"
 	conn.Data.LastError = "HTTP " + fmt.Sprintf("%d", resp.StatusCode)
-	s.DB.UpdateConnection(conn)
+	if conn.ID != "" {
+		s.DB.UpdateConnection(conn)
+	}
 	return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: "HTTP " + fmt.Sprintf("%d", resp.StatusCode)}
 }
