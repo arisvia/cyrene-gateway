@@ -156,7 +156,7 @@ func TestRegistryDualAuth(t *testing.T) {
 			if m == "oauth" {
 				hasOAuth = true
 			}
-			if m == "apikey" {
+			if m == "apikey" || m == "api-key" {
 				hasAPIKey = true
 			}
 		}

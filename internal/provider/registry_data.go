@@ -83,7 +83,7 @@ func init() {
 		APIType: "anthropic", AuthType: "oauth",
 		// Phase 36 T4: dual-auth (OAuth preferred, API key fallback —
 		// same selection pattern as xai/kimi).
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 10,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 10,
 		Color:        "#D97757",
 		Website:      "https://claude.ai",
 		Icon:         "smart_toy",
@@ -97,7 +97,7 @@ func init() {
 		Alias: "cbcn", Aliases: []string{"cbcn"},
 		BaseURL: "https://copilot.tencent.com/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 90,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 90,
 		Brand: "CodeBuddy", Region: "cn",
 		Color:    "#006EFF",
 		Website:  "https://copilot.tencent.com",
@@ -119,7 +119,7 @@ func init() {
 		Alias: "cbai", Aliases: []string{"cbai"},
 		BaseURL: "https://www.codebuddy.ai/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 90,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 90,
 		Brand: "CodeBuddy", Region: "intl",
 		Color:    "#006EFF",
 		Website:  "https://www.codebuddy.ai",
@@ -142,7 +142,7 @@ func init() {
 		Alias: "cx", Aliases: []string{"cx"},
 		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
 		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 30,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
 		Color:        "#3B82F6",
 		Website:      "https://chatgpt.com/codex",
 		Icon:         "code",
@@ -282,7 +282,7 @@ func init() {
 		Alias: "kimi", Aliases: []string{"kimi", "kimi-coding", "kmc"},
 		BaseURL: "https://api.kimi.com/coding/v1/messages",
 		APIType: "anthropic", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 170,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 170,
 		Color:         "#1E3A8A",
 		Website:       "https://kimi.moonshot.cn",
 		Icon:          "psychology",
@@ -405,7 +405,7 @@ func init() {
 		// Phase 36 T5 (9router@9c9dd7b1): re-enabled OAuth + PAT (apikey)
 		// auth. PATs (pt-...) are exchanged for short-lived job tokens before
 		// COSY signing.
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 30,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
 		Color:         "#EC4899",
 		Website:       "https://qoder.com",
 		Icon:          "water_drop",
@@ -442,7 +442,7 @@ func init() {
 		Alias: "xai", Aliases: []string{"xai"},
 		BaseURL: "https://api.x.ai/v1/chat/completions",
 		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "apikey"}, Priority: 280,
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 280,
 		Color:        "#1DA1F2",
 		Website:      "https://x.ai",
 		Icon:         "auto_awesome",

@@ -16,11 +16,11 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 const AUTHTYPE_LABEL: Record<string, string> = {
   'api-key': 'API Key',
-  oauth: 'OAuth',
+  apikey: 'API Key',
+  oauth: 'OAuth 授权',
   none: '免认证',
   cookie: 'Cookie',
 }
-
 const Providers: Component = () => {
   const store = useGatewayStore()
   const toast = useToast()
@@ -40,6 +40,7 @@ const Providers: Component = () => {
     authType: 'api-key',
     apiKey: '',
     baseUrl: '',
+    priority: '50',
   })
   const [saving, setSaving] = createSignal(false)
   const [refreshing, setRefreshing] = createSignal(false)
@@ -58,17 +59,67 @@ const Providers: Component = () => {
     store.registryList().find(r => r.id === id)
 
   // 过滤后的已接入连接
-  const filteredConnections = createMemo(() => {
+  // 过滤与聚合后的已接入供应商列表（以 Provider 为唯一主体聚合多账号）
+  interface ProviderConnectionGroup {
+    providerId: string
+    providerName: string
+    color?: string
+    category: string
+    connections: Provider[]
+    activeCount: number
+    primaryConnectionId: string
+  }
+
+  const groupedConnections = createMemo<ProviderConnectionGroup[]>(() => {
     const q = query().toLowerCase().trim()
-    return store.providers().filter(p => {
-      if (catFilter() && p.authType !== catFilter()) return false
-      if (!q) return true
-      return (
-        (p.name || '').toLowerCase().includes(q) ||
-        p.provider.toLowerCase().includes(q) ||
-        (p.email || '').toLowerCase().includes(q)
-      )
-    })
+    const cat = catFilter()
+    const all = store.providers()
+
+    // 按 Provider 标识聚合账号
+    const map: Record<string, Provider[]> = {}
+    for (const p of all) {
+      if (!map[p.provider]) map[p.provider] = []
+      map[p.provider].push(p)
+    }
+
+    const groups: ProviderConnectionGroup[] = []
+    for (const [providerId, conns] of Object.entries(map)) {
+      const reg = registryFor(providerId)
+      // 组内账号按优先级升序排序（数值小者优先调度）
+      conns.sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
+
+      const providerName = reg?.name || conns[0]?.name || providerId
+      const category = reg?.category || conns[0]?.authType || 'apikey'
+      const activeCount = conns.filter(c => c.isActive).length
+
+      if (cat) {
+        const matchesCat = conns.some(c => c.authType === cat || (cat === 'api-key' && c.authType === 'apikey')) || category === cat
+        if (!matchesCat) continue
+      }
+
+      if (q) {
+        const matchProvider = providerName.toLowerCase().includes(q) || providerId.toLowerCase().includes(q)
+        const matchConns = conns.some(c =>
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.email || '').toLowerCase().includes(q) ||
+          c.id.toLowerCase().includes(q),
+        )
+        if (!matchProvider && !matchConns) continue
+      }
+
+      groups.push({
+        providerId,
+        providerName,
+        color: reg?.color,
+        category,
+        connections: conns,
+        activeCount,
+        primaryConnectionId: conns[0].id,
+      })
+    }
+
+    // 按活跃账号数与名称排序
+    return groups.sort((a, b) => b.activeCount - a.activeCount || a.providerName.localeCompare(b.providerName))
   })
 
   // 按品牌归集或单例展示的市场提供商列表
@@ -121,12 +172,14 @@ const Providers: Component = () => {
   // 打开添加向导
   function openWizard(reg: RegistryProvider) {
     setSelectedReg(reg)
-    const defaultAuth = reg.noAuth || reg.category === 'free' ? 'none' : (reg.authType || 'api-key')
+    const rawAuth = reg.noAuth || reg.category === 'free' ? 'none' : (reg.authType || 'api-key')
+    const defaultAuth = rawAuth === 'apikey' ? 'api-key' : rawAuth
     setForm({
       name: reg.name,
       authType: defaultAuth,
       apiKey: '',
       baseUrl: reg.baseUrl || '',
+      priority: String(reg.priority ?? 50),
     })
     setWizardOpen(true)
   }
@@ -161,17 +214,19 @@ const Providers: Component = () => {
     if (!reg) return
 
     const f = form()
-    if (f.authType === 'api-key' && !f.apiKey.trim()) {
+    const normAuth = f.authType === 'apikey' ? 'api-key' : f.authType
+    if (normAuth === 'api-key' && !f.apiKey.trim()) {
       toast.error('请填写 API Key')
       return
     }
 
     setSaving(true)
     try {
-      await store.addProvider({
+      const created = await store.addProvider({
         provider: reg.id,
-        authType: f.authType,
+        authType: normAuth,
         name: f.name || reg.name,
+        priority: Number(f.priority) || reg.priority || 50,
         data: {
           apiKey: f.apiKey.trim() || undefined,
           baseUrl: f.baseUrl.trim() || undefined,
@@ -181,6 +236,15 @@ const Providers: Component = () => {
       setWizardOpen(false)
       setActiveTab('connections')
       await store.loadProvidersOnly()
+
+      // 若接入的是 OAuth 渠道，自动直接引导进入授权界面
+      if (normAuth === 'oauth') {
+        const id = created && typeof created === 'object' && 'id' in created ? (created as any).id : null
+        if (id) {
+          toast.info('正在前往授权管理界面完成登录授权...')
+          window.location.href = `#/providers/${id}?tab=oauth`
+        }
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       toast.error(`接入失败: ${msg}`)
@@ -313,7 +377,7 @@ const Providers: Component = () => {
 
           <div class="flex items-center gap-3 text-xs text-faint">
             <span class="hidden sm:inline">
-              匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? filteredConnections().length : brandGroups().length}</strong> 项
+              匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? groupedConnections().length : brandGroups().length}</strong> 个{activeTab() === 'connections' ? '供应商' : '项目'}
             </span>
             <Button size="sm" variant="secondary" loading={refreshing()} onClick={handleRefreshAll}>
               刷新
@@ -360,99 +424,173 @@ const Providers: Component = () => {
             </Card>
           }
         >
-          <div class="grid gap-3">
-            <For each={filteredConnections()}>
-              {p => {
-                const reg = () => registryFor(p.provider)
-                const cooling = () => !!p.data?.rateLimitedUntil
-                const test = () => testResult()?.id === p.id ? testResult() : null
+          <div class="grid gap-4">
+            <For each={groupedConnections()}>
+              {group => {
+                const reg = () => registryFor(group.providerId)
+                const hasMultiple = () => group.connections.length > 1
+                const allActive = () => group.activeCount === group.connections.length
+                const noneActive = () => group.activeCount === 0
 
                 return (
-                  <Card hover class="p-4 group">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      {/* 左侧：图标 + 标题与标签 */}
-                      <div class="flex items-start sm:items-center gap-3.5 min-w-0">
-                        <ProviderAvatar
-                          provider={p.provider}
-                          name={p.name}
-                          color={reg()?.color}
-                          size="lg"
-                        />
-
-                        <div class="min-w-0 space-y-1">
-                          <div class="flex items-center gap-2 flex-wrap">
-                            <A
-                              href={`/providers/${p.id}`}
-                              class="font-semibold text-sm hover:text-accent transition-colors truncate max-w-xs"
-                            >
-                              {p.name || p.provider}
-                            </A>
-                            <Badge tone={p.isActive ? 'green' : 'gray'}>
-                              {p.isActive ? '已启用' : '已停用'}
-                            </Badge>
-                            <Badge tone="blue">
-                              {AUTHTYPE_LABEL[p.authType] || p.authType}
-                            </Badge>
-                            <Show when={p.data?.hasApiKey !== undefined}>
-                              <Badge tone={p.data?.hasApiKey ? 'green' : 'amber'}>
-                                {p.data?.hasApiKey ? '已配置凭证' : '缺凭证'}
+                  <Card hover class="p-5 group border border-subtle/80 bg-bg-elevated/70 shadow-sm transition-all hover:border-accent/40">
+                    <div class="flex flex-col gap-4">
+                      {/* 头部：供应商图标、名称、状态 Badge 与快速动作 */}
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-subtle/50">
+                        <div class="flex items-center gap-3.5 min-w-0">
+                          <ProviderAvatar
+                            provider={group.providerId}
+                            name={group.providerName}
+                            color={group.color}
+                            size="lg"
+                          />
+                          <div class="min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                              <A
+                                href={`/providers/${group.primaryConnectionId}`}
+                                class="font-semibold text-base text-foreground hover:text-accent transition-colors truncate"
+                              >
+                                {group.providerName}
+                              </A>
+                              <Badge tone={allActive() ? 'green' : noneActive() ? 'gray' : 'amber'}>
+                                {allActive() ? '全部启用' : noneActive() ? '全部停用' : `部分启用 (${group.activeCount}/${group.connections.length})`}
                               </Badge>
-                            </Show>
-                            <Show when={cooling()}>
-                              <Badge tone="amber">限流冷却中</Badge>
-                            </Show>
+                              <Badge tone="blue">
+                                {group.connections.length} 个账号接入
+                              </Badge>
+                              <Show when={hasMultiple()}>
+                                <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                                  已就绪故障转移 (Fallback)
+                                </Badge>
+                              </Show>
+                            </div>
+                            <div class="text-xs text-faint flex items-center gap-2 mt-1 font-mono">
+                              <span>ID: {group.providerId}</span>
+                              <span>·</span>
+                              <span>分类: {CATEGORY_LABEL[group.category] || group.category}</span>
+                            </div>
                           </div>
+                        </div>
 
-                          <div class="text-xs text-faint flex items-center gap-2 flex-wrap font-mono">
-                            <span>{p.provider}</span>
-                            <span>·</span>
-                            <span>优先级 {p.priority}</span>
-                            <Show when={p.email}>
-                              <span>·</span>
-                              <span>{p.email}</span>
-                            </Show>
-                            <Show when={test()}>
-                              <span>·</span>
-                              <span class={test()!.ok ? 'text-success font-medium' : 'text-danger font-medium'}>
-                                {test()!.msg}
-                              </span>
-                            </Show>
-                          </div>
+                        {/* 供应商级别操作 */}
+                        <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                          <Show when={reg()}>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openWizard(reg()!)}
+                              title="为此供应商添加备用账号（支持 API Key 或 OAuth）"
+                            >
+                              + 加账号
+                            </Button>
+                          </Show>
+                          <A href={`/providers/${group.primaryConnectionId}`}>
+                            <Button size="sm" variant="primary">
+                              管理配置与账号 →
+                            </Button>
+                          </A>
                         </div>
                       </div>
 
-                      {/* 右侧：动作控制区 */}
-                      <div class="flex items-center gap-2.5 self-end sm:self-center shrink-0">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={testing() === p.id}
-                          onClick={() => handleTest(p)}
-                        >
-                          测试连通
-                        </Button>
-                        <A href={`/providers/${p.id}`}>
-                          <Button size="sm" variant="secondary">
-                            配置
-                          </Button>
-                        </A>
-                        <Toggle
-                          checked={p.isActive}
-                          onChange={async () => {
-                            await store.toggleProvider(p)
-                          }}
-                        />
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={async () => {
-                            if (confirm(`确定要删除连接「${p.name || p.provider}」吗？`)) {
-                              await store.deleteProvider(p)
-                            }
-                          }}
-                        >
-                          删除
-                        </Button>
+                      {/* 内部：该供应商名下的所有账号/节点列表 */}
+                      <div class="space-y-2">
+                        <div class="text-xs text-faint flex items-center justify-between font-medium px-1">
+                          <span>已绑定的账号 / 凭证列表（按调度优先级升序排序）</span>
+                          <span class="text-[11px] opacity-70">高优先级优先调度，限流时自动 Fallback 转移</span>
+                        </div>
+                        <div class="grid gap-2">
+                          <For each={group.connections}>
+                            {(p, idx) => {
+                              const cooling = () => !!p.data?.rateLimitedUntil
+                              const test = () => testResult()?.id === p.id ? testResult() : null
+
+                              return (
+                                <div class={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border transition-colors ${
+                                  p.isActive ? 'bg-hover/60 border-subtle' : 'bg-bg-elevated/30 border-subtle/40 opacity-60'
+                                }`}>
+                                  <div class="flex items-center gap-3 min-w-0">
+                                    <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-bg border border-subtle shrink-0">
+                                      #{idx() + 1}
+                                    </span>
+                                    <div class="min-w-0">
+                                      <div class="flex items-center gap-2 flex-wrap">
+                                        <A
+                                          href={`/providers/${p.id}`}
+                                          class="text-xs font-semibold hover:text-accent transition-colors truncate"
+                                        >
+                                          {p.name || p.provider}
+                                        </A>
+                                        <Badge tone="blue" class="text-[10px] px-1.5 py-0">
+                                          {AUTHTYPE_LABEL[p.authType] || p.authType}
+                                        </Badge>
+                                        <Show when={p.data?.hasApiKey !== undefined}>
+                                          <Badge tone={p.data?.hasApiKey ? 'green' : 'amber'} class="text-[10px] px-1.5 py-0">
+                                            {p.data?.hasApiKey ? '已配置凭证' : '缺凭证'}
+                                          </Badge>
+                                        </Show>
+                                        <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-bg text-faint border border-subtle">
+                                          优先级 {p.priority} {idx() === 0 ? '(主)' : '(备用)'}
+                                        </span>
+                                        <Show when={cooling()}>
+                                          <Badge tone="amber" class="text-[10px]">限流冷却中</Badge>
+                                        </Show>
+                                      </div>
+                                      <div class="text-[11px] text-faint font-mono mt-0.5 flex items-center gap-2 flex-wrap">
+                                        <Show when={p.email}>
+                                          <span>邮箱: {p.email}</span>
+                                          <span>·</span>
+                                        </Show>
+                                        <Show when={p.data?.credentialHint}>
+                                          <span>凭证: {String(p.data?.credentialHint)}</span>
+                                          <span>·</span>
+                                        </Show>
+                                        <Show when={p.data?.hasApiKey}>
+                                          <span class="text-emerald-400">已配密钥</span>
+                                          <span>·</span>
+                                        </Show>
+                                        <span class="opacity-60">{p.id.slice(0, 8)}...</span>
+                                        <Show when={test()}>
+                                          <span>·</span>
+                                          <span class={test()!.ok ? 'text-success font-medium' : 'text-danger font-medium'}>
+                                            {test()!.msg}
+                                          </span>
+                                        </Show>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                                    <Button
+                                      size="sm"
+                                      variant="secondary"
+                                      loading={testing() === p.id}
+                                      onClick={() => handleTest(p)}
+                                    >
+                                      测试
+                                    </Button>
+                                    <Toggle
+                                      checked={p.isActive}
+                                      onChange={async () => {
+                                        await store.toggleProvider(p)
+                                      }}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="danger"
+                                      onClick={async () => {
+                                        if (confirm(`确定要删除账号「${p.name || p.provider}」吗？`)) {
+                                          await store.deleteProvider(p)
+                                        }
+                                      }}
+                                    >
+                                      删除
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            }}
+                          </For>
+                        </div>
                       </div>
                     </div>
                   </Card>
@@ -650,34 +788,64 @@ const Providers: Component = () => {
                 <Show when={authModes.length > 1}>
                   <Field label="认证方式" hint="该上游支持多种鉴权模式">
                     <Select
-                      value={form().authType}
-                      options={authModes.map(m => ({ value: m, label: AUTHTYPE_LABEL[m] || m }))}
+                      value={form().authType === 'apikey' ? 'api-key' : form().authType}
+                      options={authModes.map(m => {
+                        const norm = m === 'apikey' ? 'api-key' : m
+                        return { value: norm, label: AUTHTYPE_LABEL[norm] || norm }
+                      })}
                       onChange={v => setForm(f => ({ ...f, authType: v }))}
                     />
                   </Field>
                 </Show>
 
                 {/* API Key 模式字段 */}
-                <Show when={form().authType === 'api-key'}>
-                  <Field label="API Key / 凭据" hint="凭证安全存储于服务端并进行掩码处理">
+                <Show when={form().authType === 'api-key' || form().authType === 'apikey'}>
+                  <Field label="API Key / 凭据" hint={reg().authHint || "凭证安全存储于服务端并进行掩码处理"}>
                     <Input
                       type="password"
                       value={form().apiKey}
-                      placeholder="sk-..."
+                      placeholder={reg().authHint?.includes('pt-') ? "pt-... (Personal Access Token)" : "sk-..."}
                       onInput={v => setForm(f => ({ ...f, apiKey: v }))}
                     />
                   </Field>
                 </Show>
 
-                {/* BaseURL 自定义 */}
-                <Field label="自定义 Base URL (可选)" hint="用于中转站、本地代理或私有化部署地址">
-                  <Input
-                    value={form().baseUrl}
-                    placeholder={reg().baseUrl || 'https://...'}
-                    onInput={v => setForm(f => ({ ...f, baseUrl: v }))}
-                  />
-                </Field>
+                {/* OAuth 模式说明 */}
+                <Show when={form().authType === 'oauth'}>
+                  <div class="p-3.5 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-1.5 shadow-sm">
+                    <div class="font-medium text-accent flex items-center gap-1.5">
+                      <span>✓</span> 已选择 OAuth 快捷授权模式
+                    </div>
+                    <p class="text-faint leading-relaxed">
+                      接入完成后将直接引导您前往<strong>「授权管理」</strong>界面，支持<strong>浏览器一键授权 / 设备码快速登录</strong>，无需手动填写复杂密钥。
+                    </p>
+                  </div>
+                </Show>
 
+                {/* 免密模式说明 */}
+                <Show when={form().authType === 'none'}>
+                  <div class="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-foreground space-y-1 shadow-sm">
+                    <div class="font-medium text-emerald-400">✓ 免密体验模式</div>
+                    <p class="text-faint">该上游无需任何密钥凭证，保存后即可开箱即用体验免费公共模型。</p>
+                  </div>
+                </Show>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="调度优先级" hint="数值越小越优先调度">
+                    <Input
+                      type="number"
+                      value={form().priority}
+                      onInput={v => setForm(f => ({ ...f, priority: v }))}
+                    />
+                  </Field>
+                  <Field label="自定义 Base URL (可选)" hint="私有化或中转端点">
+                    <Input
+                      value={form().baseUrl}
+                      placeholder={reg().baseUrl || 'https://...'}
+                      onInput={v => setForm(f => ({ ...f, baseUrl: v }))}
+                    />
+                  </Field>
+                </div>
                 <div class="pt-3 border-t border-subtle flex justify-end gap-2.5">
                   <Button variant="secondary" onClick={() => setWizardOpen(false)}>
                     取消
