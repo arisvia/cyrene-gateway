@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -573,6 +574,38 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 	expiresAt := ""
 	if tokens.ExpiresIn > 0 {
 		expiresAt = time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
+	}
+
+	// Check if an existing connection for the same provider and account (email or displayName) already exists
+	existingConns, err := s.DB.ListConnectionsByProvider(providerID)
+	if err == nil {
+		for _, existing := range existingConns {
+			matchesEmail := tokens.Email != "" && existing.Email == tokens.Email
+			matchesName := tokens.DisplayName != "" && (existing.Name == tokens.DisplayName || existing.Email == tokens.DisplayName)
+			if matchesEmail || matchesName {
+				// Update existing connection's tokens and credentials rather than creating a duplicate
+				existing.Data.AccessToken = tokens.AccessToken
+				if tokens.RefreshToken != "" {
+					existing.Data.RefreshToken = tokens.RefreshToken
+				}
+				if expiresAt != "" {
+					existing.Data.ExpiresAt = expiresAt
+				}
+				existing.Data.TestStatus = "active"
+				if tokens.ProviderSpecificData != nil {
+					if existing.Data.ProviderSpecificData == nil {
+						existing.Data.ProviderSpecificData = make(map[string]any)
+					}
+					for k, v := range tokens.ProviderSpecificData {
+						existing.Data.ProviderSpecificData[k] = v
+					}
+				}
+				if err := s.DB.UpdateConnection(&existing); err == nil {
+					slog.Info("OAuth updated existing connection credentials", slog.String("provider", providerID), slog.String("id", existing.ID), slog.String("email", existing.Email))
+					return &existing
+				}
+			}
+		}
 	}
 
 	conn := &model.ProviderConnection{

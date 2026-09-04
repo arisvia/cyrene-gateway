@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 const (
@@ -98,14 +99,49 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
 
+	// 1. Try /v1internal:models on daily sandbox (9router PROVIDER_MODELS_CONFIG.antigravity)
+	modelsEndpoint := "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:models"
+	reqM, errM := http.NewRequestWithContext(ctx, "POST", modelsEndpoint, bytes.NewReader([]byte("{}")))
+	if errM == nil {
+		reqM.Header.Set("Authorization", "Bearer "+token)
+		reqM.Header.Set("Content-Type", "application/json")
+		if respM, errDo := client.Do(reqM); errDo == nil {
+			defer respM.Body.Close()
+			if respM.StatusCode == http.StatusOK {
+				if b, errR := io.ReadAll(respM.Body); errR == nil {
+					var res struct {
+						Models []struct {
+							ID   string `json:"id"`
+							Name string `json:"name"`
+						} `json:"models"`
+					}
+					if errU := json.Unmarshal(b, &res); errU == nil && len(res.Models) > 0 {
+						var out []model.ModelMetadata
+						for _, m := range res.Models {
+							name := m.Name
+							if name == "" {
+								name = m.ID
+							}
+							out = append(out, model.ModelMetadata{ID: m.ID, DisplayName: name})
+						}
+						return out
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Try /v1internal:fetchAvailableModels
 	endpoints := []string{
 		antigravityBaseURL,
 		antigravityDailyURL,
 	}
 
 	body := map[string]any{
-		"project":  projectID,
 		"metadata": json.RawMessage(antigravityMetadata),
+	}
+	if projectID != "" {
+		body["project"] = projectID
 	}
 	bodyBytes, _ := json.Marshal(body)
 
@@ -175,6 +211,18 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 			}
 			return out
 		}
+	}
+
+	// 3. Fallback to static registered catalog if all remote calls fail (matches 9router behavior)
+	if staticModels := provider.GetRegistryModels("antigravity"); len(staticModels) > 0 {
+		var out []model.ModelMetadata
+		for _, m := range staticModels {
+			out = append(out, model.ModelMetadata{
+				ID:          m.ID,
+				DisplayName: m.Name,
+			})
+		}
+		return out
 	}
 
 	return nil

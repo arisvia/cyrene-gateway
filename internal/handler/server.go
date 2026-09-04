@@ -581,6 +581,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if providerID == "antigravity" {
+		s.tryRefreshToken(&conn)
 		token := conn.Data.AccessToken
 		projectID := ""
 		if conn.Data.ProviderSpecificData != nil {

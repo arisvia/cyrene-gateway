@@ -40,17 +40,20 @@ const Quota: Component = () => {
       ])
       setRows(r?.providers ?? [])
 
-      // 逐连接拉取真实额度（plan/credits/resetAt）；失败静默留空
-      const entries: Record<string, ConnQuota> = {}
-      await Promise.all(conns.map(async c => {
+      // 先让卡片网格渲染出来，真实额度逐个连接异步填充与流式上屏
+      setLoading(false)
+
+      // 逐连接拉取真实额度（plan/credits/resetAt），各连接并行请求、谁先返回谁先上屏
+      conns.forEach(async c => {
         try {
           const res = await api(`/api/usage/connection/${c.id}`)
-          if (res) entries[c.id] = res
+          if (res) {
+            setDetails(prev => ({ ...prev, [c.id]: res }))
+          }
         } catch {
-          // provider 不支持
+          // provider 不支持或请求失败
         }
-      }))
-      setDetails(entries)
+      })
     } catch {
       setRows([])
     } finally {
