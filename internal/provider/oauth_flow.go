@@ -151,6 +151,10 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 		params.Set("response_type", "code")
 		params.Set("redirect_uri", redirectURI)
 		params.Set("scope", "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email")
+		if pkce.CodeChallenge != "" {
+			params.Set("code_challenge", pkce.CodeChallenge)
+			params.Set("code_challenge_method", "S256")
+		}
 		params.Set("state", pkce.State)
 		params.Set("access_type", "offline")
 		params.Set("prompt", "consent")
@@ -641,6 +645,15 @@ func mapTokenResponse(providerID string, raw map[string]any) *TokenExchangeResul
 		result.ProviderSpecificData = map[string]any{"authMethod": "device_code"}
 	case "grok-cli":
 		result.ProviderSpecificData = map[string]any{"authMethod": "device_code"}
+		if idToken := getString(raw, "id_token"); idToken != "" {
+			if payload, err := decodeJWTPayload(strings.Split(idToken, ".")[1]); err == nil {
+				if email, ok := payload["email"].(string); ok {
+					result.Email = email
+				}
+			}
+		}
+	case "gemini", "antigravity":
+		result.ProviderSpecificData = map[string]any{"authMethod": "oauth"}
 		if idToken := getString(raw, "id_token"); idToken != "" {
 			if payload, err := decodeJWTPayload(strings.Split(idToken, ".")[1]); err == nil {
 				if email, ok := payload["email"].(string); ok {

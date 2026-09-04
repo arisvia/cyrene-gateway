@@ -77,6 +77,19 @@ func TestBuildAuthorizeURL_Claude(t *testing.T) {
 		t.Error("URL should contain state")
 	}
 }
+func TestBuildAuthorizeURL_Antigravity(t *testing.T) {
+	pkce, _ := GeneratePKCE()
+	url, err := BuildAuthorizeURL("antigravity", "http://localhost:20128/api/oauth/antigravity/callback", pkce)
+	if err != nil {
+		t.Fatalf("BuildAuthorizeURL failed: %v", err)
+	}
+	if !contains(url, "code_challenge=") {
+		t.Error("Antigravity URL should contain code_challenge")
+	}
+	if !contains(url, "code_challenge_method=S256") {
+		t.Error("Antigravity URL should contain code_challenge_method=S256")
+	}
+}
 
 func TestBuildAuthorizeURL_Codex(t *testing.T) {
 	pkce, _ := GeneratePKCE()
