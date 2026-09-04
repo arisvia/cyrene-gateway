@@ -22,31 +22,35 @@ type RequestEvent struct {
 
 // EventBroadcaster is a simple pub/sub for request events.
 type EventBroadcaster struct {
-	subs map[chan RequestEvent]struct{}
+	subs map[chan RequestEvent]chan struct{}
 	mu   sync.RWMutex
 }
 
 func NewEventBroadcaster() *EventBroadcaster {
 	return &EventBroadcaster{
-		subs: make(map[chan RequestEvent]struct{}),
+		subs: make(map[chan RequestEvent]chan struct{}),
 	}
 }
 
-// Subscribe returns a channel that receives events. Caller must call Unsubscribe when done.
-func (b *EventBroadcaster) Subscribe() chan RequestEvent {
+// Subscribe returns an events channel and a done channel.
+func (b *EventBroadcaster) Subscribe() (chan RequestEvent, chan struct{}) {
 	ch := make(chan RequestEvent, 64)
+	done := make(chan struct{})
 	b.mu.Lock()
-	b.subs[ch] = struct{}{}
+	b.subs[ch] = done
 	b.mu.Unlock()
-	return ch
+	return ch, done
 }
 
-// Unsubscribe removes a subscriber channel.
+// Unsubscribe removes a subscriber channel and closes its done signal.
 func (b *EventBroadcaster) Unsubscribe(ch chan RequestEvent) {
 	b.mu.Lock()
-	delete(b.subs, ch)
+	done, ok := b.subs[ch]
+	if ok {
+		delete(b.subs, ch)
+		close(done)
+	}
 	b.mu.Unlock()
-	close(ch)
 }
 
 // Publish sends an event to all subscribers (non-blocking, drops if buffer full).
@@ -79,7 +83,7 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 	if s.Events == nil {
 		s.Events = NewEventBroadcaster()
 	}
-	ch := s.Events.Subscribe()
+	ch, done := s.Events.Subscribe()
 	defer s.Events.Unsubscribe(ch)
 
 	ctx := r.Context()
@@ -90,10 +94,9 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			return
-		case ev, ok := <-ch:
-			if !ok {
-				return
-			}
+		case <-done:
+			return
+		case ev := <-ch:
 			data, _ := json.Marshal(ev)
 			writeSSE(w, flusher, "request", string(data))
 		case <-time.After(30 * time.Second):

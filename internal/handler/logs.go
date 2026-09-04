@@ -22,7 +22,7 @@ type LogRingBuffer struct {
 	mu      sync.RWMutex
 	records []LogRecord
 	maxSize int
-	subs    map[chan LogRecord]struct{}
+	subs    map[chan LogRecord]chan struct{}
 }
 
 // GlobalLogBuffer is the singleton log ring buffer accessible to slog handler and API.
@@ -35,7 +35,7 @@ func NewLogRingBuffer(maxSize int) *LogRingBuffer {
 	return &LogRingBuffer{
 		records: make([]LogRecord, 0, maxSize),
 		maxSize: maxSize,
-		subs:    make(map[chan LogRecord]struct{}),
+		subs:    make(map[chan LogRecord]chan struct{}),
 	}
 }
 
@@ -66,19 +66,22 @@ func (b *LogRingBuffer) GetAll() []LogRecord {
 	return res
 }
 
-func (b *LogRingBuffer) Subscribe() chan LogRecord {
+func (b *LogRingBuffer) Subscribe() (chan LogRecord, chan struct{}) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	ch := make(chan LogRecord, 128)
-	b.subs[ch] = struct{}{}
-	return ch
+	done := make(chan struct{})
+	b.subs[ch] = done
+	return ch, done
 }
 
 func (b *LogRingBuffer) Unsubscribe(ch chan LogRecord) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	delete(b.subs, ch)
-	close(ch)
+	if done, ok := b.subs[ch]; ok {
+		delete(b.subs, ch)
+		close(done)
+	}
 }
 
 // BroadcastLogHandler is a slog.Handler that writes to a base handler and the GlobalLogBuffer.
@@ -143,7 +146,7 @@ func (s *Server) handleSystemLogsStream(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	ch := GlobalLogBuffer.Subscribe()
+	ch, done := GlobalLogBuffer.Subscribe()
 	defer GlobalLogBuffer.Unsubscribe(ch)
 
 	ctx := r.Context()
@@ -153,10 +156,9 @@ func (s *Server) handleSystemLogsStream(w http.ResponseWriter, r *http.Request) 
 		select {
 		case <-ctx.Done():
 			return
-		case rec, ok := <-ch:
-			if !ok {
-				return
-			}
+		case <-done:
+			return
+		case rec := <-ch:
 			data, _ := json.Marshal(rec)
 			writeSSE(w, flusher, "log", string(data))
 		case <-time.After(30 * time.Second):
