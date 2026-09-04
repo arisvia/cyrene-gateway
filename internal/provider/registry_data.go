@@ -186,8 +186,8 @@ func init() {
 		TextIcon:  "GE",
 		HasFree:   true,
 		APIKeyURL: "https://aistudio.google.com/app/apikey",
-		ClientID:  "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
-		// 9router gemini.js transport.auth.apiKey: API keys go in the
+		ClientID:     "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com",
+		ClientSecret: "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",
 		// x-goog-api-key header (raw), not the ?key= query param.
 		AuthHeader: "x-goog-api-key",
 		AuthScheme: "raw",

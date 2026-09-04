@@ -151,7 +151,7 @@ var refreshProfiles = map[string]refreshProfile{
 		bodyFormat: "json",
 	},
 	"gemini": {
-		clientSecret: "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",
+		clientSecret: "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",
 	},
 	"antigravity": {
 		clientSecret: "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",
