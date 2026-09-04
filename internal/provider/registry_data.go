@@ -63,6 +63,7 @@ func init() {
 		TokenURL:     "https://oauth2.googleapis.com/token",
 		AuthorizeURL: "https://accounts.google.com/o/oauth2/v2/auth",
 		ClientID:     "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
+		ClientSecret: "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",
 	}
 	Registry["cerebras"] = ProviderInfo{
 		ID: "cerebras", Name: "Cerebras",

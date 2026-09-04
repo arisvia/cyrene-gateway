@@ -39,6 +39,7 @@ type ProviderInfo struct {
 	TokenURL      string `json:"tokenUrl,omitempty"`
 	AuthorizeURL  string `json:"authorizeUrl,omitempty"`
 	ClientID      string `json:"clientId,omitempty"`
+	ClientSecret  string `json:"clientSecret,omitempty"`
 	LoginURL      string `json:"loginUrl,omitempty"` // browser-based device login page (qoder)
 	// Auth-mode-specific overrides (9router#2881): when a connection uses
 	// api-key auth on a provider whose primary transport is OAuth, route to

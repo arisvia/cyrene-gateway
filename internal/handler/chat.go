@@ -792,9 +792,9 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
+	w.Header().Set("X-Cyrene-Served-Model", model)
+	w.WriteHeader(resp.StatusCode)
 	flusher.Flush()
-
 	ctx := r.Context()
 	reader := provider.NewSSEReader(resp.Body)
 	var lastUsage usage.Usage

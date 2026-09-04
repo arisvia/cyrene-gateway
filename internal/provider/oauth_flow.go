@@ -233,6 +233,9 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 		if info.ClientID != "" {
 			params.Set("client_id", info.ClientID)
 		}
+		if info.ClientSecret != "" {
+			params.Set("client_secret", info.ClientSecret)
+		}
 		if codeVerifier != "" {
 			params.Set("code_verifier", codeVerifier)
 		}

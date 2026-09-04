@@ -153,7 +153,9 @@ var refreshProfiles = map[string]refreshProfile{
 	"gemini": {
 		clientSecret: "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",
 	},
-	// --- Phase 34: Batch 2 OAuth providers ---
+	"antigravity": {
+		clientSecret: "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",
+	},
 	"github": {
 		url: "https://github.com/login/oauth/access_token",
 	},
