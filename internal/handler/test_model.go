@@ -49,6 +49,24 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 
 	s.tryRefreshToken(conn)
 
+	if conn.Provider == "antigravity" {
+		start := time.Now()
+		client := s.getHTTPClient(15 * time.Second)
+		projID, err := DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
+		latency := time.Since(start)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "latency": latency.String()})
+			return
+		}
+		if conn.Data.ProviderSpecificData == nil {
+			conn.Data.ProviderSpecificData = make(map[string]any)
+		}
+		conn.Data.ProviderSpecificData["projectId"] = projID
+		s.DB.UpdateConnection(conn)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "latency": latency.String(), "code": 200})
+		return
+	}
+
 	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL

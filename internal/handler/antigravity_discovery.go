@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -128,30 +129,50 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 
 		respBytes, err := io.ReadAll(resp.Body)
 		if err != nil || resp.StatusCode != http.StatusOK {
+			slog.Warn("fetchAvailableModels failed", slog.String("endpoint", endpoint), slog.Int("status", resp.StatusCode), slog.String("body", string(respBytes)))
 			continue
 		}
 
-		var result struct {
+		// 1. Try Models as map (standard response)
+		var resultMap struct {
 			Models map[string]struct {
 				DisplayName string `json:"displayName"`
 			} `json:"models"`
 		}
-		if err := json.Unmarshal(respBytes, &result); err != nil {
-			continue
+		if err := json.Unmarshal(respBytes, &resultMap); err == nil && len(resultMap.Models) > 0 {
+			var out []model.ModelMetadata
+			for id, m := range resultMap.Models {
+				name := m.DisplayName
+				if name == "" {
+					name = id
+				}
+				out = append(out, model.ModelMetadata{
+					ID:          id,
+					DisplayName: name,
+				})
+			}
+			return out
 		}
 
-		var out []model.ModelMetadata
-		for id, m := range result.Models {
-			name := m.DisplayName
-			if name == "" {
-				name = id
-			}
-			out = append(out, model.ModelMetadata{
-				ID:          id,
-				DisplayName: name,
-			})
+		// 2. Try Models as array
+		var resultSlice struct {
+			Models []struct {
+				ID          string `json:"id"`
+				DisplayName string `json:"displayName"`
+			} `json:"models"`
 		}
-		if len(out) > 0 {
+		if err := json.Unmarshal(respBytes, &resultSlice); err == nil && len(resultSlice.Models) > 0 {
+			var out []model.ModelMetadata
+			for _, m := range resultSlice.Models {
+				name := m.DisplayName
+				if name == "" {
+					name = m.ID
+				}
+				out = append(out, model.ModelMetadata{
+					ID:          m.ID,
+					DisplayName: name,
+				})
+			}
 			return out
 		}
 	}

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -585,12 +586,24 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		if conn.Data.ProviderSpecificData != nil {
 			projectID, _ = conn.Data.ProviderSpecificData["projectId"].(string)
 		}
+		var discErr error
 		if projectID == "" {
-			projectID, _ = DiscoverAntigravityProject(r.Context(), client, token)
+			projectID, discErr = DiscoverAntigravityProject(r.Context(), client, token)
+			if discErr == nil && projectID != "" {
+				if conn.Data.ProviderSpecificData == nil {
+					conn.Data.ProviderSpecificData = make(map[string]any)
+				}
+				conn.Data.ProviderSpecificData["projectId"] = projectID
+				s.DB.UpdateConnection(&conn)
+			}
 		}
 		models = s.fetchAntigravityCatalog(r.Context(), client, token, projectID)
 		if models == nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "antigravity model catalog fetch failed"})
+			errMsg := "antigravity model catalog fetch failed"
+			if discErr != nil {
+				errMsg += fmt.Sprintf(" (project discovery failed: %v)", discErr)
+			}
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": errMsg})
 			return
 		}
 	} else {

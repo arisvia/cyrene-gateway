@@ -37,6 +37,7 @@ type QuotaCredentials struct {
 	Provider    string
 	APIKey      string
 	AccessToken string
+	ProjectID   string
 	// BaseURL optionally overrides the provider's upstream host. Used by tests
 	// to point fetchers at a mock server; empty means the real endpoint.
 	BaseURL string

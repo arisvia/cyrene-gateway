@@ -94,10 +94,19 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.tryRefreshToken(conn)
+	projectID := ""
+	if conn.Data.ProviderSpecificData != nil {
+		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
+			projectID = pid
+		}
+	}
+
 	res := usage.FetchQuota(r.Context(), s.getHTTPClient(15*time.Second), usage.QuotaCredentials{
 		Provider:    conn.Provider,
 		APIKey:      conn.Data.APIKey,
 		AccessToken: conn.Data.AccessToken,
+		ProjectID:   projectID,
 	})
 	writeJSON(w, http.StatusOK, res)
 }

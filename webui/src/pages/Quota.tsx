@@ -31,6 +31,9 @@ const Quota: Component = () => {
 
   async function load() {
     try {
+      if (store.providers().length === 0) {
+        await store.loadProvidersOnly()
+      }
       const [r, conns] = await Promise.all([
         api('/api/usage/providers?period=7d'),
         Promise.resolve(store.providers()),

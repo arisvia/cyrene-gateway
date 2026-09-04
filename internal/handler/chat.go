@@ -317,18 +317,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		// Phase 9: Pre-check OAuth token refresh
 		s.tryRefreshToken(conn)
 
-		baseURL, comboAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
-		if conn.Data.BaseURL != "" {
-			baseURL = conn.Data.BaseURL
-			comboAPIType = providerInfo.APIType
-		}
-		if baseURL == "" {
-			lastError = fmt.Sprintf("no base URL for provider: %s", modelInfo.Provider)
-			lastStatus = 503
-			continue
-		}
-
-		// Qoder 需要专属 COSY 签名执行器；通用 transport 未签名会被上游 RST
+		// Qoder and Antigravity use specialized protocols and executors
 		if modelInfo.Provider == "qoder" {
 			slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
 			s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
@@ -338,6 +327,17 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			slog.Info("Combo delegating to Antigravity executor", slog.String("model", modelInfo.Model))
 			s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
 			return
+		}
+
+		baseURL, comboAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
+		if conn.Data.BaseURL != "" {
+			baseURL = conn.Data.BaseURL
+			comboAPIType = providerInfo.APIType
+		}
+		if baseURL == "" {
+			lastError = fmt.Sprintf("no base URL for provider: %s", modelInfo.Provider)
+			lastStatus = 503
+			continue
 		}
 
 		// Build and execute upstream request — use raw body to preserve unknown fields
@@ -501,6 +501,16 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// Phase 9: Pre-check OAuth token refresh
 	s.tryRefreshToken(conn)
 
+	// --- Special protocol paths: Qoder (COSY) & Antigravity (Cloud Code) ---
+	if modelInfo.Provider == "qoder" {
+		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
+		return
+	}
+	if modelInfo.Provider == "antigravity" {
+		s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
+		return
+	}
+
 	// Determine base URL (auth-mode-aware: 9router#2881)
 	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
@@ -526,16 +536,6 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// Phase 30: resolve the provider transport (base URL, format, auth scheme,
 	// hooks) once and use it for both URL building and auth injection.
 	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
-
-	// --- Qoder special path: COSY-signed custom protocol ---
-	if modelInfo.Provider == "qoder" {
-		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
-		return
-	}
-	if modelInfo.Provider == "antigravity" {
-		s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
-		return
-	}
 
 	var bodyBytes []byte
 	var targetURL string

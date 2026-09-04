@@ -197,6 +197,23 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		return testResult{Error: "unknown provider: " + conn.Provider}
 	}
 
+	if conn.Provider == "antigravity" {
+		s.tryRefreshToken(conn)
+		start := time.Now()
+		client := s.getHTTPClient(15 * time.Second)
+		projID, err := DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
+		latency := time.Since(start)
+		if err != nil {
+			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
+		}
+		if conn.Data.ProviderSpecificData == nil {
+			conn.Data.ProviderSpecificData = make(map[string]any)
+		}
+		conn.Data.ProviderSpecificData["projectId"] = projID
+		s.DB.UpdateConnection(conn)
+		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: http.StatusOK}
+	}
+
 	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
