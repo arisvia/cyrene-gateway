@@ -137,9 +137,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		antigravityDailyURL,
 	}
 
-	body := map[string]any{
-		"metadata": json.RawMessage(antigravityMetadata),
-	}
+	body := map[string]any{}
 	if projectID != "" {
 		body["project"] = projectID
 	}

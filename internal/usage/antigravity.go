@@ -42,9 +42,7 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 		endpoints = []string{c.BaseURL}
 	}
 
-	body := map[string]any{
-		"metadata": json.RawMessage(antigravityMetadata),
-	}
+	body := map[string]any{}
 	if c.ProjectID != "" {
 		body["project"] = c.ProjectID
 	}

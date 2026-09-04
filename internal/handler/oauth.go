@@ -473,6 +473,7 @@ func (s *Server) handleOAuthStatus(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name,omitempty"`
 		AuthType  string `json:"authType"`
 		ExpiresAt string `json:"expiresAt,omitempty"`
+		UpdatedAt string `json:"updatedAt,omitempty"`
 		IsActive  bool   `json:"isActive"`
 		Expired   bool   `json:"expired"`
 	}
@@ -495,6 +496,7 @@ func (s *Server) handleOAuthStatus(w http.ResponseWriter, r *http.Request) {
 			AuthType:  c.AuthType,
 			IsActive:  c.IsActive,
 			ExpiresAt: c.Data.ExpiresAt,
+			UpdatedAt: c.UpdatedAt.Format(time.RFC3339),
 			Expired:   expired,
 		})
 	}

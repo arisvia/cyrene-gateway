@@ -216,11 +216,10 @@ const ProviderDetail: Component = () => {
       // 先查询该供应商真实支持的 OAuth 流类型
       const statusRes = (await api(`/api/oauth/${p}/status`)) as {
         flowType?: string
-        connections?: Array<{ id: string }>
+        connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
       }
       const flowType = statusRes?.flowType
-      const initialConnIds = new Set((statusRes?.connections || []).map(c => c.id))
-
+      const initialConnMap = new Map((statusRes?.connections || []).map(c => [c.id, `${c.expiresAt || ''}:${c.updatedAt || ''}`]))
       // 1. 网页授权码 / PKCE 流（如 Antigravity, Claude 等）
       if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
         const callbackUri = `${window.location.origin}/api/oauth/${p}/callback`
@@ -237,12 +236,16 @@ const ProviderDetail: Component = () => {
         pollTimer = setInterval(async () => {
           try {
             const pollStatus = (await api(`/api/oauth/${p}/status`)) as {
-              connections?: Array<{ id: string }>
+              connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
             }
             const currentConns = pollStatus?.connections || []
-            const hasNew = currentConns.some(c => !initialConnIds.has(c.id))
-            if (hasNew) {
-              clearInterval(pollTimer)
+            const isFinished = currentConns.some(c => {
+              if (!initialConnMap.has(c.id)) return true
+              const oldSnap = initialConnMap.get(c.id) || ''
+              const curSnap = `${c.expiresAt || ''}:${c.updatedAt || ''}`
+              return curSnap !== oldSnap
+            })
+            if (isFinished) {
               pollTimer = undefined
               setDevicePolling(false)
               setDeviceSuccess(true)
