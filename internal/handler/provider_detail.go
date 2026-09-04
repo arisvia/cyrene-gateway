@@ -50,10 +50,10 @@ type ModelMetaOverride struct {
 type ProviderModelItem struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
-	Enabled       bool   `json:"enabled"`
-	IsFree        bool   `json:"isFree,omitempty"`
 	ContextLength int    `json:"contextLength,omitempty"`
 	MaxOutput     int    `json:"maxOutputTokens,omitempty"`
+	Enabled       bool   `json:"enabled"`
+	IsFree        bool   `json:"isFree,omitempty"`
 	CanEdit       bool   `json:"canEdit"`
 	HasOverride   bool   `json:"hasOverride,omitempty"`
 }
@@ -94,7 +94,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-
 
 	// 如果处于 OpenCode 免密模式且尚未抓取或未命中任何免费模型，使用 OpenCode 标准免费兜底模型
 	if isUnauthOpenCode && len(unifiedModels) == 0 {
@@ -257,6 +256,7 @@ func (s *Server) handleDeleteProviderModel(w http.ResponseWriter, r *http.Reques
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"customModels": filtered})
 }
+
 // handleSaveProviderModelMeta updates user-customized metadata for a model.
 // POST /api/providers/{id}/models/meta
 func (s *Server) handleSaveProviderModelMeta(w http.ResponseWriter, r *http.Request) {

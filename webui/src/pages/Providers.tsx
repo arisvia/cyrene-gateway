@@ -372,6 +372,7 @@ const Providers: Component = () => {
               return curSnap !== oldSnap
             })
             if (isFinished) {
+              clearInterval(wizardPollTimer)
               wizardPollTimer = undefined
               setWizardOAuthPolling(false)
               toast.success(`✓ ${reg.name} 网页授权成功！连接已自动建立。`)

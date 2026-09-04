@@ -11,16 +11,8 @@ import (
 	"strings"
 	"time"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
-
-const (
-	antigravityBaseURL     = "https://cloudcode-pa.googleapis.com"
-	antigravityDailyURL    = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-	antigravityUserAgent   = "antigravity/1.15.8 windows/amd64"
-	antigravityXGoogClient = "google-cloud-sdk vscode_cloudshelleditor/0.1"
-	antigravityMetadata    = `{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}`
-)
-
 // DiscoverAntigravityProject discovers the Cloud AI Companion project ID for an Antigravity account.
 func DiscoverAntigravityProject(ctx context.Context, client *http.Client, accessToken string) (string, error) {
 	if client == nil {
@@ -28,8 +20,8 @@ func DiscoverAntigravityProject(ctx context.Context, client *http.Client, access
 	}
 
 	endpoints := []string{
-		antigravityBaseURL,
-		antigravityDailyURL,
+		provider.AntigravityBaseURL,
+		provider.AntigravityDailyURL,
 	}
 
 	body := []byte(`{"metadata":{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}`)
@@ -44,9 +36,9 @@ func DiscoverAntigravityProject(ctx context.Context, client *http.Client, access
 		}
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", antigravityUserAgent)
-		req.Header.Set("X-Goog-Api-Client", antigravityXGoogClient)
-		req.Header.Set("Client-Metadata", antigravityMetadata)
+		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+		req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -132,8 +124,8 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 
 	// 2. Try /v1internal:fetchAvailableModels
 	endpoints := []string{
-		antigravityBaseURL,
-		antigravityDailyURL,
+		provider.AntigravityBaseURL,
+		provider.AntigravityDailyURL,
 	}
 
 	body := map[string]any{}
@@ -150,9 +142,9 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", antigravityUserAgent)
-		req.Header.Set("X-Goog-Api-Client", antigravityXGoogClient)
-		req.Header.Set("Client-Metadata", antigravityMetadata)
+		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+		req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -259,7 +251,7 @@ func tryOnboardUser(ctx context.Context, client *http.Client, endpoint, accessTo
 	url := endpoint + "/v1internal:onboardUser"
 	body := map[string]any{
 		"tierId":   "FREE",
-		"metadata": json.RawMessage(antigravityMetadata),
+		"metadata": json.RawMessage(provider.AntigravityMetadata),
 	}
 	bodyBytes, _ := json.Marshal(body)
 
@@ -269,9 +261,9 @@ func tryOnboardUser(ctx context.Context, client *http.Client, endpoint, accessTo
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", antigravityUserAgent)
-	req.Header.Set("X-Goog-Api-Client", antigravityXGoogClient)
-	req.Header.Set("Client-Metadata", antigravityMetadata)
+	req.Header.Set("User-Agent", provider.AntigravityUserAgent)
+	req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+	req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 	resp, err := client.Do(req)
 	if err != nil {

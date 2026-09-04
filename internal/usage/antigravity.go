@@ -11,14 +11,8 @@ import (
 	"io"
 	"net/http"
 	"time"
-)
 
-const (
-	antigravityBaseURL   = "https://cloudcode-pa.googleapis.com"
-	antigravityDailyURL  = "https://daily-cloudcode-pa.sandbox.googleapis.com"
-	antigravityUserAgent = "antigravity/1.15.8 windows/amd64"
-	antigravityXGoog     = "google-cloud-sdk vscode_cloudshelleditor/0.1"
-	antigravityMetadata  = `{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}`
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 type AntigravityModelsResponse struct {
@@ -37,7 +31,7 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 		return QuotaResult{Message: "Antigravity OAuth access token is missing"}
 	}
 
-	endpoints := []string{antigravityBaseURL, antigravityDailyURL}
+	endpoints := []string{provider.AntigravityBaseURL, provider.AntigravityDailyURL}
 	if c.BaseURL != "" {
 		endpoints = []string{c.BaseURL}
 	}
@@ -57,9 +51,9 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 
 		req.Header.Set("Authorization", "Bearer "+c.AccessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", antigravityUserAgent)
-		req.Header.Set("X-Goog-Api-Client", antigravityXGoog)
-		req.Header.Set("Client-Metadata", antigravityMetadata)
+		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+		req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 		resp, err := client.Do(req)
 		if err != nil {

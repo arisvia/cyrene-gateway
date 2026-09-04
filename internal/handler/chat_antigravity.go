@@ -102,7 +102,7 @@ func (s *Server) handleAntigravityChat(
 		return
 	}
 
-	upstreamURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", antigravityBaseURL)
+	upstreamURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", provider.AntigravityBaseURL)
 	upReq, err := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
@@ -112,9 +112,9 @@ func (s *Server) handleAntigravityChat(
 	upReq.Header.Set("Authorization", "Bearer "+token)
 	upReq.Header.Set("Content-Type", "application/json")
 	upReq.Header.Set("Accept", "text/event-stream")
-	upReq.Header.Set("User-Agent", antigravityUserAgent)
-	upReq.Header.Set("X-Goog-Api-Client", antigravityXGoogClient)
-	upReq.Header.Set("Client-Metadata", antigravityMetadata)
+	upReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
+	upReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+	upReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 	resp, err := client.Do(upReq)
 	if err != nil {
@@ -205,9 +205,11 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 				Candidates []struct {
 					Content struct {
 						Parts []struct {
-							Text string `json:"text"`
+							Text    string `json:"text"`
+							Thought bool   `json:"thought"`
 						} `json:"parts"`
 					} `json:"content"`
+					FinishReason string `json:"finishReason"`
 				} `json:"candidates"`
 			} `json:"response"`
 		}
@@ -216,14 +218,40 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		}
 
 		textChunk := ""
+		reasoningChunk := ""
+		finishReason := ""
 		for _, cand := range payload.Response.Candidates {
+			if cand.FinishReason != "" {
+				finishReason = strings.ToLower(cand.FinishReason)
+			}
 			for _, part := range cand.Content.Parts {
-				textChunk += part.Text
+				if part.Thought {
+					reasoningChunk += part.Text
+				} else {
+					textChunk += part.Text
+				}
 			}
 		}
 
-		if textChunk == "" {
+		if textChunk == "" && reasoningChunk == "" && finishReason == "" {
 			continue
+		}
+
+		delta := map[string]any{}
+		if textChunk != "" {
+			delta["content"] = textChunk
+		}
+		if reasoningChunk != "" {
+			delta["reasoning_content"] = reasoningChunk
+		}
+
+		var fr any = nil
+		if finishReason != "" {
+			if finishReason == "stop" || finishReason == "max_tokens" {
+				fr = finishReason
+			} else {
+				fr = "stop"
+			}
 		}
 
 		chunk := map[string]any{
@@ -233,11 +261,9 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 			"model":   model,
 			"choices": []map[string]any{
 				{
-					"index": 0,
-					"delta": map[string]any{
-						"content": textChunk,
-					},
-					"finish_reason": nil,
+					"index":         0,
+					"delta":         delta,
+					"finish_reason": fr,
 				},
 			},
 		}
@@ -275,9 +301,11 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 				Candidates []struct {
 					Content struct {
 						Parts []struct {
-							Text string `json:"text"`
+							Text    string `json:"text"`
+							Thought bool   `json:"thought"`
 						} `json:"parts"`
 					} `json:"content"`
+					FinishReason string `json:"finishReason"`
 				} `json:"candidates"`
 			} `json:"response"`
 		}
@@ -287,7 +315,9 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 
 		for _, cand := range payload.Response.Candidates {
 			for _, part := range cand.Content.Parts {
-				fullText += part.Text
+				if !part.Thought {
+					fullText += part.Text
+				}
 			}
 		}
 	}

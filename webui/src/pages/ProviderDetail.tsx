@@ -246,6 +246,7 @@ const ProviderDetail: Component = () => {
               return curSnap !== oldSnap
             })
             if (isFinished) {
+              clearInterval(pollTimer)
               pollTimer = undefined
               setDevicePolling(false)
               setDeviceSuccess(true)
