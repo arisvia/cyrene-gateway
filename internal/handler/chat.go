@@ -681,6 +681,12 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// Handle upstream errors
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(resp.Body)
+		slog.Warn("Upstream request returned error status",
+			slog.String("provider", modelInfo.Provider),
+			slog.String("model", modelInfo.Model),
+			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(errBody)),
+		)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
 		if s.Metrics != nil {
