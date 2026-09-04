@@ -214,20 +214,66 @@ export const Select: Component<{
 }> = props => {
   const [open, setOpen] = createSignal(false)
   const [search, setSearch] = createSignal('')
+  const [popoverStyle, setPopoverStyle] = createSignal<Record<string, string>>({})
   let rootRef: HTMLDivElement | undefined
+  let popoverRef: HTMLDivElement | undefined
   let searchInputRef: HTMLInputElement | undefined
 
+  function updatePosition() {
+    if (!rootRef) return
+    const rect = rootRef.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const placeUp = spaceBelow < 280 && rect.top > spaceBelow
+
+    const style: Record<string, string> = {
+      position: 'fixed',
+      'z-index': '110',
+      'min-width': `${rect.width}px`,
+      'max-width': 'min(92vw, 480px)',
+    }
+
+    if (props.align === 'right') {
+      style.right = `${window.innerWidth - rect.right}px`
+    } else {
+      style.left = `${Math.max(8, rect.left)}px`
+    }
+
+    if (placeUp) {
+      style.bottom = `${window.innerHeight - rect.top + 6}px`
+    } else {
+      style.top = `${rect.bottom + 6}px`
+    }
+
+    setPopoverStyle(style)
+  }
+
+  function toggleOpen() {
+    if (props.disabled) return
+    if (!open()) {
+      updatePosition()
+    }
+    setOpen(o => !o)
+  }
   onMount(() => {
     const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
-      if (rootRef && !rootRef.contains(e.target as Node)) {
-        setOpen(false)
+      const target = e.target as Node
+      if (rootRef?.contains(target) || popoverRef?.contains(target)) {
+        return
+      }
+      setOpen(false)
+    }
+
+    const handleScrollOrResize = () => {
+      if (open()) {
+        updatePosition()
       }
     }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!open()) {
         if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') && rootRef?.contains(document.activeElement)) {
           e.preventDefault()
-          setOpen(true)
+          toggleOpen()
         }
         return
       }
@@ -253,9 +299,13 @@ export const Select: Component<{
 
     window.addEventListener('pointerdown', handleOutsideClick)
     window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', handleScrollOrResize)
     onCleanup(() => {
       window.removeEventListener('pointerdown', handleOutsideClick)
       window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', handleScrollOrResize, true)
+      window.removeEventListener('resize', handleScrollOrResize)
     })
   })
 
@@ -298,9 +348,7 @@ export const Select: Component<{
         aria-haspopup="listbox"
         aria-label={props.ariaLabel || displayLabel()}
         disabled={props.disabled}
-        onClick={() => {
-          if (!props.disabled) setOpen(o => !o)
-        }}
+        onClick={toggleOpen}
         class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-bg-elevated border border-subtle text-text hover:border-accent/40 hover:bg-hover/50 focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 ${
           open() ? 'border-accent ring-2 ring-ring-soft' : ''
         } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
@@ -330,74 +378,76 @@ export const Select: Component<{
       {/* 现代液态玻璃拟态下拉浮层（彻底淘汰浏览器原生黑灰选项框） */}
       {/* 现代液态玻璃拟态下拉浮层（带搜索过滤与超长自适应） */}
       <Show when={open()}>
-        <div
-          role="listbox"
-          class={`absolute ${
-            props.align === 'right' ? 'right-0' : 'left-0'
-          } top-[calc(100%+6px)] z-50 min-w-full w-max max-w-[min(92vw,480px)] rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-xl shadow-glass-hover p-1.5 flex flex-col gap-1 animate-scale-in`}
-        >
-          <Show when={props.options.length > 8}>
-            <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={search()}
-                onInput={e => setSearch(e.currentTarget.value)}
-                placeholder="搜索选项…"
-                class="w-full px-2.5 py-1.5 text-xs rounded-md bg-hover/80 text-foreground placeholder:text-faint border border-subtle/60 outline-hidden focus:border-accent"
-                onClick={e => e.stopPropagation()}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') {
-                    setOpen(false)
-                  }
-                }}
-              />
-            </div>
-          </Show>
-          <div class="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
-            <For each={filteredOptions()}>
-              {o => {
-                const active = () => (props.value ?? '') === o.value
-                return (
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={active()}
-                    class={`w-full flex items-center justify-between gap-3 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
-                      active()
-                        ? 'bg-accent/15 text-accent font-medium'
-                        : 'text-text hover:bg-hover hover:text-text'
-                    }`}
-                    onClick={() => {
-                      props.onChange?.(o.value)
+        <Portal>
+          <div
+            ref={popoverRef}
+            role="listbox"
+            style={popoverStyle()}
+            class="rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-xl shadow-glass-hover p-1.5 flex flex-col gap-1 animate-scale-in"
+          >
+            <Show when={props.options.length > 8}>
+              <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={search()}
+                  onInput={e => setSearch(e.currentTarget.value)}
+                  placeholder="搜索选项…"
+                  class="w-full px-2.5 py-1.5 text-xs rounded-md bg-hover/80 text-foreground placeholder:text-faint border border-subtle/60 outline-hidden focus:border-accent"
+                  onClick={e => e.stopPropagation()}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
                       setOpen(false)
-                      setSearch('')
-                    }}
-                  >
-                    <span class="truncate">{o.label}</span>
-                    <Show when={active()}>
-                      <svg
-                        class="w-4 h-4 text-accent shrink-0 animate-scale-in"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </Show>
-                  </button>
-                )
-              }}
-            </For>
-            <Show when={filteredOptions().length === 0}>
-              <div class="px-3 py-3 text-center text-xs text-faint">未找到匹配项</div>
+                    }
+                  }}
+                />
+              </div>
             </Show>
+            <div class="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+              <For each={filteredOptions()}>
+                {o => {
+                  const active = () => (props.value ?? '') === o.value
+                  return (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={active()}
+                      class={`w-full flex items-center justify-between gap-3 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
+                        active()
+                          ? 'bg-accent/15 text-accent font-medium'
+                          : 'text-text hover:bg-hover hover:text-text'
+                      }`}
+                      onClick={() => {
+                        props.onChange?.(o.value)
+                        setOpen(false)
+                        setSearch('')
+                      }}
+                    >
+                      <span class="truncate">{o.label}</span>
+                      <Show when={active()}>
+                        <svg
+                          class="w-4 h-4 text-accent shrink-0 animate-scale-in"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2.5"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </Show>
+                    </button>
+                  )
+                }}
+              </For>
+              <Show when={filteredOptions().length === 0}>
+                <div class="px-3 py-3 text-center text-xs text-faint">未找到匹配项</div>
+              </Show>
+            </div>
           </div>
-        </div>
+        </Portal>
       </Show>
     </div>
   )

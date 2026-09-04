@@ -668,23 +668,23 @@ const ProviderDetail: Component = () => {
                               </div>
 
                               <div class="mt-2.5 flex items-center gap-2 flex-wrap text-xs">
-                                <Badge tone="blue" class="text-[10px] px-2 py-0.5 font-medium rounded-full">
+                                <span class="inline-flex items-center justify-center h-5 px-2 text-[10px] font-medium rounded-full text-info bg-info/10 border border-info/20">
                                   {acc.authType === 'api-key' || acc.authType === 'apikey' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth' : acc.authType}
-                                </Badge>
-                                <span class={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-mono ${
+                                </span>
+                                <span class={`inline-flex items-center h-5 gap-1.5 text-[10px] px-2 rounded-full border font-mono ${
                                   idx() === 0
                                     ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
                                     : 'bg-hover/80 border-subtle text-muted'
                                 }`}>
-                                  <span class={`w-1.5 h-1.5 rounded-full ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
-                                  <span>优先级 {acc.priority}</span>
-                                  <span class="opacity-70 font-sans">{idx() === 0 ? '(主)' : '(备用)'}</span>
+                                  <span class={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
+                                  <span class="leading-none">优先级 {acc.priority}</span>
+                                  <span class="opacity-70 font-sans leading-none">{idx() === 0 ? '(主)' : '(备用)'}</span>
                                 </span>
                                 <Show when={cooling()}>
-                                  <Badge tone="amber" class="text-[10px]">限流冷却中</Badge>
+                                  <Badge tone="amber" class="text-[10px] h-5">限流冷却中</Badge>
                                 </Show>
                                 <Show when={acc.data?.credentialHint}>
-                                  <span class="truncate max-w-[140px] text-[11px] text-faint font-mono" title={String(acc.data?.credentialHint)}>
+                                  <span class="truncate max-w-[140px] text-[11px] text-faint font-mono leading-none" title={String(acc.data?.credentialHint)}>
                                     {String(acc.data?.credentialHint)}
                                   </span>
                                 </Show>

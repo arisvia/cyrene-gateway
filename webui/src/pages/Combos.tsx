@@ -17,11 +17,24 @@ const Combos: Component = () => {
   const [modelPick, setModelPick] = createSignal('')
 
   // 可用模型来自网关统一模型表
+  // 可用模型来自网关统一模型表（含 display_name 与 id）
   const [available, { refetch }] = createResource(async () => {
     try {
-      const r = await api('/v1/models') as { data?: Array<{ id: string }> } | null
-      return (r?.data ?? []).map(m => m.id)
-    } catch { return [] as string[] }
+      const r = await api('/v1/models') as { data?: Array<{ id: string; display_name?: string }> } | null
+      return (r?.data ?? []).map(m => ({
+        id: m.id,
+        name: m.display_name || m.id,
+      }))
+    } catch { return [] as Array<{ id: string; name: string }> }
+  })
+
+  // 模型 ID 到友好展示名称的映射字典
+  const modelNames = createMemo(() => {
+    const map: Record<string, string> = {}
+    for (const m of available() ?? []) {
+      map[m.id] = m.name
+    }
+    return map
   })
 
   const canSave = createMemo(() => form().name.trim().length > 0 && form().models.length > 0)
@@ -95,9 +108,14 @@ const Combos: Component = () => {
                     </div>
                     <div class="mt-1.5 flex flex-wrap gap-1.5">
                       <For each={c.models ?? []}>
-                        {m => (
-                          <span class="px-2 py-0.5 rounded-md bg-hover text-[11px] font-mono text-muted">{m}</span>
-                        )}
+                        {m => {
+                          const displayName = () => modelNames()[m] || m
+                          return (
+                            <span class="px-2 py-0.5 rounded-md bg-hover text-[11px] font-sans text-muted hover:text-foreground transition-colors" title={m}>
+                              {displayName()}
+                            </span>
+                          )
+                        }}
                       </For>
                     </div>
                   </div>
@@ -133,7 +151,13 @@ const Combos: Component = () => {
               <Select
                 class="flex-1"
                 value={modelPick()}
-                options={[{ value: '', label: '选择模型…' }, ...(available() ?? []).map((m: string) => ({ value: m, label: m }))]}
+                options={[
+                  { value: '', label: '选择模型…' },
+                  ...(available() ?? []).map(m => ({
+                    value: m.id,
+                    label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
+                  })),
+                ]}
                 onChange={setModelPick}
               />
               <Button variant="secondary" disabled={!modelPick()} onClick={addModel}>添加</Button>
@@ -141,12 +165,15 @@ const Combos: Component = () => {
             <div class="mt-2 flex flex-wrap gap-1.5">
               <Show when={form().models.length > 0} fallback={<span class="text-[11px] text-faint">尚未添加模型</span>}>
                 <For each={form().models}>
-                  {m => (
-                    <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs">
-                      <span class="font-mono">{m}</span>
-                      <button class="text-faint hover:text-danger" onClick={() => removeModel(m)}>×</button>
-                    </span>
-                  )}
+                  {m => {
+                    const displayName = () => modelNames()[m] || m
+                    return (
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs" title={m}>
+                        <span class="font-medium text-foreground">{displayName()}</span>
+                        <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" onClick={() => removeModel(m)}>×</button>
+                      </span>
+                    )
+                  }}
                 </For>
               </Show>
             </div>
