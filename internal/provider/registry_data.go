@@ -5,6 +5,11 @@ package provider
 // the curated KEEP set in Phase 36 (registry IDs stay stable — no DB/alias
 // migration; display names are vendor-official). Media providers
 // (internal/media) are a separate registry and were out of scope.
+// claudeCodeHeaders provides default headers for Anthropic-compatible providers supporting thinking beta
+var claudeCodeHeaders = map[string]string{
+	"anthropic-version": "2023-06-01",
+	"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14",
+}
 
 func init() {
 	Registry = make(map[string]ProviderInfo, 40)
@@ -44,10 +49,7 @@ func init() {
 		Icon:      "smart_toy",
 		TextIcon:  "AN",
 		APIKeyURL: "https://console.anthropic.com/settings/keys",
-		Headers: map[string]string{
-			"anthropic-version": "2023-06-01",
-			"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14",
-		},
+		Headers: claudeCodeHeaders,
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
 	}
@@ -246,7 +248,7 @@ func init() {
 		// 9router glm.js transport: claude /coding endpoint, ?beta=true suffix,
 		// x-api-key raw auth + CLAUDE_API_HEADERS.
 		URLSuffix:  "?beta=true",
-		Headers:    map[string]string{"anthropic-version": "2023-06-01", "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"},
+		Headers:    claudeCodeHeaders,
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
 	}
@@ -299,7 +301,7 @@ func init() {
 		// Primary (OAuth) transport: claude /coding endpoint, x-api-key raw auth
 		// + X-Msh-* fingerprint headers (9router kimi.js transport block).
 		URLSuffix:  "?beta=true",
-		Headers:    map[string]string{"anthropic-version": "2023-06-01", "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"},
+		Headers:    claudeCodeHeaders,
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
 		AuthHooks:  []string{"kimiHeaders"},
@@ -319,7 +321,7 @@ func init() {
 		// 9router minimax-cn.js transport: claude endpoint, ?beta=true,
 		// x-api-key raw auth + CLAUDE_API_HEADERS.
 		URLSuffix:  "?beta=true",
-		Headers:    map[string]string{"anthropic-version": "2023-06-01", "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"},
+		Headers:    claudeCodeHeaders,
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
 	}
@@ -338,7 +340,7 @@ func init() {
 		// 9router minimax.js transport: claude endpoint, ?beta=true,
 		// x-api-key raw auth + CLAUDE_API_HEADERS.
 		URLSuffix:  "?beta=true",
-		Headers:    map[string]string{"anthropic-version": "2023-06-01", "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"},
+		Headers:    claudeCodeHeaders,
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
 	}

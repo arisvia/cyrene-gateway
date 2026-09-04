@@ -343,7 +343,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	seenProviders := make(map[string]bool)
 	seenFullIDs := make(map[string]bool)
 
 	// Helper to extract and append models for a provider
@@ -438,7 +437,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	// Add models for all providers with active connections
 	for providerID, pConns := range activeConnsByProvider {
-		seenProviders[providerID] = true
 		hasApiKey := false
 		for _, c := range pConns {
 			if c.Data.APIKey != "" {
