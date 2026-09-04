@@ -57,12 +57,13 @@ func quotaHTTPClient(client *http.Client) *http.Client {
 // real upstream quota endpoint are wired here (Phase 31); OAuth-only quota
 // (gemini CLI, claude, codex, kimi) lands with the OAuth framework (Phase 33-34).
 var quotaFetchers = map[string]QuotaFetcher{
-	"deepseek":   fetchDeepseek,
-	"glm":        fetchGLM,
-	"glm-cn":     fetchGLM,
-	"minimax":    fetchMiniMax,
-	"minimax-cn": fetchMiniMax,
-	"qoder":      fetchQoder,
+	"deepseek":    fetchDeepseek,
+	"glm":         fetchGLM,
+	"glm-cn":      fetchGLM,
+	"minimax":     fetchMiniMax,
+	"minimax-cn":  fetchMiniMax,
+	"qoder":       fetchQoder,
+	"antigravity": fetchAntigravity,
 }
 
 // QuotaSupported reports whether a provider has a real usage fetcher.
