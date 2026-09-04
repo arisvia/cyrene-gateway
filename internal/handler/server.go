@@ -360,6 +360,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 					}
 					seenModel[m.ID] = true
 					name := m.DisplayName
+					if name == "" || name == m.ID {
+						// 尝试从 RegistryModels 中补全已知的高质量可读名称
+						if regModels, ok := provider.RegistryModels[providerID]; ok {
+							for _, rm := range regModels {
+								if rm.ID == m.ID && rm.Name != "" {
+									name = rm.Name
+									break
+								}
+							}
+						}
+					}
 					if name == "" {
 						name = m.ID
 					}
@@ -415,11 +426,23 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			seenFullIDs[fullID] = true
-
 			meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
 			displayName := meta.DisplayName
-			if displayName == m.ID && m.Name != "" {
+			if (displayName == "" || displayName == m.ID) && m.Name != "" {
 				displayName = m.Name
+			}
+			if (displayName == "" || displayName == m.ID) {
+				if regModels, ok := provider.RegistryModels[providerID]; ok {
+					for _, rm := range regModels {
+						if rm.ID == m.ID && rm.Name != "" {
+							displayName = rm.Name
+							break
+						}
+					}
+				}
+			}
+			if displayName == "" {
+				displayName = m.ID
 			}
 			if overrides != nil && overrides[fullID] != "" {
 				var ov ModelMetaOverride

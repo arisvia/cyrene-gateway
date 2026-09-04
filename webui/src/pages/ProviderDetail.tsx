@@ -22,7 +22,7 @@ const ProviderDetail: Component = () => {
   const [selectedModel, setSelectedModel] = createSignal('')
   const [prompt, setPrompt] = createSignal('')
   const [chatBusy, setChatBusy] = createSignal(false)
-  const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string }>>([])
+  const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string; servedModel?: string }>>([])
   const [chatErr, setChatErr] = createSignal('')
   const [modelSearch, setModelSearch] = createSignal('')
   const [newCustomModelId, setNewCustomModelId] = createSignal('')
@@ -49,12 +49,22 @@ const ProviderDetail: Component = () => {
       const available = activeModels()
       const targetModel = selectedModel() || available[0]?.id || `${conn()!.provider}/default`
       const fullModel = targetModel.includes('/') ? targetModel : `${conn()!.provider}/${targetModel}`
-      const r = await apiPost('/v1/chat/completions', {
-        model: fullModel,
-        messages: nextHistory,
-      }) as { choices?: Array<{ message?: { content?: string } }> } | null
+      const res = await fetch('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: fullModel,
+          messages: nextHistory,
+        }),
+      })
+      const servedModel = res.headers.get('x-cyrene-served-model') || ''
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData?.error?.message || errData?.error || `${res.status} ${res.statusText}`)
+      }
+      const r = await res.json()
       const reply = r?.choices?.[0]?.message?.content ?? '(无返回)'
-      setChatHistory(h => [...h, { role: 'assistant', content: reply }])
+      setChatHistory(h => [...h, { role: 'assistant', content: reply, servedModel: servedModel || r?.model }])
     } catch (e: unknown) {
       let errMsg = '请求失败'
       if (e instanceof Error) {
@@ -201,7 +211,54 @@ const ProviderDetail: Component = () => {
     setDeviceError('')
     setDeviceSuccess(false)
     setDevicePolling(true)
+
     try {
+      // 先查询该供应商真实支持的 OAuth 流类型
+      const statusRes = (await api(`/api/oauth/${p}/status`)) as {
+        flowType?: string
+        connections?: Array<{ id: string }>
+      }
+      const flowType = statusRes?.flowType
+      const initialConnIds = new Set((statusRes?.connections || []).map(c => c.id))
+
+      // 1. 网页授权码 / PKCE 流（如 Antigravity, Claude 等）
+      if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
+        const callbackUri = `${window.location.origin}/api/oauth/${p}/callback`
+        const authRes = (await api(`/api/oauth/${p}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}`)) as {
+          authorizeUrl: string
+          state: string
+        }
+        if (authRes?.authorizeUrl) {
+          window.open(authRes.authorizeUrl, '_blank')
+          toast.info(`已在新窗口打开 ${conn()?.name || p} 授权页面，完成授权后网关将自动绑定。`)
+        }
+
+        clearInterval(pollTimer)
+        pollTimer = setInterval(async () => {
+          try {
+            const pollStatus = (await api(`/api/oauth/${p}/status`)) as {
+              connections?: Array<{ id: string }>
+            }
+            const currentConns = pollStatus?.connections || []
+            const hasNew = currentConns.some(c => !initialConnIds.has(c.id))
+            if (hasNew) {
+              clearInterval(pollTimer)
+              pollTimer = undefined
+              setDevicePolling(false)
+              setDeviceSuccess(true)
+              toast.success('OAuth 网页授权成功！已绑定并刷新账号凭据。')
+              await store.loadProvidersOnly()
+              await load()
+              refetchOAuth()
+            }
+          } catch {
+            // 忽略轮询网络偶发错误
+          }
+        }, 2500)
+        return
+      }
+
+      // 2. 设备码流（Device Code Flow，如 GitHub, Kimi, Qoder, X.AI 等）
       const res = (await apiPost(`/api/oauth/${p}/device-code`)) as {
         verificationUri: string
         verificationUriComplete?: string
@@ -219,7 +276,7 @@ const ProviderDetail: Component = () => {
         window.open(targetUrl, '_blank')
       }
 
-      if (pollTimer) clearInterval(pollTimer)
+      clearInterval(pollTimer)
       const intervalMs = res.interval ? res.interval * 1000 : 2500
       pollTimer = setInterval(async () => {
         try {
@@ -1174,7 +1231,7 @@ const ProviderDetail: Component = () => {
                   >
                     <For each={chatHistory()}>
                       {t => (
-                        <div class={`flex ${t.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div class={`flex flex-col ${t.role === 'user' ? 'items-end' : 'items-start'}`}>
                           <div class={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
                             t.role === 'user'
                               ? 'bg-accent text-on-accent'
@@ -1182,6 +1239,11 @@ const ProviderDetail: Component = () => {
                           }`}>
                             {t.content}
                           </div>
+                          <Show when={t.role === 'assistant' && t.servedModel}>
+                            <span class="mt-1 px-1.5 py-0.5 text-[10px] text-faint font-mono">
+                              由节点 {t.servedModel} 响应
+                            </span>
+                          </Show>
                         </div>
                       )}
                     </For>

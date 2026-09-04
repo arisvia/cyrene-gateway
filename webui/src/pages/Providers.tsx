@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup
 import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, ProviderAvatar, confirm } from '@/components/ui'
-import { apiPost } from '@/lib/api'
+import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, RegistryProvider, BadgeTone } from '@/types/domain'
 
@@ -330,13 +330,60 @@ const Providers: Component = () => {
     }
   }
 
-  // 启动向导中的直接 OAuth 授权流程
+  // 启动向导中的直接 OAuth 授权流程（根据供应商支持的流类型智能分流）
   async function startWizardOAuth() {
     const reg = selectedReg()
     if (!reg) return
     setWizardOAuthError('')
     setWizardOAuthPolling(true)
+
     try {
+      // 先查询该供应商真实支持的 OAuth 流类型
+      const statusRes = (await api(`/api/oauth/${reg.id}/status`)) as {
+        flowType?: string
+        connections?: Array<{ id: string }>
+      }
+      const flowType = statusRes?.flowType
+      const initialConnIds = new Set((statusRes?.connections || []).map(c => c.id))
+
+      // 1. 网页授权码 / PKCE 流（如 Antigravity, Claude, Google 等）
+      if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
+        const callbackUri = `${window.location.origin}/api/oauth/${reg.id}/callback`
+        const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}`)) as {
+          authorizeUrl: string
+          state: string
+        }
+        if (authRes?.authorizeUrl) {
+          window.open(authRes.authorizeUrl, '_blank')
+          toast.info(`已在新窗口打开 ${reg.name} 授权页面，完成授权后网关将自动绑定。`)
+        }
+
+        // 轮询检测是否产生新连接
+        if (wizardPollTimer) clearInterval(wizardPollTimer)
+        wizardPollTimer = setInterval(async () => {
+          try {
+            const pollStatus = (await api(`/api/oauth/${reg.id}/status`)) as {
+              connections?: Array<{ id: string }>
+            }
+            const currentConns = pollStatus?.connections || []
+            const hasNew = currentConns.some(c => !initialConnIds.has(c.id))
+            if (hasNew) {
+              clearInterval(wizardPollTimer)
+              wizardPollTimer = undefined
+              setWizardOAuthPolling(false)
+              toast.success(`✓ ${reg.name} 网页授权成功！连接已自动建立。`)
+              setWizardOpen(false)
+              setActiveTab('connections')
+              await store.loadProvidersOnly()
+            }
+          } catch {
+            // 忽略轮询网络偶发错误
+          }
+        }, 2500)
+        return
+      }
+
+      // 2. 设备码流（Device Code Flow，如 GitHub, Kimi, Qoder, X.AI 等）
       const res = (await apiPost(`/api/oauth/${reg.id}/device-code`)) as {
         verificationUri: string
         verificationUriComplete?: string

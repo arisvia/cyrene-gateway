@@ -766,12 +766,19 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 		}
 		body = translated
 	}
-
 	w.Header().Set("Content-Type", "application/json")
+	// Extract upstream served model if available
+	var modelObj struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(body, &modelObj); err == nil && modelObj.Model != "" {
+		w.Header().Set("X-Cyrene-Served-Model", modelObj.Model)
+	} else {
+		w.Header().Set("X-Cyrene-Served-Model", model)
+	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
 }
-
 // proxyStreaming handles SSE streaming with disconnect awareness and [DONE] handling.
 func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
 	flusher, ok := w.(http.Flusher)
