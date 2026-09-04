@@ -39,6 +39,22 @@ func registerImageProviders() {
 		},
 	)
 
+	// Antigravity (Google Code Assist) image generation via Gemini Flash Image
+	mergeProvider("antigravity", "Google Antigravity", KindImage,
+		[]ModelEntry{
+			{ID: "gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image", Kind: KindImage},
+			{ID: "gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},
+		},
+		ProviderConfig{
+			Provider:   "antigravity",
+			Kind:       KindImage,
+			BaseURL:    "https://cloudcode-pa.googleapis.com",
+			AuthType:   "oauth",
+			AuthHeader: "bearer",
+			Format:     "antigravity",
+		},
+	)
+
 	// Stability AI
 	mergeProvider("stability-ai", "Stability AI", KindImage,
 		[]ModelEntry{

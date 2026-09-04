@@ -158,6 +158,28 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 			},
 		}
 		reqBody, _ = json.Marshal(geminiBody)
+	case "antigravity":
+		// Google Cloud Code Assist (Antigravity) streamGenerateContent / generateContent
+		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/v1internal:streamGenerateContent?alt=sse"
+		envelope := map[string]any{
+			"model": req.Model,
+			"request": map[string]any{
+				"contents": []map[string]any{
+					{
+						"role": "user",
+						"parts": []map[string]any{
+							{"text": req.Prompt},
+						},
+					},
+				},
+				"generationConfig": map[string]any{
+					"responseModalities": []string{"TEXT", "IMAGE"},
+				},
+			},
+			"requestType": "agent",
+			"userAgent":   "antigravity",
+		}
+		reqBody, _ = json.Marshal(envelope)
 	default:
 		// OpenAI-compatible
 		targetURL = cfg.BaseURL
@@ -169,8 +191,12 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if cfg.Format == "antigravity" {
+		httpReq.Header.Set("User-Agent", "antigravity/1.15.8 windows/amd64")
+		httpReq.Header.Set("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
+		httpReq.Header.Set("Client-Metadata", `{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}`)
+	}
 	setAuth(httpReq, cfg, creds)
-
 	slog.Debug("Media image request",
 		slog.String("provider", providerID),
 		slog.String("model", req.Model),
