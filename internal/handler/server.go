@@ -73,6 +73,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		CLI:         NewCLIHandler(cli.NewManager()),
 		Endpoints:   NewEndpointHandler(cfg, database, tunnelMgr),
 		MITM:        NewMITMHandler(mitmSrv, mitmEnabled),
+		Events:      NewEventBroadcaster(),
 		Metrics:     metrics.New(Version()),
 		Config:      cfg,
 		startTime:   time.Now(),

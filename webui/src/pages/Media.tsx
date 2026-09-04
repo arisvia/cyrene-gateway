@@ -35,9 +35,11 @@ const Media: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div>
-        <h1 class="text-xl font-semibold">媒体能力</h1>
-        <p class="text-sm text-faint mt-0.5">测试图像、语音、嵌入与搜索等非对话能力</p>
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
+        <div>
+          <h1 class="text-xl font-semibold">媒体能力</h1>
+          <p class="text-sm text-faint mt-0.5">测试图像、语音、嵌入与搜索等非对话能力</p>
+        </div>
       </div>
 
       <div class="flex flex-wrap gap-1.5">

@@ -1,4 +1,5 @@
 import { type Component, Show, createSignal, createResource } from 'solid-js'
+import { Portal } from 'solid-js/web'
 import { Badge, Button, ProviderAvatar, Spinner } from '@/components/ui'
 import { api } from '@/lib/api'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -49,14 +50,14 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
 
   return (
     <Show when={props.item}>
-      <div class="fixed inset-0 z-[80] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
-        {/* 背景遮罩 */}
-        <div
-          class="absolute inset-0 bg-black/60 backdrop-blur-sm"
-          onClick={props.onClose}
-          aria-hidden="true"
-        />
-
+      <Portal>
+        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
+          {/* 背景遮罩 */}
+          <div
+            class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={props.onClose}
+            aria-hidden="true"
+          />
         {/* 弹窗主体卡片 */}
         <div class="relative w-full max-w-2xl max-h-[85vh] bg-bg-elevated border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up z-10">
           {/* 顶栏：标题、模型与关闭按钮 */}
@@ -244,7 +245,8 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
             </Button>
           </div>
         </div>
-      </div>
+        </div>
+      </Portal>
     </Show>
   )
 }

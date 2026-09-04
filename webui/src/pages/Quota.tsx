@@ -188,7 +188,45 @@ const Quota: Component = () => {
         </div>
       </div>
 
-      <Show when={!loading()} fallback={<Card class="p-6"><Skeleton class="h-32 w-full" /></Card>}>
+      <Show
+        when={!loading()}
+        fallback={
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <For each={[1, 2, 3, 4]}>
+              {() => (
+                <Card class="p-4 space-y-4 border-subtle/80 bg-bg-elevated/50">
+                  <div class="flex items-center justify-between gap-3 pb-2.5 border-b border-subtle/40">
+                    <div class="flex items-center gap-3">
+                      <Skeleton class="w-10 h-10 rounded-xl" />
+                      <div class="space-y-1.5">
+                        <Skeleton class="h-4 w-32" />
+                        <Skeleton class="h-3 w-20" />
+                      </div>
+                    </div>
+                    <Skeleton class="h-6 w-12 rounded-full" />
+                  </div>
+                  <div class="space-y-3 pt-1">
+                    <div class="space-y-1.5">
+                      <div class="flex justify-between">
+                        <Skeleton class="h-3 w-24" />
+                        <Skeleton class="h-3 w-16" />
+                      </div>
+                      <Skeleton class="h-1.5 w-full rounded-full" />
+                    </div>
+                    <div class="space-y-1.5">
+                      <div class="flex justify-between">
+                        <Skeleton class="h-3 w-28" />
+                        <Skeleton class="h-3 w-12" />
+                      </div>
+                      <Skeleton class="h-1.5 w-full rounded-full" />
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </For>
+          </div>
+        }
+      >
         {/* 一行两个的账号配额卡片网格 (2-Column Grid) */}
         <Show
           when={filteredConnections().length > 0}

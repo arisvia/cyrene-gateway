@@ -1,4 +1,4 @@
-import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast } from '@/lib/toast'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
@@ -213,7 +213,9 @@ export const Select: Component<{
   align?: 'left' | 'right'
 }> = props => {
   const [open, setOpen] = createSignal(false)
+  const [search, setSearch] = createSignal('')
   let rootRef: HTMLDivElement | undefined
+  let searchInputRef: HTMLInputElement | undefined
 
   onMount(() => {
     const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
@@ -260,6 +262,11 @@ export const Select: Component<{
   const selectedOption = () => props.options.find(o => o.value === (props.value ?? ''))
   const isSelected = () => !!selectedOption()
   const displayLabel = () => selectedOption()?.label || props.placeholder || (props.options[0]?.label ?? '')
+  const filteredOptions = createMemo(() => {
+    const q = search().trim().toLowerCase()
+    if (!q) return props.options
+    return props.options.filter(o => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
+  })
 
   const triggerSizes: Record<ControlSize, string> = {
     sm: `${controlSizes.sm} pl-3 pr-2.5 gap-2`,
@@ -321,50 +328,75 @@ export const Select: Component<{
       </button>
 
       {/* 现代液态玻璃拟态下拉浮层（彻底淘汰浏览器原生黑灰选项框） */}
+      {/* 现代液态玻璃拟态下拉浮层（带搜索过滤与超长自适应） */}
       <Show when={open()}>
         <div
           role="listbox"
           class={`absolute ${
             props.align === 'right' ? 'right-0' : 'left-0'
-          } top-[calc(100%+6px)] z-50 min-w-full w-max max-w-[min(92vw,400px)] max-h-64 overflow-y-auto rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-xl shadow-glass-hover p-1.5 space-y-0.5 animate-scale-in`}
+          } top-[calc(100%+6px)] z-50 min-w-full w-max max-w-[min(92vw,480px)] rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-xl shadow-glass-hover p-1.5 flex flex-col gap-1 animate-scale-in`}
         >
-          <For each={props.options}>
-            {o => {
-              const active = () => (props.value ?? '') === o.value
-              return (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={active()}
-                  class={`w-full flex items-center justify-between gap-3 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
-                    active()
-                      ? 'bg-accent/15 text-accent font-medium'
-                      : 'text-text hover:bg-hover hover:text-text'
-                  }`}
-                  onClick={() => {
-                    props.onChange?.(o.value)
+          <Show when={props.options.length > 8}>
+            <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search()}
+                onInput={e => setSearch(e.currentTarget.value)}
+                placeholder="搜索选项…"
+                class="w-full px-2.5 py-1.5 text-xs rounded-md bg-hover/80 text-foreground placeholder:text-faint border border-subtle/60 outline-hidden focus:border-accent"
+                onClick={e => e.stopPropagation()}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
                     setOpen(false)
-                  }}
-                >
-                  <span class="truncate">{o.label}</span>
-                  <Show when={active()}>
-                    <svg
-                      class="w-4 h-4 text-accent shrink-0 animate-scale-in"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </Show>
-                </button>
-              )
-            }}
-          </For>
+                  }
+                }}
+              />
+            </div>
+          </Show>
+          <div class="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+            <For each={filteredOptions()}>
+              {o => {
+                const active = () => (props.value ?? '') === o.value
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active()}
+                    class={`w-full flex items-center justify-between gap-3 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
+                      active()
+                        ? 'bg-accent/15 text-accent font-medium'
+                        : 'text-text hover:bg-hover hover:text-text'
+                    }`}
+                    onClick={() => {
+                      props.onChange?.(o.value)
+                      setOpen(false)
+                      setSearch('')
+                    }}
+                  >
+                    <span class="truncate">{o.label}</span>
+                    <Show when={active()}>
+                      <svg
+                        class="w-4 h-4 text-accent shrink-0 animate-scale-in"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </Show>
+                  </button>
+                )
+              }}
+            </For>
+            <Show when={filteredOptions().length === 0}>
+              <div class="px-3 py-3 text-center text-xs text-faint">未找到匹配项</div>
+            </Show>
+          </div>
         </div>
       </Show>
     </div>

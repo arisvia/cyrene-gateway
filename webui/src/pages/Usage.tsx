@@ -41,8 +41,20 @@ const Usage: Component = () => {
     }
 
     try {
-      es = new EventSource('/api/usage/stream')
+      // 如果当前无实时事件，预填已有请求详情作为初始视图，避免空屏
+      if (liveEvents().length === 0 && store.requestDetails().length > 0) {
+        const initial = store.requestDetails().slice(0, 15).map(r => ({
+          timestamp: r.timestamp || '',
+          model: r.model || '',
+          endpoint: r.endpoint || '',
+          status: r.status || 'ok',
+          latencyMs: r.latencyMs || 0,
+          provider: r.provider || '',
+        }))
+        setLiveEvents(initial)
+      }
 
+      es = new EventSource('/api/usage/stream')
       const handleData = (ev: MessageEvent) => {
         try {
           const d = JSON.parse(ev.data)

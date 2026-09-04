@@ -65,9 +65,11 @@ const Tunnel: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div>
-        <h1 class="text-xl font-semibold">内网穿透</h1>
-        <p class="text-sm text-faint mt-0.5">通过 Tailscale 把网关暴露到远程</p>
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
+        <div>
+          <h1 class="text-xl font-semibold">内网穿透</h1>
+          <p class="text-sm text-faint mt-0.5">通过 Tailscale 把网关暴露到远程</p>
+        </div>
       </div>
 
       <Show when={!status.loading} fallback={<Card class="p-6"><Skeleton class="h-48 w-full" /></Card>}>

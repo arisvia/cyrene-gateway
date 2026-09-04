@@ -39,12 +39,13 @@ const Console: Component = () => {
   }
 
   return (
-    <div class="space-y-5">
-      <div>
-        <h1 class="text-xl font-semibold">控制台</h1>
-        <p class="text-sm text-faint mt-0.5">直接对网关发起 chat/completions 请求，验证链路</p>
+    <div class="space-y-5 stagger">
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
+        <div>
+          <h1 class="text-xl font-semibold">控制台</h1>
+          <p class="text-sm text-faint mt-0.5">直接对网关发起 chat/completions 请求，验证链路</p>
+        </div>
       </div>
-
       <Card class="p-4 flex flex-wrap items-center gap-2">
         <Select
           class="min-w-[220px]"
