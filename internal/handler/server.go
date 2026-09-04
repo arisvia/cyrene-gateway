@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
@@ -394,6 +397,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Sort models deterministically by ID within the provider
+		sort.Slice(unifiedModels, func(i, j int) bool {
+			return unifiedModels[i].ID < unifiedModels[j].ID
+		})
+
 		// Append to models list with metadata and disable-check
 		for _, m := range unifiedModels {
 			fullID := providerID + "/" + m.ID
@@ -435,8 +443,38 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Add models for all providers with active connections
-	for providerID, pConns := range activeConnsByProvider {
+	// Filter query parameter: ?type=image or ?kind=image
+	targetKind := strings.ToLower(r.URL.Query().Get("type"))
+	if targetKind == "" {
+		targetKind = strings.ToLower(r.URL.Query().Get("kind"))
+	}
+
+	// Deterministic sorting of providers by registry priority, then by provider ID
+	sortedProviders := make([]string, 0, len(activeConnsByProvider))
+	for pid := range activeConnsByProvider {
+		sortedProviders = append(sortedProviders, pid)
+	}
+	sort.Slice(sortedProviders, func(i, j int) bool {
+		p1, p2 := sortedProviders[i], sortedProviders[j]
+		info1, ok1 := provider.Registry[p1]
+		info2, ok2 := provider.Registry[p2]
+		prio1 := 1000
+		if ok1 && info1.Priority > 0 {
+			prio1 = info1.Priority
+		}
+		prio2 := 1000
+		if ok2 && info2.Priority > 0 {
+			prio2 = info2.Priority
+		}
+		if prio1 != prio2 {
+			return prio1 < prio2
+		}
+		return p1 < p2
+	})
+
+	// Add models for all providers in stable priority order
+	for _, providerID := range sortedProviders {
+		pConns := activeConnsByProvider[providerID]
 		hasApiKey := false
 		for _, c := range pConns {
 			if c.Data.APIKey != "" {
@@ -448,11 +486,27 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		appendProviderModels(providerID, isUnauthOpenCode, pConns)
 	}
 
+	// Capability filtering: if targetKind == "image", only return image-generation models.
+	// Otherwise (default chat completions), filter out dedicated image generation models.
+	var filtered []ModelEntry
+	for _, m := range models {
+		isImageGen := slices.Contains(m.Capabilities, "image-generation")
+		if targetKind == "image" {
+			if isImageGen {
+				filtered = append(filtered, m)
+			}
+		} else {
+			if !isImageGen {
+				filtered = append(filtered, m)
+			}
+		}
+	}
+	models = filtered
+
 	// Only exposed models for providers that actually have configured active connections
 	if models == nil {
 		models = []ModelEntry{}
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"object": "list",
 		"data":   models,

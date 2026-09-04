@@ -181,19 +181,26 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					name = id
 				}
 				var caps []string
-				caps = append(caps, "chat", "code")
-				if m.SupportsThinking {
-					caps = append(caps, "reasoning")
-				}
-				if m.SupportsImages {
-					caps = append(caps, "vision")
-				}
 				var mods []string
-				mods = append(mods, "text")
-				if m.SupportsImages {
-					mods = append(mods, "image")
-				}
 
+				// Distinguish dedicated image generation models (e.g. gemini-3.1-flash-image)
+				isImageGen := strings.Contains(strings.ToLower(id), "-image")
+				if isImageGen {
+					caps = append(caps, "image-generation")
+					mods = append(mods, "image")
+				} else {
+					caps = append(caps, "chat", "code")
+					if m.SupportsThinking {
+						caps = append(caps, "reasoning")
+					}
+					if m.SupportsImages {
+						caps = append(caps, "vision")
+					}
+					mods = append(mods, "text")
+					if m.SupportsImages {
+						mods = append(mods, "image")
+					}
+				}
 				family := "gemini"
 				if strings.Contains(id, "claude") {
 					family = "claude"
