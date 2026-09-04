@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 	"github.com/arisvia/cyrene-gateway/internal/model"
-	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 const (
@@ -167,25 +166,62 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 			continue
 		}
 
-		// 1. Try Models as map (standard response)
+		// 1. Try Models as map (standard response with rich metadata)
 		var resultMap struct {
 			Models map[string]struct {
-				DisplayName string `json:"displayName"`
+				DisplayName      string `json:"displayName"`
+				MaxTokens        int    `json:"maxTokens"`
+				MaxOutputTokens  int    `json:"maxOutputTokens"`
+				SupportsThinking bool   `json:"supportsThinking"`
+				SupportsImages   bool   `json:"supportsImages"`
+				IsInternal       bool   `json:"isInternal"`
 			} `json:"models"`
 		}
 		if err := json.Unmarshal(respBytes, &resultMap); err == nil && len(resultMap.Models) > 0 {
 			var out []model.ModelMetadata
 			for id, m := range resultMap.Models {
+				// Filter out internal Google test/telemetry endpoints and completion-only tab anchors
+				if m.IsInternal || strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") {
+					continue
+				}
 				name := m.DisplayName
 				if name == "" {
 					name = id
 				}
+				var caps []string
+				caps = append(caps, "chat", "code")
+				if m.SupportsThinking {
+					caps = append(caps, "reasoning")
+				}
+				if m.SupportsImages {
+					caps = append(caps, "vision")
+				}
+				var mods []string
+				mods = append(mods, "text")
+				if m.SupportsImages {
+					mods = append(mods, "image")
+				}
+
+				family := "gemini"
+				if strings.Contains(id, "claude") {
+					family = "claude"
+				} else if strings.Contains(id, "gpt-oss") {
+					family = "gpt-oss"
+				}
+
 				out = append(out, model.ModelMetadata{
-					ID:          id,
-					DisplayName: name,
+					ID:            id,
+					DisplayName:   name,
+					ContextLength: m.MaxTokens,
+					MaxOutput:     m.MaxOutputTokens,
+					Capabilities:  caps,
+					Modalities:    mods,
+					Family:        family,
 				})
 			}
-			return out
+			if len(out) > 0 {
+				return out
+			}
 		}
 
 		// 2. Try Models as array
@@ -198,6 +234,9 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		if err := json.Unmarshal(respBytes, &resultSlice); err == nil && len(resultSlice.Models) > 0 {
 			var out []model.ModelMetadata
 			for _, m := range resultSlice.Models {
+				if strings.HasPrefix(m.ID, "chat_") || strings.HasPrefix(m.ID, "tab_") {
+					continue
+				}
 				name := m.DisplayName
 				if name == "" {
 					name = m.ID
@@ -207,20 +246,10 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					DisplayName: name,
 				})
 			}
-			return out
+			if len(out) > 0 {
+				return out
+			}
 		}
-	}
-
-	// 3. Fallback to static registered catalog if all remote calls fail (matches 9router behavior)
-	if staticModels := provider.GetRegistryModels("antigravity"); len(staticModels) > 0 {
-		var out []model.ModelMetadata
-		for _, m := range staticModels {
-			out = append(out, model.ModelMetadata{
-				ID:          m.ID,
-				DisplayName: m.Name,
-			})
-		}
-		return out
 	}
 
 	return nil

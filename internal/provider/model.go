@@ -66,24 +66,6 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 		}
 	}
 
-	// 4. Dynamic lookup across active connections (e.g. if custom node or openrouter)
-	if conns, err := database.ListConnections(); err == nil {
-		for _, conn := range conns {
-			if !conn.IsActive {
-				continue
-			}
-			if regModels, ok := RegistryModels[conn.Provider]; ok {
-				for _, rm := range regModels {
-					if strings.EqualFold(rm.ID, parsed.Model) || strings.EqualFold(rm.Name, parsed.Model) {
-						return model.ModelInfo{
-							Provider: conn.Provider,
-							Model:    rm.ID,
-						}, nil
-					}
-				}
-			}
-		}
-	}
 
 	// 5. Fallback: infer provider from model name
 	return model.ModelInfo{

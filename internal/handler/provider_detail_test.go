@@ -21,7 +21,9 @@ func TestGetProviderModels(t *testing.T) {
 		Data:     model.ConnectionData{APIKey: "sk-ant-test"},
 	}
 	database.CreateConnection(conn)
-
+	// Seed live cached models as Cyrene Gateway uses purely dynamic model caching
+	cachedRaw := `{"provider":"anthropic","models":[{"id":"claude-3-5-sonnet","displayName":"Claude 3.5 Sonnet"}]}`
+	database.KVSet("providerModelCache", "anthropic", cachedRaw)
 	req := httptest.NewRequest("GET", "/api/providers/detail-conn/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -161,7 +163,8 @@ func TestModelMetadataOverride(t *testing.T) {
 		Data:     model.ConnectionData{APIKey: "sk-test"},
 	}
 	database.CreateConnection(conn)
-
+	cachedRaw := `{"provider":"openai","models":[{"id":"gpt-4o","displayName":"GPT-4o"}]}`
+	database.KVSet("providerModelCache", "openai", cachedRaw)
 	// Save custom metadata for gpt-4o
 	metaBody := `{"id":"gpt-4o","displayName":"GPT-4o Custom","contextLength":128000,"maxOutputTokens":16384}`
 	req := httptest.NewRequest("POST", "/api/providers/meta-conn/models/meta", strings.NewReader(metaBody))

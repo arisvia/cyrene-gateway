@@ -67,12 +67,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// 1. 获取硬编码备用 / 默认 Registry 模型
-	registryModels := provider.GetRegistryModels(conn.Provider)
-	if registryModels == nil {
-		registryModels = []provider.ModelRef{}
-	}
-
 	// 判断是否为免密未授权的 OpenCode 连接（仅允许免费模型）
 	isUnauthOpenCode := conn.Provider == "opencode" && (conn.AuthType == "none" || conn.Data.APIKey == "")
 
@@ -101,16 +95,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// 若无 Live 模型或补齐 Registry 中独特项
-	for _, rm := range registryModels {
-		if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(rm.ID) {
-			continue
-		}
-		if !seen[rm.ID] {
-			seen[rm.ID] = true
-			unifiedModels = append(unifiedModels, rm)
-		}
-	}
 
 	// 如果处于 OpenCode 免密模式且尚未抓取或未命中任何免费模型，使用 OpenCode 标准免费兜底模型
 	if isUnauthOpenCode && len(unifiedModels) == 0 {
