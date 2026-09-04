@@ -1,13 +1,14 @@
 package handler
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
-
+	"time"
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -63,6 +64,12 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if modelInfo.Provider == "antigravity" {
+		// Antigravity streamGenerateContent returns SSE event stream with inlineData
+		s.aggregateAntigravityImageResponse(w, resp)
+		return
+	}
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -367,12 +374,19 @@ func (s *Server) resolveMediaCredentials(providerID string) (*model.ProviderConn
 	// Pre-check OAuth token refresh
 	s.tryRefreshToken(conn)
 
+	projectID := ""
+	if conn.Data.ProviderSpecificData != nil {
+		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
+			projectID = pid
+		}
+	}
+
 	return conn, media.Credentials{
 		APIKey:      conn.Data.APIKey,
 		AccessToken: conn.Data.AccessToken,
+		ProjectID:   projectID,
 	}
 }
-
 // proxyMediaResponse copies an upstream response to the client.
 func (s *Server) proxyMediaResponse(w http.ResponseWriter, resp *http.Response) {
 	for key, values := range resp.Header {
@@ -451,4 +465,65 @@ func mediaProviderID(modelStr string) string {
 		return modelStr[:idx]
 	}
 	return ""
+}
+// aggregateAntigravityImageResponse parses Google streamGenerateContent SSE stream and packages inlineData into OpenAI Image Response
+func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *http.Response) {
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 1024*1024), 20*1024*1024)
+
+	var b64Images []string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var payload struct {
+			Response struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							InlineData *struct {
+								MimeType string `json:"mimeType"`
+								Data     string `json:"data"`
+							} `json:"inlineData"`
+						} `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+			} `json:"response"`
+		}
+		if err := json.Unmarshal([]byte(data), &payload); err == nil {
+			for _, c := range payload.Response.Candidates {
+				for _, p := range c.Content.Parts {
+					if p.InlineData != nil && p.InlineData.Data != "" {
+						b64Images = append(b64Images, p.InlineData.Data)
+					}
+				}
+			}
+		}
+	}
+
+	if len(b64Images) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"created": time.Now().Unix(),
+			"data":    []any{},
+		})
+		return
+	}
+
+	var dataItems []map[string]any
+	for _, b64 := range b64Images {
+		dataItems = append(dataItems, map[string]any{
+			"b64_json": b64,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"created": time.Now().Unix(),
+		"data":    dataItems,
+	})
 }

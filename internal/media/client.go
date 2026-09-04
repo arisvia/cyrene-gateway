@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // Client handles media provider requests with credential resolution.
@@ -30,6 +32,7 @@ func NewClient() *Client {
 type Credentials struct {
 	APIKey      string
 	AccessToken string
+	ProjectID   string
 }
 
 func (c Credentials) Token() string {
@@ -179,6 +182,9 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 			"requestType": "agent",
 			"userAgent":   "antigravity",
 		}
+		if creds.ProjectID != "" {
+			envelope["project"] = creds.ProjectID
+		}
 		reqBody, _ = json.Marshal(envelope)
 	default:
 		// OpenAI-compatible
@@ -192,9 +198,9 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if cfg.Format == "antigravity" {
-		httpReq.Header.Set("User-Agent", "antigravity/1.15.8 windows/amd64")
-		httpReq.Header.Set("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
-		httpReq.Header.Set("Client-Metadata", `{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}`)
+		httpReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		httpReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+		httpReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 	}
 	setAuth(httpReq, cfg, creds)
 	slog.Debug("Media image request",
