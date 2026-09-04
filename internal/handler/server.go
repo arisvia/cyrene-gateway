@@ -579,6 +579,20 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "qoder model catalog fetch failed"})
 			return
 		}
+	} else if providerID == "antigravity" {
+		token := conn.Data.AccessToken
+		projectID := ""
+		if conn.Data.ProviderSpecificData != nil {
+			projectID, _ = conn.Data.ProviderSpecificData["projectId"].(string)
+		}
+		if projectID == "" {
+			projectID, _ = DiscoverAntigravityProject(r.Context(), client, token)
+		}
+		models = s.fetchAntigravityCatalog(r.Context(), client, token, projectID)
+		if models == nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "antigravity model catalog fetch failed"})
+			return
+		}
 	} else {
 		// Phase 36 T6: registry ModelsURL + format-derived auth scheme.
 		cfg := provider.ModelsFetchFor(providerInfo)

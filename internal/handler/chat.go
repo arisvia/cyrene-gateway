@@ -334,6 +334,11 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
 			return
 		}
+		if modelInfo.Provider == "antigravity" {
+			slog.Info("Combo delegating to Antigravity executor", slog.String("model", modelInfo.Model))
+			s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
+			return
+		}
 
 		// Build and execute upstream request — use raw body to preserve unknown fields
 		var comboBody map[string]any
@@ -525,6 +530,10 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// --- Qoder special path: COSY-signed custom protocol ---
 	if modelInfo.Provider == "qoder" {
 		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
+		return
+	}
+	if modelInfo.Provider == "antigravity" {
+		s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
 		return
 	}
 

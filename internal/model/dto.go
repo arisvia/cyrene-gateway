@@ -74,7 +74,7 @@ func (pc *ProviderConnection) ToDTO() ConnectionDTO {
 		CreatedAt: pc.CreatedAt,
 		UpdatedAt: pc.UpdatedAt,
 		Data: ConnectionDataDTO{
-			HasAPIKey:            pc.Data.APIKey != "",
+			HasAPIKey:            pc.Data.APIKey != "" || pc.Data.AccessToken != "" || pc.Data.RefreshToken != "",
 			HasAccessToken:       pc.Data.AccessToken != "",
 			HasRefreshToken:      pc.Data.RefreshToken != "",
 			CredentialHint:       hint,

@@ -785,9 +785,9 @@ const Providers: Component = () => {
                                         <Badge tone="blue" class="text-[10px] px-1.5 py-0">
                                           {AUTHTYPE_LABEL[p.authType] || p.authType}
                                         </Badge>
-                                        <Show when={p.data?.hasApiKey !== undefined}>
-                                          <Badge tone={p.data?.hasApiKey ? 'green' : 'amber'} class="text-[10px] px-1.5 py-0">
-                                            {p.data?.hasApiKey ? '已配置凭证' : '缺凭证'}
+                                        <Show when={p.data?.hasApiKey !== undefined || p.data?.hasAccessToken !== undefined}>
+                                          <Badge tone={(p.data?.hasApiKey || p.data?.hasAccessToken || p.data?.hasRefreshToken) ? 'green' : 'amber'} class="text-[10px] px-1.5 py-0">
+                                            {(p.data?.hasApiKey || p.data?.hasAccessToken || p.data?.hasRefreshToken) ? '已配置凭证' : '缺凭证'}
                                           </Badge>
                                         </Show>
                                         <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-bg text-faint border border-subtle">

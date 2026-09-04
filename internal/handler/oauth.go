@@ -2,12 +2,23 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
+
+func htmlEscape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, `"`, "&quot;")
+	s = strings.ReplaceAll(s, `'`, "&#39;")
+	return s
+}
 
 // handleOAuthAuthorize generates an authorization URL for a provider.
 // GET /api/oauth/{provider}/authorize?redirect_uri=...
@@ -17,6 +28,7 @@ func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})
 		return
 	}
+
 
 	if _, ok := provider.GetProvider(providerID); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerID})
@@ -103,11 +115,47 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
+	// Antigravity requires discovering the Cloud AI Companion project ID
+	if providerID == "antigravity" && tokens.AccessToken != "" {
+		projID, err := DiscoverAntigravityProject(r.Context(), nil, tokens.AccessToken)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("failed to discover Antigravity project: %v", err),
+			})
+			return
+		}
+		if tokens.ProviderSpecificData == nil {
+			tokens.ProviderSpecificData = make(map[string]any)
+		}
+		tokens.ProviderSpecificData["projectId"] = projID
+	}
 
 	// Create connection
 	conn := s.createOAuthConnection(providerID, tokens)
 	if conn == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
+		return
+	}
+
+	// If the browser opened this callback in a popup or new tab, render a self-closing page
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head><title>授权成功</title><meta charset="utf-8"></head>
+<body style="font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f172a;color:#f8fafc;">
+  <div style="text-align:center;padding:2rem;background:#1e293b;border-radius:1rem;border:1px solid #334155;box-shadow:0 10px 25px -5px rgba(0,0,0,0.5);">
+    <h2 style="margin:0 0 0.5rem 0;color:#10b981;">✓ 授权成功</h2>
+    <p style="margin:0 0 1rem 0;color:#94a3b8;">账号 %s 已成功绑定至 Cyrene Gateway。</p>
+    <p style="margin:0;font-size:0.875rem;color:#64748b;">本页面将在 2 秒后自动关闭，若未关闭请手动关闭。</p>
+  </div>
+  <script>
+    try { if (window.opener) { window.opener.postMessage({ type: 'oauth-complete', provider: %q, success: true }, '*'); } } catch(e){}
+    setTimeout(() => { window.close(); }, 1500);
+  </script>
+</body>
+</html>`, htmlEscape(conn.Name), conn.Provider)
 		return
 	}
 

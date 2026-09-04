@@ -191,7 +191,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		"authType":       conn.AuthType,
 		"authModes":      regInfo.AuthModes,
 		"defaultHeaders": regInfo.Headers,
-		"hasApiKey":      conn.Data.APIKey != "",
+		"hasApiKey":      conn.Data.APIKey != "" || conn.Data.AccessToken != "" || conn.Data.RefreshToken != "",
 		"isFreeMode":     isUnauthOpenCode,
 		"registryModels": registryItems,
 		"customModels":   customItems,

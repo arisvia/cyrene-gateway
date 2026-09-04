@@ -312,8 +312,9 @@ const Quota: Component = () => {
                                 </div>
                               }
                             >
-                              <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle">
-                                {qData()!.message}
+                              <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex items-center justify-between">
+                                <span>{qData()!.message?.startsWith('Usage API not implemented') ? '官方暂未开放标准在线余量查询接口' : qData()!.message}</span>
+                                <span class="text-[10px] text-faint font-mono">网内自适应限流调度</span>
                               </div>
                             </Show>
                           }
