@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
@@ -194,9 +195,12 @@ type testResult struct {
 func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection) testResult {
 	providerInfo, ok := provider.GetProvider(conn.Provider)
 	if !ok {
+		// Check if it is a pure media provider
+		if mp, isMedia := media.Registry[conn.Provider]; isMedia {
+			return s.testMediaConnection(r, conn, mp)
+		}
 		return testResult{Error: "unknown provider: " + conn.Provider}
 	}
-
 	if conn.Provider == "antigravity" {
 		s.tryRefreshToken(conn)
 		start := time.Now()
@@ -338,4 +342,36 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		s.DB.UpdateConnection(conn)
 	}
 	return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: "HTTP " + fmt.Sprintf("%d", resp.StatusCode)}
+}
+// testMediaConnection tests connectivity and credentials for a media provider.
+func (s *Server) testMediaConnection(r *http.Request, conn *model.ProviderConnection, mp *media.MediaProviderInfo) testResult {
+	start := time.Now()
+	token := conn.Data.APIKey
+	if token == "" {
+		token = conn.Data.AccessToken
+	}
+	creds := media.Credentials{APIKey: token}
+
+	ok, code, err := s.MediaClient.TestCredentials(r.Context(), conn.Provider, creds, conn.Data.BaseURL)
+	latency := time.Since(start)
+	if err != nil || !ok {
+		errMsg := "test failed"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		return testResult{
+			OK:        false,
+			Code:      code,
+			Error:     errMsg,
+			Latency:   latency.String(),
+			LatencyMS: latency.Milliseconds(),
+		}
+	}
+
+	return testResult{
+		OK:        true,
+		Code:      code,
+		Latency:   latency.String(),
+		LatencyMS: latency.Milliseconds(),
+	}
 }

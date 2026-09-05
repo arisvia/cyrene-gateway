@@ -470,15 +470,6 @@ func getStaticVoices(providerID string) []map[string]string {
 			{"id": "pNInz6obpgDQGcFmaJgB", "name": "Adam"},
 			{"id": "yoZ06aMxZJJ28mfd3POQ", "name": "Sam"},
 		}
-	case "edge-tts":
-		return []map[string]string{
-			{"id": "en-US-AriaNeural", "name": "Aria (US)"},
-			{"id": "en-US-GuyNeural", "name": "Guy (US)"},
-			{"id": "en-GB-SoniaNeural", "name": "Sonia (UK)"},
-			{"id": "en-GB-RyanNeural", "name": "Ryan (UK)"},
-			{"id": "ja-JP-NanamiNeural", "name": "Nanami (JP)"},
-			{"id": "zh-CN-XiaoxiaoNeural", "name": "Xiaoxiao (CN)"},
-		}
 	default:
 		return nil
 	}

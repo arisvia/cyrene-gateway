@@ -629,6 +629,111 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 	setAuth(httpReq, cfg, creds)
 	return c.HTTPClient.Do(httpReq)
 }
+// TestCredentials tests upstream connectivity and authentication for a media provider.
+func (c *Client) TestCredentials(ctx context.Context, providerID string, creds Credentials, customBaseURL string) (bool, int, error) {
+	token := creds.Token()
+	if token == "" {
+		return false, 0, fmt.Errorf("API key or token is required")
+	}
+
+	type probeSpec struct {
+		method  string
+		url     string
+		header  string
+		authVal string
+		body    []byte
+	}
+
+	probes := map[string]probeSpec{
+		"stability-ai": {
+			method:  "GET",
+			url:     "https://api.stability.ai/v1/user/account",
+			header:  "Authorization",
+			authVal: "Bearer " + token,
+		},
+		"elevenlabs": {
+			method:  "GET",
+			url:     "https://api.elevenlabs.io/v1/user",
+			header:  "xi-api-key",
+			authVal: token,
+		},
+		"deepgram": {
+			method:  "GET",
+			url:     "https://api.deepgram.com/v1/projects",
+			header:  "Authorization",
+			authVal: "Token " + token,
+		},
+		"brave-search": {
+			method:  "GET",
+			url:     "https://api.search.brave.com/res/v1/web/search?q=test",
+			header:  "X-Subscription-Token",
+			authVal: token,
+		},
+		"tavily": {
+			method:  "POST",
+			url:     "https://api.tavily.com/search",
+			header:  "Authorization",
+			authVal: "Bearer " + token,
+			body:    []byte(`{"query":"test"}`),
+		},
+		"exa": {
+			method:  "POST",
+			url:     "https://api.exa.ai/search",
+			header:  "x-api-key",
+			authVal: token,
+			body:    []byte(`{"query":"test","numResults":1}`),
+		},
+		"firecrawl": {
+			method:  "GET",
+			url:     "https://api.firecrawl.dev/v1/team/credit-usage",
+			header:  "Authorization",
+			authVal: "Bearer " + token,
+		},
+	}
+
+	spec, ok := probes[providerID]
+	if !ok {
+		return false, 0, fmt.Errorf("unsupported media provider: %s", providerID)
+	}
+
+	targetURL := spec.url
+	if customBaseURL != "" {
+		targetURL = customBaseURL
+	}
+
+	var bodyReader io.Reader
+	if len(spec.body) > 0 {
+		bodyReader = bytes.NewReader(spec.body)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, spec.method, targetURL, bodyReader)
+	if err != nil {
+		return false, 0, err
+	}
+
+	if spec.header != "" && spec.authVal != "" {
+		req.Header.Set(spec.header, spec.authVal)
+	}
+	if len(spec.body) > 0 {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return false, 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return false, resp.StatusCode, fmt.Errorf("authentication failed (HTTP %d)", resp.StatusCode)
+	}
+
+	if (resp.StatusCode >= 200 && resp.StatusCode < 300) || (providerID == "brave-search" && resp.StatusCode == http.StatusUnprocessableEntity) {
+		return true, resp.StatusCode, nil
+	}
+
+	return false, resp.StatusCode, fmt.Errorf("upstream returned HTTP %d", resp.StatusCode)
+}
 
 func inputToString(input any) string {
 	switch v := input.(type) {

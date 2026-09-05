@@ -14,6 +14,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   free: '免密免费',
   webCookie: '网页 Cookie',
   custom: '自定义通用',
+  media: '多模态与媒体',
 }
 
 const AUTHTYPE_LABEL: Record<string, string> = {
@@ -617,6 +618,7 @@ const Providers: Component = () => {
                   { value: 'free', label: '免密免费' },
                   { value: 'freeTier', label: '免费额度' },
                   { value: 'apikey', label: 'API Key' },
+                  { value: 'media', label: '多模态与媒体 (Media)' },
                   { value: 'oauth', label: 'OAuth 渠道' },
                 ]}
                 onChange={setCatFilter}

@@ -40,6 +40,16 @@ type MediaProviderInfo struct {
 	Models   []ModelEntry            `json:"models,omitempty"`
 	Configs  map[Kind]ProviderConfig `json:"configs,omitempty"`
 }
+// APIKeyURLs maps media provider IDs to their console/key dashboard URLs.
+var APIKeyURLs = map[string]string{
+	"stability-ai": "https://platform.stability.ai/account/keys",
+	"elevenlabs":   "https://elevenlabs.io/app/settings/api-keys",
+	"deepgram":     "https://console.deepgram.com/",
+	"brave-search": "https://brave.com/search/api/",
+	"tavily":       "https://app.tavily.com/home",
+	"exa":          "https://dashboard.exa.ai/api-keys",
+	"firecrawl":    "https://www.firecrawl.dev/app/api-keys",
+}
 
 // Registry holds all media provider definitions keyed by provider ID.
 var Registry map[string]*MediaProviderInfo

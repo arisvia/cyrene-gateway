@@ -226,8 +226,6 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   exa: '/providers/exa.svg',
   firecrawl: '/providers/firecrawl.svg',
   elevenlabs: '/providers/elevenlabs.svg',
-  'edge-tts': '/providers/edge-tts.svg',
-  edge: '/providers/edge-tts.svg',
   deepgram: '/providers/deepgram.svg',
 }
 

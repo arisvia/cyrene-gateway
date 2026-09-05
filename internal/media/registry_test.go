@@ -131,10 +131,26 @@ func TestPrunedProvidersAbsent(t *testing.T) {
 		"recraft", "fal", "runwayml", "cartesia", "playht",
 		"assemblyai", "huggingface", "searxng", "google-pse",
 		"voyage-ai", "jina-ai", "jina-reader", "serper", "searchapi",
+		"edge-tts",
 	}
 	for _, id := range removed {
 		if _, ok := Registry[id]; ok {
 			t.Errorf("pruned provider %q should not be present in Registry", id)
 		}
+	}
+}
+func TestTestCredentialsValidation(t *testing.T) {
+	client := NewClient()
+
+	// Missing token should fail immediately
+	ok, _, err := client.TestCredentials(t.Context(), "elevenlabs", Credentials{}, "")
+	if ok || err == nil {
+		t.Error("expected error for empty token")
+	}
+
+	// Unsupported provider should fail
+	ok, _, err = client.TestCredentials(t.Context(), "nonexistent", Credentials{APIKey: "foo"}, "")
+	if ok || err == nil {
+		t.Error("expected error for nonexistent provider")
 	}
 }

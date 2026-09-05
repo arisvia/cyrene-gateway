@@ -33,15 +33,6 @@ func registerTTSProviders() {
 			Format:     "elevenlabs",
 		},
 	)
-	// Edge TTS (free, no auth)
-	mergeProvider("edge-tts", "Edge TTS", KindTTS, nil, ProviderConfig{
-		Provider:   "edge-tts",
-		Kind:       KindTTS,
-		BaseURL:    "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1",
-		AuthType:   "none",
-		AuthHeader: "",
-		Format:     "edge-tts",
-	})
 
 	// Gemini TTS
 	mergeProvider("gemini", "Gemini", KindTTS,

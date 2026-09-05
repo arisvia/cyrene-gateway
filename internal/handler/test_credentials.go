@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
@@ -27,8 +28,9 @@ func (s *Server) handleTestCredentials(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider or baseUrl required"})
 		return
 	}
-
-	if _, ok := provider.GetProvider(req.Provider); !ok && req.BaseURL == "" {
+	_, isChat := provider.GetProvider(req.Provider)
+	_, isMedia := media.Registry[req.Provider]
+	if !isChat && !isMedia && req.BaseURL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown provider: " + req.Provider})
 		return
 	}

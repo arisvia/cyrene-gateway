@@ -262,7 +262,47 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
+
+	// Helper to synthesize pure media providers into provider.ProviderInfo
+	buildMediaProviders := func() []provider.ProviderInfo {
+		var list []provider.ProviderInfo
+		for id, mp := range media.Registry {
+			if _, inChat := provider.Registry[id]; inChat {
+				continue
+			}
+			kinds := make([]string, len(mp.Kinds))
+			for i, k := range mp.Kinds {
+				kinds[i] = string(k)
+			}
+			var firstCfg media.ProviderConfig
+			for _, cfg := range mp.Configs {
+				firstCfg = cfg
+				break
+			}
+			list = append(list, provider.ProviderInfo{
+				ID:        id,
+				Name:      mp.Name,
+				BaseURL:   firstCfg.BaseURL,
+				APIType:   "media",
+				AuthType:  firstCfg.AuthType,
+				Category:  "media",
+				AuthHint:  fmt.Sprintf("支持能力: %s", strings.Join(kinds, ", ")),
+				AuthModes: []string{"api-key"},
+				APIKeyURL: media.APIKeyURLs[id],
+			})
+		}
+		sort.Slice(list, func(i, j int) bool {
+			return list[i].Name < list[j].Name
+		})
+		return list
+	}
+
 	if category != "" {
+		if category == "media" {
+			mediaProviders := buildMediaProviders()
+			writeJSON(w, http.StatusOK, map[string]any{"providers": mediaProviders, "count": len(mediaProviders)})
+			return
+		}
 		// Filter by category
 		providers := make([]provider.ProviderInfo, 0)
 		for _, p := range provider.Registry {
@@ -273,9 +313,18 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"providers": providers, "count": len(providers)})
 		return
 	}
+
 	// Return grouped by category with counts
 	categories := provider.GetRegistryByCategory()
-	total := len(provider.Registry)
+	mediaProviders := buildMediaProviders()
+	if len(mediaProviders) > 0 {
+		categories = append(categories, provider.RegistryByCategory{
+			Category:  "media",
+			Providers: mediaProviders,
+			Count:     len(mediaProviders),
+		})
+	}
+	total := len(provider.Registry) + len(mediaProviders)
 	writeJSON(w, http.StatusOK, map[string]any{"categories": categories, "total": total})
 }
 
