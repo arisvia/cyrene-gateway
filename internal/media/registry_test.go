@@ -75,8 +75,8 @@ func TestSTTProviders(t *testing.T) {
 
 func TestVideoProviders(t *testing.T) {
 	providers := GetProvidersByKind(KindVideo)
-	if len(providers) < 2 {
-		t.Errorf("expected at least 2 video providers, got %d", len(providers))
+	if len(providers) < 1 {
+		t.Errorf("expected at least 1 video provider, got %d", len(providers))
 	}
 
 	if !SupportsKind("xai", KindVideo) {
@@ -123,5 +123,18 @@ func TestGetConfigNil(t *testing.T) {
 	cfg = GetConfig("openai", KindVideo)
 	if cfg != nil {
 		t.Error("expected nil config for unsupported kind")
+	}
+}
+
+func TestPrunedProvidersAbsent(t *testing.T) {
+	removed := []string{
+		"recraft", "fal", "runwayml", "cartesia", "playht",
+		"assemblyai", "huggingface", "searxng", "google-pse",
+		"voyage-ai", "jina-ai", "jina-reader", "serper", "searchapi",
+	}
+	for _, id := range removed {
+		if _, ok := Registry[id]; ok {
+			t.Errorf("pruned provider %q should not be present in Registry", id)
+		}
 	}
 }

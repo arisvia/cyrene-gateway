@@ -15,20 +15,4 @@ func registerVideoProviders() {
 			Format:     "xai-video",
 		},
 	)
-
-	// RunwayML Video
-	mergeProvider("runwayml", "RunwayML", KindVideo,
-		[]ModelEntry{
-			{ID: "gen4-turbo", Name: "Gen4 Turbo", Kind: KindVideo},
-			{ID: "gen3a-turbo", Name: "Gen3A Turbo", Kind: KindVideo},
-		},
-		ProviderConfig{
-			Provider:   "runwayml",
-			Kind:       KindVideo,
-			BaseURL:    "https://api.dev.runwayml.com/v1",
-			AuthType:   "apikey",
-			AuthHeader: "bearer",
-			Format:     "runway",
-		},
-	)
 }

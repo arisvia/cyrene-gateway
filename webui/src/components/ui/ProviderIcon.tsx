@@ -218,6 +218,17 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   trae: '/providers/trae.svg',
   tencent: '/providers/tencent.svg',
   codex: '/providers/codex.svg',
+  'stability-ai': '/providers/stability.svg',
+  stability: '/providers/stability.svg',
+  'brave-search': '/providers/brave.svg',
+  brave: '/providers/brave.svg',
+  tavily: '/providers/tavily.svg',
+  exa: '/providers/exa.svg',
+  firecrawl: '/providers/firecrawl.svg',
+  elevenlabs: '/providers/elevenlabs.svg',
+  'edge-tts': '/providers/edge-tts.svg',
+  edge: '/providers/edge-tts.svg',
+  deepgram: '/providers/deepgram.svg',
 }
 
 // 容器化 Provider Avatar 组件（支持 public SVG 图像或品牌色渐变背景 SVG）

@@ -41,25 +41,7 @@ func registerWebProviders() {
 			Format:     p.id,
 		})
 	}
-	// SearXNG (self-hosted, no auth)
-	mergeProvider("searxng", "SearXNG", KindWebSearch, nil, ProviderConfig{
-		Provider:   "searxng",
-		Kind:       KindWebSearch,
-		BaseURL:    "",
-		AuthType:   "none",
-		AuthHeader: "",
-		Format:     "searxng",
-	})
 
-	// Google PSE
-	mergeProvider("google-pse", "Google PSE", KindWebSearch, nil, ProviderConfig{
-		Provider:   "google-pse",
-		Kind:       KindWebSearch,
-		BaseURL:    "https://www.googleapis.com/customsearch/v1",
-		AuthType:   "apikey",
-		AuthHeader: "key",
-		Format:     "google-pse",
-	})
 	// Antigravity (Google Code Assist search grounding via gemini-2.5-flash)
 	mergeProvider("antigravity", "Google Antigravity", KindWebSearch, nil, ProviderConfig{
 		Provider:   "antigravity",
