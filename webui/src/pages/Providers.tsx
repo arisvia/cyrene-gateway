@@ -24,6 +24,18 @@ const AUTHTYPE_LABEL: Record<string, string> = {
   none: '免认证',
   cookie: 'Cookie',
 }
+
+export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone; icon: string }> = {
+  llm: { label: 'LLM 对话', tone: 'blue', icon: '💬' },
+  image: { label: '图像生成', tone: 'blue', icon: '🎨' },
+  tts: { label: '语音合成 (TTS)', tone: 'green', icon: '🔊' },
+  stt: { label: '语音识别 (STT)', tone: 'amber', icon: '🎙️' },
+  video: { label: '视频生成', tone: 'red', icon: '🎬' },
+  embedding: { label: '文本向量', tone: 'gray', icon: '📐' },
+  'web-search': { label: '网络搜索', tone: 'amber', icon: '🔍' },
+  'web-fetch': { label: '网页抓取', tone: 'gray', icon: '🌐' },
+}
+
 const Providers: Component = () => {
   const store = useGatewayStore()
   const toast = useToast()
@@ -31,10 +43,10 @@ const Providers: Component = () => {
   // 顶层视图切换：'connections' | 'catalog'
   const [activeTab, setActiveTab] = createSignal<'connections' | 'catalog'>('connections')
 
-  // 搜索与分类过滤
+  // 搜索与分类/能力过滤
   const [query, setQuery] = createSignal('')
   const [catFilter, setCatFilter] = createSignal('')
-
+  const [capFilter, setCapFilter] = createSignal('')
   // 添加/配置向导状态
   const [wizardOpen, setWizardOpen] = createSignal(false)
   const [selectedReg, setSelectedReg] = createSignal<RegistryProvider | null>(null)
@@ -76,8 +88,8 @@ const Providers: Component = () => {
   const groupedConnections = createMemo<ProviderConnectionGroup[]>(() => {
     const q = query().toLowerCase().trim()
     const cat = catFilter()
+    const cap = capFilter()
     const all = store.providers()
-
     // 按 Provider 标识聚合账号
     const map: Record<string, Provider[]> = {}
     for (const p of all) {
@@ -100,6 +112,9 @@ const Providers: Component = () => {
         if (!matchesCat) continue
       }
 
+      if (cap) {
+        if (!reg?.capabilities?.includes(cap)) continue
+      }
       if (q) {
         const matchProvider = providerName.toLowerCase().includes(q) || providerId.toLowerCase().includes(q)
         const matchConns = conns.some(c =>
@@ -142,6 +157,7 @@ const Providers: Component = () => {
     const list = store.registryList()
     const q = query().toLowerCase().trim()
     const cat = catFilter()
+    const cap = capFilter()
     const connected = connectedProviderIds()
     const hide = hideAdded()
 
@@ -150,6 +166,7 @@ const Providers: Component = () => {
       if (!isCustom) return false
       if (hide && connected.has(r.id)) return false
       if (cat && r.category !== cat) return false
+      if (cap && !r.capabilities?.includes(cap)) return false
       if (!q) return true
       return (
         r.name.toLowerCase().includes(q) ||
@@ -169,6 +186,7 @@ const Providers: Component = () => {
     const list = store.registryList()
     const q = query().toLowerCase().trim()
     const cat = catFilter()
+    const cap = capFilter()
     const connected = connectedProviderIds()
     const hide = hideAdded()
 
@@ -178,6 +196,7 @@ const Providers: Component = () => {
       if (isCustom) return false
       if (hide && connected.has(r.id)) return false
       if (cat && r.category !== cat) return false
+      if (cap && !r.capabilities?.includes(cap)) return false
       if (!q) return true
       return (
         r.name.toLowerCase().includes(q) ||
@@ -186,7 +205,6 @@ const Providers: Component = () => {
         (r.category || '').toLowerCase().includes(q)
       )
     })
-
     // 按 Brand 或 单例 ID 分组
     const groups: Record<string, RegistryProvider[]> = {}
     for (const r of matched) {
@@ -595,6 +613,22 @@ const Providers: Component = () => {
               onInput={setQuery}
             />
 
+            <Select
+              value={capFilter()}
+              options={[
+                { value: '', label: '全部支持能力' },
+                { value: 'llm', label: '💬 LLM 对话' },
+                { value: 'image', label: '🎨 图像生成' },
+                { value: 'tts', label: '🔊 语音合成 (TTS)' },
+                { value: 'stt', label: '🎙️ 语音识别 (STT)' },
+                { value: 'video', label: '🎬 视频生成' },
+                { value: 'embedding', label: '📐 文本向量' },
+                { value: 'web-search', label: '🔍 网络搜索' },
+                { value: 'web-fetch', label: '🌐 网页抓取' },
+              ]}
+              onChange={setCapFilter}
+            />
+
             <Show when={activeTab() === 'connections'}>
               <Select
                 value={catFilter()}
@@ -732,16 +766,36 @@ const Providers: Component = () => {
                                 </Badge>
                               </Show>
                             </div>
-                            <div class="text-xs text-faint flex items-center gap-2 mt-1 font-mono">
-                              <span>ID: {group.providerId}</span>
-                              <span>·</span>
-                              <span>分类: {CATEGORY_LABEL[group.category] || group.category}</span>
+                            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                              <span class="text-xs text-faint font-mono">ID: {group.providerId}</span>
+                              <span class="text-faint">·</span>
+                              <div class="flex items-center gap-1 flex-wrap">
+                                <For each={reg()?.capabilities || ['llm']}>
+                                  {capKey => {
+                                    const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: '⚡' }
+                                    return (
+                                      <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0.5 gap-1 shrink-0">
+                                        <span>{conf.icon}</span>
+                                        <span>{conf.label}</span>
+                                      </Badge>
+                                    )
+                                  }}
+                                </For>
+                              </div>
                             </div>
                           </div>
                         </div>
 
                         {/* 供应商级别操作 */}
                         <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                          {/* 若为纯媒体提供商，提供一键跳转至媒体试用台 */}
+                          <Show when={group.category === 'media' || !reg()?.capabilities?.includes('llm')}>
+                            <A href="/media">
+                              <Button size="sm" variant="secondary" title="前往媒体工作台进行实时交互试用">
+                                前往媒体试用台 ↗
+                              </Button>
+                            </A>
+                          </Show>
                           <Show when={reg()}>
                             <Button
                               size="sm"
@@ -1017,6 +1071,21 @@ const Providers: Component = () => {
                           </For>
                         </div>
                       </Show>
+                    </div>
+
+                    {/* 能力胶囊徽章列表 */}
+                    <div class="mt-2.5 flex flex-wrap items-center gap-1 min-h-[22px]">
+                      <For each={reg().capabilities || ['llm']}>
+                        {capKey => {
+                          const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: '⚡' }
+                          return (
+                            <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0.5 gap-1 shrink-0">
+                              <span>{conf.icon}</span>
+                              <span>{conf.label}</span>
+                            </Badge>
+                          )
+                        }}
+                      </For>
                     </div>
 
                     {/* 说明提示：固定最小高度保证网格卡片严格等高 */}

@@ -1,4 +1,5 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
+import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
 import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar } from '@/components/ui'
 
@@ -206,13 +207,17 @@ const Media: Component = () => {
 
   return (
     <div class="space-y-5 stagger pb-16">
-      <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-subtle/50 pb-3">
         <div>
-          <h1 class="text-xl font-semibold">媒体能力</h1>
-          <p class="text-sm text-faint mt-0.5">多模态与衍生能力中心：图像生成、联网搜索、语音与向量嵌入</p>
+          <h1 class="text-xl font-semibold">媒体能力与多模态工作台</h1>
+          <p class="text-sm text-faint mt-0.5">多模态与衍生能力中心：图像生成、联网搜索、语音合成/识别与文本向量嵌入</p>
         </div>
+        <A href="/providers?tab=catalog&category=media">
+          <Button size="sm" variant="secondary" class="gap-1.5 shrink-0">
+            <span>前往提供商市场接入更多渠道 ↗</span>
+          </Button>
+        </A>
       </div>
-
       {/* 顶部能力分类 Tab */}
       <div class="flex flex-wrap gap-1.5 p-1 rounded-card bg-hover/40 border border-subtle/50 w-fit">
         <For each={CAPS}>
@@ -293,6 +298,7 @@ const Media: Component = () => {
                       size="sm"
                       variant="primary"
                       onClick={() => openConfigWizard(p)}
+                      title="快捷配置此提供商凭证"
                     >
                       配置凭证 →
                     </Button>

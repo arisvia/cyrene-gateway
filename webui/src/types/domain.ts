@@ -33,6 +33,7 @@ export interface RegistryProvider {
   region?: string
   authHint?: string
   color?: string
+  capabilities?: string[]
 }
 
 export interface RegistryCategory {
