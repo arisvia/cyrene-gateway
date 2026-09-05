@@ -1,7 +1,9 @@
 export function formatNumber(n: number | undefined | null): string {
-  if (n == null) return '0'
+  if (n == null || isNaN(n)) return '0'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  // 若包含非整型微量浮点，四舍五入至多保留 1 位小数，避免 42.0059 撑破布局
+  if (!Number.isInteger(n)) return (Math.round(n * 10) / 10).toString()
   return String(n)
 }
 

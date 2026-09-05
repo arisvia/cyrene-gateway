@@ -91,9 +91,12 @@ const Quota: Component = () => {
     name: string
     quota: QuotaBucket
   }) => {
-    const pct = () => Math.round(props.quota.remainingPercentage ?? (
-      props.quota.total > 0 ? (props.quota.remaining / props.quota.total) * 100 : 0
-    ))
+    const pct = () => {
+      if (props.quota.remainingPercentage != null) {
+        return Math.round(props.quota.remainingPercentage)
+      }
+      return props.quota.total > 0 ? Math.round((props.quota.remaining / props.quota.total) * 100) : 0
+    }
     const isExhausted = () => props.quota.remaining <= 0 && props.quota.total > 0
 
     // 梯度配额健康色彩：>=50% 翠绿充足，20%~49% 暖橙适中，<20% 警戒红，0% 或耗尽暗红警报
@@ -106,9 +109,13 @@ const Quota: Component = () => {
     }
 
     const resetHint = () => {
-      if (!props.quota.resetAt) return ''
+      const raw = props.quota.resetAt
+      if (!raw) return ''
+      if (raw.startsWith('in ') || raw === '即将重置') return raw
       try {
-        const diffMs = new Date(props.quota.resetAt).getTime() - Date.now()
+        const timeMs = new Date(raw).getTime()
+        if (isNaN(timeMs)) return ''
+        const diffMs = timeMs - Date.now()
         if (diffMs <= 0) return '即将重置'
         const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
         const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
@@ -116,31 +123,100 @@ const Quota: Component = () => {
         const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
         return `in ${hours}h ${mins}m`
       } catch {
-        return props.quota.resetAt.slice(0, 10)
+        return ''
       }
     }
 
     return (
       <div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-hover/60 transition-colors text-xs">
         <span class={`w-2 h-2 rounded-full shrink-0 ${colorClass().dot}`} />
-        <span class="w-24 sm:w-28 font-medium text-foreground truncate shrink-0">
+        <span class="w-32 sm:w-36 font-medium text-foreground truncate shrink-0" title={props.name}>
           {props.name}
         </span>
-        <span class="w-20 text-right tabular-nums text-faint text-[11px] shrink-0">
+        <span class="w-20 text-right tabular-nums text-faint text-[11px] shrink-0 font-mono">
           {formatNumber(props.quota.used)} / {formatNumber(props.quota.total)}
         </span>
-        <div class="flex-1 min-w-[60px] h-1.5 rounded-full bg-hover overflow-hidden mx-1">
+        <div class="flex-1 min-w-[70px] h-1.5 rounded-full bg-hover overflow-hidden mx-1.5">
           <div
-            class={`h-full rounded-full transition-all ${colorClass().bar}`}
+            class={`h-full rounded-full transition-all duration-300 ${colorClass().bar}`}
             style={{ width: `${Math.min(100, Math.max(0, pct()))}%` }}
           />
         </div>
-        <span class={`w-10 text-right font-mono text-[11px] font-medium shrink-0 ${colorClass().text}`}>
+        <span class={`w-11 text-right font-mono text-[11px] font-medium shrink-0 tabular-nums ${colorClass().text}`}>
           {pct()}%
         </span>
         <span class="w-20 text-right text-[11px] text-faint truncate shrink-0 font-mono">
           {resetHint()}
         </span>
+      </div>
+    )
+  }
+
+  // 账号配额列表组件：支持模型数过多时自动提供分页/展开与滚动控制
+  const QuotaList = (props: { quotasObj: Record<string, QuotaBucket> }) => {
+    const allKeys = () => Object.keys(props.quotasObj).sort((a, b) => a.localeCompare(b))
+    const [search, setSearch] = createSignal('')
+    const [page, setPage] = createSignal(1)
+    const pageSize = 8
+
+    const filteredKeys = createMemo(() => {
+      const q = search().trim().toLowerCase()
+      if (!q) return allKeys()
+      return allKeys().filter(k => k.toLowerCase().includes(q))
+    })
+
+    const totalPages = createMemo(() => Math.ceil(filteredKeys().length / pageSize) || 1)
+    const currentKeys = createMemo(() => {
+      if (allKeys().length <= 8) return filteredKeys()
+      const start = (page() - 1) * pageSize
+      return filteredKeys().slice(start, start + pageSize)
+    })
+
+    return (
+      <div class="space-y-1.5">
+        <Show when={allKeys().length > 8}>
+          <div class="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5 text-xs text-faint">
+            <input
+              type="text"
+              placeholder={`搜索 ${allKeys().length} 项模型配额...`}
+              value={search()}
+              onInput={e => { setSearch(e.currentTarget.value); setPage(1); }}
+              class="text-[11px] px-2 py-0.5 rounded-md bg-bg border border-subtle text-foreground placeholder:text-faint focus:outline-none focus:border-accent w-40 sm:w-48"
+            />
+            <div class="flex items-center gap-1.5 text-[11px] shrink-0 font-mono">
+              <button
+                type="button"
+                disabled={page() <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                class="px-1.5 py-0.5 rounded border border-subtle bg-bg hover:bg-hover disabled:opacity-30 disabled:pointer-events-none"
+              >
+                &lt;
+              </button>
+              <span>{page()} / {totalPages()}</span>
+              <button
+                type="button"
+                disabled={page() >= totalPages()}
+                onClick={() => setPage(p => Math.min(totalPages(), p + 1))}
+                class="px-1.5 py-0.5 rounded border border-subtle bg-bg hover:bg-hover disabled:opacity-30 disabled:pointer-events-none"
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
+        </Show>
+
+        <div class="space-y-0.5 max-h-[360px] overflow-y-auto pr-0.5 scrollbar-thin">
+          <For each={currentKeys()}>
+            {k => {
+              const b = props.quotasObj[k]
+              const label = k === 'user' ? '用户个人额度' : k === 'organization' ? '组织共享包' : k
+              return <QuotaItem name={label} quota={b} />
+            }}
+          </For>
+          <Show when={currentKeys().length === 0}>
+            <div class="p-3 text-center text-xs text-faint">未找到匹配的配额指标</div>
+          </Show>
+        </div>
       </div>
     )
   }
@@ -325,13 +401,7 @@ const Quota: Component = () => {
                             </Show>
                           }
                         >
-                          <For each={quotaKeys()}>
-                            {k => {
-                              const b = quotasObj()[k]
-                              const label = k === 'user' ? '用户个人额度' : k === 'organization' ? '组织共享包' : k
-                              return <QuotaItem name={label} quota={b} />
-                            }}
-                          </For>
+                          <QuotaList quotasObj={quotasObj()} />
                         </Show>
                       </div>
                     </div>

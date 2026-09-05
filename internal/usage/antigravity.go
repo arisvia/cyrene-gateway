@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -100,16 +99,7 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 			resetAt := m.QuotaInfo.ResetTime
 			if resetAt != "" {
 				if t, err := time.Parse(time.RFC3339Nano, resetAt); err == nil {
-					diff := time.Until(t)
-					if diff > 0 {
-						hours := int(diff.Hours())
-						mins := int(diff.Minutes()) % 60
-						if hours > 0 {
-							resetAt = fmt.Sprintf("in %dh %dm", hours, mins)
-						} else {
-							resetAt = fmt.Sprintf("in %dm", mins)
-						}
-					}
+					resetAt = t.UTC().Format(time.RFC3339)
 				}
 			}
 
