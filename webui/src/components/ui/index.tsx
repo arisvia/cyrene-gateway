@@ -1,4 +1,4 @@
-import { type Component, type JSX, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast } from '@/lib/toast'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
@@ -477,22 +477,25 @@ export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange
 export const Modal: Component<{ open: boolean; title: string; onClose: () => void; children?: JSX.Element }> = props => {
   const [panel, setPanel] = createSignal<HTMLDivElement>()
 
-  // 打开时锁定页面滚动 + Esc 关闭（参考 9router Modal）
-  onMount(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') props.onClose()
+  // 打开时锁定页面滚动 + Esc 关闭（参考 9router Modal，避免全局未打开时锁死页面滚动）
+  createEffect(() => {
+    if (props.open) {
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') props.onClose()
+      }
+      document.addEventListener('keydown', onKey)
+      document.body.style.overflow = 'hidden'
+
+      queueMicrotask(() => {
+        const first = panel()?.querySelector<HTMLElement>('input, select, textarea, button')
+        first?.focus()
+      })
+
+      onCleanup(() => {
+        document.removeEventListener('keydown', onKey)
+        document.body.style.overflow = ''
+      })
     }
-    document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    onCleanup(() => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
-    })
-    // 初始焦点移入弹窗，保证键盘可操作
-    queueMicrotask(() => {
-      const first = panel()?.querySelector<HTMLElement>('input, select, textarea, button')
-      first?.focus()
-    })
   })
 
   return (

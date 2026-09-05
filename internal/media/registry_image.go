@@ -1,5 +1,7 @@
 package media
 
+import "github.com/arisvia/cyrene-gateway/internal/provider"
+
 func registerImageProviders() {
 	openaiCompat := []struct {
 		id, name, baseURL string
@@ -48,7 +50,7 @@ func registerImageProviders() {
 		ProviderConfig{
 			Provider:   "antigravity",
 			Kind:       KindImage,
-			BaseURL:    "https://cloudcode-pa.googleapis.com",
+			BaseURL:    provider.AntigravityBaseURL,
 			AuthType:   "oauth",
 			AuthHeader: "bearer",
 			Format:     "antigravity",

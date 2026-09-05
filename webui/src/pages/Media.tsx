@@ -127,8 +127,8 @@ const Media: Component = () => {
   }
 
   return (
-    <div class="space-y-5 stagger">
-      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
+    <div class="space-y-5 stagger pb-16">
+      <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
         <div>
           <h1 class="text-xl font-semibold">媒体能力</h1>
           <p class="text-sm text-faint mt-0.5">多模态与衍生能力中心：图像生成、联网搜索、语音与向量嵌入</p>
