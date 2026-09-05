@@ -4,13 +4,31 @@
 
 ## [Unreleased]
 
-### Added
+- **统一能力标签体系与提供商市场重构**：
+  - 后端 `/api/registry` 自动聚合与合成提供商的全量能力标签（`llm`、`image`、`tts`、`stt`、`video`、`embedding`、`web-search`、`web-fetch`），并将纯媒体提供商（如 ElevenLabs, Stability AI, Tavily, Exa）无缝合成进统一注册表市场；
+  - 前端「提供商市场」作为所有凭证与连接创建的唯一入口，支持按能力标签与认证模式多维筛选、隐藏已接入项；
+  - 「我的连接」专职承载 LLM 模型连接，提供商卡片固定名称与 ID 列宽，实现上下徽章队列规整排版；
+  - 「多模态媒体工作台（Media）」全面升级为纯消费调试台，卡片仅在用户接入对应能力账号后点亮激活，未接入时引导一键前往市场。
+- **Antigravity 深度协议适配与思考分级**：
+  - 接入 Google Antigravity Code Assist 协议引擎与自动项目探测（`antigravity_discovery.go`），支持从凭证配置中穿透 Project ID；
+  - 自动适配 Gemini 3.8 / 3.7 / 3.6 Flash 的思考深度分级（`high` / `medium` / `low`），向下游透传 OpenAI 标准 `reasoning_effort`；
+  - 将 SSE `streamGenerateContent` 内联图像数据流实时聚合转换并回退为 OpenAI `/v1/images/generations` 标准响应；
+  - 支持调用 Google Grounding 联网搜索能力，返回规整的搜索候选与引用锚点。
+- **现代化矢量图标库改造**：
+  - 新建 `webui/src/components/ui/icons.tsx` 集中矢量图标库，彻底清除非标准 Emoji 符号，统一采用极简描边风格与动态 `currentColor` 换肤；
+  - 覆盖模型能力胶囊、操作按钮、交互状态（Check / Close / Lock / Edit / Settings）与空状态插画。
+- **多模态与媒体服务精简收敛**：
+  - 物理清理非主流媒体服务提供商（fal、recraft、cartesia、playht、assemblyai、runwayml 等），减少冗余适配与资源负担；
+  - 彻底清除缺乏 WebSocket 支持的废弃 `edge-tts` 代码与图标。
 - **数据目录灵活配置**：新增 `-data-dir` 命令行参数与 `CYRENE_DATA_DIR` 环境变量，允许指定数据库、密钥与面板缓存所在目录，实现测试与容器环境的彻底隔离。
 - **提供商创建接口防线**：POST `/api/providers` 强化校验，强制要求 `provider` ID 必填（400）、`api-key` 类型密钥必填（400），并在同 provider+authType 已存在活跃连接时拦截重复创建（409）。
 - **OAuth 回调 CSRF 防御**：GET `/api/oauth/{provider}/callback` 强制校验 `state` 必填且会话未过期，彻底杜绝无 state 绕过 PKCE 校验的安全风险。
 - **CI / Release 职责解耦**：PR 与主干推送走 `build.yml` 门禁（类型检查、单元测试 `-race` 与单二进制冒烟测试）；Tag 推送专走 `release.yml`（多架构二进制交叉编译与 Docker 镜像推送）。
 
 ### Fixed
+- **连接卡片与多模态标签对齐**：固定卡片提供商名称与标识的容器宽度，解决名称长短不一导致的状态与能力徽章错位问题。
+- **Antigravity 搜索模型探测**：修正联网搜索模型列表缺失 Gemini 3.8 / 3.6 的问题，精准适配 `gemini-3.8-flash-thinking` 与 `gemini-3.6-flash`。
+- **媒体凭证验证与连接隔离**：`/api/media-providers` 接口支持 `connected=true` 服务端过滤，无连接媒体提供商不再污染工作台。
 - **前端提供商连接类型错乱**：修复添加提供商表单未显式传递 `authType` 导致 OAuth/免费提供商被错误创建为 `api-key` 类型的逻辑缺陷；修复类型过滤与状态徽章枚举混用问题。
 - **前端状态刷新机制优化**：`addProvider` 由本地数组拼接改为调用 `loadProvidersOnly` 服务端权威拉取，确保后端生成的连接 ID 与元数据完整展现。
 - **构建产物断层治理**：从 Git 索引中解绑临时构建产物（`webui/dist/`），由 CI 在 Go 编译前重新构建最新 WebUI 产物嵌入，消除本地与历史提交中散落的幽灵哈希资产。

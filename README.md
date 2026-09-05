@@ -6,11 +6,13 @@ Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(O
 
 ## 功能总览
 
-- **统一 API 入口**:OpenAI 兼容(`/v1/chat/completions`、`/v1/embeddings`、`/v1/models`)与 Anthropic 兼容(`/v1/messages` 直通)。
-- **多提供商接入**:
-  - API Key 模式;
-  - OAuth(授权码 + PKCE、设备码、Token 导入)——内置 PKCE 会话管理、令牌去重刷新(`DedupRefresh`)与 Copilot 短时令牌自动交换;
-  - 免费/免认证提供商与 Web Cookie 提供商。
+- **统一 API 入口**:OpenAI 兼容(`/v1/chat/completions`、`/v1/embeddings`、`/v1/images/generations`、`/v1/audio/speech`、`/v1/models`、`/v1/responses`)与 Anthropic 兼容(`/v1/messages` 直通)。
+- **全能力提供商市场**:
+  - 覆盖 LLM 对话、图像生成、语音合成/识别、视频生成、文本向量与联网搜索/网页抓取 8 大能力标签;
+  - 支持 API Key、OAuth(授权码 + PKCE、设备码、Token 导入)、免密公共提供商与 Web Cookie 接入;
+  - 纯媒体服务(ElevenLabs、Stability AI、Tavily、Exa 等)与大模型上游在统一市场聚合与授权;
+  - 多模态媒体工作台(Media)提供即时交互调试与图像结果图库。
+- **思考推理能力映射**:下游标准化暴露 OpenAI `reasoning_effort`(`low`/`medium`/`high`)与 Anthropic `thinking`，自动映射至上游提供商(Gemini 3.8/3.7/3.6 Flash、Claude 3.7 Sonnet 等)。
 - **组合与回退**:Combo(多模型组合)按 `fallback` / `round-robin` / sticky 策略轮转;错误分类规则(`ErrorRules`)驱动指数退避冷却(2s 起步、上限 5 分钟)与模型级锁定。
 - **凭证调度**:`SelectCredentialWithQuota` 按 priority 排序、冷却状态、模型锁、配额上限挑选连接,OAuth 优先于 API Key。
 - **代理池出站**:HTTP 代理轮换,SSRF 防护默认拒绝私网/环回/链路本地/云元数据/CGNAT 地址(可用 `-allow-private-networks` 放开,仅限本地测试)。
@@ -20,8 +22,7 @@ Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(O
 - **MITM 调试代理**(仅 localhost):本地 TLS 拦截配合 DNS 劫持,观察 CLI 工具的 LLM 流量,帮助编写适配器。
 - **CLI 工具一键接入**:为 Claude Code / Codex / OpenCode / Cline / Copilot CLI 等十余款工具写配置。
 - **Tailscale 隧道**:检测/安装/启用 Funnel,把本地网关暴露到公网。
-- **内置管理面板**:Vue 3 SPA,四层回退加载(本地目录 → 下载的 dist.zip → 单 HTML → 嵌入式构建)。
-
+- **内置管理面板**:基于 Solid.js + Vite + Tailwind CSS v4 构建的现代化单页控制台，具备完整深色玻璃拟物风格、矢量图标库与流畅动画。
 ## 快速开始
 
 ### 要求

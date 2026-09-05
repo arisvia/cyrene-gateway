@@ -722,7 +722,7 @@ const Providers: Component = () => {
       {/* 视窗 1：我的连接列表 */}
       <Show when={activeTab() === 'connections'}>
         <Show
-          when={store.providers().length > 0}
+          when={groupedConnections().length > 0}
           fallback={
             <Card class="p-12 text-center space-y-4">
               <Empty message="还没有接入任何提供商连接" />

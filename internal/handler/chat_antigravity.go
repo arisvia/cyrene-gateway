@@ -81,57 +81,7 @@ func (s *Server) handleAntigravityChat(
 		innerRequest["generationConfig"] = genConfig
 	}
 
-	// Model mapping: strip prefixes
-	targetModel := modelInfo.Model
-	targetModel = strings.TrimPrefix(targetModel, "antigravity/")
-	targetModel = strings.TrimPrefix(targetModel, "ag/")
-
-	// Automatic thinking tier resolution for tiered models (e.g. gemini-3.8-flash, gemini-3.7-flash, gemini-3.6-flash)
-	// If base model is requested without tier, map based on reasoning_effort or default to medium
-	tier := ""
-	lowerReqEffort := strings.ToLower(strings.TrimSpace(req.ReasoningEffort))
-	switch lowerReqEffort {
-	case "high":
-		tier = "high"
-	case "low":
-		tier = "low"
-	case "medium":
-		tier = "medium"
-	}
-
-	// If model explicitly specifies tier suffix, extract it
-	for _, t := range []string{"high", "medium", "low", "extra-low"} {
-		if strings.HasSuffix(targetModel, "-"+t) {
-			tier = t
-			break
-		}
-	}
-	if tier == "" {
-		tier = "medium"
-	}
-
-	// Route un-tiered models to their tiered variants (or vice versa for upstream compatibility)
-	if targetModel == "gemini-3.8-flash" {
-		targetModel = "gemini-3.8-flash-" + tier
-	} else if targetModel == "gemini-3.7-flash" {
-		targetModel = "gemini-3.7-flash-" + tier
-	} else if targetModel == "gemini-3.6-flash" {
-		targetModel = "gemini-3.6-flash-" + tier
-	} else if targetModel == "gemini-3.5-flash" {
-		if tier == "high" {
-			targetModel = "gemini-3.5-flash-high"
-		} else if tier == "low" {
-			targetModel = "gemini-3.5-flash-extra-low"
-		} else {
-			targetModel = "gemini-3.5-flash-low"
-		}
-	} else if targetModel == "gemini-3.1-pro" {
-		if tier == "low" {
-			targetModel = "gemini-3.1-pro-low"
-		} else {
-			targetModel = "gemini-3.1-pro-high"
-		}
-	}
+	targetModel, tier := resolveAntigravityModelTier(modelInfo.Model, req.ReasoningEffort)
 
 	// Set thinkingConfig in generationConfig if tier is known
 	if genConfig != nil && (tier == "high" || tier == "medium" || tier == "low") {
@@ -405,4 +355,55 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)
+}
+// resolveAntigravityModelTier maps requested model and reasoning_effort to upstream tiered model
+func resolveAntigravityModelTier(rawModel, reasoningEffort string) (targetModel string, tier string) {
+	targetModel = rawModel
+	targetModel = strings.TrimPrefix(targetModel, "antigravity/")
+	targetModel = strings.TrimPrefix(targetModel, "ag/")
+
+	lowerReqEffort := strings.ToLower(strings.TrimSpace(reasoningEffort))
+	switch lowerReqEffort {
+	case "high":
+		tier = "high"
+	case "low":
+		tier = "low"
+	case "medium":
+		tier = "medium"
+	}
+
+	// If model explicitly specifies tier suffix, extract it
+	for _, t := range []string{"high", "medium", "low", "extra-low"} {
+		if strings.HasSuffix(targetModel, "-"+t) {
+			tier = t
+			return targetModel, tier
+		}
+	}
+	if tier == "" {
+		tier = "medium"
+	}
+
+	if targetModel == "gemini-3.8-flash" {
+		targetModel = "gemini-3.8-flash-" + tier
+	} else if targetModel == "gemini-3.7-flash" {
+		targetModel = "gemini-3.7-flash-" + tier
+	} else if targetModel == "gemini-3.6-flash" {
+		targetModel = "gemini-3.6-flash-" + tier
+	} else if targetModel == "gemini-3.5-flash" {
+		if tier == "high" {
+			targetModel = "gemini-3.5-flash-high"
+		} else if tier == "low" {
+			targetModel = "gemini-3.5-flash-extra-low"
+		} else {
+			targetModel = "gemini-3.5-flash-low"
+		}
+	} else if targetModel == "gemini-3.1-pro" {
+		if tier == "low" {
+			targetModel = "gemini-3.1-pro-low"
+		} else {
+			targetModel = "gemini-3.1-pro-high"
+		}
+	}
+
+	return targetModel, tier
 }
