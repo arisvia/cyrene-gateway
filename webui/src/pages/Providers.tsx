@@ -770,29 +770,38 @@ const Providers: Component = () => {
                           color={group.color}
                           size="md"
                         />
-                        <div class="min-w-0">
+                        <div class="min-w-0 flex-1">
+                          {/* 第一行：提供商名称与状态 Badge 队列 */}
                           <div class="flex items-center gap-2 flex-wrap">
-                            <A
-                              href={`/providers/${group.primaryConnectionId}`}
-                              class="font-semibold text-sm text-foreground hover:text-accent transition-colors truncate"
-                            >
-                              {group.providerName}
-                            </A>
-                            <Badge tone={allActive() ? 'green' : noneActive() ? 'gray' : 'amber'} class="text-[10px] px-1.5 py-0.5">
+                            <div class="w-36 sm:w-44 shrink-0 truncate">
+                              <A
+                                href={`/providers/${group.primaryConnectionId}`}
+                                class="font-semibold text-sm text-foreground hover:text-accent transition-colors truncate block"
+                                title={group.providerName}
+                              >
+                                {group.providerName}
+                              </A>
+                            </div>
+                            <Badge tone={allActive() ? 'green' : noneActive() ? 'gray' : 'amber'} class="text-[10px] px-1.5 py-0.5 shrink-0">
                               {allActive() ? '全部启用' : noneActive() ? '全部停用' : `部分启用 (${group.activeCount}/${group.connections.length})`}
                             </Badge>
-                            <Badge tone="blue" class="text-[10px] px-1.5 py-0.5">
+                            <Badge tone="blue" class="text-[10px] px-1.5 py-0.5 shrink-0">
                               {group.connections.length} 个账号
                             </Badge>
                             <Show when={hasMultiple()}>
-                              <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] px-1.5 py-0.5">
+                              <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] px-1.5 py-0.5 shrink-0">
                                 Fallback 就绪
                               </Badge>
                             </Show>
                           </div>
-                          <div class="flex items-center gap-2 mt-1 flex-wrap">
-                            <span class="text-[11px] text-faint font-mono">ID: {group.providerId}</span>
-                            <span class="text-faint">·</span>
+
+                          {/* 第二行：对齐宽度的提供商 ID 与能力徽章队列 */}
+                          <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <div class="w-36 sm:w-44 shrink-0 truncate">
+                              <span class="text-[11px] text-faint font-mono truncate block" title={group.providerId}>
+                                ID: {group.providerId}
+                              </span>
+                            </div>
                             <div class="flex items-center gap-1 flex-wrap">
                               <For each={reg()?.capabilities || ['llm']}>
                                 {capKey => {
