@@ -741,177 +741,72 @@ const Providers: Component = () => {
                 const noneActive = () => group.activeCount === 0
 
                 return (
-                  <Card hover class="p-5 group border border-subtle/80 bg-bg-elevated/70 shadow-sm transition-all hover:border-accent/40">
-                    <div class="flex flex-col gap-4">
-                      {/* 头部：供应商图标、名称、状态 Badge 与快速动作 */}
-                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-subtle/50">
-                        <div class="flex items-center gap-3.5 min-w-0">
-                          <ProviderAvatar
-                            provider={group.providerId}
-                            name={group.providerName}
-                            color={group.color}
-                            size="lg"
-                          />
-                          <div class="min-w-0">
-                            <div class="flex items-center gap-2 flex-wrap">
-                              <A
-                                href={`/providers/${group.primaryConnectionId}`}
-                                class="font-semibold text-base text-foreground hover:text-accent transition-colors truncate"
-                              >
-                                {group.providerName}
-                              </A>
-                              <Badge tone={allActive() ? 'green' : noneActive() ? 'gray' : 'amber'}>
-                                {allActive() ? '全部启用' : noneActive() ? '全部停用' : `部分启用 (${group.activeCount}/${group.connections.length})`}
+                  <Card hover class="p-4 group border border-subtle/80 bg-bg-elevated/70 shadow-sm transition-all hover:border-accent/40">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div class="flex items-center gap-3.5 min-w-0">
+                        <ProviderAvatar
+                          provider={group.providerId}
+                          name={group.providerName}
+                          color={group.color}
+                          size="md"
+                        />
+                        <div class="min-w-0">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <A
+                              href={`/providers/${group.primaryConnectionId}`}
+                              class="font-semibold text-sm text-foreground hover:text-accent transition-colors truncate"
+                            >
+                              {group.providerName}
+                            </A>
+                            <Badge tone={allActive() ? 'green' : noneActive() ? 'gray' : 'amber'} class="text-[10px] px-1.5 py-0.5">
+                              {allActive() ? '全部启用' : noneActive() ? '全部停用' : `部分启用 (${group.activeCount}/${group.connections.length})`}
+                            </Badge>
+                            <Badge tone="blue" class="text-[10px] px-1.5 py-0.5">
+                              {group.connections.length} 个账号
+                            </Badge>
+                            <Show when={hasMultiple()}>
+                              <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] px-1.5 py-0.5">
+                                Fallback 就绪
                               </Badge>
-                              <Badge tone="blue">
-                                {group.connections.length} 个账号接入
-                              </Badge>
-                              <Show when={hasMultiple()}>
-                                <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30">
-                                  已就绪故障转移 (Fallback)
-                                </Badge>
-                              </Show>
-                            </div>
-                            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-                              <span class="text-xs text-faint font-mono">ID: {group.providerId}</span>
-                              <span class="text-faint">·</span>
-                              <div class="flex items-center gap-1 flex-wrap">
-                                <For each={reg()?.capabilities || ['llm']}>
-                                  {capKey => {
-                                    const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: '⚡' }
-                                    return (
-                                      <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0.5 gap-1 shrink-0">
-                                        <span>{conf.icon}</span>
-                                        <span>{conf.label}</span>
-                                      </Badge>
-                                    )
-                                  }}
-                                </For>
-                              </div>
+                            </Show>
+                          </div>
+                          <div class="flex items-center gap-2 mt-1 flex-wrap">
+                            <span class="text-[11px] text-faint font-mono">ID: {group.providerId}</span>
+                            <span class="text-faint">·</span>
+                            <div class="flex items-center gap-1 flex-wrap">
+                              <For each={reg()?.capabilities || ['llm']}>
+                                {capKey => {
+                                  const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: '⚡' }
+                                  return (
+                                    <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0 gap-1 shrink-0">
+                                      <span>{conf.icon}</span>
+                                      <span>{conf.label}</span>
+                                    </Badge>
+                                  )
+                                }}
+                              </For>
                             </div>
                           </div>
                         </div>
-
-                        {/* 供应商级别操作 */}
-                        <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                          <Show when={reg()}>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => openWizard(reg()!)}
-                              title="为此供应商添加备用账号（支持 API Key 或 OAuth）"
-                            >
-                              + 加账号
-                            </Button>
-                          </Show>
-                          <A href={`/providers/${group.primaryConnectionId}`}>
-                            <Button size="sm" variant="primary">
-                              管理配置与账号 →
-                            </Button>
-                          </A>
-                        </div>
                       </div>
 
-                      {/* 内部：该供应商名下的所有账号/节点列表 */}
-                      <div class="space-y-2">
-                        <div class="text-xs text-faint flex items-center justify-between font-medium px-1">
-                          <span>已绑定的账号 / 凭证列表（按调度优先级升序排序）</span>
-                          <span class="text-[11px] opacity-70">高优先级优先调度，限流时自动 Fallback 转移</span>
-                        </div>
-                        <div class="grid gap-2">
-                          <For each={group.connections}>
-                            {(p, idx) => {
-                              const cooling = () => !!p.data?.rateLimitedUntil
-                              const test = () => testResult()?.id === p.id ? testResult() : null
-
-                              return (
-                                <div class={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border transition-colors ${
-                                  p.isActive ? 'bg-hover/60 border-subtle' : 'bg-bg-elevated/30 border-subtle/40 opacity-60'
-                                }`}>
-                                  <div class="flex items-center gap-3 min-w-0">
-                                    <span class="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-bg border border-subtle shrink-0">
-                                      #{idx() + 1}
-                                    </span>
-                                    <div class="min-w-0">
-                                      <div class="flex items-center gap-2 flex-wrap">
-                                        <A
-                                          href={`/providers/${p.id}`}
-                                          class="text-xs font-semibold hover:text-accent transition-colors truncate"
-                                        >
-                                          {p.name || p.provider}
-                                        </A>
-                                        <Badge tone="blue" class="text-[10px] px-1.5 py-0">
-                                          {AUTHTYPE_LABEL[p.authType] || p.authType}
-                                        </Badge>
-                                        <Show when={p.data?.hasApiKey !== undefined || p.data?.hasAccessToken !== undefined}>
-                                          <Badge tone={(p.data?.hasApiKey || p.data?.hasAccessToken || p.data?.hasRefreshToken) ? 'green' : 'amber'} class="text-[10px] px-1.5 py-0">
-                                            {(p.data?.hasApiKey || p.data?.hasAccessToken || p.data?.hasRefreshToken) ? '已配置凭证' : '缺凭证'}
-                                          </Badge>
-                                        </Show>
-                                        <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-bg text-faint border border-subtle">
-                                          优先级 {p.priority} {idx() === 0 ? '(主)' : '(备用)'}
-                                        </span>
-                                        <Show when={cooling()}>
-                                          <Badge tone="amber" class="text-[10px]">限流冷却中</Badge>
-                                        </Show>
-                                      </div>
-                                      <div class="text-[11px] text-faint font-mono mt-0.5 flex items-center gap-2 flex-wrap">
-                                        <Show when={p.email}>
-                                          <span>邮箱: {p.email}</span>
-                                          <span>·</span>
-                                        </Show>
-                                        <Show when={p.data?.credentialHint}>
-                                          <span>凭证: {String(p.data?.credentialHint)}</span>
-                                          <span>·</span>
-                                        </Show>
-                                        <span class="opacity-60">{p.id.slice(0, 8)}...</span>
-                                        <Show when={test()}>
-                                          <span>·</span>
-                                          <span class={test()!.ok ? 'text-success font-medium' : 'text-danger font-medium'}>
-                                            {test()!.msg}
-                                          </span>
-                                        </Show>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                                    <Button
-                                      size="sm"
-                                      variant="secondary"
-                                      loading={testing() === p.id}
-                                      onClick={() => handleTest(p)}
-                                    >
-                                      测试
-                                    </Button>
-                                    <Toggle
-                                      checked={p.isActive}
-                                      onChange={async () => {
-                                        await store.toggleProvider(p)
-                                      }}
-                                    />
-                                    <Button
-                                      size="sm"
-                                      variant="danger"
-                                      onClick={async () => {
-                                        const ok = await confirm({
-                                          title: '删除账号',
-                                          message: `确定要删除账号「${p.name || p.provider}」吗？`,
-                                          variant: 'danger',
-                                        })
-                                        if (ok) {
-                                          await store.deleteProvider(p)
-                                        }
-                                      }}
-                                    >
-                                      删除
-                                    </Button>
-                                  </div>
-                                </div>
-                              )
-                            }}
-                          </For>
-                        </div>
+                      {/* 供应商级别操作 */}
+                      <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                        <Show when={reg()}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => openWizard(reg()!)}
+                            title="为此供应商添加备用账号（支持 API Key 或 OAuth）"
+                          >
+                            + 加账号
+                          </Button>
+                        </Show>
+                        <A href={`/providers/${group.primaryConnectionId}`}>
+                          <Button size="sm" variant="primary">
+                            管理 →
+                          </Button>
+                        </A>
                       </div>
                     </div>
                   </Card>

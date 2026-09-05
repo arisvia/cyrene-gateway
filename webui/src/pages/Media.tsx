@@ -18,6 +18,7 @@ interface MediaProvider {
   models?: MediaModelEntry[]
   hasConnection: boolean
   activeConnections: number
+  primaryConnectionId?: string
 }
 
 const CAPS: { id: Cap; label: string; endpoint: string; hint: string; kindKey: string }[] = [
@@ -169,27 +170,27 @@ const Media: Component = () => {
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <For each={providers()}>
           {p => (
-            <Card class="p-5 flex flex-col justify-between space-y-4 hover:border-accent/40 transition">
+            <Card class="p-4 flex flex-col justify-between space-y-3 hover:border-accent/40 transition">
               <div class="space-y-2.5">
                 <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2.5">
+                  <div class="flex items-center gap-2.5 min-w-0">
                     <ProviderAvatar provider={p.provider} name={p.name} size="md" />
-                    <div>
-                      <h3 class="text-sm font-semibold text-foreground">{p.name}</h3>
-                      <p class="text-[11px] font-mono text-faint">{p.provider}</p>
+                    <div class="min-w-0">
+                      <h3 class="text-sm font-semibold text-foreground truncate">{p.name}</h3>
+                      <p class="text-[11px] font-mono text-faint truncate">{p.provider}</p>
                     </div>
                   </div>
-                  <div class="flex items-center gap-1.5">
+                  <div class="flex items-center gap-1.5 shrink-0">
                     <StatusPulse status={p.hasConnection ? 'active' : 'idle'} size="xs" />
                     <span class="text-[11px] text-faint">
-                      {p.hasConnection ? `${p.activeConnections} 个活跃账号` : '未配置账号'}
+                      {p.hasConnection ? `${p.activeConnections} 个账号` : '未接入'}
                     </span>
                   </div>
                 </div>
 
                 <div class="space-y-1">
                   <div class="text-[11px] text-faint">支持模型 / 端点:</div>
-                  <div class="flex flex-wrap gap-1">
+                  <div class="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
                     <Show
                       when={p.models && p.models.length > 0}
                       fallback={
@@ -210,17 +211,26 @@ const Media: Component = () => {
                 </div>
               </div>
 
-              <div class="pt-2 border-t border-subtle flex items-center justify-between">
+              <div class="pt-2.5 border-t border-subtle flex items-center justify-between gap-2">
                 <span class="text-[11px] text-faint">
                   就绪可调用
                 </span>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => openWorkbench(p)}
-                >
-                  试用{CAPS.find(c => c.id === active())?.label}
-                </Button>
+                <div class="flex items-center gap-2">
+                  <Show when={p.primaryConnectionId}>
+                    <A href={`/providers/${p.primaryConnectionId}`}>
+                      <Button size="sm" variant="secondary" title="管理账号与参数">
+                        管理 →
+                      </Button>
+                    </A>
+                  </Show>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => openWorkbench(p)}
+                  >
+                    试用{CAPS.find(c => c.id === active())?.label}
+                  </Button>
+                </div>
               </div>
             </Card>
           )}

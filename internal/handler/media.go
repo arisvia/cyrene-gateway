@@ -340,26 +340,35 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
 	connectedOnly := r.URL.Query().Get("connectedOnly") == "true" || r.URL.Query().Get("connected") == "true"
 
-	// Pre-fetch active connection counts and authTypes per provider
+	// Pre-fetch active connection counts, primary connection IDs, and authTypes per provider
 	activeConns, _ := s.DB.ListConnections()
 	connCountByProvider := make(map[string]int)
+	primaryConnByProvider := make(map[string]string)
 	authTypeByProvider := make(map[string]string)
 	for _, c := range activeConns {
 		if c.IsActive {
 			connCountByProvider[c.Provider]++
+			if primaryConnByProvider[c.Provider] == "" {
+				primaryConnByProvider[c.Provider] = c.ID
+			}
 			if authTypeByProvider[c.Provider] == "" && c.AuthType != "" {
 				authTypeByProvider[c.Provider] = c.AuthType
 			}
 		}
 	}
 	type EnrichedProvider struct {
-		*media.MediaProviderInfo
-		ActiveConnections int    `json:"activeConnections"`
-		HasConnection     bool   `json:"hasConnection"`
-		AuthType          string `json:"authType,omitempty"`
+		Provider            string                  `json:"provider"`
+		Name                string                  `json:"name"`
+		Kinds               []media.Kind            `json:"kinds"`
+		Models              []media.ModelEntry      `json:"models,omitempty"`
+		Configs             map[media.Kind]media.ProviderConfig `json:"configs,omitempty"`
+		ActiveConnections   int                     `json:"activeConnections"`
+		HasConnection       bool                    `json:"hasConnection"`
+		PrimaryConnectionID string                  `json:"primaryConnectionId,omitempty"`
+		AuthType            string                  `json:"authType,omitempty"`
 	}
 
-	enrichList := func(entries []*media.MediaProviderInfo) []EnrichedProvider {
+	enrichList := func(entries []*media.MediaProviderInfo, filterKind media.Kind) []EnrichedProvider {
 		var out []EnrichedProvider
 		for _, e := range entries {
 			count := connCountByProvider[e.Provider]
@@ -367,11 +376,23 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 			if connectedOnly && !has {
 				continue
 			}
+			// 按当前 Tab 的能力过滤 models，避免多能力提供商把 image/tts/stt 等所有 model 混在一起返回
+			var matchedModels []media.ModelEntry
+			for _, m := range e.Models {
+				if filterKind == "" || m.Kind == filterKind {
+					matchedModels = append(matchedModels, m)
+				}
+			}
 			out = append(out, EnrichedProvider{
-				MediaProviderInfo: e,
-				ActiveConnections: count,
-				HasConnection:     has,
-				AuthType:          authTypeByProvider[e.Provider],
+				Provider:            e.Provider,
+				Name:                e.Name,
+				Kinds:               e.Kinds,
+				Models:              matchedModels,
+				Configs:             e.Configs,
+				ActiveConnections:   count,
+				HasConnection:       has,
+				PrimaryConnectionID: primaryConnByProvider[e.Provider],
+				AuthType:            authTypeByProvider[e.Provider],
 			})
 		}
 		// 排序：已配置连接的优先置顶，其次按 Provider ID 稳定排序
@@ -384,7 +405,8 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 		return out
 	}
 	if kind != "" {
-		providers := enrichList(media.GetProvidersByKind(media.Kind(kind)))
+		targetKind := media.Kind(kind)
+		providers := enrichList(media.GetProvidersByKind(targetKind), targetKind)
 		writeJSON(w, http.StatusOK, map[string]any{"providers": providers, "kind": kind, "count": len(providers)})
 		return
 	}
@@ -393,7 +415,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 	kinds := []media.Kind{media.KindEmbedding, media.KindImage, media.KindTTS, media.KindSTT, media.KindVideo, media.KindWebFetch, media.KindWebSearch}
 	grouped := make(map[string]any)
 	for _, k := range kinds {
-		grouped[string(k)] = enrichList(media.GetProvidersByKind(k))
+		grouped[string(k)] = enrichList(media.GetProvidersByKind(k), k)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"kinds": grouped})
 }

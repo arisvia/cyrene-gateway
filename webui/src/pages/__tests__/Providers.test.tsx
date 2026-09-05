@@ -70,9 +70,9 @@ describe('Providers 页面渲染', () => {
 
     const text = document.body.textContent || ''
     expect(text).toContain('主力 Claude')   // 自定义名称
-    expect(text).toContain('已配置凭证')     // p1 hasApiKey
-    expect(text).toContain('缺凭证')        // p2 无 key
-    expect(text).toContain('测试')
+    expect(text).toContain('全部启用')
+    expect(text).toContain('全部停用')
+    expect(text).toContain('管理 →')
     expect(text).toContain('我的连接 (2)')
   })
 })
