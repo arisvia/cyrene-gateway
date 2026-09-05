@@ -262,6 +262,16 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
+	type EnrichedRegistryProvider struct {
+		provider.ProviderInfo
+		Capabilities []string `json:"capabilities"`
+	}
+
+	type EnrichedCategory struct {
+		Category  string                     `json:"category"`
+		Providers []EnrichedRegistryProvider `json:"providers"`
+		Count     int                        `json:"count"`
+	}
 
 	// Helper to determine capabilities for a provider ID
 	getCapabilities := func(id string, isChat bool) []string {
@@ -289,9 +299,9 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 		return caps
 	}
 
-	// Helper to synthesize pure media providers into provider.ProviderInfo
-	buildMediaProviders := func() []provider.ProviderInfo {
-		var list []provider.ProviderInfo
+	// Helper to synthesize pure media providers into EnrichedRegistryProvider
+	buildMediaProviders := func() []EnrichedRegistryProvider {
+		var list []EnrichedRegistryProvider
 		for id, mp := range media.Registry {
 			if _, inChat := provider.Registry[id]; inChat {
 				continue
@@ -306,17 +316,19 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			caps := getCapabilities(id, false)
-			list = append(list, provider.ProviderInfo{
-				ID:           id,
-				Name:         mp.Name,
-				BaseURL:      firstCfg.BaseURL,
-				APIType:      "media",
-				AuthType:     firstCfg.AuthType,
-				Category:     "media",
+			list = append(list, EnrichedRegistryProvider{
+				ProviderInfo: provider.ProviderInfo{
+					ID:        id,
+					Name:      mp.Name,
+					BaseURL:   firstCfg.BaseURL,
+					APIType:   "media",
+					AuthType:  firstCfg.AuthType,
+					Category:  "media",
+					AuthHint:  fmt.Sprintf("支持能力: %s", strings.Join(kinds, ", ")),
+					AuthModes: []string{"api-key"},
+					APIKeyURL: media.APIKeyURLs[id],
+				},
 				Capabilities: caps,
-				AuthHint:     fmt.Sprintf("支持能力: %s", strings.Join(kinds, ", ")),
-				AuthModes:    []string{"api-key"},
-				APIKeyURL:    media.APIKeyURLs[id],
 			})
 		}
 		sort.Slice(list, func(i, j int) bool {
@@ -332,11 +344,13 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Filter by category
-		providers := make([]provider.ProviderInfo, 0)
+		providers := make([]EnrichedRegistryProvider, 0)
 		for _, p := range provider.Registry {
 			if p.Category == category {
-				p.Capabilities = getCapabilities(p.ID, true)
-				providers = append(providers, p)
+				providers = append(providers, EnrichedRegistryProvider{
+					ProviderInfo: p,
+					Capabilities: getCapabilities(p.ID, true),
+				})
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"providers": providers, "count": len(providers)})
@@ -345,24 +359,33 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 
 	// Return grouped by category with counts
 	categories := provider.GetRegistryByCategory()
+	enrichedCategories := make([]EnrichedCategory, len(categories))
 	// Enrich capabilities for chat categories
-	for ci := range categories {
-		for pi := range categories[ci].Providers {
-			p := &categories[ci].Providers[pi]
-			p.Capabilities = getCapabilities(p.ID, true)
+	for ci, cat := range categories {
+		enrichedProviders := make([]EnrichedRegistryProvider, len(cat.Providers))
+		for pi, p := range cat.Providers {
+			enrichedProviders[pi] = EnrichedRegistryProvider{
+				ProviderInfo: p,
+				Capabilities: getCapabilities(p.ID, true),
+			}
+		}
+		enrichedCategories[ci] = EnrichedCategory{
+			Category:  cat.Category,
+			Providers: enrichedProviders,
+			Count:     cat.Count,
 		}
 	}
 
 	mediaProviders := buildMediaProviders()
 	if len(mediaProviders) > 0 {
-		categories = append(categories, provider.RegistryByCategory{
+		enrichedCategories = append(enrichedCategories, EnrichedCategory{
 			Category:  "media",
 			Providers: mediaProviders,
 			Count:     len(mediaProviders),
 		})
 	}
 	total := len(provider.Registry) + len(mediaProviders)
-	writeJSON(w, http.StatusOK, map[string]any{"categories": categories, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"categories": enrichedCategories, "total": total})
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {

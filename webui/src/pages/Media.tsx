@@ -42,89 +42,11 @@ const Media: Component = () => {
   const [result, setResult] = createSignal<unknown>(null)
   const [error, setError] = createSignal('')
 
-  // 快捷接入配置弹窗状态
-  const [wizardOpen, setWizardOpen] = createSignal(false)
-  const [wizardProvider, setWizardProvider] = createSignal<MediaProvider | null>(null)
-  const [wizardForm, setWizardForm] = createSignal({
-    name: '',
-    apiKey: '',
-    baseUrl: '',
-  })
-  const [testingCreds, setTestingCreds] = createSignal(false)
-  const [testedCreds, setTestedCreds] = createSignal<{ ok: boolean; msg: string } | null>(null)
-  const [savingCreds, setSavingCreds] = createSignal(false)
-  const [saveError, setSaveError] = createSignal('')
-
-  function openConfigWizard(p: MediaProvider) {
-    setWizardProvider(p)
-    setWizardForm({
-      name: `${p.name} 账号`,
-      apiKey: '',
-      baseUrl: '',
-    })
-    setTestedCreds(null)
-    setSaveError('')
-    setTestingCreds(false)
-    setWizardOpen(true)
-  }
-
-  async function handleTestCreds() {
-    const p = wizardProvider()
-    if (!p || !wizardForm().apiKey.trim()) return
-    setTestingCreds(true)
-    setTestedCreds(null)
-    try {
-      const res = await apiPost('/api/providers/test-credentials', {
-        provider: p.provider,
-        apiKey: wizardForm().apiKey.trim(),
-        baseUrl: wizardForm().baseUrl.trim() || undefined,
-      }) as { ok?: boolean; error?: string; latency?: string }
-      if (res.ok) {
-        setTestedCreds({ ok: true, msg: `连接成功 (${res.latency || '正常'})` })
-      } else {
-        setTestedCreds({ ok: false, msg: res.error || '凭证校验未通过' })
-      }
-    } catch (e: unknown) {
-      setTestedCreds({ ok: false, msg: e instanceof Error ? e.message : '网络或服务异常' })
-    } finally {
-      setTestingCreds(false)
-    }
-  }
-
-  async function handleSaveCreds() {
-    const p = wizardProvider()
-    if (!p || !wizardForm().apiKey.trim()) return
-    setSavingCreds(true)
-    setSaveError('')
-    try {
-      await apiPost('/api/providers', {
-        provider: p.provider,
-        name: wizardForm().name.trim() || `${p.name} 账号`,
-        authType: 'api-key',
-        data: {
-          apiKey: wizardForm().apiKey.trim(),
-          baseUrl: wizardForm().baseUrl.trim() || undefined,
-        },
-      })
-      setWizardOpen(false)
-      await loadProviders()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '保存失败'
-      if (msg.includes('already exists') || msg.includes('409') || msg.includes('connection for this provider already exists')) {
-        setSaveError('该提供商已存在账号，单提供商当前仅支持配置一个活跃连接；如需更新请至“提供商”页面')
-      } else {
-        setSaveError(msg)
-      }
-    } finally {
-      setSavingCreds(false)
-    }
-  }
-
   async function loadProviders() {
     setLoadingProviders(true)
     try {
       const cap = CAPS.find(c => c.id === active())!
-      const res = (await api(`/api/media-providers?kind=${cap.kindKey}`)) as { providers?: MediaProvider[] }
+      const res = (await api(`/api/media-providers?kind=${cap.kindKey}&connectedOnly=true`)) as { providers?: MediaProvider[] }
       setProviders(res?.providers || [])
     } catch {
       // ignore
@@ -290,37 +212,15 @@ const Media: Component = () => {
 
               <div class="pt-2 border-t border-subtle flex items-center justify-between">
                 <span class="text-[11px] text-faint">
-                  {p.hasConnection ? '就绪可调用' : '未配置凭据'}
+                  就绪可调用
                 </span>
-                <div class="flex items-center gap-1.5">
-                  <Show when={!p.hasConnection}>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => openConfigWizard(p)}
-                      title="快捷配置此提供商凭证"
-                    >
-                      配置凭证 →
-                    </Button>
-                  </Show>
-                  <Show when={p.hasConnection}>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => openConfigWizard(p)}
-                      title="添加或更换账号凭证"
-                    >
-                      + 账号
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => openWorkbench(p)}
-                    >
-                      试用{CAPS.find(c => c.id === active())?.label}
-                    </Button>
-                  </Show>
-                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => openWorkbench(p)}
+                >
+                  试用{CAPS.find(c => c.id === active())?.label}
+                </Button>
               </div>
             </Card>
           )}
@@ -328,8 +228,23 @@ const Media: Component = () => {
       </div>
 
       <Show when={providers().length === 0 && !loadingProviders()}>
-        <Card class="p-8 text-center space-y-2">
-          <p class="text-sm text-faint">暂无支持该能力的提供商定义</p>
+        <Card class="p-12 text-center space-y-4 border-dashed border-subtle">
+          <div class="text-3xl">🔌</div>
+          <div class="space-y-1">
+            <h3 class="text-sm font-semibold text-foreground">
+              尚未接入支持「{CAPS.find(c => c.id === active())?.label}」的提供商
+            </h3>
+            <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
+              统一凭证已归入市场管理。前往「提供商市场」绑定 OpenAI、Google Gemini、Antigravity 或专业媒体供应商（如 Stability AI、ElevenLabs、Tavily）的账号凭证后即可在此调试。
+            </p>
+          </div>
+          <div class="pt-2">
+            <A href="/providers?tab=catalog&category=media">
+              <Button variant="primary" size="sm">
+                前往提供商市场选购接入 →
+              </Button>
+            </A>
+          </div>
         </Card>
       </Show>
 
@@ -440,101 +355,6 @@ const Media: Component = () => {
             </div>
           </Show>
         </div>
-      </Modal>
-
-      {/* 原地配置 API 凭据向导 Modal */}
-      <Modal
-        open={wizardOpen()}
-        title={`配置 ${wizardProvider()?.name || ''} 访问凭据`}
-        onClose={() => setWizardOpen(false)}
-      >
-        <Show when={wizardProvider()}>
-          {p => (
-            <div class="space-y-4">
-              <div class="p-3 rounded-xl bg-hover text-xs space-y-1 text-faint border border-subtle">
-                <div class="flex items-center justify-between">
-                  <span>提供商标识：<strong class="font-mono text-foreground">{p().provider}</strong></span>
-                  <span>支持能力：<strong class="text-foreground">{p().kinds.join(', ')}</strong></span>
-                </div>
-                <div class="text-[11px] text-muted">
-                  凭据将加密保存在服务端账号池中，与对话提供商采用统一连接调度架构。
-                </div>
-              </div>
-
-              <Field label="连接显示名称" hint="便于区分多账号，如：主力 1 号">
-                <Input
-                  value={wizardForm().name}
-                  placeholder={`例如：我的 ${p().name}`}
-                  onInput={v => setWizardForm(f => ({ ...f, name: v }))}
-                />
-              </Field>
-
-              <Field label="API Key / 访问令牌" hint="该服务的官方 API 密钥">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1">
-                    <Input
-                      type="password"
-                      value={wizardForm().apiKey}
-                      placeholder="sk-... / 密钥文本"
-                      onInput={v => {
-                        setWizardForm(f => ({ ...f, apiKey: v }))
-                        setTestedCreds(null)
-                      }}
-                    />
-                  </div>
-                  <Button
-                    size="md"
-                    variant="secondary"
-                    loading={testingCreds()}
-                    disabled={!wizardForm().apiKey.trim()}
-                    onClick={handleTestCreds}
-                  >
-                    测试连接
-                  </Button>
-                </div>
-              </Field>
-
-              <Show when={testedCreds()}>
-                {res => (
-                  <div class={`text-xs px-3 py-2 rounded-control flex items-center justify-between ${
-                    res().ok ? 'bg-success/10 text-success border border-success/20' : 'bg-danger/10 text-danger border border-danger/20'
-                  }`}>
-                    <span>{res().ok ? `✓ ${res().msg}` : `✕ ${res().msg}`}</span>
-                    <span class="text-[11px] opacity-75">{res().ok ? '凭据有效，允许保存' : '请核对密钥'}</span>
-                  </div>
-                )}
-              </Show>
-
-              <Show when={saveError()}>
-                <div class="text-xs px-3 py-2 rounded-control bg-danger/10 text-danger border border-danger/20 flex items-center justify-between">
-                  <span>✕ {saveError()}</span>
-                </div>
-              </Show>
-
-              <Field label="自定义 Base URL (可选)" hint="私有部署或自定义中转代理时填写，留空走官方直连">
-                <Input
-                  value={wizardForm().baseUrl}
-                  placeholder="https://..."
-                  onInput={v => setWizardForm(f => ({ ...f, baseUrl: v }))}
-                />
-              </Field>
-
-              <div class="pt-3 border-t border-subtle flex items-center justify-end gap-2">
-                <Button variant="secondary" onClick={() => setWizardOpen(false)}>
-                  取消
-                </Button>
-                <Button
-                  variant="primary"
-                  loading={savingCreds()}
-                  disabled={!wizardForm().apiKey.trim() || !testedCreds()?.ok}
-                  onClick={handleSaveCreds}
-                >
-                  保存并启用
-                </Button>
-              </div>
-            </div>
-          )}
-        </Show>
       </Modal>
     </div>
   )

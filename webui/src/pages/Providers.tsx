@@ -100,6 +100,12 @@ const Providers: Component = () => {
     const groups: ProviderConnectionGroup[] = []
     for (const [providerId, conns] of Object.entries(map)) {
       const reg = registryFor(providerId)
+      // 我的连接页专注于 LLM 对话管理：非 LLM 提供商转由媒体工作台管理
+      const caps = reg?.capabilities || (reg?.category === 'media' ? [] : ['llm'])
+      if (!caps.includes('llm')) {
+        continue
+      }
+
       // 组内账号按优先级升序排序（数值小者优先调度）
       conns.sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
 
@@ -113,7 +119,7 @@ const Providers: Component = () => {
       }
 
       if (cap) {
-        if (!reg?.capabilities?.includes(cap)) continue
+        if (!caps.includes(cap)) continue
       }
       if (q) {
         const matchProvider = providerName.toLowerCase().includes(q) || providerId.toLowerCase().includes(q)
@@ -788,14 +794,6 @@ const Providers: Component = () => {
 
                         {/* 供应商级别操作 */}
                         <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                          {/* 若为纯媒体提供商，提供一键跳转至媒体试用台 */}
-                          <Show when={group.category === 'media' || !reg()?.capabilities?.includes('llm')}>
-                            <A href="/media">
-                              <Button size="sm" variant="secondary" title="前往媒体工作台进行实时交互试用">
-                                前往媒体试用台 ↗
-                              </Button>
-                            </A>
-                          </Show>
                           <Show when={reg()}>
                             <Button
                               size="sm"

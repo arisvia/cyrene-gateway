@@ -338,29 +338,40 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 // handleMediaProviders handles GET /api/media-providers
 func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
+	connectedOnly := r.URL.Query().Get("connectedOnly") == "true" || r.URL.Query().Get("connected") == "true"
 
-	// Pre-fetch active connection counts per provider
+	// Pre-fetch active connection counts and authTypes per provider
 	activeConns, _ := s.DB.ListConnections()
 	connCountByProvider := make(map[string]int)
+	authTypeByProvider := make(map[string]string)
 	for _, c := range activeConns {
 		if c.IsActive {
 			connCountByProvider[c.Provider]++
+			if authTypeByProvider[c.Provider] == "" && c.AuthType != "" {
+				authTypeByProvider[c.Provider] = c.AuthType
+			}
 		}
 	}
 	type EnrichedProvider struct {
 		*media.MediaProviderInfo
-		ActiveConnections int  `json:"activeConnections"`
-		HasConnection     bool `json:"hasConnection"`
+		ActiveConnections int    `json:"activeConnections"`
+		HasConnection     bool   `json:"hasConnection"`
+		AuthType          string `json:"authType,omitempty"`
 	}
 
 	enrichList := func(entries []*media.MediaProviderInfo) []EnrichedProvider {
 		var out []EnrichedProvider
 		for _, e := range entries {
 			count := connCountByProvider[e.Provider]
+			has := count > 0
+			if connectedOnly && !has {
+				continue
+			}
 			out = append(out, EnrichedProvider{
 				MediaProviderInfo: e,
 				ActiveConnections: count,
-				HasConnection:     count > 0,
+				HasConnection:     has,
+				AuthType:          authTypeByProvider[e.Provider],
 			})
 		}
 		// 排序：已配置连接的优先置顶，其次按 Provider ID 稳定排序

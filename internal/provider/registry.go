@@ -14,8 +14,6 @@ type ProviderInfo struct {
 	AuthType string            `json:"authType"` // "api-key", "oauth", "cookie", "none"
 	// Category and auth metadata (Phase 10)
 	Category string `json:"category"` // "apikey", "oauth", "freeTier", "free", "webCookie"
-	// Capabilities supported by this provider (e.g. "llm", "image", "tts", "stt", "video", "embedding", "web")
-	Capabilities []string `json:"capabilities,omitempty"`
 	// Brand/Region grouping (Phase 36): brand siblings (e.g. glm/glm-cn) are
 	// rendered as one panel card with a region switcher. IDs stay stable.
 	Brand  string `json:"brand,omitempty"`
