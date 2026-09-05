@@ -227,3 +227,60 @@ export const IconMenu: Component<IconProps> = props => {
     </svg>
   )
 }
+// 展开/向下箭头 (ChevronDown / ▼)
+export const IconChevronDown: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
+}
+// 收起/向右箭头 (ChevronRight / ▶)
+export const IconChevronRight: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  )
+}
+// 向上箭头 (ChevronUp / ▲)
+export const IconChevronUp: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  )
+}
+// 向左箭头 (ChevronLeft / ◀)
+export const IconChevronLeft: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  )
+}
+// 右箭头 (ArrowRight / →)
+export const IconArrowRight: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </svg>
+  )
+}
+// 外部链接箭头 (ExternalLink / ↗)
+export const IconExternalLink: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  )
+}

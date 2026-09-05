@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings } from '@/components/ui'
+import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
 import { A } from '@solidjs/router'
 
@@ -176,31 +176,35 @@ const Quota: Component = () => {
       <div class="space-y-1.5">
         <Show when={allKeys().length > 8}>
           <div class="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5 text-xs text-faint">
-            <input
-              type="text"
+            <Input
+              size="sm"
               placeholder={`搜索 ${allKeys().length} 项模型配额...`}
               value={search()}
-              onInput={e => { setSearch(e.currentTarget.value); setPage(1); }}
-              class="text-[11px] px-2 py-0.5 rounded-md bg-bg border border-subtle text-foreground placeholder:text-faint focus:outline-none focus:border-accent w-40 sm:w-48"
+              onInput={v => { setSearch(v); setPage(1); }}
+              class="w-40 sm:w-48 !text-[11px] !py-0.5 !h-7"
             />
             <div class="flex items-center gap-1.5 text-[11px] shrink-0 font-mono">
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant="secondary"
                 disabled={page() <= 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                class="px-1.5 py-0.5 rounded border border-subtle bg-bg hover:bg-hover disabled:opacity-30 disabled:pointer-events-none"
+                class="!h-6 !px-1.5 !min-w-0"
+                title="上一页"
               >
-                &lt;
-              </button>
-              <span>{page()} / {totalPages()}</span>
-              <button
-                type="button"
+                <IconChevronLeft size={12} />
+              </Button>
+              <span class="px-1">{page()} / {totalPages()}</span>
+              <Button
+                size="sm"
+                variant="secondary"
                 disabled={page() >= totalPages()}
                 onClick={() => setPage(p => Math.min(totalPages(), p + 1))}
-                class="px-1.5 py-0.5 rounded border border-subtle bg-bg hover:bg-hover disabled:opacity-30 disabled:pointer-events-none"
+                class="!h-6 !px-1.5 !min-w-0"
+                title="下一页"
               >
-                &gt;
-              </button>
+                <IconChevronRight size={12} />
+              </Button>
             </div>
           </div>
         </Show>
@@ -234,16 +238,16 @@ const Quota: Component = () => {
 
         <div class="flex items-center gap-2.5 flex-wrap">
           <Show when={providerOptions().length > 1}>
-            <select
+            <Select
+              size="sm"
+              class="w-44"
               value={providerFilter()}
-              onChange={e => setProviderFilter(e.currentTarget.value)}
-              class="text-xs px-2.5 py-1.5 rounded-control bg-card border border-subtle text-foreground focus:outline-none focus:border-accent"
-            >
-              <option value="">全部供应商 ({store.providers().length})</option>
-              <For each={providerOptions()}>
-                {p => <option value={p}>{p}</option>}
-              </For>
-            </select>
+              onChange={setProviderFilter}
+              options={[
+                { value: '', label: `全部供应商 (${store.providers().length})` },
+                ...providerOptions().map(p => ({ value: p, label: p })),
+              ]}
+            />
           </Show>
 
           <button
