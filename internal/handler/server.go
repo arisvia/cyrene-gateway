@@ -490,7 +490,10 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	// Otherwise (default chat completions), filter out dedicated image generation models.
 	var filtered []ModelEntry
 	for _, m := range models {
-		isImageGen := slices.Contains(m.Capabilities, "image-generation")
+		isImageGen := slices.Contains(m.Capabilities, "image-generation") ||
+			strings.Contains(strings.ToLower(m.ID), "-image") ||
+			strings.Contains(strings.ToLower(m.ID), "dall-e") ||
+			strings.Contains(strings.ToLower(m.ID), "flux")
 		if targetKind == "image" {
 			if isImageGen {
 				filtered = append(filtered, m)

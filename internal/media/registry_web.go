@@ -65,4 +65,13 @@ func registerWebProviders() {
 		AuthHeader: "key",
 		Format:     "google-pse",
 	})
+	// Antigravity (Google Code Assist search grounding via gemini-2.5-flash)
+	mergeProvider("antigravity", "Google Antigravity", KindWebSearch, nil, ProviderConfig{
+		Provider:   "antigravity",
+		Kind:       KindWebSearch,
+		BaseURL:    "https://cloudcode-pa.googleapis.com",
+		AuthType:   "oauth",
+		AuthHeader: "bearer",
+		Format:     "antigravity",
+	})
 }

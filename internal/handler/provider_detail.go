@@ -3,7 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-
+	"strings"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
@@ -82,7 +82,10 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 				if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(m.ID) {
 					continue
 				}
-				seen[m.ID] = true
+				// 过滤生图专用模型（避免在文本会话中展示）
+				if strings.Contains(strings.ToLower(m.ID), "-image") {
+					continue
+				}
 				name := m.DisplayName
 				if name == "" {
 					name = m.ID

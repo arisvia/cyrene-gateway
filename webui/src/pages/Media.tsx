@@ -1,32 +1,83 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse } from '@/components/ui'
 
-type Cap = 'image' | 'tts' | 'stt' | 'embeddings' | 'search'
+type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
 
-interface ModelOption {
+interface MediaModelEntry {
   id: string
-  displayName?: string
-  ownedBy?: string
+  name: string
+  kind: string
 }
 
-const CAPS: { id: Cap; label: string; endpoint: string; hint: string }[] = [
-  { id: 'image', label: '图像生成', endpoint: '/v1/images/generations', hint: '根据提示词生成高质量图片' },
-  { id: 'tts', label: '语音合成', endpoint: '/v1/audio/speech', hint: '文本转语音' },
-  { id: 'stt', label: '语音识别', endpoint: '/v1/audio/transcriptions', hint: '音频转文本' },
-  { id: 'embeddings', label: '向量嵌入', endpoint: '/v1/embeddings', hint: '文本向量化' },
-  { id: 'search', label: '联网搜索', endpoint: '/v1/search', hint: '网络检索' },
+interface MediaProvider {
+  provider: string
+  name: string
+  kinds: string[]
+  models?: MediaModelEntry[]
+  hasConnection: boolean
+  activeConnections: number
+}
+
+const CAPS: { id: Cap; label: string; endpoint: string; hint: string; kindKey: string }[] = [
+  { id: 'image', label: '图像生成', endpoint: '/v1/images/generations', hint: '输入提示词，调用多模态模型生成高分辨率图像', kindKey: 'image' },
+  { id: 'search', label: '联网搜索', endpoint: '/v1/search', hint: '通过 Google Search Grounding 或专业搜索引擎检索网页', kindKey: 'web-search' },
+  { id: 'tts', label: '语音合成', endpoint: '/v1/audio/speech', hint: '将输入文本实时渲染为自然拟人语音', kindKey: 'tts' },
+  { id: 'stt', label: '语音识别', endpoint: '/v1/audio/transcriptions', hint: '转录音频内容为结构化文本', kindKey: 'stt' },
+  { id: 'embeddings', label: '向量嵌入', endpoint: '/v1/embeddings', hint: '文本特征与语义向量化提取', kindKey: 'embedding' },
 ]
 
 const Media: Component = () => {
   const [active, setActive] = createSignal<Cap>('image')
-  const [text, setText] = createSignal('')
+  const [providers, setProviders] = createSignal<MediaProvider[]>([])
+  const [loadingProviders, setLoadingProviders] = createSignal(false)
+
+  // 专属试用弹窗状态
+  const [workbenchOpen, setWorkbenchOpen] = createSignal(false)
+  const [selectedProvider, setSelectedProvider] = createSignal<MediaProvider | null>(null)
   const [model, setModel] = createSignal('')
+  const [text, setText] = createSignal('')
   const [busy, setBusy] = createSignal(false)
   const [result, setResult] = createSignal<unknown>(null)
   const [error, setError] = createSignal('')
-  const [imageModels, setImageModels] = createSignal<ModelOption[]>([])
-  const [loadingModels, setLoadingModels] = createSignal(false)
+
+  async function loadProviders() {
+    setLoadingProviders(true)
+    try {
+      const cap = CAPS.find(c => c.id === active())!
+      const res = (await api(`/api/media-providers?kind=${cap.kindKey}`)) as { providers?: MediaProvider[] }
+      setProviders(res?.providers || [])
+    } catch {
+      // ignore
+    } finally {
+      setLoadingProviders(false)
+    }
+  }
+
+  onMount(() => {
+    loadProviders()
+  })
+
+  function handleTabChange(capId: Cap) {
+    setActive(capId)
+    loadProviders()
+  }
+
+  function openWorkbench(p: MediaProvider) {
+    setSelectedProvider(p)
+    setError('')
+    setResult(null)
+    const defaultM = p.models?.[0]?.id || (p.provider === 'antigravity' ? 'gemini-3.1-flash-image' : '')
+    setModel(defaultM)
+    if (active() === 'image') {
+      setText('A futuristic cybernetic city at twilight with glowing neon reflections on wet streets, 8k render, masterpiece')
+    } else if (active() === 'search') {
+      setText('2026 AI coding agents and LLM developments')
+    } else {
+      setText('Hello, this is a media test from Cyrene Gateway.')
+    }
+    setWorkbenchOpen(true)
+  }
 
   // 提取响应中的图片 URL 或 base64
   const imageUrls = () => {
@@ -45,42 +96,26 @@ const Media: Component = () => {
     return urls
   }
 
-  async function loadModels() {
-    setLoadingModels(true)
-    try {
-      // 查询标记为 image-generation 的专有模型
-      const res = (await api('/v1/models?type=image')) as { data?: ModelOption[] }
-      if (res?.data && res.data.length > 0) {
-        setImageModels(res.data)
-        if (!model()) setModel(res.data[0].id)
-      } else {
-        // 若当前未配置生图连接，提供标准已知候选
-        setImageModels([
-          { id: 'gemini-3.1-flash-image', displayName: 'Gemini 3.1 Flash Image (Antigravity)' },
-          { id: 'dall-e-3', displayName: 'DALL-E 3 (OpenAI)' },
-          { id: 'flux-pro', displayName: 'FLUX Pro (Black Forest Labs)' },
-        ])
-        if (!model()) setModel('gemini-3.1-flash-image')
-      }
-    } catch {
-      // 忽略拉取错误
-    } finally {
-      setLoadingModels(false)
-    }
+  // 提取搜索结果列表
+  const searchResults = () => {
+    const res = result() as { summary?: string; count?: number; results?: Array<{ title?: string; url?: string; snippet?: string; position?: number }> } | null
+    return res || null
   }
 
-  onMount(() => {
-    loadModels()
-  })
-
-  async function run() {
+  async function runWorkbench() {
+    const p = selectedProvider()
     const cap = CAPS.find(c => c.id === active())!
-    if (!text().trim()) return
+    if (!text().trim() || !p) return
     setBusy(true)
     setError('')
     setResult(null)
     try {
-      const body: Record<string, unknown> = { input: text(), prompt: text() }
+      const body: Record<string, unknown> = {
+        provider: p.provider,
+        input: text(),
+        prompt: text(),
+        query: text(),
+      }
       if (model()) body.model = model()
       const r = await apiPost(cap.endpoint, body)
       setResult(r)
@@ -96,24 +131,21 @@ const Media: Component = () => {
       <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
         <div>
           <h1 class="text-xl font-semibold">媒体能力</h1>
-          <p class="text-sm text-faint mt-0.5">测试图像、语音、嵌入与搜索等非对话能力</p>
+          <p class="text-sm text-faint mt-0.5">多模态与衍生能力中心：图像生成、联网搜索、语音与向量嵌入</p>
         </div>
       </div>
 
-      <div class="flex flex-wrap gap-1.5">
+      {/* 顶部能力分类 Tab */}
+      <div class="flex flex-wrap gap-1.5 p-1 rounded-card bg-hover/40 border border-subtle/50 w-fit">
         <For each={CAPS}>
           {c => (
             <button
-              class={`px-3 py-1.5 rounded-control text-sm border transition-colors ${
+              class={`px-3 py-1.5 rounded-control text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 active() === c.id
-                  ? 'border-[color:var(--accent)] text-text bg-accent/10'
-                  : 'border-subtle text-muted hover:text-text'
+                  ? 'bg-card text-foreground shadow-sm border border-subtle'
+                  : 'text-faint hover:text-foreground'
               }`}
-              onClick={() => {
-                setActive(c.id)
-                setResult(null)
-                setError('')
-              }}
+              onClick={() => handleTabChange(c.id)}
             >
               {c.label}
             </button>
@@ -121,91 +153,194 @@ const Media: Component = () => {
         </For>
       </div>
 
-      <Card class="p-5 space-y-4">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-medium">{CAPS.find(c => c.id === active())!.label}</span>
-          <code class="text-[11px] font-mono text-faint">{CAPS.find(c => c.id === active())!.endpoint}</code>
-        </div>
-        <p class="text-xs text-faint">{CAPS.find(c => c.id === active())!.hint}</p>
+      <div class="text-xs text-faint flex items-center gap-2">
+        <span>💡 {CAPS.find(c => c.id === active())?.hint}</span>
+        <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-bg-elevated border border-subtle">
+          {CAPS.find(c => c.id === active())?.endpoint}
+        </span>
+      </div>
 
-        <Show when={active() === 'image'}>
-          <Field label="图像生成模型" hint={loadingModels() ? '加载可用模型中...' : '已关联当前启用的生图连接'}>
-            <Select
-              value={model()}
-              onChange={setModel}
-              options={imageModels().map(m => ({
-                value: m.id,
-                label: m.displayName || m.id,
-              }))}
-              class="max-w-md"
-            />
-          </Field>
-        </Show>
-
-        <Show when={active() !== 'image'}>
-          <Field label="模型" hint="留空使用提供商默认模型">
-            <Input value={model()} onInput={setModel} placeholder="例如：tts-1、whisper-1" class="!w-64" />
-          </Field>
-        </Show>
-
-        <Field label="提示词 / 输入内容">
-          <Input
-            value={text()}
-            onInput={setText}
-            placeholder={active() === 'image' ? '例如：A hyper-realistic sunset over cyberpunk neon city, 8k resolution' : '输入提示词或文本…'}
-          />
-        </Field>
-
-        <div class="flex justify-end">
-          <Button variant="primary" loading={busy()} disabled={!text().trim()} onClick={run}>
-            {active() === 'image' ? '开始生成图片' : '执行'}
-          </Button>
-        </div>
-      </Card>
-
-      <Show when={error()}>
-        <div class="px-3 py-2 rounded-control text-xs bg-danger/10 text-danger">{error()}</div>
-      </Show>
-
-      {/* 图片画廊预览 */}
-      <Show when={imageUrls().length > 0}>
-        <Card class="p-5 space-y-3">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-semibold">生成结果预览</h3>
-            <span class="text-xs text-faint">共 {imageUrls().length} 张</span>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-1">
-            <For each={imageUrls()}>
-              {url => (
-                <div class="group relative rounded-card overflow-hidden border border-subtle bg-bg/80 aspect-square flex items-center justify-center">
-                  <img src={url} alt="Generated" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                  <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="px-3 py-1.5 text-xs bg-white/20 backdrop-blur hover:bg-white/30 text-white rounded font-medium"
-                    >
-                      查看原图
-                    </a>
+      {/* 提供商能力卡片网格 */}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <For each={providers()}>
+          {p => (
+            <Card class="p-5 flex flex-col justify-between space-y-4 hover:border-accent/40 transition">
+              <div class="space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-accent/10 text-accent font-semibold flex items-center justify-center text-sm uppercase">
+                      {p.name.slice(0, 2)}
+                    </div>
+                    <div>
+                      <h3 class="text-sm font-semibold text-foreground">{p.name}</h3>
+                      <p class="text-[11px] font-mono text-faint">{p.provider}</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5">
+                    <StatusPulse status={p.hasConnection ? 'active' : 'idle'} size="xs" />
+                    <span class="text-[11px] text-faint">
+                      {p.hasConnection ? `${p.activeConnections} 个活跃账号` : '未配置账号'}
+                    </span>
                   </div>
                 </div>
-              )}
-            </For>
-          </div>
+
+                <div class="space-y-1">
+                  <div class="text-[11px] text-faint">支持模型 / 端点:</div>
+                  <div class="flex flex-wrap gap-1">
+                    <Show
+                      when={p.models && p.models.length > 0}
+                      fallback={
+                        <span class="text-[11px] font-mono text-muted bg-bg-elevated px-2 py-0.5 rounded border border-subtle">
+                          默认端点驱动
+                        </span>
+                      }
+                    >
+                      <For each={p.models}>
+                        {m => (
+                          <span class="text-[11px] font-mono text-foreground bg-bg-elevated px-2 py-0.5 rounded border border-subtle">
+                            {m.name || m.id}
+                          </span>
+                        )}
+                      </For>
+                    </Show>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pt-2 border-t border-subtle flex items-center justify-between">
+                <span class="text-[11px] text-faint">
+                  {p.hasConnection ? '就绪可调用' : '请先在账号池添加连接'}
+                </span>
+                <Button
+                  size="sm"
+                  variant={p.hasConnection ? 'primary' : 'secondary'}
+                  disabled={!p.hasConnection}
+                  onClick={() => openWorkbench(p)}
+                >
+                  试用{CAPS.find(c => c.id === active())?.label}
+                </Button>
+              </div>
+            </Card>
+          )}
+        </For>
+      </div>
+
+      <Show when={providers().length === 0 && !loadingProviders()}>
+        <Card class="p-8 text-center space-y-2">
+          <p class="text-sm text-faint">暂无支持该能力的提供商定义</p>
         </Card>
       </Show>
 
-      {/* JSON 调试响应面板 */}
-      <Show when={result()}>
-        <Card class="p-5">
-          <h3 class="text-sm font-semibold mb-2">原始响应 (JSON)</h3>
-          <pre class="text-[11px] font-mono text-muted whitespace-pre-wrap break-all bg-bg-elevated p-3 rounded-control border border-subtle max-h-96 overflow-y-auto">
-            {JSON.stringify(result(), null, 2)}
-          </pre>
-        </Card>
-      </Show>
+      {/* 专属试用交互工作台 (Workbench Modal) */}
+      <Modal
+        open={workbenchOpen()}
+        title={`${selectedProvider()?.name || ''} · ${CAPS.find(c => c.id === active())?.label || ''}试用台`}
+        onClose={() => setWorkbenchOpen(false)}
+      >
+        <div class="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+          <Show when={selectedProvider()?.models && selectedProvider()!.models!.length > 0}>
+            <Field label="选用模型">
+              <Select
+                value={model()}
+                onChange={setModel}
+                options={(selectedProvider()?.models || []).map(m => ({
+                  value: m.id,
+                  label: m.name || m.id,
+                }))}
+              />
+            </Field>
+          </Show>
+
+          <Field label={active() === 'image' ? '生成提示词 (Prompt)' : active() === 'search' ? '搜索关键词 (Query)' : '输入内容 (Input)'}>
+            <Input
+              value={text()}
+              onInput={setText}
+              placeholder={active() === 'image' ? '输入英文提示词以获得最佳效果...' : '输入关键词或文本...'}
+            />
+          </Field>
+
+          <div class="flex justify-end gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setWorkbenchOpen(false)}>
+              关闭
+            </Button>
+            <Button size="sm" variant="primary" loading={busy()} disabled={!text().trim()} onClick={runWorkbench}>
+              {active() === 'image' ? '开始生成图片' : active() === 'search' ? '执行全网检索' : '执行调用'}
+            </Button>
+          </div>
+
+          <Show when={error()}>
+            <div class="px-3 py-2 rounded-control text-xs bg-danger/10 text-danger border border-danger/20">
+              {error()}
+            </div>
+          </Show>
+
+          {/* 生图结果预览画廊 */}
+          <Show when={imageUrls().length > 0}>
+            <div class="space-y-2 pt-2 border-t border-subtle">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-foreground">生成结果预览</span>
+                <span class="text-[11px] text-faint">共 {imageUrls().length} 张</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <For each={imageUrls()}>
+                  {(url, idx) => (
+                    <div class="relative group rounded-card overflow-hidden border border-subtle bg-bg-elevated aspect-square flex items-center justify-center">
+                      <img src={url} alt={`Generated result ${idx() + 1}`} class="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
+                      <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                        <a href={url} target="_blank" rel="noreferrer" class="px-3 py-1.5 rounded-control text-xs bg-bg/90 text-foreground font-medium shadow hover:bg-bg transition">
+                          查看原图
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+
+          {/* 联网搜索结果卡片流 */}
+          <Show when={searchResults() && searchResults()!.results && searchResults()!.results!.length > 0}>
+            <div class="space-y-2.5 pt-2 border-t border-subtle">
+              <Show when={searchResults()?.summary}>
+                <div class="p-3 rounded-card bg-accent/5 border border-accent/20 text-xs text-foreground leading-relaxed">
+                  <div class="font-semibold text-accent mb-1 flex items-center gap-1.5">
+                    <span>✨ AI 检索总结</span>
+                  </div>
+                  {searchResults()?.summary}
+                </div>
+              </Show>
+
+              <div class="text-xs font-semibold text-foreground">检索引文 ({searchResults()?.count || searchResults()?.results?.length} 条)</div>
+              <div class="space-y-2">
+                <For each={searchResults()?.results}>
+                  {item => (
+                    <div class="p-3 rounded-card bg-bg-elevated border border-subtle text-xs space-y-1 hover:border-accent/30 transition">
+                      <div class="flex items-center justify-between">
+                        <a href={item.url} target="_blank" rel="noreferrer" class="font-medium text-accent hover:underline flex items-center gap-1 truncate max-w-[85%]">
+                          <span>{item.position}. {item.title || item.url}</span>
+                        </a>
+                      </div>
+                      <p class="text-[11px] text-faint truncate font-mono">{item.url}</p>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+
+          {/* 原始响应 JSON 调试折叠面板 */}
+          <Show when={result()}>
+            <div class="pt-2 border-t border-subtle space-y-1.5">
+              <div class="text-[11px] font-semibold text-faint uppercase">原始响应数据 (JSON)</div>
+              <pre class="text-[10px] font-mono text-muted whitespace-pre-wrap break-all bg-bg-elevated p-3 rounded-control border border-subtle max-h-60 overflow-y-auto">
+                {JSON.stringify(result(), null, 2)}
+              </pre>
+            </div>
+          </Show>
+        </div>
+      </Modal>
     </div>
   )
 }
+
 export default Media

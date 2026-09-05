@@ -621,6 +621,34 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 		u.RawQuery = q.Encode()
 		targetURL = u.String()
 		method = "GET"
+	case "antigravity":
+		// Google Code Assist Search Grounding via gemini-2.5-flash
+		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/v1internal:generateContent"
+		method = "POST"
+		envelope := map[string]any{
+			"model":       "gemini-2.5-flash",
+			"userAgent":   "antigravity",
+			"requestType": "search",
+			"request": map[string]any{
+				"contents": []map[string]any{
+					{
+						"role":  "user",
+						"parts": []map[string]any{{"text": req.Query}},
+					},
+				},
+				"tools": []map[string]any{
+					{"googleSearch": map[string]any{}},
+				},
+				"generationConfig": map[string]any{
+					"temperature":     1.0,
+					"maxOutputTokens": 8192,
+				},
+			},
+		}
+		if creds.ProjectID != "" {
+			envelope["project"] = creds.ProjectID
+		}
+		reqBody, _ = json.Marshal(envelope)
 	default:
 		return nil, fmt.Errorf("unsupported search provider format: %s", cfg.Format)
 	}
@@ -636,8 +664,12 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Format == "antigravity" {
+		httpReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		httpReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+		httpReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
+	}
 	setAuth(httpReq, cfg, creds)
-
 	return c.HTTPClient.Do(httpReq)
 }
 

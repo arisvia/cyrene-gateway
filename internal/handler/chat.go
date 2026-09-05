@@ -47,13 +47,14 @@ type usageContext struct {
 
 // ChatCompletionRequest represents an OpenAI-compatible chat request
 type ChatCompletionRequest struct {
-	Temperature *float64        `json:"temperature,omitempty"`
-	MaxTokens   *int            `json:"max_tokens,omitempty"`
-	Model       string          `json:"model"`
-	Messages    []Message       `json:"messages"`
-	Tools       json.RawMessage `json:"tools,omitempty"`
-	ToolChoice  json.RawMessage `json:"tool_choice,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
+	Temperature     *float64        `json:"temperature,omitempty"`
+	MaxTokens       *int            `json:"max_tokens,omitempty"`
+	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+	Model           string          `json:"model"`
+	Messages        []Message       `json:"messages"`
+	Tools           json.RawMessage `json:"tools,omitempty"`
+	ToolChoice      json.RawMessage `json:"tool_choice,omitempty"`
+	Stream          bool            `json:"stream,omitempty"`
 }
 
 type Message struct {

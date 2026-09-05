@@ -325,14 +325,47 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	if req.Provider == "antigravity" {
+		s.aggregateAntigravitySearchResponse(w, resp)
+		return
+	}
+
 	s.proxyMediaResponse(w, resp)
 }
 
 // handleMediaProviders handles GET /api/media-providers
 func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 	kind := r.URL.Query().Get("kind")
+
+	// Pre-fetch active connection counts per provider
+	activeConns, _ := s.DB.ListConnections()
+	connCountByProvider := make(map[string]int)
+	for _, c := range activeConns {
+		if c.IsActive {
+			connCountByProvider[c.Provider]++
+		}
+	}
+	type EnrichedProvider struct {
+		*media.MediaProviderInfo
+		ActiveConnections int  `json:"activeConnections"`
+		HasConnection     bool `json:"hasConnection"`
+	}
+
+	enrichList := func(entries []*media.MediaProviderInfo) []EnrichedProvider {
+		var out []EnrichedProvider
+		for _, e := range entries {
+			count := connCountByProvider[e.Provider]
+			out = append(out, EnrichedProvider{
+				MediaProviderInfo: e,
+				ActiveConnections: count,
+				HasConnection:     count > 0,
+			})
+		}
+		return out
+	}
+
 	if kind != "" {
-		providers := media.GetProvidersByKind(media.Kind(kind))
+		providers := enrichList(media.GetProvidersByKind(media.Kind(kind)))
 		writeJSON(w, http.StatusOK, map[string]any{"providers": providers, "kind": kind, "count": len(providers)})
 		return
 	}
@@ -341,7 +374,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 	kinds := []media.Kind{media.KindEmbedding, media.KindImage, media.KindTTS, media.KindSTT, media.KindVideo, media.KindWebFetch, media.KindWebSearch}
 	grouped := make(map[string]any)
 	for _, k := range kinds {
-		grouped[string(k)] = media.GetProvidersByKind(k)
+		grouped[string(k)] = enrichList(media.GetProvidersByKind(k))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"kinds": grouped})
 }
@@ -525,5 +558,59 @@ func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *
 	writeJSON(w, http.StatusOK, map[string]any{
 		"created": time.Now().Unix(),
 		"data":    dataItems,
+	})
+}
+
+// aggregateAntigravitySearchResponse unpacks Google GroundingMetadata into unified search results
+func (s *Server) aggregateAntigravitySearchResponse(w http.ResponseWriter, resp *http.Response) {
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read antigravity search response"})
+		return
+	}
+
+	var data struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+			GroundingMetadata struct {
+				GroundingChunks []struct {
+					Web struct {
+						URI   string `json:"uri"`
+						Title string `json:"title"`
+					} `json:"web"`
+				} `json:"groundingChunks"`
+			} `json:"groundingMetadata"`
+		} `json:"candidates"`
+	}
+
+	var results []map[string]any
+	summary := ""
+	if err := json.Unmarshal(respBytes, &data); err == nil && len(data.Candidates) > 0 {
+		cand := data.Candidates[0]
+		for _, p := range cand.Content.Parts {
+			summary += p.Text
+		}
+		for i, chunk := range cand.GroundingMetadata.GroundingChunks {
+			if chunk.Web.URI != "" {
+				results = append(results, map[string]any{
+					"position": i + 1,
+					"title":    chunk.Web.Title,
+					"url":      chunk.Web.URI,
+					"snippet":  summary,
+				})
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"provider": "antigravity",
+		"query":    "",
+		"count":    len(results),
+		"summary":  summary,
+		"results":  results,
 	})
 }
