@@ -10,8 +10,8 @@ func TestRegistryPopulated(t *testing.T) {
 
 func TestEmbeddingProviders(t *testing.T) {
 	providers := GetProvidersByKind(KindEmbedding)
-	if len(providers) < 10 {
-		t.Errorf("expected at least 10 embedding providers, got %d", len(providers))
+	if len(providers) < 2 {
+		t.Errorf("expected at least 2 embedding providers, got %d", len(providers))
 	}
 
 	// OpenAI should support embeddings
@@ -47,8 +47,8 @@ func TestImageProviders(t *testing.T) {
 
 func TestTTSProviders(t *testing.T) {
 	providers := GetProvidersByKind(KindTTS)
-	if len(providers) < 5 {
-		t.Errorf("expected at least 5 TTS providers, got %d", len(providers))
+	if len(providers) < 2 {
+		t.Errorf("expected at least 2 TTS providers, got %d", len(providers))
 	}
 
 	if !SupportsKind("openai", KindTTS) {
@@ -61,8 +61,8 @@ func TestTTSProviders(t *testing.T) {
 
 func TestSTTProviders(t *testing.T) {
 	providers := GetProvidersByKind(KindSTT)
-	if len(providers) < 4 {
-		t.Errorf("expected at least 4 STT providers, got %d", len(providers))
+	if len(providers) < 2 {
+		t.Errorf("expected at least 2 STT providers, got %d", len(providers))
 	}
 
 	if !SupportsKind("openai", KindSTT) {
@@ -86,13 +86,13 @@ func TestVideoProviders(t *testing.T) {
 
 func TestWebProviders(t *testing.T) {
 	fetchProviders := GetProvidersByKind(KindWebFetch)
-	if len(fetchProviders) < 3 {
-		t.Errorf("expected at least 3 web fetch providers, got %d", len(fetchProviders))
+	if len(fetchProviders) < 2 {
+		t.Errorf("expected at least 2 web fetch providers, got %d", len(fetchProviders))
 	}
 
 	searchProviders := GetProvidersByKind(KindWebSearch)
-	if len(searchProviders) < 5 {
-		t.Errorf("expected at least 5 web search providers, got %d", len(searchProviders))
+	if len(searchProviders) < 2 {
+		t.Errorf("expected at least 2 web search providers, got %d", len(searchProviders))
 	}
 }
 

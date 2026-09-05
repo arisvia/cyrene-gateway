@@ -5,16 +5,8 @@ func registerEmbeddingProviders() {
 		id, name, baseURL string
 	}{
 		{"openai", "OpenAI", "https://api.openai.com/v1/embeddings"},
-		{"openrouter", "OpenRouter", "https://openrouter.ai/api/v1/embeddings"},
-		{"mistral", "Mistral", "https://api.mistral.ai/v1/embeddings"},
 		{"voyage-ai", "Voyage AI", "https://api.voyageai.com/v1/embeddings"},
-		{"fireworks", "Fireworks", "https://api.fireworks.ai/inference/v1/embeddings"},
-		{"together", "Together", "https://api.together.xyz/v1/embeddings"},
-		{"nebius", "Nebius", "https://api.tokenfactory.nebius.com/v1/embeddings"},
-		{"nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1/embeddings"},
 		{"jina-ai", "Jina AI", "https://api.jina.ai/v1/embeddings"},
-		{"vercel-ai-gateway", "Vercel AI Gateway", "https://ai-gateway.vercel.sh/v1/embeddings"},
-		{"github", "GitHub Models", "https://models.inference.ai.azure.com/embeddings"},
 	}
 
 	for _, p := range embeddingProviders {

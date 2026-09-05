@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select, Modal, StatusPulse } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar } from '@/components/ui'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
 
@@ -168,9 +168,7 @@ const Media: Component = () => {
               <div class="space-y-2.5">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-lg bg-accent/10 text-accent font-semibold flex items-center justify-center text-sm uppercase">
-                      {p.name.slice(0, 2)}
-                    </div>
+                    <ProviderAvatar provider={p.provider} name={p.name} size="md" />
                     <div>
                       <h3 class="text-sm font-semibold text-foreground">{p.name}</h3>
                       <p class="text-[11px] font-mono text-faint">{p.provider}</p>

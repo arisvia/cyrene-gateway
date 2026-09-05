@@ -17,17 +17,6 @@ func registerTTSProviders() {
 			Format:     "openai",
 		},
 	)
-
-	// OpenRouter TTS
-	mergeProvider("openrouter", "OpenRouter", KindTTS, nil, ProviderConfig{
-		Provider:   "openrouter",
-		Kind:       KindTTS,
-		BaseURL:    "https://openrouter.ai/api/v1/audio/speech",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "openai",
-	})
-
 	// ElevenLabs
 	mergeProvider("elevenlabs", "ElevenLabs", KindTTS,
 		[]ModelEntry{
@@ -44,17 +33,6 @@ func registerTTSProviders() {
 			Format:     "elevenlabs",
 		},
 	)
-
-	// Google Cloud TTS
-	mergeProvider("google-tts", "Google Cloud TTS", KindTTS, nil, ProviderConfig{
-		Provider:   "google-tts",
-		Kind:       KindTTS,
-		BaseURL:    "https://texttospeech.googleapis.com/v1/text:synthesize",
-		AuthType:   "apikey",
-		AuthHeader: "key",
-		Format:     "google-tts",
-	})
-
 	// Edge TTS (free, no auth)
 	mergeProvider("edge-tts", "Edge TTS", KindTTS, nil, ProviderConfig{
 		Provider:   "edge-tts",
@@ -80,34 +58,4 @@ func registerTTSProviders() {
 			Format:     "gemini-tts",
 		},
 	)
-
-	// Cartesia
-	mergeProvider("cartesia", "Cartesia", KindTTS, nil, ProviderConfig{
-		Provider:   "cartesia",
-		Kind:       KindTTS,
-		BaseURL:    "https://api.cartesia.ai/tts/bytes",
-		AuthType:   "apikey",
-		AuthHeader: "x-api-key",
-		Format:     "cartesia",
-	})
-
-	// PlayHT
-	mergeProvider("playht", "PlayHT", KindTTS, nil, ProviderConfig{
-		Provider:   "playht",
-		Kind:       KindTTS,
-		BaseURL:    "https://api.play.ht/api/v2/tts",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "playht",
-	})
-
-	// Deepgram (also supports TTS via Aura)
-	mergeProvider("deepgram", "Deepgram", KindTTS, nil, ProviderConfig{
-		Provider:   "deepgram",
-		Kind:       KindTTS,
-		BaseURL:    "https://api.deepgram.com/v1/speak",
-		AuthType:   "apikey",
-		AuthHeader: "token",
-		Format:     "deepgram",
-	})
 }

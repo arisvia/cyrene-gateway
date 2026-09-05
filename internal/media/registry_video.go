@@ -31,24 +31,4 @@ func registerVideoProviders() {
 			Format:     "runway",
 		},
 	)
-
-	// Fal.ai Video
-	mergeProvider("fal-ai", "Fal.ai", KindVideo, nil, ProviderConfig{
-		Provider:   "fal-ai",
-		Kind:       KindVideo,
-		BaseURL:    "https://queue.fal.run",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "fal",
-	})
-
-	// HuggingFace Video
-	mergeProvider("huggingface", "HuggingFace", KindVideo, nil, ProviderConfig{
-		Provider:   "huggingface",
-		Kind:       KindVideo,
-		BaseURL:    "https://api-inference.huggingface.co/models",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "huggingface",
-	})
 }

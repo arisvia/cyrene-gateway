@@ -17,23 +17,6 @@ func registerSTTProviders() {
 			Format:     "openai",
 		},
 	)
-
-	// Groq Whisper
-	mergeProvider("groq", "Groq", KindSTT,
-		[]ModelEntry{
-			{ID: "whisper-large-v3", Name: "Whisper Large v3", Kind: KindSTT},
-			{ID: "whisper-large-v3-turbo", Name: "Whisper Large v3 Turbo", Kind: KindSTT},
-		},
-		ProviderConfig{
-			Provider:   "groq",
-			Kind:       KindSTT,
-			BaseURL:    "https://api.groq.com/openai/v1/audio/transcriptions",
-			AuthType:   "apikey",
-			AuthHeader: "bearer",
-			Format:     "openai",
-		},
-	)
-
 	// Deepgram
 	mergeProvider("deepgram", "Deepgram", KindSTT,
 		[]ModelEntry{
@@ -50,16 +33,6 @@ func registerSTTProviders() {
 		},
 	)
 
-	// AssemblyAI
-	mergeProvider("assemblyai", "AssemblyAI", KindSTT, nil, ProviderConfig{
-		Provider:   "assemblyai",
-		Kind:       KindSTT,
-		BaseURL:    "https://api.assemblyai.com/v2/transcript",
-		AuthType:   "apikey",
-		AuthHeader: "token",
-		Format:     "assemblyai",
-	})
-
 	// Gemini STT
 	mergeProvider("gemini", "Gemini", KindSTT,
 		[]ModelEntry{
@@ -75,24 +48,4 @@ func registerSTTProviders() {
 			Format:     "gemini-stt",
 		},
 	)
-
-	// NVIDIA NIM STT
-	mergeProvider("nvidia", "NVIDIA NIM", KindSTT, nil, ProviderConfig{
-		Provider:   "nvidia",
-		Kind:       KindSTT,
-		BaseURL:    "https://integrate.api.nvidia.com/v1/audio/transcriptions",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "openai",
-	})
-
-	// HuggingFace ASR
-	mergeProvider("huggingface", "HuggingFace", KindSTT, nil, ProviderConfig{
-		Provider:   "huggingface",
-		Kind:       KindSTT,
-		BaseURL:    "https://api-inference.huggingface.co/models",
-		AuthType:   "apikey",
-		AuthHeader: "bearer",
-		Format:     "huggingface-asr",
-	})
 }

@@ -498,9 +498,6 @@ func (c *Client) HandleWebFetch(ctx context.Context, providerID string, body []b
 		targetURL = cfg.BaseURL
 		method = "POST"
 		reqBody, _ = json.Marshal(map[string]any{"url": req.URL, "formats": []string{fmt_}})
-	case "jina-reader":
-		targetURL = cfg.BaseURL + "/" + req.URL
-		method = "GET"
 	case "tavily":
 		targetURL = cfg.BaseURL
 		method = "POST"
@@ -581,46 +578,6 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 			"numResults": req.MaxResults,
 			"type":       "auto",
 		})
-	case "serper":
-		targetURL = cfg.BaseURL
-		method = "POST"
-		reqBody, _ = json.Marshal(map[string]any{
-			"q":   req.Query,
-			"num": req.MaxResults,
-		})
-	case "searchapi":
-		u, _ := url.Parse(cfg.BaseURL)
-		q := u.Query()
-		q.Set("q", req.Query)
-		q.Set("num", fmt.Sprintf("%d", req.MaxResults))
-		q.Set("engine", "google")
-		u.RawQuery = q.Encode()
-		targetURL = u.String()
-		method = "GET"
-	case "youcom":
-		u, _ := url.Parse(cfg.BaseURL)
-		q := u.Query()
-		q.Set("query", req.Query)
-		u.RawQuery = q.Encode()
-		targetURL = u.String()
-		method = "GET"
-	case "linkup":
-		targetURL = cfg.BaseURL
-		method = "POST"
-		reqBody, _ = json.Marshal(map[string]any{
-			"q": req.Query,
-		})
-	case "searxng":
-		// SearXNG requires a custom base URL from connection data
-		return nil, fmt.Errorf("searxng requires a custom base URL configured in the connection")
-	case "google-pse":
-		u, _ := url.Parse(cfg.BaseURL)
-		q := u.Query()
-		q.Set("q", req.Query)
-		q.Set("num", fmt.Sprintf("%d", req.MaxResults))
-		u.RawQuery = q.Encode()
-		targetURL = u.String()
-		method = "GET"
 	case "antigravity":
 		// Google Code Assist Search Grounding via gemini-2.5-flash
 		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/v1internal:generateContent"

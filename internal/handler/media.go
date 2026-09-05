@@ -353,21 +353,10 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 		HasConnection     bool `json:"hasConnection"`
 	}
 
-	// 重点保留核心与旗舰媒体供应商（只在精不在多）
-	curatedCoreProviders := map[string]bool{
-		"antigravity": true, "openai": true, "gemini": true, "minimax": true,
-		"stability-ai": true, "tavily": true, "exa": true, "brave-search": true,
-		"firecrawl": true, "elevenlabs": true, "edge-tts": true,
-	}
-
 	enrichList := func(entries []*media.MediaProviderInfo) []EnrichedProvider {
 		var out []EnrichedProvider
 		for _, e := range entries {
 			count := connCountByProvider[e.Provider]
-			// 过滤策略：已绑定活跃账号的供应商始终展示；未绑定账号的仅展示上述核心精选供应商
-			if count == 0 && !curatedCoreProviders[e.Provider] {
-				continue
-			}
 			out = append(out, EnrichedProvider{
 				MediaProviderInfo: e,
 				ActiveConnections: count,
