@@ -1,10 +1,31 @@
-import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
-import { A } from '@solidjs/router'
-import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, ProviderAvatar, confirm } from '@/components/ui'
-import { api, apiPost } from '@/lib/api'
-import { useToast } from '@/lib/toast'
-import type { Provider, RegistryProvider, BadgeTone } from '@/types/domain'
+import {type Component, createMemo, createSignal, For, onCleanup, onMount, Show} from 'solid-js'
+import {A} from '@solidjs/router'
+import {useGatewayStore} from '@/stores/gateway'
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  Field,
+  Input,
+  Modal,
+  ProviderAvatar,
+  Select,
+  IconChat,
+  IconPalette,
+  IconVolume,
+  IconMic,
+  IconVideo,
+  IconVector,
+  IconSearch,
+  IconGlobe,
+  IconZap,
+  IconCheck,
+  IconClose,
+} from '@/components/ui'
+import {api, apiPost} from '@/lib/api'
+import {useToast} from '@/lib/toast'
+import type {BadgeTone, Provider, RegistryProvider} from '@/types/domain'
 
 const CATEGORY_LABEL: Record<string, string> = {
   all: '全部类别',
@@ -25,15 +46,15 @@ const AUTHTYPE_LABEL: Record<string, string> = {
   cookie: 'Cookie',
 }
 
-export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone; icon: string }> = {
-  llm: { label: 'LLM 对话', tone: 'blue', icon: '💬' },
-  image: { label: '图像生成', tone: 'blue', icon: '🎨' },
-  tts: { label: '语音合成 (TTS)', tone: 'green', icon: '🔊' },
-  stt: { label: '语音识别 (STT)', tone: 'amber', icon: '🎙️' },
-  video: { label: '视频生成', tone: 'red', icon: '🎬' },
-  embedding: { label: '文本向量', tone: 'gray', icon: '📐' },
-  'web-search': { label: '网络搜索', tone: 'amber', icon: '🔍' },
-  'web-fetch': { label: '网页抓取', tone: 'gray', icon: '🌐' },
+export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
+  llm: { label: 'LLM 对话', tone: 'blue', icon: IconChat },
+  image: { label: '图像生成', tone: 'blue', icon: IconPalette },
+  tts: { label: '语音合成 (TTS)', tone: 'green', icon: IconVolume },
+  stt: { label: '语音识别 (STT)', tone: 'amber', icon: IconMic },
+  video: { label: '视频生成', tone: 'red', icon: IconVideo },
+  embedding: { label: '文本向量', tone: 'gray', icon: IconVector },
+  'web-search': { label: '网络搜索', tone: 'amber', icon: IconSearch },
+  'web-fetch': { label: '网页抓取', tone: 'gray', icon: IconGlobe },
 }
 
 const Providers: Component = () => {
@@ -400,7 +421,7 @@ const Providers: Component = () => {
               clearInterval(wizardPollTimer)
               wizardPollTimer = undefined
               setWizardOAuthPolling(false)
-              toast.success(`✓ ${reg.name} 网页授权成功！连接已自动建立。`)
+              toast.success(`${reg.name} 网页授权成功！连接已自动建立。`)
               setWizardOpen(false)
               setActiveTab('connections')
               await store.loadProvidersOnly()
@@ -446,7 +467,7 @@ const Providers: Component = () => {
             wizardPollTimer = undefined
             setWizardOAuthPolling(false)
             setWizardOAuthFlow(null)
-            toast.success(`✓ ${reg.name} OAuth 授权成功！连接已自动建立。`)
+            toast.success(`${reg.name} OAuth 授权成功！连接已自动建立。`)
             setWizardOpen(false)
             setActiveTab('connections')
             await store.loadProvidersOnly()
@@ -613,7 +634,7 @@ const Providers: Component = () => {
         <Card class="p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
-              class="!w-64"
+              class="w-64!"
               placeholder={activeTab() === 'connections' ? '搜索已连接提供商…' : '搜索提供商市场/模型…'}
               value={query()}
               onInput={setQuery}
@@ -623,16 +644,15 @@ const Providers: Component = () => {
               value={capFilter()}
               options={[
                 { value: '', label: '全部支持能力' },
-                { value: 'llm', label: '💬 LLM 对话' },
-                { value: 'image', label: '🎨 图像生成' },
-                { value: 'tts', label: '🔊 语音合成 (TTS)' },
-                { value: 'stt', label: '🎙️ 语音识别 (STT)' },
-                { value: 'video', label: '🎬 视频生成' },
-                { value: 'embedding', label: '📐 文本向量' },
-                { value: 'web-search', label: '🔍 网络搜索' },
-                { value: 'web-fetch', label: '🌐 网页抓取' },
+                { value: 'llm', label: 'LLM 对话' },
+                { value: 'image', label: '图像生成' },
+                { value: 'tts', label: '语音合成 (TTS)' },
+                { value: 'stt', label: '语音识别 (STT)' },
+                { value: 'video', label: '视频生成' },
+                { value: 'embedding', label: '文本向量' },
+                { value: 'web-search', label: '网络搜索' },
+                { value: 'web-fetch', label: '网页抓取' },
               ]}
-              onChange={setCapFilter}
             />
 
             <Show when={activeTab() === 'connections'}>
@@ -673,7 +693,7 @@ const Providers: Component = () => {
                 }`}
                 title={hideAdded() ? '点击显示所有提供商（含已接入）' : '点击只看尚未接入的提供商'}
               >
-                <span>{hideAdded() ? '✓ 已隐藏已接入' : '显示全部市场'}</span>
+                <span class="flex items-center gap-1.5">{hideAdded() ? <><IconCheck size={12} /><span>已隐藏已接入</span></> : '显示全部市场'}</span>
                 <Show when={connectedCount() > 0}>
                   <span class="text-[10px] opacity-75">
                     ({hideAdded() ? `已藏 ${connectedCount()}` : `${connectedCount()} 已接入`})
@@ -776,10 +796,11 @@ const Providers: Component = () => {
                             <div class="flex items-center gap-1 flex-wrap">
                               <For each={reg()?.capabilities || ['llm']}>
                                 {capKey => {
-                                  const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: '⚡' }
+                                  const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: IconZap }
+                                  const IconComponent = conf.icon
                                   return (
                                     <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0 gap-1 shrink-0">
-                                      <span>{conf.icon}</span>
+                                      <IconComponent size={12} />
                                       <span>{conf.label}</span>
                                     </Badge>
                                   )
@@ -789,7 +810,6 @@ const Providers: Component = () => {
                           </div>
                         </div>
                       </div>
-
                       {/* 供应商级别操作 */}
                       <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
                         <Show when={reg()}>
@@ -891,7 +911,7 @@ const Providers: Component = () => {
               <For each={brandGroups()}>
             {group => {
               // 当前选中的变体（默认第一项）
-              const activeReg = () => {
+              const reg = () => {
                 const selectedId = selectedVariants()[group.brandKey]
                 if (selectedId) {
                   const found = group.items.find(it => it.id === selectedId)
@@ -899,8 +919,6 @@ const Providers: Component = () => {
                 }
                 return group.items[0]
               }
-
-              const reg = activeReg
               const connected = () => store.providers().some(p => p.provider === reg().id)
               const isFree = () => reg().id === 'opencode' && reg().noAuth
               const hasVariants = () => group.items.length > 1
@@ -931,7 +949,7 @@ const Providers: Component = () => {
                     </div>
 
                     {/* 区域 / 渠道小标签切换器 (如 cn / intl) 或等高占位 */}
-                    <div class="mt-3 min-h-[32px] flex items-center">
+                    <div class="mt-3 min-h-8 flex items-center">
                       <Show when={hasVariants()} fallback={<div class="h-8" />}>
                         <div class="w-full flex items-center gap-1 p-1 bg-hover rounded-lg border border-subtle">
                           <For each={group.items}>
@@ -967,22 +985,22 @@ const Providers: Component = () => {
                     </div>
 
                     {/* 能力胶囊徽章列表 */}
-                    <div class="mt-2.5 flex flex-wrap items-center gap-1 min-h-[22px]">
+                    <div class="mt-2.5 flex flex-wrap items-center gap-1 min-h-5.5">
                       <For each={reg().capabilities || ['llm']}>
                         {capKey => {
-                          const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: '⚡' }
+                          const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: IconZap }
+                          const IconComponent = conf.icon
                           return (
                             <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0.5 gap-1 shrink-0">
-                              <span>{conf.icon}</span>
+                              <IconComponent size={12} />
                               <span>{conf.label}</span>
                             </Badge>
                           )
                         }}
                       </For>
                     </div>
-
                     {/* 说明提示：固定最小高度保证网格卡片严格等高 */}
-                    <div class="mt-2 min-h-[20px] flex items-center">
+                    <div class="mt-2 min-h-5 flex items-center">
                       <Show when={reg().authHint} fallback={<span class="text-[11px] text-faint/60">官方标准接口</span>}>
                         <span class="text-[11px] text-muted italic line-clamp-1">{reg().authHint}</span>
                       </Show>
@@ -1135,7 +1153,7 @@ const Providers: Component = () => {
                         <div class={`text-xs px-3 py-1.5 rounded-control flex items-center justify-between ${
                           res().ok ? 'bg-success/10 text-success border border-success/20' : 'bg-danger/10 text-danger border border-danger/20'
                         }`}>
-                          <span>{res().ok ? `✓ ${res().msg}` : `✕ ${res().msg}`}</span>
+                          <span class="flex items-center gap-1.5">{res().ok ? <><IconCheck size={12} class="text-success" /><span>{res().msg}</span></> : <><IconClose size={12} class="text-danger" /><span>{res().msg}</span></>}</span>
                           <span class="text-[11px] opacity-75">{res().ok ? '凭据有效，允许保存' : '请核对凭证与网络端点'}</span>
                         </div>
                       )}
@@ -1151,7 +1169,7 @@ const Providers: Component = () => {
                       fallback={
                         <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
                           <div class="font-medium text-accent flex items-center gap-1.5">
-                            <span>✓</span> 已选择 OAuth 快捷授权模式
+                            <IconCheck size={14} /> 已选择 OAuth 快捷授权模式
                           </div>
                           <p class="text-faint leading-relaxed">
                             点击下方「发起 OAuth 授权」后将直接呼出浏览器授权弹窗与设备码，<strong>在第三方平台成功授权通过后才保存连接</strong>，免去繁琐的密钥配置。
@@ -1205,7 +1223,7 @@ const Providers: Component = () => {
                 {/* 免密模式说明 */}
                 <Show when={form().authType === 'none'}>
                   <div class="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-foreground space-y-1 shadow-sm">
-                    <div class="font-medium text-emerald-400">✓ 免密体验模式</div>
+                    <div class="font-medium text-emerald-400 flex items-center gap-1.5"><IconCheck size={14} /> 免密体验模式</div>
                     <p class="text-faint">该上游无需任何密钥凭证，保存后即可开箱即用体验免费公共模型。</p>
                   </div>
                 </Show>

@@ -210,7 +210,10 @@ const App: Component = () => {
                 onClick={() => setOpen(false)}
                 aria-label="关闭菜单"
               >
-                ×
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
             </div>
             <SidebarNav onNavigate={() => setOpen(false)} />
@@ -227,7 +230,11 @@ const App: Component = () => {
             onClick={() => setOpen(true)}
             aria-label="打开菜单"
           >
-            ☰
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
           </button>
           <div class="ml-auto flex items-center gap-3">
             <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card border border-subtle shadow-sm text-xs">

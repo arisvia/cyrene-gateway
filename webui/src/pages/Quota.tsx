@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar } from '@/components/ui'
+import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
 import { A } from '@solidjs/router'
 
@@ -283,7 +283,7 @@ const Quota: Component = () => {
                         <div class="flex items-center gap-2 shrink-0">
                           <A href={`/providers/${conn.id}`} title="编辑管理此账号">
                             <Button size="sm" variant="ghost" class="!p-1.5 text-faint hover:text-foreground">
-                              ⚙
+                              <IconSettings size={14} />
                             </Button>
                           </A>
                           <Toggle

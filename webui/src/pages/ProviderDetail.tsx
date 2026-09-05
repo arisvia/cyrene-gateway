@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, confirm, alert } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm, alert } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -722,7 +722,7 @@ const ProviderDetail: Component = () => {
                                         }
                                       }}
                                     >
-                                      ✕
+                                      <IconClose size={12} />
                                     </button>
                                   </Show>
                                 </div>
@@ -757,8 +757,9 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 容灾与 Fallback 调度说明 */}
-                    <div class="p-2.5 rounded bg-hover/70 border border-subtle/60 text-[11px] text-faint leading-relaxed">
-                      💡 <span class="text-foreground font-medium">调度机制：</span>主账号遇到 429 或配额耗尽时，网关自动 Fallback 转移至备用账号；同优先级多账号自动负载均衡分摊并发。
+                    <div class="p-2.5 rounded bg-hover/70 border border-subtle/60 text-[11px] text-faint leading-relaxed flex items-start gap-1.5">
+                      <IconBulb size={14} class="text-accent shrink-0 mt-0.5" />
+                      <div><span class="text-foreground font-medium">调度机制：</span>主账号遇到 429 或配额耗尽时，网关自动 Fallback 转移至备用账号；同优先级多账号自动负载均衡分摊并发。</div>
                     </div>
                   </Card>
                 </div>
@@ -819,7 +820,7 @@ const ProviderDetail: Component = () => {
                           <div class="p-3.5 rounded-control bg-accent/10 border border-accent/30 space-y-2 text-xs">
                             <div class="flex items-center justify-between">
                               <span class="font-medium text-accent flex items-center gap-1.5">
-                                <span>✓</span> 当前为 OAuth 授权账号
+                                <IconCheck size={14} /> 当前为 OAuth 授权账号
                               </span>
                               <Button
                                 size="sm"
@@ -865,7 +866,7 @@ const ProviderDetail: Component = () => {
                           />
                           <Show when={c().data?.hasApiKey}>
                             <div class="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-                              <span>✓ 当前账号已配置密钥</span>
+                              <IconCheck size={12} /> <span>当前账号已配置密钥</span>
                             </div>
                           </Show>
                         </Field>
@@ -1054,13 +1055,13 @@ const ProviderDetail: Component = () => {
                               title="编辑模型元数据"
                               onClick={() => startEditModel(m)}
                             >
-                              ✎
+                              <IconEdit size={12} />
                             </button>
                             <Toggle
                               checked={m.enabled !== false}
                               onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
                             />
-                            <button class="text-faint hover:text-danger ml-0.5" title="删除" onClick={() => removeCustomModel(m.id || m.name)}>×</button>
+                            <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" title="删除" onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></button>
                           </span>
                         )}
                       </For>
@@ -1149,7 +1150,7 @@ const ProviderDetail: Component = () => {
                                         class="text-faint px-1 text-[11px] cursor-not-allowed opacity-50"
                                         title="官方动态同步元数据，已锁定保护"
                                       >
-                                        🔒
+                                        <IconLock size={12} />
                                       </span>
                                     }
                                   >
@@ -1159,7 +1160,7 @@ const ProviderDetail: Component = () => {
                                       title="编辑模型元数据（名称、上下文长度等）"
                                       onClick={() => startEditModel(m)}
                                     >
-                                      ✎
+                                      <IconEdit size={12} />
                                     </button>
                                   </Show>
                                   <div title={m.enabled !== false ? '点击关闭，禁止对外提供' : '点击开启，恢复对外提供'}>
@@ -1407,7 +1408,7 @@ const ProviderDetail: Component = () => {
           </Show>
           <Show when={newAccountAuthType() === 'oauth'}>
             <div class="p-3 rounded-control bg-accent/10 border border-accent/30 text-xs text-accent space-y-1">
-              <div class="font-medium">✓ OAuth 授权模式</div>
+              <div class="font-medium flex items-center gap-1.5"><IconCheck size={14} /> OAuth 授权模式</div>
               <p class="text-faint">保存创建后可直接在当前页发起设备码一键授权，新标签页登录后自动完成绑定。</p>
             </div>
           </Show>
@@ -1502,7 +1503,7 @@ const ProviderDetail: Component = () => {
                           }
                         }}
                       >
-                        {copiedCode() ? '✓' : '📋'}
+                        {copiedCode() ? <IconCheck size={14} class="text-success" /> : <IconClipboard size={14} />}
                       </button>
                     </div>
                   </div>

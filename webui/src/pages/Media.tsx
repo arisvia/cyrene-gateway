@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
 
@@ -69,7 +69,7 @@ const Media: Component = () => {
     setSelectedProvider(p)
     setError('')
     setResult(null)
-    const defaultM = p.models?.[0]?.id || (p.provider === 'antigravity' ? 'gemini-3.1-flash-image' : '')
+    const defaultM = p.models?.[0]?.id || ''
     setModel(defaultM)
     if (active() === 'image') {
       setText('A futuristic cybernetic city at twilight with glowing neon reflections on wet streets, 8k render, masterpiece')
@@ -160,7 +160,7 @@ const Media: Component = () => {
       </div>
 
       <div class="text-xs text-faint flex items-center gap-2">
-        <span>💡 {CAPS.find(c => c.id === active())?.hint}</span>
+        <span class="flex items-center gap-1.5"><IconBulb size={14} class="text-accent" /> {CAPS.find(c => c.id === active())?.hint}</span>
         <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-bg-elevated border border-subtle">
           {CAPS.find(c => c.id === active())?.endpoint}
         </span>
@@ -239,7 +239,9 @@ const Media: Component = () => {
 
       <Show when={providers().length === 0 && !loadingProviders()}>
         <Card class="p-12 text-center space-y-4 border-dashed border-subtle">
-          <div class="text-3xl">🔌</div>
+          <div class="flex justify-center text-accent/80">
+            <IconPlug size={36} />
+          </div>
           <div class="space-y-1">
             <h3 class="text-sm font-semibold text-foreground">
               尚未接入支持「{CAPS.find(c => c.id === active())?.label}」的提供商
@@ -331,7 +333,8 @@ const Media: Component = () => {
               <Show when={searchResults()?.summary}>
                 <div class="p-3 rounded-card bg-accent/5 border border-accent/20 text-xs text-foreground leading-relaxed">
                   <div class="font-semibold text-accent mb-1 flex items-center gap-1.5">
-                    <span>✨ AI 检索总结</span>
+                    <IconSparkles size={14} />
+                    <span>AI 检索总结</span>
                   </div>
                   {searchResults()?.summary}
                 </div>

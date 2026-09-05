@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, createMemo, createResource } f
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import type { Combo } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Modal, Field, Empty } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Modal, Field, Empty, IconClose } from '@/components/ui'
 
 const STRATEGY_LABEL: Record<string, string> = {
   fallback: '故障回退', 'round-robin': '轮询',
@@ -170,7 +170,7 @@ const Combos: Component = () => {
                     return (
                       <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs" title={m}>
                         <span class="font-medium text-foreground">{displayName()}</span>
-                        <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" onClick={() => removeModel(m)}>×</button>
+                        <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" onClick={() => removeModel(m)} title="移除"><IconClose size={12} /></button>
                       </span>
                     )
                   }}

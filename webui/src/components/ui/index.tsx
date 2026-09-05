@@ -1,7 +1,9 @@
 import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast } from '@/lib/toast'
+import { IconClose } from './icons'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
+export * from './icons'
 export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
 export const Card: Component<{
   class?: string
@@ -518,7 +520,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
                 onClick={props.onClose}
                 aria-label="关闭"
               >
-                ×
+                <IconClose size={14} />
               </button>
             </div>
             <div class="p-5 max-h-[calc(85vh-100px)] overflow-y-auto">{props.children}</div>
