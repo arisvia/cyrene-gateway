@@ -234,7 +234,7 @@ const Quota: Component = () => {
       {/* 顶部工具栏 (吸顶固定) */}
       <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle/50">
         <div>
-          <h1 class="text-xl font-semibold text-foreground">配额中心</h1>
+          <h1 class="text-xl font-semibold">配额中心</h1>
           <p class="text-sm text-faint mt-0.5">
             按账号与节点双列实时呈现官方真实余量 (Credits / Quota) 与自动轮换状态
           </p>

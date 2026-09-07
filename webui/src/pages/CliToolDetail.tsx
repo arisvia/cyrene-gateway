@@ -105,7 +105,7 @@ const CliToolDetail: Component = () => {
   }
 
   return (
-    <div class="space-y-6">
+    <div class="space-y-5 stagger">
       <A href="/cli-tools" class="inline-flex items-center gap-1 text-xs text-muted hover:text-accent transition-colors">
         <span>← 返回 CLI 工具列表</span>
       </A>

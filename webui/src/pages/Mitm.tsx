@@ -36,7 +36,7 @@ const Mitm: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between border-b border-subtle/50">
+      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between gap-3 border-b border-subtle/50">
         <div>
           <h1 class="text-xl font-semibold">MITM 调试代理</h1>
           <p class="text-sm text-faint mt-0.5">拦截并观察 CLI 工具的 LLM 流量（仅本地）</p>

@@ -123,7 +123,7 @@ const CliTools: Component = () => {
   }
 
   return (
-    <div class="space-y-6 stagger">
+    <div class="space-y-5 stagger">
       {/* 顶部标题与状态统计 (吸顶固定) */}
       <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-wrap items-center justify-between gap-4 border-b border-subtle/50">
         <div>
