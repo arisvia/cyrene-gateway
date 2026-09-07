@@ -848,7 +848,7 @@ const Providers: Component = () => {
 
       {/* 视窗 2：提供商市场 (Catalog Grid) */}
       <Show when={activeTab() === 'catalog'}>
-        <div class="max-h-[calc(100vh-220px)] overflow-y-auto pr-1 pb-16 space-y-6">
+        <div class="space-y-6 pb-16">
           {/* 自定义通用兼容协议 (OpenAI Compatible & Anthropic Compatible) */}
           <Show when={customBrandGroups().length > 0}>
             <div class="space-y-3">

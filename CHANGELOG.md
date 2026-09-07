@@ -35,6 +35,7 @@
   - 修复 `Quota.tsx` 中 `onMount` 返回清理函数被 Solid 丢弃导致的 60 秒轮询定时器内存泄漏，重写为响应式 `createEffect` + `onCleanup`，并增加分页越界自动钳位（`effectivePage`）；
   - 全面清理前端应用与测试代码中的 `any` 与 `as any`，将 `api.ts` 的默认泛型收紧为 `unknown`，确保 100% 静态类型安全。
 - **提供商与工具显示名精简**：统一将 `Google Antigravity` 精炼为 `Antigravity`，消除卡片名称列与能力徽章排版挤压；规范化 MiniMax 品牌大小写（`MiniMax (China)` / `MiniMax Coding`）；精简 CLI 适配器名称（`OpenAI Codex` 去除冗余 `CLI` 后缀）。
+- **提供商市场双重滚动消除**：修复「提供商市场」标签页硬编码内层滚动容器（`max-h-[calc(100vh-220px)] overflow-y-auto`）导致的高度计算失准与外层双重滚动问题，解绑局部滚动约束，对齐全站统一的全局页面自然滚动与头部 `sticky top-16` 毛玻璃吸顶规范。
 - **连接卡片与多模态标签对齐**：固定卡片提供商名称与标识的容器宽度，解决名称长短不一导致的状态与能力徽章错位问题。
 - **Antigravity 搜索模型探测**：修正联网搜索模型列表缺失 Gemini 3.8 / 3.6 的问题，精准适配 `gemini-3.8-flash-thinking` 与 `gemini-3.6-flash`。
 - **媒体凭证验证与连接隔离**：`/api/media-providers` 接口支持 `connected=true` 服务端过滤，无连接媒体提供商不再污染工作台。
