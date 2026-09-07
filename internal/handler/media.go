@@ -357,15 +357,15 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	type EnrichedProvider struct {
-		Provider            string                  `json:"provider"`
-		Name                string                  `json:"name"`
-		Kinds               []media.Kind            `json:"kinds"`
-		Models              []media.ModelEntry      `json:"models,omitempty"`
+		Provider            string                              `json:"provider"`
+		Name                string                              `json:"name"`
+		Kinds               []media.Kind                        `json:"kinds"`
+		Models              []media.ModelEntry                  `json:"models,omitempty"`
 		Configs             map[media.Kind]media.ProviderConfig `json:"configs,omitempty"`
-		ActiveConnections   int                     `json:"activeConnections"`
-		HasConnection       bool                    `json:"hasConnection"`
-		PrimaryConnectionID string                  `json:"primaryConnectionId,omitempty"`
-		AuthType            string                  `json:"authType,omitempty"`
+		ActiveConnections   int                                 `json:"activeConnections"`
+		HasConnection       bool                                `json:"hasConnection"`
+		PrimaryConnectionID string                              `json:"primaryConnectionId,omitempty"`
+		AuthType            string                              `json:"authType,omitempty"`
 	}
 
 	enrichList := func(entries []*media.MediaProviderInfo, filterKind media.Kind) []EnrichedProvider {
@@ -461,6 +461,7 @@ func (s *Server) resolveMediaCredentials(providerID string) (*model.ProviderConn
 		ProjectID:   projectID,
 	}
 }
+
 // proxyMediaResponse copies an upstream response to the client.
 func (s *Server) proxyMediaResponse(w http.ResponseWriter, resp *http.Response) {
 	for key, values := range resp.Header {
@@ -531,6 +532,7 @@ func mediaProviderID(modelStr string) string {
 	}
 	return ""
 }
+
 // aggregateAntigravityImageResponse parses Google streamGenerateContent SSE stream and packages inlineData into OpenAI Image Response
 func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *http.Response) {
 	scanner := bufio.NewScanner(resp.Body)

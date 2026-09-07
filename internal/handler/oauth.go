@@ -30,7 +30,6 @@ func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	if _, ok := provider.GetProvider(providerID); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerID})
 		return

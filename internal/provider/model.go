@@ -66,7 +66,6 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 		}
 	}
 
-
 	// 5. Fallback: infer provider from model name
 	return model.ModelInfo{
 		Provider: InferProviderFromModel(parsed.Model),

@@ -343,6 +343,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	}
 	return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: "HTTP " + fmt.Sprintf("%d", resp.StatusCode)}
 }
+
 // testMediaConnection tests connectivity and credentials for a media provider.
 func (s *Server) testMediaConnection(r *http.Request, conn *model.ProviderConnection, mp *media.MediaProviderInfo) testResult {
 	start := time.Now()

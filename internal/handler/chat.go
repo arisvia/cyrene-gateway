@@ -97,6 +97,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// Single model path
 	s.handleSingleModelChat(w, r, req, rawBody)
 }
+
 // handleResponses implements OpenAI Responses API endpoint (/v1/responses).
 // It accepts requests in OpenAI Responses format (or Chat Completions format with instructions),
 // resolves the model and routes to the appropriate provider (e.g. OpenAI Compatible with /responses).
@@ -478,7 +479,6 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-
 	if len(conns) == 0 {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider),
@@ -797,6 +797,7 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
 }
+
 // proxyStreaming handles SSE streaming with disconnect awareness and [DONE] handling.
 func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
 	flusher, ok := w.(http.Flusher)

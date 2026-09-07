@@ -356,6 +356,7 @@ func randomHex(n int) string {
 	rand.Read(b)
 	return fmt.Sprintf("%x", b)
 }
+
 // resolveAntigravityModelTier maps requested model and reasoning_effort to upstream tiered model
 func resolveAntigravityModelTier(rawModel, reasoningEffort string) (targetModel string, tier string) {
 	targetModel = rawModel

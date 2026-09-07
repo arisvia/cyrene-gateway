@@ -15,6 +15,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
+
 // DiscoverAntigravityProject discovers the Cloud AI Companion project ID for an Antigravity account.
 func DiscoverAntigravityProject(ctx context.Context, client *http.Client, accessToken string) (string, error) {
 	if client == nil {

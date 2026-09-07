@@ -40,6 +40,7 @@ type MediaProviderInfo struct {
 	Models   []ModelEntry            `json:"models,omitempty"`
 	Configs  map[Kind]ProviderConfig `json:"configs,omitempty"`
 }
+
 // APIKeyURLs maps media provider IDs to their console/key dashboard URLs.
 var APIKeyURLs = map[string]string{
 	"stability-ai": "https://platform.stability.ai/account/keys",

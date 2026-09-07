@@ -81,6 +81,7 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 	}
 	return out
 }
+
 // qoderModelDisplayNames provides human-friendly names for Qoder model keys when the live catalog omits name.
 var qoderModelDisplayNames = map[string]string{
 	"ultimate":      "Ultimate",

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/config"
-	"github.com/arisvia/cyrene-gateway/webui"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/webui"
 )
 
 const (

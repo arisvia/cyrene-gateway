@@ -629,6 +629,7 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 	setAuth(httpReq, cfg, creds)
 	return c.HTTPClient.Do(httpReq)
 }
+
 // TestCredentials tests upstream connectivity and authentication for a media provider.
 func (c *Client) TestCredentials(ctx context.Context, providerID string, creds Credentials, customBaseURL string) (bool, int, error) {
 	token := creds.Token()

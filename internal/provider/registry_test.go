@@ -91,9 +91,9 @@ func TestRegistryProviderFields(t *testing.T) {
 // sibling pair carries the same Brand and a distinct Region.
 func TestRegistryBrandRegion(t *testing.T) {
 	brands := map[string][]string{
-		"GLM":       {"glm", "glm-cn"},
-		"MiniMax":   {"minimax", "minimax-cn"},
-		"Alibaba":   {"alicode-intl", "alicode"},
+		"GLM":     {"glm", "glm-cn"},
+		"MiniMax": {"minimax", "minimax-cn"},
+		"Alibaba": {"alicode-intl", "alicode"},
 	}
 	for brand, ids := range brands {
 		for _, id := range ids {
