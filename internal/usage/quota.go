@@ -10,6 +10,8 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // Quota is a single quota bucket (e.g. "Balance (CNY)", "M-series (5h)").
@@ -51,7 +53,7 @@ func quotaHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		return client
 	}
-	return &http.Client{Timeout: 15 * time.Second}
+	return provider.SafeHTTPClient(15*time.Second, false)
 }
 
 // quotaFetchers maps provider id → fetcher. Only apikey-path providers with a

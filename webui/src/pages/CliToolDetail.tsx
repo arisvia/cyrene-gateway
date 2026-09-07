@@ -3,6 +3,17 @@ import { A, useParams } from '@solidjs/router'
 import { api, apiPost, apiDelete } from '@/lib/api'
 import { Card, Badge, Button, Input, Empty, Skeleton, ProviderAvatar } from '@/components/ui'
 import { useToast } from '@/lib/toast'
+import type { CLITool } from '@/types/domain'
+
+interface CliToolDetailResponse {
+  tool?: CLITool
+  status?: {
+    installed?: boolean
+    hasGateway?: boolean
+    configPath?: string
+    message?: string
+  }
+}
 
 const CliToolDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -17,13 +28,14 @@ const CliToolDetail: Component = () => {
   // 后端返回 { tool, status }
   const [data, { refetch }] = createResource(() => params.id, async id => {
     try {
-      return await api('/api/cli-tools/' + id)
+      return await api<CliToolDetailResponse>('/api/cli-tools/' + id)
     } catch {
       return null
     }
   })
 
   const tool = () => data()?.tool
+  const t = () => tool()!
   const status = () => data()?.status ?? {}
   const hasGateway = () => !!status().hasGateway
 
@@ -45,12 +57,12 @@ const CliToolDetail: Component = () => {
     if (!tool()) return
     setBusy(true)
     try {
-      await apiPost('/api/cli-tools/' + tool().id, {
+      await apiPost('/api/cli-tools/' + t().id, {
         baseUrl: baseUrl(),
         apiKey: apiKey().trim() || undefined,
         model: selectedModel() || undefined,
       })
-      toast.success(`已更新 ${tool().name} 的网关设置`)
+      toast.success(`已更新 ${t().name} 的网关设置`)
       await refetch()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '写入异常')
@@ -63,8 +75,8 @@ const CliToolDetail: Component = () => {
     if (!tool()) return
     setBusy(true)
     try {
-      await apiDelete('/api/cli-tools/' + tool().id)
-      toast.success(`已将 ${tool().name} 恢复为官方默认设置`)
+      await apiDelete('/api/cli-tools/' + t().id)
+      toast.success(`已将 ${t().name} 恢复为官方默认设置`)
       await refetch()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '重置异常')
@@ -103,25 +115,25 @@ const CliToolDetail: Component = () => {
           {/* 工具头部信息卡片 */}
           <Card class="p-6 glass-card">
             <div class="flex flex-col sm:flex-row items-start gap-4">
-              <ProviderAvatar provider={tool().id} name={tool().name} color={tool().color} size="lg" />
+              <ProviderAvatar provider={t().id} name={t().name} color={t().color} size="lg" />
               <div class="min-w-0 flex-1">
                 <div class="flex items-center gap-3 flex-wrap">
-                  <h1 class="text-xl font-semibold text-foreground">{tool().name}</h1>
+                  <h1 class="text-xl font-semibold text-foreground">{t().name}</h1>
                   <Badge tone={status().installed ? 'blue' : 'gray'}>
                     {status().installed ? '已检测到安装' : '未在本地环境检测到'}
                   </Badge>
                   <Show when={hasGateway()}>
                     <Badge tone="green">已接入网关</Badge>
                   </Show>
-                  <Show when={tool().configType}>
-                    <Badge tone="gray" class="font-mono text-xs">{tool().configType}</Badge>
+                  <Show when={t().configType}>
+                    <Badge tone="gray" class="font-mono text-xs">{t().configType}</Badge>
                   </Show>
                 </div>
-                <p class="text-sm text-muted mt-1.5">{tool().description}</p>
-                <Show when={tool().docsUrl}>
+                <p class="text-sm text-muted mt-1.5">{t().description}</p>
+                <Show when={t().docsUrl}>
                   <div class="mt-2.5">
                     <a
-                      href={tool().docsUrl}
+                      href={t().docsUrl}
                       target="_blank"
                       rel="noreferrer"
                       class="text-xs text-accent hover:underline inline-flex items-center gap-1"
@@ -139,9 +151,9 @@ const CliToolDetail: Component = () => {
             </div>
 
             {/* 提示便签 */}
-            <Show when={(tool().notes ?? []).length > 0}>
+            <Show when={(t().notes ?? []).length > 0}>
               <div class="grid gap-2 mt-5 pt-4 border-t border-subtle/50">
-                <For each={tool().notes ?? []}>
+                <For each={t().notes ?? []}>
                   {n => (
                     <div
                       class={`px-3.5 py-2.5 rounded-xl text-xs border ${
@@ -161,7 +173,7 @@ const CliToolDetail: Component = () => {
           </Card>
 
           {/* 一键写入网关配置（custom 与 env 类型）*/}
-          <Show when={tool().configType === 'custom' || tool().configType === 'env'}>
+          <Show when={t().configType === 'custom' || t().configType === 'env'}>
             <Card class="p-6 space-y-4 glass-card">
               <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
                 <div class="space-y-0.5">
@@ -250,7 +262,7 @@ const CliToolDetail: Component = () => {
           </Card>
 
           {/* 手动配置分步指南（针对 guide 类型）*/}
-          <Show when={(tool().guideSteps ?? []).length > 0}>
+          <Show when={(t().guideSteps ?? []).length > 0}>
             <Card class="p-6 space-y-4 glass-card">
               <div class="border-b border-subtle/50 pb-3">
                 <h2 class="text-base font-semibold text-foreground">分步手动配置指引</h2>
@@ -258,7 +270,7 @@ const CliToolDetail: Component = () => {
               </div>
 
               <ol class="space-y-3.5">
-                <For each={tool().guideSteps ?? []}>
+                <For each={t().guideSteps ?? []}>
                   {s => (
                     <li class="flex gap-3.5 items-start">
                       <span class="w-6 h-6 shrink-0 rounded-full bg-accent/15 text-accent text-xs flex items-center justify-center font-bold">
@@ -288,11 +300,11 @@ const CliToolDetail: Component = () => {
           </Show>
 
           {/* 推荐模型列表展示 */}
-          <Show when={(tool().defaultModels ?? []).length > 0}>
+          <Show when={(t().defaultModels ?? []).length > 0}>
             <Card class="p-6 space-y-3 glass-card">
               <h2 class="text-base font-semibold text-foreground">针对此工具优化的常用模型</h2>
               <div class="grid sm:grid-cols-3 gap-2.5">
-                <For each={tool().defaultModels ?? []}>
+                <For each={t().defaultModels ?? []}>
                   {m => (
                     <div class="p-3 rounded-xl border border-subtle bg-bg-elevated/60 flex flex-col justify-between">
                       <div class="text-xs font-semibold text-foreground">{m.name || m.id}</div>

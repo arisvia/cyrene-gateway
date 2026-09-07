@@ -85,6 +85,8 @@
   --color-bg: var(--bg);
   --color-bg-elevated: var(--bg-elevated);
   --color-text: var(--text);
+  --color-foreground: var(--text);
+  --color-code-bg: var(--code-bg);
   --color-muted: var(--text-muted);
   --color-faint: var(--text-faint);
   --color-accent: var(--accent);

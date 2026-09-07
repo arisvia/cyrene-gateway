@@ -28,6 +28,13 @@ func (s *Server) handleTestCredentials(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider or baseUrl required"})
 		return
 	}
+	allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
+	if req.BaseURL != "" {
+		if _, err := provider.ValidateUpstreamURL(req.BaseURL, allowPrivate); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid baseUrl: " + err.Error()})
+			return
+		}
+	}
 	_, isChat := provider.GetProvider(req.Provider)
 	_, isMedia := media.Registry[req.Provider]
 	if !isChat && !isMedia && req.BaseURL == "" {

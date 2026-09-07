@@ -18,7 +18,7 @@ import (
 // DiscoverAntigravityProject discovers the Cloud AI Companion project ID for an Antigravity account.
 func DiscoverAntigravityProject(ctx context.Context, client *http.Client, accessToken string) (string, error) {
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = provider.SafeHTTPClient(15*time.Second, false)
 	}
 
 	endpoints := []string{
@@ -89,7 +89,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		return nil
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = s.getHTTPClient(15 * time.Second)
 	}
 
 	// 1. Try /v1internal:models on daily sandbox (9router PROVIDER_MODELS_CONFIG.antigravity)

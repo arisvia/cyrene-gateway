@@ -172,7 +172,7 @@ const LogsPage: Component = () => {
             {log => (
               <div class="flex items-start gap-2.5 leading-relaxed hover:bg-white/[0.02] px-1.5 py-0.5 rounded transition-colors break-all">
                 <span class="text-zinc-500 shrink-0 select-none">{formatTime(log.time)}</span>
-                <span class={`px-1.5 py-0.2 rounded text-[10px] shrink-0 uppercase select-none ${levelColor(log.level)}`}>
+                <span class={`px-1.5 py-0.5 rounded text-[10px] shrink-0 uppercase select-none ${levelColor(log.level)}`}>
                   [{log.level}]
                 </span>
                 <div class="flex-1 min-w-0">

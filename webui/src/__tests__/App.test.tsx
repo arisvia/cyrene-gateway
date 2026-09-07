@@ -18,7 +18,7 @@ describe('App 根组件（白屏回归）', () => {
   it('应用能完整挂载且侧栏 <A> 不抛路由错误', async () => {
     const errors: string[] = []
     const origError = console.error
-    console.error = (...args: any[]) => { errors.push(args.join(' ')); origError(...args) }
+    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(' ')); origError(...args) }
 
     let container: HTMLElement | undefined
     expect(() => { container = render(() => <App />).container }).not.toThrow()

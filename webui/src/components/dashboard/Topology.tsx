@@ -1,18 +1,11 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { Card, Badge, ProviderAvatar } from '@/components/ui'
-import type { Provider } from '@/types/domain'
+import type { Provider, LiveUsageEvent } from '@/types/domain'
 
 interface TopologyProps {
   providers: Provider[]
-  endpoints?: any[]
   activeConnections?: number
-  liveEvents?: Array<{
-    timestamp?: string
-    provider?: string
-    model?: string
-    status?: string
-    latencyMs?: number
-  }>
+  liveEvents?: LiveUsageEvent[]
 }
 
 export const GatewayTopology: Component<TopologyProps> = props => {
@@ -289,7 +282,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                         <span class="truncate">{node.name || node.provider}</span>
                         <div class="flex items-center gap-1 shrink-0">
                           <Show when={node.accounts.length > 1}>
-                            <span class="text-[9px] text-muted bg-hover px-1 py-0.2 rounded font-mono" title={`${node.accounts.length} 个账号`}>
+                            <span class="text-[9px] text-muted bg-hover px-1 py-0.5 rounded font-mono" title={`${node.accounts.length} 个账号`}>
                               {node.accounts.length}
                             </span>
                           </Show>

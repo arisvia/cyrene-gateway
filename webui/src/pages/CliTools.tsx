@@ -33,12 +33,13 @@ const CliTools: Component = () => {
 
   // registry（静态定义） + all-statuses（探测结果）合并
   const [data, { refetch }] = createResource(async () => {
+    type StatusMap = Record<string, { installed?: boolean; hasGateway?: boolean; configPath?: string; message?: string }>
     const [reg, statuses] = await Promise.all([
-      api('/api/cli-tools').catch(() => ({ tools: [] })),
-      api('/api/cli-tools/all-statuses').catch(() => ({})),
+      api<{ tools?: CLITool[] }>('/api/cli-tools').catch(() => ({ tools: [] })),
+      api<StatusMap>('/api/cli-tools/all-statuses').catch((): StatusMap => ({})),
     ])
-    const tools = (reg?.tools ?? []) as CLITool[]
-    const st = (statuses ?? {}) as Record<string, { installed?: boolean; hasGateway?: boolean; configPath?: string; message?: string }>
+    const tools = reg?.tools ?? []
+    const st: StatusMap = statuses ?? {}
     return tools.map((t): ToolRow => {
       const s = st[t.id] ?? {}
       return {

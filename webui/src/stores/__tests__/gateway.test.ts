@@ -29,7 +29,7 @@ describe('gateway store', () => {
   })
 
   it('loadCore handles null responses gracefully', async () => {
-    ;(api as any).mockResolvedValue(null)
+    vi.mocked(api).mockResolvedValue(null)
     const store = useGatewayStore()
     await store.loadCore()
     expect(store.providers()).toEqual([])
@@ -40,7 +40,7 @@ describe('gateway store', () => {
     const mockProviders = [{ id: '1', provider: 'openai', isActive: true }]
     const mockRegistry = { categories: [{ category: 'apikey', count: 1, providers: [] }] }
 
-    ;(api as any)
+    vi.mocked(api)
       .mockResolvedValueOnce({ version: '1.0.0' })
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce(mockProviders)
@@ -57,21 +57,21 @@ describe('gateway store', () => {
   })
 
   it('activeConnections counts only active providers', async () => {
-    ;(api as any).mockResolvedValue(null)
+    vi.mocked(api).mockResolvedValue(null)
     const store = useGatewayStore()
     await store.loadCore()
-    store.providers().push({ id: 'x', provider: 'p', isActive: true } as any)
+    store.setProviders([{ id: 'x', provider: 'p', isActive: true, authType: 'api-key', priority: 1 }])
     // signal 数组快照不含 push 的项时退化为 0——重设整表验证派生
     expect(store.activeConnections()).toBeGreaterThanOrEqual(0)
   })
 
   it('addProvider posts then refreshes list from server', async () => {
-    ;(apiPost as any).mockResolvedValue({ id: 'n1', provider: 'gemini', isActive: true })
+    vi.mocked(apiPost).mockResolvedValue({ id: 'n1', provider: 'gemini', isActive: true })
     // addProvider 内部经 loadProvidersOnly() 调 api('/api/providers') 以服务端为准
-    ;(api as any).mockResolvedValue([{ id: 'n1', provider: 'gemini', isActive: true }])
+    vi.mocked(api).mockResolvedValue([{ id: 'n1', provider: 'gemini', isActive: true, authType: 'api-key', priority: 1 }])
     const store = useGatewayStore()
     await store.addProvider({ provider: 'gemini', name: 'g1' })
     expect(apiPost).toHaveBeenCalledWith('/api/providers', { provider: 'gemini', name: 'g1' })
-    expect(store.providers().some((p: any) => p.id === 'n1')).toBe(true)
+    expect(store.providers().some(p => p.id === 'n1')).toBe(true)
   })
 })

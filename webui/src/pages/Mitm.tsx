@@ -2,12 +2,29 @@ import { type Component, For, Show, createSignal, createResource } from 'solid-j
 import { api, apiPost } from '@/lib/api'
 import { Card, Badge, Button, Empty, Skeleton } from '@/components/ui'
 
+interface MitmStatus {
+  enabled?: boolean
+  running?: boolean
+  reason?: string
+}
+
+interface MitmTrafficItem {
+  id?: string
+  tool?: string
+  model?: string
+  time?: string
+  method?: string
+  host?: string
+  url?: string
+  status?: number | string
+}
+
 const Mitm: Component = () => {
   const [status, { refetch }] = createResource(async () => {
-    try { return await api('/api/mitm/status') } catch { return null }
+    try { return await api<MitmStatus>('/api/mitm/status') } catch { return null }
   })
   const [traffic, { refetch: refetchTraffic }] = createResource(async () => {
-    try { return (await api('/api/mitm/traffic'))?.traffic ?? [] } catch { return [] }
+    try { return (await api<{ traffic?: MitmTrafficItem[] }>('/api/mitm/traffic'))?.traffic ?? [] } catch { return [] }
   })
   const [busy, setBusy] = createSignal('')
 
@@ -25,7 +42,7 @@ const Mitm: Component = () => {
           <p class="text-sm text-faint mt-0.5">拦截并观察 CLI 工具的 LLM 流量（仅本地）</p>
         </div>
         <Show when={status()?.enabled}>
-          <Badge tone={status().running ? 'green' : 'gray'}>{status().running ? '运行中' : '已停止'}</Badge>
+          <Badge tone={status()?.running ? 'green' : 'gray'}>{status()?.running ? '运行中' : '已停止'}</Badge>
         </Show>
       </div>
 
@@ -40,10 +57,10 @@ const Mitm: Component = () => {
             </div>
           }>
             <div class="flex flex-wrap gap-2">
-              <Show when={!status().running}>
+              <Show when={!status()?.running}>
                 <Button variant="primary" loading={busy() === 'start'} onClick={() => act('start', '/api/mitm/start')}>启动</Button>
               </Show>
-              <Show when={status().running}>
+              <Show when={status()?.running}>
                 <Button variant="danger" loading={busy() === 'stop'} onClick={() => act('stop', '/api/mitm/stop')}>停止</Button>
               </Show>
               <Button variant="secondary" onClick={() => refetchTraffic()}>刷新流量</Button>

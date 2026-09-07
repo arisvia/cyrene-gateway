@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import type { Component } from 'solid-js'
 import { render, cleanup } from '@solidjs/testing-library'
 import { MemoryRouter, Route } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
@@ -17,7 +18,7 @@ import { api } from '@/lib/api'
 
 const tick = () => new Promise(r => setTimeout(r, 30))
 
-function mount(Comp: any) {
+function mount(Comp: Component) {
   return render(() => (
     <MemoryRouter>
       <Route path="/" component={Comp} />
@@ -29,7 +30,7 @@ describe('Combos 页', () => {
   afterEach(() => cleanup())
 
   it('空状态显示引导', async () => {
-    ;(api as any).mockResolvedValue(null)
+    vi.mocked(api).mockResolvedValue(null)
     await useGatewayStore().loadCore()
     mount(Combos)
     await tick()
@@ -38,7 +39,7 @@ describe('Combos 页', () => {
   })
 
   it('渲染已有组合及其模型与策略', async () => {
-    ;(api as any).mockImplementation((path: string) => {
+    vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/combos') {
         return Promise.resolve([
           { id: 'c1', name: 'fast-coding', kind: 'fallback', models: ['anthropic/*', 'openai/*'] },
@@ -61,7 +62,7 @@ describe('Usage 页', () => {
   afterEach(() => cleanup())
 
   it('渲染 KPI 与图表', async () => {
-    ;(api as any).mockImplementation((path: string) => {
+    vi.mocked(api).mockImplementation((path: string) => {
       if (path.includes('/api/usage/stats')) {
         return Promise.resolve({
           totalRequests: 1234, totalPromptTokens: 50000, totalCompletionTokens: 20000,
@@ -110,7 +111,7 @@ describe('Settings 页', () => {
   afterEach(() => cleanup())
 
   it('渲染全部设置项含 apiKeyRpm', async () => {
-    ;(api as any).mockImplementation((path: string) => {
+    vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/settings') {
         return Promise.resolve({
           requireLogin: false, requireApiKey: true, apiKeyRpm: 5,

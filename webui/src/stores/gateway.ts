@@ -12,14 +12,14 @@ function createGatewayStore() {
 
   // ── state ──
   const [version, setVersion] = createSignal('…')
-  const [health, setHealth] = createSignal<Record<string, any>>({})
+  const [health, setHealth] = createSignal<Record<string, unknown>>({})
   const [providers, setProviders] = createSignal<Provider[]>([])
   const [combos, setCombos] = createSignal<Combo[]>([])
   const [apiKeys, setApiKeys] = createSignal<ApiKey[]>([])
   const [proxyPools, setProxyPools] = createSignal<ProxyPool[]>([])
   const [endpoints, setEndpoints] = createSignal<Endpoint[]>([])
   const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>([])
-  const [settings, setSettings] = createSignal<Record<string, any>>({})
+  const [settings, setSettings] = createSignal<Record<string, unknown>>({})
   const [aliases, setAliases] = createSignal<Record<string, string>>({})
 
   const [usageStats, setUsageStats] = createStore<UsageStats>({})
@@ -29,8 +29,8 @@ function createGatewayStore() {
     { page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false },
   )
   const [providerUsage, setProviderUsage] = createSignal<ProviderUsage[]>([])
-  const [usageLogs, setUsageLogs] = createSignal<any[]>([])
-  const [quotaEntries, setQuotaEntries] = createSignal<any[]>([])
+  const [usageLogs, setUsageLogs] = createSignal<unknown[]>([])
+  const [quotaEntries, setQuotaEntries] = createSignal<unknown[]>([])
 
   const registryList = () =>
     registryCategories().flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name))
@@ -40,13 +40,13 @@ function createGatewayStore() {
   async function loadCore() {
     try {
       const [v, h, p, c, reg, ep, a] = await Promise.all([
-        api('/api/version'),
-        api('/api/health'),
-        api('/api/providers'),
-        api('/api/combos'),
-        api('/api/registry'),
-        api('/api/endpoints'),
-        api('/api/models/alias'),
+        api<{ version?: string }>('/api/version'),
+        api<Record<string, unknown>>('/api/health'),
+        api<Provider[]>('/api/providers'),
+        api<Combo[]>('/api/combos'),
+        api<{ categories?: RegistryCategory[] }>('/api/registry'),
+        api<{ endpoints?: Endpoint[] }>('/api/endpoints'),
+        api<Record<string, string>>('/api/models/alias'),
       ])
       setVersion(v?.version || 'dev')
       setHealth(h || {})
@@ -64,7 +64,7 @@ function createGatewayStore() {
 
   async function loadProvidersOnly() {
     try {
-      const p = await api('/api/providers')
+      const p = await api<Provider[]>('/api/providers')
       setProviders(Array.isArray(p) ? p : [])
     } catch (e) {
       console.error('[store] loadProvidersOnly failed:', e)
@@ -73,32 +73,33 @@ function createGatewayStore() {
 
   async function loadKeys() {
     try {
-      const r = await api('/api/keys')
+      const r = await api<ApiKey[]>('/api/keys')
       setApiKeys(Array.isArray(r) ? r : [])
     } catch { setApiKeys([]) }
   }
 
   async function loadProxyPools() {
     try {
-      const r = await api('/api/proxy-pools')
-      setProxyPools(Array.isArray(r?.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : []))
+      const r = await api<{ proxyPools?: ProxyPool[] } | ProxyPool[]>('/api/proxy-pools')
+      setProxyPools(r && 'proxyPools' in r && Array.isArray(r.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : []))
     } catch { setProxyPools([]) }
   }
 
   async function loadSettings() {
-    try { setSettings((await api('/api/settings')) || {}) } catch { setSettings({}) }
+    try { setSettings((await api<Record<string, unknown>>('/api/settings')) || {}) } catch { setSettings({}) }
   }
 
   async function loadUsage(period: string) {
     try {
       const [stats, chart, details] = await Promise.all([
-        api(`/api/usage/stats?period=${period}`),
-        api(`/api/usage/chart?period=${period}`),
-        api('/api/usage/request-details?page=1&pageSize=15'),
+        api<UsageStats>(`/api/usage/stats?period=${period}`),
+        api<{ label: string; tokens: number }[]>(`/api/usage/chart?period=${period}`),
+        api<{ details?: RequestDetail[] } | RequestDetail[]>('/api/usage/request-details?page=1&pageSize=15'),
       ])
       setUsageStats(stats || {})
       setUsageChart(Array.isArray(chart) ? chart : [])
-      setRequestDetails(Array.isArray(details?.details) ? details.details : (Array.isArray(details) ? details : []))
+      const detailList = details && 'details' in details && Array.isArray(details.details) ? details.details : (Array.isArray(details) ? details : [])
+      setRequestDetails(detailList)
     } catch (e) { console.error('[store] loadUsage failed:', e) }
   }
 
@@ -106,7 +107,7 @@ function createGatewayStore() {
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       for (const [k, v] of Object.entries(filters)) { if (v) params.set(k, v) }
-      const res = await api(`/api/usage/request-details?${params}`)
+      const res = await api<{ details?: RequestDetail[]; pagination?: Pagination }>(`/api/usage/request-details?${params}`)
       setRequestDetails(Array.isArray(res?.details) ? res.details : [])
       setRequestDetailsPagination(res?.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
     } catch (e) { console.error('[store] loadRequestDetails failed:', e) }
@@ -114,27 +115,27 @@ function createGatewayStore() {
 
   async function loadProviderUsage(period = '7d') {
     try {
-      const res = await api(`/api/usage/providers?period=${period}`)
+      const res = await api<{ providers?: ProviderUsage[] }>(`/api/usage/providers?period=${period}`)
       setProviderUsage(Array.isArray(res?.providers) ? res.providers : [])
     } catch { setProviderUsage([]) }
   }
 
   async function loadUsageLogs(limit = 50) {
     try {
-      const res = await api(`/api/usage/logs?limit=${limit}`)
+      const res = await api<{ logs?: unknown[] }>(`/api/usage/logs?limit=${limit}`)
       setUsageLogs(Array.isArray(res?.logs) ? res.logs : [])
     } catch { setUsageLogs([]) }
   }
 
   async function loadQuota() {
     try {
-      const res = await api('/api/quota')
+      const res = await api<{ entries?: unknown[] }>('/api/quota')
       setQuotaEntries(Array.isArray(res?.entries) ? res.entries : [])
     } catch { setQuotaEntries([]) }
   }
 
   // ── provider actions ──
-  async function addProvider(payload: Record<string, any>) {
+  async function addProvider(payload: Record<string, unknown>) {
     const res = await apiPost<Provider>('/api/providers', payload)
     toast.success(`Provider "${payload.name || payload.provider}" added`)
     // 以服务端返回的 DTO（含后端生成的 ID/默认值）为准刷新列表，而非本地拼接
@@ -167,7 +168,7 @@ function createGatewayStore() {
   }
 
   async function enableFree(ids?: string[]): Promise<number> {
-    const res = await apiPost('/api/providers/enable-free', ids?.length ? { providers: ids } : {})
+    const res = await apiPost<{ count?: number }>('/api/providers/enable-free', ids?.length ? { providers: ids } : {})
     const count = res?.count || 0
     toast.success(count > 0 ? `Enabled ${count} free provider${count === 1 ? '' : 's'}` : 'Free providers already enabled')
     await loadCore()
@@ -180,7 +181,7 @@ function createGatewayStore() {
 
   // ── keys ──
   async function createKey(name: string) {
-    const k = await apiPost('/api/keys', { name })
+    const k = await apiPost<ApiKey>('/api/keys', { name })
     toast.success(`Key "${name || k?.id?.slice(0, 8)}" created`)
     await loadKeys()
     return k
@@ -249,27 +250,25 @@ function createGatewayStore() {
   }
 
   // ── settings ──
-  async function saveSettings(patch: Record<string, any>) {
+  async function saveSettings(patch: Record<string, unknown>) {
     await apiPatch('/api/settings', patch)
     toast.success('Settings saved')
     await loadSettings()
   }
-
   async function setPassword(password: string) {
     return apiPost('/api/auth/password', { password })
   }
 
   // ── provider 编辑 / 凭证 ──
-  async function updateProvider(id: string, patch: Record<string, any>) {
+  async function updateProvider(id: string, patch: Record<string, unknown>) {
     const res = await apiPut(`/api/providers/${id}`, patch)
     await loadProvidersOnly()
     return res
   }
 
-  async function testCredentials(payload: Record<string, any>) {
+  async function testCredentials(payload: Record<string, unknown>) {
     return apiPost('/api/providers/test-credentials', payload)
   }
-
   async function testBatch(ids: string[]) {
     return apiPost('/api/providers/test-batch', { ids })
   }
@@ -300,23 +299,25 @@ function createGatewayStore() {
   }
   // ── OAuth 流程 ──
   // authorize 后端只注册 GET（用 POST 会 405）；device-code 为 POST
-  async function oauthStart(providerId: string, mode: 'authorize' | 'device-code', extra: Record<string, any> = {}) {
+  async function oauthStart(providerId: string, mode: 'authorize' | 'device-code', extra: Record<string, string | number | boolean> = {}) {
     if (mode === 'authorize') {
-      const params = new URLSearchParams(extra as Record<string, string>)
+      const params = new URLSearchParams()
+      for (const [k, v] of Object.entries(extra)) {
+        if (v !== undefined && v !== null) params.set(k, String(v))
+      }
       const qs = params.toString()
       return api(`/api/oauth/${providerId}/authorize${qs ? `?${qs}` : ''}`)
     }
     return apiPost(`/api/oauth/${providerId}/${mode}`, extra)
   }
 
-  async function oauthPoll(providerId: string, payload: Record<string, any>) {
+  async function oauthPoll(providerId: string, payload: Record<string, unknown>) {
     return apiPost(`/api/oauth/${providerId}/device-code/poll`, payload)
   }
 
-  async function oauthImport(providerId: string, payload: Record<string, any>) {
+  async function oauthImport(providerId: string, payload: Record<string, unknown>) {
     return apiPost(`/api/oauth/${providerId}/import`, payload)
   }
-
   async function oauthStatus(providerId: string) {
     return api(`/api/oauth/${providerId}/status`)
   }
@@ -333,11 +334,10 @@ function createGatewayStore() {
     } catch { return [] }
   }
 
-  async function saveNode(payload: Record<string, any>) {
+  async function saveNode(payload: Record<string, unknown> & { id?: string }) {
     if (payload.id) return apiPut(`/api/provider-nodes/${payload.id}`, payload)
     return apiPost('/api/provider-nodes', payload)
   }
-
   async function deleteNode(id: string) {
     return apiDelete(`/api/provider-nodes/${id}`)
   }

@@ -82,6 +82,13 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Config:      cfg,
 		startTime:   time.Now(),
 	}
+	if s.MediaClient != nil {
+		allowPrivate := false
+		if s.Config != nil && s.Config.AllowPrivateNetworks {
+			allowPrivate = true
+		}
+		s.MediaClient.HTTPClient = provider.SafeHTTPClient(2*time.Minute, allowPrivate)
+	}
 	s.registerRoutes()
 	s.registerMediaRoutes()
 	// Prometheus scrape endpoint (public; no session required)
@@ -698,7 +705,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := s.getHTTPClient(30 * time.Second)
 
 	// Qoder: COSY-signed catalog (resolve PATs first) — its inference
 	// protocol has no standard /models endpoint.
@@ -853,7 +860,7 @@ func (s *Server) syncAllActiveConnections() {
 		return
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := s.getHTTPClient(30 * time.Second)
 	seen := make(map[string]bool)
 	type syncTarget struct {
 		providerID  string
@@ -937,7 +944,7 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := s.getHTTPClient(30 * time.Second)
 	var models []model.ModelMetadata
 	if conn.Provider == "qoder" {
 		models = s.fetchQoderCatalog(conn, client)

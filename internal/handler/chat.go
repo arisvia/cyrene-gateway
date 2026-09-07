@@ -169,12 +169,16 @@ func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 		if provider.IsUnrecoverableRefreshError(err) {
 			conn.Data.TestStatus = "expired"
 			conn.Data.LastError = err.Error()
-			s.DB.UpdateConnection(conn)
+			if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
+				slog.Error("Failed to persist expired connection status", "provider", conn.Provider, "error", errUpdate)
+			}
 		}
 		return true
 	}
 	provider.ApplyRefreshResult(conn, result)
-	s.DB.UpdateConnection(conn)
+	if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
+		slog.Error("Failed to persist refreshed connection token", "provider", conn.Provider, "error", errUpdate)
+	}
 	return true
 }
 
@@ -220,7 +224,9 @@ func (s *Server) tryRefreshCopilotToken(conn *model.ProviderConnection) bool {
 		psd["copilotTokenExpiresAt"] = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
 	}
 	conn.Data.AccessToken = result.AccessToken
-	s.DB.UpdateConnection(conn)
+	if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
+		slog.Error("Failed to persist copilot token", "provider", conn.Provider, "error", errUpdate)
+	}
 	return true
 }
 
@@ -658,7 +664,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, nil)
 		if refreshErr == nil {
 			provider.ApplyRefreshResult(conn, result)
-			s.DB.UpdateConnection(conn)
+			if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
+				slog.Error("Failed to persist connection after 401 refresh", "provider", conn.Provider, "error", errUpdate)
+			}
 
 			// Retry the request with new token
 			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
@@ -984,7 +992,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		slog.Bool("stream", stream),
 	)
 
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := s.getHTTPClient(5 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
@@ -1055,6 +1063,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			}
 			fmt.Fprintf(w, "%s\n", line)
 			flusher.Flush()
+		}
+		if scanErr := scanner.Err(); scanErr != nil {
+			slog.Warn("Messages passthrough SSE scan error", "error", scanErr, "model", modelInfo.Model)
 		}
 		if totalUsage.TotalTokens > 0 {
 			s.recordUsage(uc, totalUsage)
@@ -1139,7 +1150,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 2 * time.Minute}
+	client := s.getHTTPClient(2 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})

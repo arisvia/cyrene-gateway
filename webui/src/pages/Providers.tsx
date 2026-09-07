@@ -460,7 +460,7 @@ const Providers: Component = () => {
             nonce: res.nonce,
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
-          })) as { success?: boolean; error?: string; pending?: boolean; connection?: any }
+          })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
 
           if (pollRes?.success) {
             clearInterval(wizardPollTimer)

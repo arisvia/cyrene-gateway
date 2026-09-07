@@ -1,9 +1,10 @@
-import { type Component, For, Show, createSignal, createMemo, onMount } from 'solid-js'
+import { type Component, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
 import { A } from '@solidjs/router'
+import type { ProviderUsage } from '@/types/domain'
 
 interface QuotaBucket {
   used: number
@@ -22,7 +23,7 @@ interface ConnQuota {
 
 const Quota: Component = () => {
   const store = useGatewayStore()
-  const [rows, setRows] = createSignal<any[]>([])
+  const [rows, setRows] = createSignal<ProviderUsage[]>([])
   const [loading, setLoading] = createSignal(true)
   const [refreshing, setRefreshing] = createSignal(false)
   const [details, setDetails] = createSignal<Record<string, ConnQuota>>({})
@@ -35,7 +36,7 @@ const Quota: Component = () => {
         await store.loadProvidersOnly()
       }
       const [r, conns] = await Promise.all([
-        api('/api/usage/providers?period=7d'),
+        api<{ providers?: ProviderUsage[] }>('/api/usage/providers?period=7d'),
         Promise.resolve(store.providers()),
       ])
       setRows(r?.providers ?? [])
@@ -46,7 +47,7 @@ const Quota: Component = () => {
       // 逐连接拉取真实额度（plan/credits/resetAt），各连接并行请求、谁先返回谁先上屏
       conns.forEach(async c => {
         try {
-          const res = await api(`/api/usage/connection/${c.id}`)
+          const res = await api<ConnQuota>(`/api/usage/connection/${c.id}`)
           if (res) {
             setDetails(prev => ({ ...prev, [c.id]: res }))
           }
@@ -64,12 +65,14 @@ const Quota: Component = () => {
 
   onMount(() => {
     load()
+  })
+
+  createEffect(() => {
+    if (!autoRefresh()) return
     const interval = setInterval(() => {
-      if (autoRefresh()) {
-        load()
-      }
+      load()
     }, 60000)
-    return () => clearInterval(interval)
+    onCleanup(() => clearInterval(interval))
   })
 
   // 按供应商过滤连接
@@ -166,9 +169,10 @@ const Quota: Component = () => {
     })
 
     const totalPages = createMemo(() => Math.ceil(filteredKeys().length / pageSize) || 1)
+    const effectivePage = createMemo(() => Math.min(Math.max(1, page()), totalPages()))
     const currentKeys = createMemo(() => {
       if (allKeys().length <= 8) return filteredKeys()
-      const start = (page() - 1) * pageSize
+      const start = (effectivePage() - 1) * pageSize
       return filteredKeys().slice(start, start + pageSize)
     })
 
@@ -187,19 +191,19 @@ const Quota: Component = () => {
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={page() <= 1}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={effectivePage() <= 1}
+                onClick={() => setPage(p => Math.max(1, Math.min(p, totalPages()) - 1))}
                 class="!h-6 !px-1.5 !min-w-0"
                 title="上一页"
               >
                 <IconChevronLeft size={12} />
               </Button>
-              <span class="px-1">{page()} / {totalPages()}</span>
+              <span class="px-1">{effectivePage()} / {totalPages()}</span>
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={page() >= totalPages()}
-                onClick={() => setPage(p => Math.min(totalPages(), p + 1))}
+                disabled={effectivePage() >= totalPages()}
+                onClick={() => setPage(p => Math.min(totalPages(), Math.max(p, 1) + 1))}
                 class="!h-6 !px-1.5 !min-w-0"
                 title="下一页"
               >

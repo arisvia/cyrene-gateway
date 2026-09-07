@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import type { Component } from 'solid-js'
 import { render, cleanup } from '@solidjs/testing-library'
 import { MemoryRouter, Route } from '@solidjs/router'
 import { api } from '@/lib/api'
@@ -20,7 +21,7 @@ vi.mock('@/lib/toast', () => ({
 
 const tick = () => new Promise(r => setTimeout(r, 40))
 
-function mount(Comp: any) {
+function mount(Comp: Component) {
   return render(() => (
     <MemoryRouter>
       <Route path="/" component={Comp} />
@@ -32,7 +33,7 @@ describe('运维与工具页渲染', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks() })
 
   it('ProxyPools 渲染代理池列表', async () => {
-    ;(api as any).mockImplementation((path: string) => {
+    vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/proxy-pools') {
         return Promise.resolve({ proxyPools: [{ id: 'x1', name: 'home-proxy', proxyUrl: 'http://127.0.0.1:7890', type: 'http', isActive: true }] })
       }
@@ -47,7 +48,7 @@ describe('运维与工具页渲染', () => {
   })
 
   it('CliTools 渲染工具卡片与接入按钮', async () => {
-    ;(api as any).mockResolvedValue({
+    vi.mocked(api).mockResolvedValue({
       tools: [
         { id: 'claude', name: 'Claude Code', description: 'Anthropic CLI', configType: 'env', configured: false },
         { id: 'codex', name: 'OpenAI Codex', description: 'Codex CLI', configType: 'json', configured: true },
@@ -63,7 +64,7 @@ describe('运维与工具页渲染', () => {
   })
 
   it('Skills 渲染技能列表与搜索', async () => {
-    ;(api as any).mockResolvedValue({
+    vi.mocked(api).mockResolvedValue({
       count: 2,
       skills: [
         { id: 's1', name: 'cyrene-chat', description: 'Chat capability' },
@@ -79,7 +80,7 @@ describe('运维与工具页渲染', () => {
   })
 
   it('Console 渲染模型选择器与输入区', async () => {
-    ;(api as any).mockResolvedValue({ data: [{ id: 'anthropic/*' }, { id: 'openai/*' }] })
+    vi.mocked(api).mockResolvedValue({ data: [{ id: 'anthropic/*' }, { id: 'openai/*' }] })
     mount(Console)
     await tick()
     const text = document.body.textContent || ''
@@ -89,7 +90,7 @@ describe('运维与工具页渲染', () => {
   })
 
   it('Media 渲染能力切换', async () => {
-    ;(api as any).mockResolvedValue(null)
+    vi.mocked(api).mockResolvedValue(null)
     mount(Media)
     await tick()
     const text = document.body.textContent || ''
@@ -104,8 +105,8 @@ describe('运维与工具页渲染', () => {
     const store = useGatewayStore()
     store.setProviders([
       { id: 'conn-1', provider: 'anthropic', name: 'Anthropic Main', isActive: true, priority: 1, authType: 'api-key' },
-    ] as any)
-    ;(api as any).mockResolvedValue({
+    ])
+    vi.mocked(api).mockResolvedValue({
       period: '7d',
       providers: [{ provider: 'anthropic', requests: 10, promptTokens: 100, completionTokens: 50, cost: 0.1, connections: 2, activeConnections: 1 }],
       quotas: {
@@ -120,7 +121,7 @@ describe('运维与工具页渲染', () => {
   })
 
   it('Tunnel 渲染状态与操作', async () => {
-    ;(api as any).mockResolvedValue({
+    vi.mocked(api).mockResolvedValue({
       installed: true, daemonRunning: true, loggedIn: true,
       funnelRunning: false, tunnelUrl: '', platform: 'windows',
     })
@@ -133,7 +134,7 @@ describe('运维与工具页渲染', () => {
   })
 
   it('Mitm 在未启用时显示原因说明', async () => {
-    ;(api as any).mockResolvedValue({
+    vi.mocked(api).mockResolvedValue({
       enabled: false, running: false,
       reason: 'MITM is disabled. Start the gateway with -mitm to enable (local deployments only).',
     })

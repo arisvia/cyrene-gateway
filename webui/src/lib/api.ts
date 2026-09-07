@@ -1,6 +1,6 @@
 const BASE = ''
 
-async function request<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   const opts: RequestInit = { method, headers: {} }
   if (body !== undefined) {
     ;(opts.headers as Record<string, string>)['Content-Type'] = 'application/json'
@@ -28,8 +28,8 @@ async function request<T = any>(method: string, path: string, body?: unknown): P
   return text ? JSON.parse(text) : undefined as T
 }
 
-export const api = <T = any>(path: string, method?: string) => request<T>(method ?? 'GET', path)
-export const apiPost = <T = any>(path: string, body?: unknown) => request<T>('POST', path, body)
-export const apiPut = <T = any>(path: string, body?: unknown) => request<T>('PUT', path, body)
-export const apiPatch = <T = any>(path: string, body?: unknown) => request<T>('PATCH', path, body)
-export const apiDelete = <T = any>(path: string, body?: unknown) => request<T>('DELETE', path, body)
+export const api = <T = unknown>(path: string, method?: string) => request<T>(method ?? 'GET', path)
+export const apiPost = <T = unknown>(path: string, body?: unknown) => request<T>('POST', path, body)
+export const apiPut = <T = unknown>(path: string, body?: unknown) => request<T>('PUT', path, body)
+export const apiPatch = <T = unknown>(path: string, body?: unknown) => request<T>('PATCH', path, body)
+export const apiDelete = <T = unknown>(path: string, body?: unknown) => request<T>('DELETE', path, body)

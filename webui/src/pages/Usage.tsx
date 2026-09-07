@@ -4,7 +4,7 @@ import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse } from '@/com
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
-import type { RequestDetail } from '@/types/domain'
+import type { RequestDetail, LiveUsageEvent } from '@/types/domain'
 const PERIODS = [
   { value: '24h', label: '最近 24 小时' },
   { value: '7d', label: '最近 7 天' },
@@ -18,7 +18,7 @@ const Usage: Component = () => {
   const [period, setPeriod] = createSignal('7d')
   const [loading, setLoading] = createSignal(true)
   const [live, setLive] = createSignal(false)
-  const [liveEvents, setLiveEvents] = createSignal<any[]>([])
+  const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
   let es: EventSource | null = null
 
   async function load() {
@@ -151,7 +151,6 @@ const Usage: Component = () => {
       <Show when={subTab() === 'overview'}>
         <GatewayTopology
           providers={store.providers()}
-          endpoints={store.endpoints()}
           activeConnections={store.activeConnections()}
           liveEvents={liveEvents()}
         />

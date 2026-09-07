@@ -549,14 +549,18 @@ func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
 			// Mark connection as needing re-auth.
 			conn.Data.TestStatus = "expired"
 			conn.Data.LastError = refreshErr.Error()
-			s.DB.UpdateConnection(conn)
+			if err := s.DB.UpdateConnection(conn); err != nil {
+				slog.Error("Failed to persist expired OAuth status", "provider", providerID, "error", err)
+			}
 		}
 		writeJSON(w, status, map[string]string{"error": refreshErr.Error()})
 		return
 	}
 
 	provider.ApplyRefreshResult(conn, result)
-	s.DB.UpdateConnection(conn)
+	if err := s.DB.UpdateConnection(conn); err != nil {
+		slog.Error("Failed to persist refreshed OAuth token", "provider", providerID, "error", err)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":   true,

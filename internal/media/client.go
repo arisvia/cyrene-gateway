@@ -24,7 +24,7 @@ type Client struct {
 
 func NewClient() *Client {
 	return &Client{
-		HTTPClient: &http.Client{Timeout: 2 * time.Minute},
+		HTTPClient: provider.SafeHTTPClient(2*time.Minute, false),
 	}
 }
 
@@ -698,9 +698,11 @@ func (c *Client) TestCredentials(ctx context.Context, providerID string, creds C
 
 	targetURL := spec.url
 	if customBaseURL != "" {
+		if _, err := provider.ValidateUpstreamURL(customBaseURL, false); err != nil {
+			return false, 0, fmt.Errorf("invalid base url: %w", err)
+		}
 		targetURL = customBaseURL
 	}
-
 	var bodyReader io.Reader
 	if len(spec.body) > 0 {
 		bodyReader = bytes.NewReader(spec.body)

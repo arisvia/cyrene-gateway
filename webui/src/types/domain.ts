@@ -180,6 +180,15 @@ export interface TunnelStatus {
   error?: string
 }
 
+export interface LiveUsageEvent {
+  timestamp?: string
+  provider?: string
+  model?: string
+  status?: string
+  latencyMs?: number
+  endpoint?: string
+}
+
 export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue'
 export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
 export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'

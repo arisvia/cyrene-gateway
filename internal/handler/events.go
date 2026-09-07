@@ -80,9 +80,6 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	if s.Events == nil {
-		s.Events = NewEventBroadcaster()
-	}
 	ch, done := s.Events.Subscribe()
 	defer s.Events.Unsubscribe(ch)
 

@@ -289,7 +289,7 @@ const ProviderDetail: Component = () => {
             nonce: res.nonce,
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
-          })) as { success?: boolean; error?: string; pending?: boolean; connection?: any }
+          })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
 
           if (pollRes?.success) {
             clearInterval(pollTimer)
@@ -369,8 +369,8 @@ const ProviderDetail: Component = () => {
     const hash = window.location.hash
     if (hash.includes('tab=')) {
       const t = hash.split('tab=')[1]?.split('&')[0]
-      if (t && ['overview', 'models', 'chat'].includes(t)) {
-        setTab(t as any)
+      if (t === 'overview' || t === 'models' || t === 'chat') {
+        setTab(t)
       }
     }
   })
@@ -682,7 +682,7 @@ const ProviderDetail: Component = () => {
                                     {acc.name || acc.provider}
                                   </span>
                                   <Show when={isCurrent()}>
-                                    <span class="text-[10px] px-1.5 py-0.2 rounded bg-accent/20 text-accent font-medium shrink-0">
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">
                                       编辑中
                                     </span>
                                   </Show>
@@ -1125,17 +1125,17 @@ const ProviderDetail: Component = () => {
                                       {m.name || m.id}
                                     </span>
                                     <Show when={m.isFree}>
-                                      <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
                                         免费
                                       </span>
                                     </Show>
                                     <Show when={m.enabled === false}>
-                                      <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
                                         不对外
                                       </span>
                                     </Show>
                                     <Show when={m.hasOverride}>
-                                      <span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title="包含用户自定义元数据">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title="包含用户自定义元数据">
                                         已改
                                       </span>
                                     </Show>

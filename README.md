@@ -15,14 +15,14 @@ Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(O
 - **思考推理能力映射**:下游标准化暴露 OpenAI `reasoning_effort`(`low`/`medium`/`high`)与 Anthropic `thinking`，自动映射至上游提供商(Gemini 3.8/3.7/3.6 Flash、Claude 3.7 Sonnet 等)。
 - **组合与回退**:Combo(多模型组合)按 `fallback` / `round-robin` / sticky 策略轮转;错误分类规则(`ErrorRules`)驱动指数退避冷却(2s 起步、上限 5 分钟)与模型级锁定。
 - **凭证调度**:`SelectCredentialWithQuota` 按 priority 排序、冷却状态、模型锁、配额上限挑选连接,OAuth 优先于 API Key。
-- **代理池出站**:HTTP 代理轮换,SSRF 防护默认拒绝私网/环回/链路本地/云元数据/CGNAT 地址(可用 `-allow-private-networks` 放开,仅限本地测试)。
+- **全链路出站安全与 SSRF 防护**: 所有出站 HTTP 请求（上游直通、文本向量、后台模型探测、凭证测试与外部面板下载）统一经 `SafeHTTPClient` 强化，实施基于 dial-time IP 解析的私网/环回/链路本地/云元数据/CGNAT 地址阻断与防跳转逃逸(可用 `-allow-private-networks` 放开,仅限本地测试)。
 - **令牌节省**:RTK 压缩、Caveman、Ponytail 三档 token saver,支持按提供商排除。
 - **循环防护(loopguard)**:检测重复工具调用与文本复读,注入提示打断死循环。
 - **用量观测**:逐请求 token 记账(含 cached/reasoning tokens)、每日聚合、成本估算、请求详情、SSE 实时事件流(`/api/usage/stream`)。
 - **MITM 调试代理**(仅 localhost):本地 TLS 拦截配合 DNS 劫持,观察 CLI 工具的 LLM 流量,帮助编写适配器。
 - **CLI 工具一键接入**:为 Claude Code / Codex / OpenCode / Cline / Copilot CLI 等十余款工具写配置。
 - **Tailscale 隧道**:检测/安装/启用 Funnel,把本地网关暴露到公网。
-- **内置管理面板**:基于 Solid.js + Vite + Tailwind CSS v4 构建的现代化单页控制台，具备完整深色玻璃拟物风格、矢量图标库与流畅动画。
+- **内置管理面板**: 基于 Solid.js + Vite + Tailwind CSS v4 构建的现代化单页控制台，具备完整深色玻璃拟物风格、统一矢量图标库、无内联 `any` 严格类型安全与流畅动画。
 ## 快速开始
 
 ### 要求

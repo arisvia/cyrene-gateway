@@ -21,7 +21,7 @@ describe('store 单例（根因 #1 回归测试）', () => {
   })
 
   it('状态在实例间共享', async () => {
-    ;(api as any).mockResolvedValue(null)
+    vi.mocked(api).mockResolvedValue(null)
     const a = useGatewayStore()
     const b = useGatewayStore()
     await a.loadCore()
@@ -33,7 +33,7 @@ describe('Providers 页面渲染', () => {
   afterEach(() => cleanup())
 
   it('空状态显示引导与一键启用', async () => {
-    ;(api as any).mockResolvedValue(null)
+    vi.mocked(api).mockResolvedValue(null)
     await useGatewayStore().loadCore()
 
     render(() => (
@@ -50,7 +50,7 @@ describe('Providers 页面渲染', () => {
   })
 
   it('有数据时渲染卡片、凭证状态与能力标签', async () => {
-    ;(api as any).mockImplementation((path: string) => {
+    vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/providers') {
         return Promise.resolve([
           { id: 'p1', provider: 'anthropic', name: '主力 Claude', authType: 'api-key', priority: 0, isActive: true, data: { hasApiKey: true, credentialHint: '...key' } },
@@ -78,7 +78,7 @@ describe('Providers 页面渲染', () => {
   })
 
   it('纯媒体提供商（无 llm 能力）不展示在我的连接（LLM 对话列表）中', async () => {
-    ;(api as any).mockImplementation((path: string) => {
+    vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/providers') {
         return Promise.resolve([
           { id: 'p1', provider: 'elevenlabs', name: 'ElevenLabs Voice', authType: 'api-key', priority: 0, isActive: true, data: { hasApiKey: true } },

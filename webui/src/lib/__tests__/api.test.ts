@@ -20,18 +20,19 @@ describe('api lib', () => {
   })
 
   it('apiPost() sends POST with JSON body', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       text: () => Promise.resolve(JSON.stringify({ id: '123' })),
     })
+    global.fetch = mockFetch
 
     const result = await apiPost('/api/providers', { name: 'test' })
     expect(result).toEqual({ id: '123' })
-    const call = (fetch as any).mock.calls[0]
+    const call = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(call[1].method).toBe('POST')
     expect(call[1].body).toBe(JSON.stringify({ name: 'test' }))
-    expect(call[1].headers['Content-Type']).toBe('application/json')
+    expect((call[1].headers as Record<string, string>)['Content-Type']).toBe('application/json')
   })
 
   it('throws on non-ok response with error message', async () => {
@@ -57,28 +58,29 @@ describe('api lib', () => {
   })
 
   it('apiPut() sends PUT', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       text: () => Promise.resolve('{}'),
     })
+    global.fetch = mockFetch
 
     await apiPut('/api/providers/1', { isActive: true })
-    const call = (fetch as any).mock.calls[0]
+    const call = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(call[1].method).toBe('PUT')
   })
-
   it('apiDelete() sends DELETE with optional body', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       text: () => Promise.resolve('{"ok":true}'),
     })
+    global.fetch = mockFetch
 
     await apiDelete('/api/models/alias', { alias: 'test-alias' })
-    const call = (fetch as any).mock.calls[0]
+    const call = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(call[1].method).toBe('DELETE')
-    expect(call[1].headers['Content-Type']).toBe('application/json')
+    expect((call[1].headers as Record<string, string>)['Content-Type']).toBe('application/json')
     expect(call[1].body).toBe(JSON.stringify({ alias: 'test-alias' }))
   })
 })

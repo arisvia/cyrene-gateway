@@ -31,17 +31,20 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
 
   // 清洗并提取对话内容（过滤冗长思考过程 <thinking> ... </thinking>）
   const cleanPayload = () => {
-    const d = detail() as any
-    if (!d) return null
-    let input = d.input || d.prompt || d.messages || d.data?.input || null
-    let output = d.output || d.response || d.content || d.data?.output || null
+    const raw = detail()
+    if (!raw || typeof raw !== 'object') return null
+    const d = raw as Record<string, unknown>
+    const dataObj = (d.data && typeof d.data === 'object' ? d.data : null) as Record<string, unknown> | null
+    let input = d.input ?? d.prompt ?? d.messages ?? dataObj?.input ?? null
+    let output = d.output ?? d.response ?? d.content ?? dataObj?.output ?? null
 
     // 如果为字符串，过滤思考块
     if (typeof output === 'string') {
       output = output.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
-    } else if (typeof output === 'object' && output?.content) {
-      if (typeof output.content === 'string') {
-        output.content = output.content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
+    } else if (output && typeof output === 'object' && 'content' in output) {
+      const content = output.content
+      if (typeof content === 'string') {
+        output = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim()
       }
     }
 

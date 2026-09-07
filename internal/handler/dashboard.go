@@ -14,6 +14,7 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/webui"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 const (
@@ -152,8 +153,13 @@ func (d *DashboardHandler) TryDownload() {
 	if d.cfg.PanelURL == "" {
 		return
 	}
+	allowPrivate := d.cfg.AllowPrivateNetworks
+	if _, err := provider.ValidateUpstreamURL(d.cfg.PanelURL, allowPrivate); err != nil {
+		slog.Warn("Panel URL failed SSRF validation, using embedded fallback", "url", d.cfg.PanelURL, "error", err)
+		return
+	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := provider.SafeHTTPClient(30*time.Second, allowPrivate)
 	resp, err := client.Get(d.cfg.PanelURL)
 	if err != nil {
 		slog.Warn("Failed to download panel, using embedded fallback", "url", d.cfg.PanelURL, "error", err)
