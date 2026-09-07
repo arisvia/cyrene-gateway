@@ -106,7 +106,7 @@ var Registry = []Tool{
 	},
 	{
 		ID:          "codex",
-		Name:        "OpenAI Codex CLI",
+		Name:        "OpenAI Codex",
 		Category:    "cli",
 		Icon:        "/providers/codex.svg",
 		Color:       "#10A37F",
@@ -294,7 +294,7 @@ var Registry = []Tool{
 	},
 	{
 		ID:          "antigravity",
-		Name:        "Google Antigravity",
+		Name:        "Antigravity",
 		Category:    "ide",
 		Icon:        "/providers/antigravity.svg",
 		Color:       "#4285F4",

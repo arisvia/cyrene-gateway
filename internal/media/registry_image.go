@@ -38,7 +38,7 @@ func registerImageProviders() {
 	)
 
 	// Antigravity (Google Code Assist) image generation via Gemini Flash Image
-	mergeProvider("antigravity", "Google Antigravity", KindImage,
+	mergeProvider("antigravity", "Antigravity", KindImage,
 		[]ModelEntry{
 			{ID: "gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image", Kind: KindImage},
 			{ID: "gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},

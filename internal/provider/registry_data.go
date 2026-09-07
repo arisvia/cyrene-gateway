@@ -54,7 +54,7 @@ func init() {
 		AuthScheme: "raw",
 	}
 	Registry["antigravity"] = ProviderInfo{
-		ID: "antigravity", Name: "Google Antigravity",
+		ID: "antigravity", Name: "Antigravity",
 		Alias: "ag", Aliases: []string{"ag"},
 		BaseURL: "",
 		APIType: "openai", AuthType: "oauth",
@@ -307,7 +307,7 @@ func init() {
 		AuthHooks:  []string{"kimiHeaders"},
 	}
 	Registry["minimax-cn"] = ProviderInfo{
-		ID: "minimax-cn", Name: "Minimax (China)",
+		ID: "minimax-cn", Name: "MiniMax (China)",
 		Alias: "minimax-cn", Aliases: []string{"minimax-cn"},
 		BaseURL: "https://api.minimaxi.com/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
@@ -326,7 +326,7 @@ func init() {
 		AuthScheme: "raw",
 	}
 	Registry["minimax"] = ProviderInfo{
-		ID: "minimax", Name: "Minimax Coding",
+		ID: "minimax", Name: "MiniMax Coding",
 		Alias: "minimax", Aliases: []string{"minimax"},
 		BaseURL: "https://api.minimax.io/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",

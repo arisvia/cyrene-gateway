@@ -117,7 +117,7 @@ func TestRegistryOfficialNames(t *testing.T) {
 	names := map[string]string{
 		"grok-cli":       "Grok Build",
 		"kimi":           "Kimi Code",
-		"antigravity":    "Google Antigravity",
+		"antigravity":    "Antigravity",
 		"codebuddy-intl": "CodeBuddy (Intl)",
 		"codebuddy-cn":   "CodeBuddy (CN)",
 		"cursor":         "Cursor",
