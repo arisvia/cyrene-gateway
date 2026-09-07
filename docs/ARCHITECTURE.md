@@ -76,7 +76,7 @@ Cyrene Gateway 是一个单二进制运行的 LLM API 统一网关，核心职�
 | `internal/mitm/` | `Server`, `CertManager`, `DNSManager` | 本地 TLS 拦截代理，生成自签名根 CA，劫持 hosts 抓包排查 CLI 工具请求。仅限本机部署开启。 |
 | `internal/tunnel/` | `Manager` | Tailscale 状态探测、安装、登录、启动/关闭 Funnel 隧道暴露到公网。 |
 | `internal/cli/` | `Manager`, `Adapter` | 十余款终端 AI 工具（Claude Code、Codex 等）的配置自动注入与重置。 |
-| `webui/` | Vue 3 + Vite + Pinia | 响应式管理控制台，通过 `embed.go` 编译内嵌到二进制中。 |
+| `webui/` | Solid.js + Vite + Tailwind CSS v4 | 响应式管理控制台，支持深色玻璃拟物风格、矢量图标库与无内联 any 严格类型，通过 `embed.go` 编译内嵌到二进制中。 |
 
 ---
 
@@ -143,6 +143,7 @@ Client 接收最终响应
 - **拨号阶段校验**：`SafeDialerControl` 自定义 `net.Dialer.Control`，在实际发起 TCP 连接前拦截环回地址（`127.0.0.0/8`、`::1`）、私有网络（RFC 1918）、链路本地地址（`169.254.0.0/16` 包含云元数据）、CGNAT（`100.64.0.0/10`）以及组播地址。
 - **重定向安全**：`http.Client.CheckRedirect` 在每次跟随 30x 重定向时重新对目标 URL 执行安全审计，防止通过公网 URL 302 跳转至内网靶机。
 - **开发放行**：通过 `-allow-private-networks` 可显式放行，便于开发者在本地连接自建的 Mock 服务或 Ollama。
+- **全链路强制（2026-09）**：Anthropic 与 Embeddings 直通处理（Passthrough）、多模态媒体客户端（MediaClient）、预检凭证连通性测试（`POST /api/providers/test-credentials`）、后台模型目录动态探测与外部管理面板更新包下载全链路统一经 `SafeHTTPClient` 发起，并前置 `ValidateUpstreamURL` 校验，杜绝私网穿透与云元数据逃逸。
 
 ### 4.2 OAuth 刷新防抖与并发控制（`internal/provider/oauth_flow.go`）
 当多个请求同时打入且连接凭证即将过期时，`DedupRefresh` 采用双重检查锁与互斥锁通道：
