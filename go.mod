@@ -5,7 +5,7 @@ go 1.27
 require (
 	github.com/google/uuid v1.6.0
 	github.com/prometheus/client_golang v1.24.1
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	modernc.org/sqlite v1.57.0
 )
 
