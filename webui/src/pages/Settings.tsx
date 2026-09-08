@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
-import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Field, confirm, IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 
@@ -197,9 +197,7 @@ const Settings: Component = () => {
       {/* ── 分组 1：安全与访问控制 ── */}
       <div class="space-y-3.5">
         <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          <svg class="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
+          <IconShield size={14} class="text-accent shrink-0" />
           <span>安全与访问控制</span>
         </div>
 
@@ -207,10 +205,7 @@ const Settings: Component = () => {
         <Card class="p-5 space-y-4">
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
+              <IconLock size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">访问控制</h3>
             </div>
             <Badge tone={local().requireLogin || local().requireApiKey ? 'blue' : 'gray'}>
@@ -224,7 +219,7 @@ const Settings: Component = () => {
               hint={
                 hasPw()
                   ? '开启后管理面板需密码登录（远程非本机访问默认强制要求）'
-                  : '⚠️ 请先在下方设置管理密码再开启要求登录，以防面板被永久锁死'
+                  : '请先在下方设置管理密码再开启要求登录，以防面板被永久锁死'
               }
             >
               <span />
@@ -265,11 +260,7 @@ const Settings: Component = () => {
         <Card class="p-5 space-y-4">
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="7.5" cy="15.5" r="5.5" />
-                <path d="m21 2-9.6 9.6" />
-                <path d="m15.5 7.5 3 3L22 7l-3-3" />
-              </svg>
+              <IconKey size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">管理密码</h3>
             </div>
             <Badge tone={hasPw() ? 'green' : 'amber'}>
@@ -301,9 +292,7 @@ const Settings: Component = () => {
       {/* ── 分组 2：效能与节省引擎 ── */}
       <div class="space-y-3.5">
         <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          <svg class="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-          </svg>
+          <IconZap size={14} class="text-accent shrink-0" />
           <span>效能与节省引擎</span>
         </div>
 
@@ -311,9 +300,7 @@ const Settings: Component = () => {
         <Card class="p-5 space-y-4">
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
+              <IconZap size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">响应精确缓存</h3>
               <Badge tone="blue">1ms 直出 · 0 Token</Badge>
             </div>
@@ -415,9 +402,7 @@ const Settings: Component = () => {
         <Card class="p-5 space-y-4">
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-              </svg>
+              <IconSparkles size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">令牌节省引擎</h3>
               <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
             </div>
@@ -568,10 +553,7 @@ const Settings: Component = () => {
       {/* ── 分组 3：外观与系统偏好 ── */}
       <div class="space-y-3.5">
         <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          <svg class="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
+          <IconPalette size={14} class="text-accent shrink-0" />
           <span>界面与系统偏好</span>
         </div>
 
@@ -579,13 +561,7 @@ const Settings: Component = () => {
         <Card class="p-5 space-y-4">
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
-                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
-                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
-                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z" />
-              </svg>
+              <IconPalette size={16} class="text-accent shrink-0" />
               <div>
                 <h3 class="text-sm font-semibold">界面与壁纸</h3>
                 <p class="text-xs text-faint mt-0.5">本地存储于浏览器 IndexedDB，不占用网关空间</p>
@@ -732,11 +708,7 @@ const Settings: Component = () => {
         {/* 版本信息卡片 */}
         <Card class="p-4 flex items-center justify-between text-xs text-faint">
           <div class="flex items-center gap-2">
-            <svg class="w-4 h-4 text-muted shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
+            <IconInfo size={16} class="text-muted shrink-0" />
             <span>Cyrene Gateway</span>
           </div>
           <Badge tone="gray">v{store.version()}</Badge>

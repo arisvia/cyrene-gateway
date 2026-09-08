@@ -189,6 +189,26 @@ export const IconLock: Component<IconProps> = props => {
     </svg>
   )
 }
+// 钥匙 (Key / API Key / 凭证)
+export const IconKey: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="m21 2-9.6 9.6" />
+      <path d="m15.5 7.5 3 3L22 7l-3-3" />
+    </svg>
+  )
+}
+// 盾牌/安全防护 (Shield)
+export const IconShield: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
 // 编辑/修改 (Edit)
 export const IconEdit: Component<IconProps> = props => {
   const [local, others] = splitProps(props, ['size', 'class'])
