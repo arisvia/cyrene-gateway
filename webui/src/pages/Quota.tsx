@@ -280,7 +280,7 @@ const Quota: Component = () => {
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <For each={[1, 2, 3, 4]}>
               {() => (
-                <Card class="p-4 space-y-4 border-subtle/80 bg-bg-elevated/50">
+                <Card class="p-4 space-y-4">
                   <div class="flex items-center justify-between gap-3 pb-2.5 border-b border-subtle/40">
                     <div class="flex items-center gap-3">
                       <Skeleton class="w-10 h-10 rounded-xl" />
@@ -328,7 +328,7 @@ const Quota: Component = () => {
                 const aggRow = () => rows().find(r => r.provider === conn.provider)
 
                 return (
-                  <Card hover class="p-4 flex flex-col justify-between border-subtle/80 bg-bg-elevated/70 shadow-sm transition-all hover:border-accent/40">
+                  <Card hover class="p-4 flex flex-col justify-between shadow-sm transition-all">
                     <div>
                       <div class="flex items-start justify-between gap-2.5 pb-2.5 border-b border-subtle/50">
                         <div class="flex items-center gap-3 min-w-0">

@@ -110,12 +110,12 @@ const Usage: Component = () => {
         subtitle={`累计 ${fmtNum(store.usageStats.totalRequestsLifetime ?? 0)} 次请求 · 实时监控流量路由分发`}
         actions={
           <>
-            <div class="inline-flex p-1 rounded-xl bg-hover/60 border border-subtle shadow-sm">
+            <div class="inline-flex p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] backdrop-blur-sm">
               <button
                 type="button"
-                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                   subTab() === 'overview'
-                    ? 'bg-accent text-on-accent shadow-sm'
+                    ? 'bg-card text-foreground shadow-sm'
                     : 'text-muted hover:text-foreground'
                 }`}
                 onClick={() => setSubTab('overview')}
@@ -124,9 +124,9 @@ const Usage: Component = () => {
               </button>
               <button
                 type="button"
-                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                   subTab() === 'details'
-                    ? 'bg-accent text-on-accent shadow-sm'
+                    ? 'bg-card text-foreground shadow-sm'
                     : 'text-muted hover:text-foreground'
                 }`}
                 onClick={() => setSubTab('details')}

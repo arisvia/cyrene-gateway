@@ -17,7 +17,7 @@ export const Card: Component<{
       if (typeof props.ref === 'function') props.ref(el)
       else if (props.ref) (props as unknown as { ref: HTMLDivElement }).ref = el
     }}
-    class={`rounded-card glass-card ${props.hover ? 'hover:bg-hover hover:border-accent/40 hover:-translate-y-0.5 hover:shadow-glass-hover' : ''} transition-all duration-200 ${props.class ?? ''}`}
+    class={`rounded-card glass-card ${props.hover ? 'hover:bg-hover hover:-translate-y-0.5 hover:shadow-glass-hover' : ''} transition-all duration-200 ${props.class ?? ''}`}
     onClick={props.onClick}
   >
     {props.children}
@@ -143,20 +143,20 @@ export function ToastHost() {
 
   const kindStyles = {
     success: {
-      card: 'border-success/30 bg-bg-elevated/95',
-      iconWrap: 'bg-success/15 text-success border-success/30',
+      card: 'bg-bg-elevated/95',
+      iconWrap: 'bg-success/15 text-success',
     },
     error: {
-      card: 'border-danger/30 bg-bg-elevated/95',
-      iconWrap: 'bg-danger/15 text-danger border-danger/30',
+      card: 'bg-bg-elevated/95',
+      iconWrap: 'bg-danger/15 text-danger',
     },
     warning: {
-      card: 'border-warning/30 bg-bg-elevated/95',
-      iconWrap: 'bg-warning/15 text-warning border-warning/30',
+      card: 'bg-bg-elevated/95',
+      iconWrap: 'bg-warning/15 text-warning',
     },
     info: {
-      card: 'border-subtle bg-bg-elevated/95',
-      iconWrap: 'bg-accent/15 text-accent border-accent/30',
+      card: 'bg-bg-elevated/95',
+      iconWrap: 'bg-accent/15 text-accent',
     },
   }
 
@@ -167,9 +167,9 @@ export function ToastHost() {
           const style = () => kindStyles[t.kind] || kindStyles.info
           return (
             <div
-              class={`pointer-events-auto relative w-full p-3 rounded-xl border shadow-glass-hover backdrop-blur-2xl transition-all duration-200 animate-slide-up flex items-start gap-3 select-none ${style().card}`}
+              class={`pointer-events-auto relative w-full p-3 rounded-xl shadow-glass-hover backdrop-blur-2xl transition-all duration-200 animate-slide-up flex items-start gap-3 select-none ${style().card}`}
             >
-              <div class={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border mt-0.5 ${style().iconWrap}`}>
+              <div class={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${style().iconWrap}`}>
                 <Show when={t.kind === 'success'}>
                   <IconCheck size="sm" class="w-3.5 h-3.5" />
                 </Show>
@@ -224,19 +224,19 @@ export const Alert: Component<{
 
   const styles = {
     info: {
-      box: 'border-subtle bg-bg-elevated/80 text-foreground',
+      box: 'bg-black/[0.04] dark:bg-white/[0.06] text-foreground shadow-xs',
       iconWrap: 'text-accent',
     },
     success: {
-      box: 'border-success/30 bg-success/10 text-foreground',
+      box: 'bg-success/10 text-foreground shadow-xs',
       iconWrap: 'text-success',
     },
     warning: {
-      box: 'border-warning/30 bg-warning/10 text-foreground',
+      box: 'bg-warning/10 text-foreground shadow-xs',
       iconWrap: 'text-warning',
     },
     danger: {
-      box: 'border-danger/30 bg-danger/10 text-foreground',
+      box: 'bg-danger/10 text-foreground shadow-xs',
       iconWrap: 'text-danger',
     },
   }
@@ -247,7 +247,7 @@ export const Alert: Component<{
     <Show when={!closed()}>
       <div
         role="alert"
-        class={`relative flex items-start gap-3 p-3.5 rounded-xl border backdrop-blur-md text-xs transition-all duration-150 ${s().box} ${props.class ?? ''}`}
+        class={`relative flex items-start gap-3 p-3.5 rounded-xl backdrop-blur-md text-xs transition-all duration-150 ${s().box} ${props.class ?? ''}`}
       >
         <div class={`shrink-0 mt-0.5 ${s().iconWrap}`}>
           <Show when={variant() === 'success'}>
@@ -325,9 +325,9 @@ export const Button: Component<ButtonProps> = props => {
   }
   const variants = {
     primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
-    secondary: 'border border-subtle text-muted hover:text-text hover:border-accent hover:bg-hover/50',
-    ghost: 'text-muted hover:text-text hover:bg-hover',
-    danger: 'border border-danger/30 text-danger hover:bg-danger/10',
+    secondary: 'bg-black/[0.04] dark:bg-white/[0.06] text-muted hover:text-foreground hover:bg-black/[0.08] dark:hover:bg-white/[0.1] shadow-xs',
+    ghost: 'text-muted hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+    danger: 'bg-danger/10 text-danger hover:bg-danger/20 shadow-xs',
   }
   return (
     <button
@@ -371,7 +371,7 @@ export const Input: Component<{
       aria-label={props.ariaLabel}
       onInput={e => props.onInput?.(e.currentTarget.value)}
       onKeyDown={props.onKeyDown}
-      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-bg-elevated border border-subtle text-text placeholder:text-faint focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-black/[0.04] dark:bg-white/[0.06] text-text placeholder:text-faint focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
     />
   )
 }
@@ -524,8 +524,8 @@ export const Select: Component<{
         aria-label={props.ariaLabel || displayLabel()}
         disabled={props.disabled}
         onClick={toggleOpen}
-        class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-bg-elevated border border-subtle text-text hover:border-accent/40 hover:bg-hover/50 focus:outline-none focus:border-accent focus:ring-2 focus:ring-ring-soft transition-all duration-150 ${
-          open() ? 'border-accent ring-2 ring-ring-soft' : ''
+        class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/[0.04] dark:bg-white/[0.06] text-text hover:bg-black/[0.07] dark:hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
+          open() ? 'ring-2 ring-accent/30 bg-card' : ''
         } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span class={`truncate text-left flex-1 ${isSelected() ? 'text-text' : 'text-faint'}`}>
@@ -635,15 +635,15 @@ export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange
     aria-checked={props.checked ?? false}
     disabled={props.disabled}
     onClick={() => props.onChange?.(!props.checked)}
-    class={`relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+    class={`relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-inner ${
       props.checked
-        ? 'bg-accent border-accent'
-        : 'bg-hover border-subtle'
+        ? 'bg-accent shadow-accent/20'
+        : 'bg-black/15 dark:bg-white/15'
     }`}
   >
     <span
-      class={`pointer-events-none block w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-        props.checked ? 'translate-x-[16px]' : 'translate-x-0'
+      class={`pointer-events-none block w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200 ${
+        props.checked ? 'translate-x-4' : 'translate-x-0'
       }`}
     />
   </button>
@@ -683,9 +683,9 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
             role="dialog"
             aria-modal="true"
             aria-label={props.title}
-            class="relative w-full max-w-lg rounded-2xl border border-subtle bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover animate-scale-in"
+            class="relative w-full max-w-lg rounded-2xl bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover animate-scale-in"
           >
-            <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle bg-card/40 rounded-t-2xl">
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle/50 bg-black/[0.02] dark:bg-white/[0.02] rounded-t-2xl">
               <h3 class="text-sm font-semibold">{props.title}</h3>
               <button
                 type="button"

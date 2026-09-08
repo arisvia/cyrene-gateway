@@ -123,16 +123,16 @@ export const ConfirmDialogHost: Component = () => {
         <div
           role="alertdialog"
           aria-modal="true"
-          class="relative w-full max-w-md rounded-2xl border border-subtle bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover p-6 animate-scale-in select-none"
+          class="relative w-full max-w-md rounded-2xl bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover p-6 animate-scale-in select-none"
         >
           <div class="flex items-start gap-4">
             <div
-              class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+              class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                 s().variant === 'danger'
-                  ? 'bg-danger/15 text-danger border-danger/30'
+                  ? 'bg-danger/15 text-danger'
                   : s().variant === 'warning'
-                    ? 'bg-warning/15 text-warning border-warning/30'
-                    : 'bg-accent/15 text-accent border-accent/30'
+                    ? 'bg-warning/15 text-warning'
+                    : 'bg-accent/15 text-accent'
               }`}
             >
               <Show when={s().variant === 'danger'}>

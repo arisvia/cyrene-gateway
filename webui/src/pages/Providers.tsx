@@ -645,12 +645,12 @@ const Providers: Component = () => {
         title="模型提供商接入"
         subtitle="统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池"
         actions={
-          <div class="inline-flex p-1 rounded-xl bg-hover/60 border border-subtle shadow-sm">
+          <div class="inline-flex p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] backdrop-blur-sm">
             <button
               type="button"
-              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab() === 'connections'
-                  ? 'bg-accent text-on-accent shadow-sm'
+                  ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted hover:text-foreground'
               }`}
               onClick={() => { setActiveTab('connections'); setCatFilter(''); }}
@@ -659,9 +659,9 @@ const Providers: Component = () => {
             </button>
             <button
               type="button"
-              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
+              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab() === 'catalog'
-                  ? 'bg-accent text-on-accent shadow-sm'
+                  ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted hover:text-foreground'
               }`}
               onClick={() => { setActiveTab('catalog'); setCatFilter(''); }}
@@ -672,7 +672,7 @@ const Providers: Component = () => {
         }
       >
         {/* 搜索与过滤工具栏：轻量透明容器，杜绝在 PageHeader 内嵌套实心 Card 导致纯白/纯黑 */}
-        <div class="p-3 rounded-xl bg-hover/40 border border-subtle/50 flex flex-wrap items-center justify-between gap-3">
+        <div class="p-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
               class="w-64!"
@@ -802,7 +802,7 @@ const Providers: Component = () => {
                 const noneActive = () => group.activeCount === 0
 
                 return (
-                  <Card hover class="p-4 group border border-subtle/80 bg-bg-elevated/70 shadow-sm transition-all hover:border-accent/40">
+                  <Card hover class="p-4 group shadow-sm transition-all">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div class="flex items-center gap-3.5 min-w-0">
                         <ProviderAvatar

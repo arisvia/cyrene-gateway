@@ -29,11 +29,11 @@
   --glass-blur: 24px;
   --glass: rgba(255, 255, 255, 0.04);
   --glass-hover: rgba(255, 255, 255, 0.07);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.16);
+  --glass-border: transparent;
+  --glass-border-hover: transparent;
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%);
-  --glass-depth: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
-  --glass-depth-hover: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+  --glass-depth: 0 10px 32px -4px rgba(0, 0, 0, 0.42);
+  --glass-depth-hover: 0 18px 44px -6px rgba(0, 0, 0, 0.58);
   /* 底色 / 文字 */
   --bg: #0a0a10;
   --bg-elevated: #12121a;
@@ -63,11 +63,11 @@
   --bg-elevated: #ffffff;
   --glass: rgba(255, 255, 255, 0.75);
   --glass-hover: rgba(255, 255, 255, 0.92);
-  --glass-border: rgba(15, 23, 42, 0.08);
-  --glass-border-hover: rgba(15, 23, 42, 0.16);
+  --glass-border: transparent;
+  --glass-border-hover: transparent;
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
-  --glass-depth: 0 10px 30px -10px rgba(15, 23, 42, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
-  --glass-depth-hover: 0 20px 40px -15px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.95) inset;
+  --glass-depth: 0 10px 30px -4px rgba(15, 23, 42, 0.07);
+  --glass-depth-hover: 0 18px 40px -6px rgba(15, 23, 42, 0.12);
   --code-bg: rgba(15, 23, 42, 0.04);
   --text: #0f172a;
   --text-muted: #475569;
@@ -90,12 +90,12 @@
   --glass-hover: color-mix(in oklab, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.08, 0.95) * 100%), transparent);
   --glass-blur: var(--app-glass-blur);
   --glass-border: transparent;
-  --glass-border-hover: rgba(255, 255, 255, 0.20);
+  --glass-border-hover: transparent;
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 40%, transparent 100%);
   /* 外层卡片依靠柔和环境光阴影与模糊拟态区分层次，不加突兀的外边框 */
   --glass-depth: 0 10px 32px -4px rgba(0, 0, 0, 0.38);
   --glass-depth-hover: 0 18px 44px -6px rgba(0, 0, 0, 0.55);
-  --subtle: rgba(255, 255, 255, 0.10);
+  --subtle: rgba(255, 255, 255, 0.08);
 }
 
 .light.custom-background,
@@ -104,11 +104,11 @@
   --glass: color-mix(in oklab, #ffffff calc(var(--app-surface-alpha) * 100%), transparent);
   --glass-hover: color-mix(in oklab, #ffffff calc(min(var(--app-surface-alpha) + 0.08, 0.98) * 100%), transparent);
   --glass-border: transparent;
-  --glass-border-hover: rgba(15, 23, 42, 0.16);
+  --glass-border-hover: transparent;
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.4) 45%, transparent 100%);
   --glass-depth: 0 10px 30px -4px rgba(15, 23, 42, 0.07);
   --glass-depth-hover: 0 18px 40px -6px rgba(15, 23, 42, 0.12);
-  --subtle: rgba(15, 23, 42, 0.08);
+  --subtle: rgba(15, 23, 42, 0.06);
 }
 
 /* 注册 Tailwind v4 主题 token —— 只有 --color- 前缀才会生成对应的 bg/text/border 工具类 */
@@ -284,6 +284,73 @@
       animation: none;
     }
   }
+
+  /* 现代无边框液态滑动条 (Modern Liquid Range Slider) */
+  input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    border: none;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+  }
+  input[type='range']:focus {
+    outline: none;
+  }
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 6px;
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 9999px;
+    border: none;
+    transition: background 0.15s ease;
+  }
+  .dark input[type='range']::-webkit-slider-runnable-track,
+  :root:not(.light) input[type='range']::-webkit-slider-runnable-track {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: -5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 10px rgba(45, 212, 191, 0.35);
+    border: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  input[type='range']::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25), 0 0 14px rgba(45, 212, 191, 0.5);
+  }
+  input[type='range']::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+  }
+  input[type='range']::-moz-range-track {
+    height: 6px;
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 9999px;
+    border: none;
+  }
+  .dark input[type='range']::-moz-range-track,
+  :root:not(.light) input[type='range']::-moz-range-track {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  input[type='range']::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 10px rgba(45, 212, 191, 0.35);
+    transition: transform 0.15s ease;
+  }
+  input[type='range']::-moz-range-thumb:hover {
+    transform: scale(1.2);
+  }
 }
 
 /* ---- 语义组合工具（组件层） ---- */
@@ -292,7 +359,7 @@
   background-image: var(--glass-sheen);
   backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-  border: 1px solid var(--glass-border);
+  border: none;
   box-shadow: var(--glass-depth);
 }
 
@@ -301,7 +368,7 @@
   background-image: var(--glass-sheen);
   backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
-  border: 1px solid var(--glass-border);
+  border: none;
   box-shadow: var(--glass-depth);
 }
 
