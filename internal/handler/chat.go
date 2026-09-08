@@ -114,6 +114,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Cyrene-Cache", "MISS")
 		rec := cache.NewRecorder(w)
 		defer func() {
+			if r := recover(); r != nil {
+				panic(r)
+			}
 			if rec.ShouldCache() {
 				ttl := time.Duration(settings.ResponseCacheTTL) * time.Second
 				if ttl <= 0 {
@@ -993,6 +996,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Cyrene-Cache", "MISS")
 		rec := cache.NewRecorder(w)
 		defer func() {
+			if r := recover(); r != nil {
+				panic(r)
+			}
 			if rec.ShouldCache() {
 				ttl := time.Duration(settings.ResponseCacheTTL) * time.Second
 				if ttl <= 0 {
@@ -1183,8 +1189,10 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Model string          `json:"model"`
-		Input json.RawMessage `json:"input"`
+		Model          string          `json:"model"`
+		Input          json.RawMessage `json:"input"`
+		Dimensions     int             `json:"dimensions,omitempty"`
+		EncodingFormat string          `json:"encoding_format,omitempty"`
 	}
 	if err := json.Unmarshal(rawBody, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -1222,6 +1230,9 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Cyrene-Cache", "MISS")
 		rec := cache.NewRecorder(w)
 		defer func() {
+			if r := recover(); r != nil {
+				panic(r)
+			}
 			if rec.ShouldCache() {
 				ttl := time.Duration(settings.ResponseCacheTTL) * time.Second
 				if ttl <= 0 {
@@ -1258,10 +1269,16 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		baseURL = conn.Data.BaseURL
 	}
 
-	// Forward with resolved model name
-	req.Model = modelInfo.Model
-	bodyBytes, _ := json.Marshal(req)
-
+	// Forward with resolved model name while preserving all client parameters (dimensions, encoding_format, etc.)
+	var bodyBytes []byte
+	var bodyMap map[string]any
+	if err := json.Unmarshal(rawBody, &bodyMap); err == nil {
+		bodyMap["model"] = modelInfo.Model
+		bodyBytes, _ = json.Marshal(bodyMap)
+	} else {
+		req.Model = modelInfo.Model
+		bodyBytes, _ = json.Marshal(req)
+	}
 	targetURL := strings.TrimRight(baseURL, "/") + "/embeddings"
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {

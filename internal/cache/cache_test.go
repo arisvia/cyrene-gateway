@@ -177,3 +177,35 @@ func TestResponseRecorder(t *testing.T) {
 		t.Errorf("expected Served Model gpt-4o, got %v", hMap["X-Cyrene-Served-Model"])
 	}
 }
+
+func TestResponseRecorderOverflow(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// 100 bytes limit
+	r := NewRecorderWithLimit(rec, 100)
+	r.WriteHeader(http.StatusOK)
+
+	// Writing 60 bytes: OK
+	r.Write(make([]byte, 60))
+	if !r.ShouldCache() {
+		t.Fatal("expected 60 bytes within 100 limit to be cacheable")
+	}
+
+	// Writing 50 more bytes: exceeds 100 limit -> overflow triggered and buffer wiped
+	r.Write(make([]byte, 50))
+	if r.ShouldCache() {
+		t.Fatal("expected overflowed recorder not to be cacheable")
+	}
+	if len(r.BodyBytes()) != 0 {
+		t.Fatalf("expected overflowed buffer to be cleared, got %d bytes", len(r.BodyBytes()))
+	}
+}
+
+func TestCacheMaxEntryBytes(t *testing.T) {
+	c := New(10, time.Hour)
+	oversized := make([]byte, MaxEntryBytes+10)
+	c.Set("k-huge", 200, nil, oversized, time.Hour, "huge-model", 0)
+
+	if _, hit := c.Get("k-huge"); hit {
+		t.Fatal("expected oversized entry to be rejected by Set")
+	}
+}

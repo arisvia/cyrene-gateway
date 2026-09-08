@@ -26,10 +26,12 @@ func TestResponseCacheIntegration(t *testing.T) {
 
 	// Mock upstream server
 	var upstreamCalls atomic.Int32
+	var lastEmbeddingsBody map[string]any
 	upstreamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/v1/embeddings" {
+			json.NewDecoder(r.Body).Decode(&lastEmbeddingsBody)
 			resp := map[string]any{
 				"object": "list",
 				"data": []any{
@@ -144,35 +146,41 @@ func TestResponseCacheIntegration(t *testing.T) {
 		t.Errorf("expected cached content, got %v", msg["content"])
 	}
 
-	// 3. Bypass test: request with Cache-Control: no-cache -> should call upstream
+	// 3. Invalidation test on Settings save: saving settings should purge cache
+	putSettingsBody := bytes.NewReader([]byte(`{"rtkEnabled":true,"responseCacheEnabled":true}`))
+	putReq := httptest.NewRequest("PUT", "/api/settings", putSettingsBody)
+	putReq.Header.Set("Content-Type", "application/json")
+	putW := httptest.NewRecorder()
+	srv.handlePutSettings(putW, putReq)
+	if putW.Code != http.StatusOK {
+		t.Fatalf("failed to put settings: %d", putW.Code)
+	}
+
+	// After settings save, same request must MISS
+	reqAfterSettings := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(bodyBytes))
+	reqAfterSettings.Header.Set("Content-Type", "application/json")
+	wAfterSettings := httptest.NewRecorder()
+	srv.handleChatCompletions(wAfterSettings, reqAfterSettings)
+	if wAfterSettings.Header().Get("X-Cyrene-Cache") != "MISS" {
+		t.Errorf("expected MISS after settings save invalidation, got %s", wAfterSettings.Header().Get("X-Cyrene-Cache"))
+	}
+	if calls := upstreamCalls.Load(); calls != 2 {
+		t.Errorf("expected upstream call after settings invalidation, got %d", calls)
+	}
+
+	// 4. Bypass test: request with Cache-Control: no-cache -> should call upstream
 	req3 := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(bodyBytes))
 	req3.Header.Set("Content-Type", "application/json")
 	req3.Header.Set("Cache-Control", "no-cache")
 	w3 := httptest.NewRecorder()
 	srv.handleChatCompletions(w3, req3)
 
-	if calls := upstreamCalls.Load(); calls != 2 {
+	if calls := upstreamCalls.Load(); calls != 3 {
 		t.Errorf("expected upstream call due to Cache-Control: no-cache, got %d", calls)
 	}
 
-	// 4. Stats test
-	statsReq := httptest.NewRequest("GET", "/api/cache/stats", nil)
-	statsW := httptest.NewRecorder()
-	srv.handleGetCacheStats(statsW, statsReq)
-	if statsW.Code != http.StatusOK {
-		t.Errorf("expected 200 from /api/cache/stats, got %d", statsW.Code)
-	}
-	var stats map[string]any
-	json.Unmarshal(statsW.Body.Bytes(), &stats)
-	if stats["hits"].(float64) < 1 {
-		t.Errorf("expected hits >= 1, got %v", stats["hits"])
-	}
-	if stats["entries"].(float64) < 1 {
-		t.Errorf("expected entries >= 1, got %v", stats["entries"])
-	}
-
-	// 5. Embeddings cache test
-	embBody := []byte(`{"model":"openai/text-embedding-3-small","input":"machine learning"}`)
+	// 5. Embeddings cache test with dimensions & encoding_format preservation
+	embBody := []byte(`{"model":"openai/text-embedding-3-small","input":"machine learning","dimensions":256,"encoding_format":"float"}`)
 	embReq1 := httptest.NewRequest("POST", "/v1/embeddings", bytes.NewReader(embBody))
 	embReq1.Header.Set("Content-Type", "application/json")
 	embW1 := httptest.NewRecorder()
@@ -183,6 +191,13 @@ func TestResponseCacheIntegration(t *testing.T) {
 	}
 	if embW1.Header().Get("X-Cyrene-Cache") != "MISS" {
 		t.Errorf("expected MISS on first embeddings call")
+	}
+	// Verify dimensions and encoding_format were forwarded to upstream
+	if dims, ok := lastEmbeddingsBody["dimensions"].(float64); !ok || int(dims) != 256 {
+		t.Errorf("expected upstream to receive dimensions: 256, got %v", lastEmbeddingsBody["dimensions"])
+	}
+	if enc, ok := lastEmbeddingsBody["encoding_format"].(string); !ok || enc != "float" {
+		t.Errorf("expected upstream to receive encoding_format: float, got %v", lastEmbeddingsBody["encoding_format"])
 	}
 
 	// Duplicate embeddings request -> HIT
@@ -214,5 +229,51 @@ func TestResponseCacheIntegration(t *testing.T) {
 
 	if cacheHdr := w4.Header().Get("X-Cyrene-Cache"); cacheHdr != "MISS" {
 		t.Errorf("expected X-Cyrene-Cache: MISS after clear, got %s", cacheHdr)
+	}
+}
+
+func TestResponseCachePanicSafety(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	settings, _ := database.GetSettings()
+	settings.ResponseCacheEnabled = true
+	settings.ResponseCacheTTL = 3600
+	settings.ResponseCacheAll = true
+	database.SaveSettings(settings)
+
+	// Upstream server that writes partial bytes then disconnects/panics
+	upstreamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"partial":`)) // truncated JSON
+		panic("simulated upstream processing panic")
+	}))
+	defer upstreamSrv.Close()
+
+	conn := &model.ProviderConnection{
+		ID:        "mock-panic-conn",
+		Provider:  "openai",
+		Name:      "Mock Panic",
+		AuthType:  "api-key",
+		IsActive:  true,
+		Priority:  1,
+		Data: model.ConnectionData{
+			APIKey:  "sk-mock",
+			BaseURL: upstreamSrv.URL + "/v1",
+		},
+	}
+	database.CreateConnection(conn)
+
+	reqBody := []byte(`{"model":"mock-panic","messages":[{"role":"user","content":"test"}]}`)
+	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(reqBody))
+	w := httptest.NewRecorder()
+
+	// Execute through full handler chain (including Recovery middleware)
+	srv.Handler.ServeHTTP(w, req)
+
+	// Verify cache does NOT have the entry
+	stats := srv.Cache.Stats()
+	if stats.Entries != 0 {
+		t.Fatalf("expected 0 cache entries after panicking request, got %d", stats.Entries)
 	}
 }

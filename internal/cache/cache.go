@@ -94,8 +94,14 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 	return entry, true
 }
 
+// MaxEntryBytes enforces a hard size cap per cached response entry (2 MiB).
+const MaxEntryBytes = 2 * 1024 * 1024
+
 // Set inserts or updates an entry in the cache.
 func (c *Cache) Set(key string, statusCode int, headers map[string]string, body []byte, ttl time.Duration, servedModel string, tokensSaved int) {
+	if len(body) > MaxEntryBytes {
+		return
+	}
 	if ttl <= 0 {
 		ttl = c.defaultTTL
 	}

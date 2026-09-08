@@ -7,20 +7,34 @@ import (
 	"strings"
 )
 
+// DefaultMaxBodyBytes limits the maximum response size cached per entry (2 MiB).
+const DefaultMaxBodyBytes = 2 * 1024 * 1024
+
 // ResponseRecorder wraps an http.ResponseWriter to capture status code, headers,
 // and body for response caching without breaking streaming or underlying behavior.
 type ResponseRecorder struct {
-	underlying  http.ResponseWriter
-	statusCode  int
-	body        bytes.Buffer
-	wroteHeader bool
+	underlying   http.ResponseWriter
+	statusCode   int
+	body         bytes.Buffer
+	wroteHeader  bool
+	overflow     bool
+	maxBodyBytes int
 }
 
-// NewRecorder creates a ResponseRecorder wrapping w.
+// NewRecorder creates a ResponseRecorder wrapping w with DefaultMaxBodyBytes limit.
 func NewRecorder(w http.ResponseWriter) *ResponseRecorder {
+	return NewRecorderWithLimit(w, DefaultMaxBodyBytes)
+}
+
+// NewRecorderWithLimit creates a ResponseRecorder with a custom maximum body size limit.
+func NewRecorderWithLimit(w http.ResponseWriter, maxBytes int) *ResponseRecorder {
+	if maxBytes <= 0 {
+		maxBytes = DefaultMaxBodyBytes
+	}
 	return &ResponseRecorder{
-		underlying: w,
-		statusCode: http.StatusOK,
+		underlying:   w,
+		statusCode:   http.StatusOK,
+		maxBodyBytes: maxBytes,
 	}
 }
 
@@ -44,10 +58,15 @@ func (r *ResponseRecorder) Write(b []byte) (int, error) {
 		r.WriteHeader(http.StatusOK)
 	}
 	n, err := r.underlying.Write(b)
-	if err == nil && r.statusCode >= 200 && r.statusCode < 300 {
+	if err == nil && r.statusCode >= 200 && r.statusCode < 300 && !r.overflow {
 		ct := r.underlying.Header().Get("Content-Type")
 		if !strings.Contains(ct, "text/event-stream") {
-			r.body.Write(b[:n])
+			if r.body.Len()+n > r.maxBodyBytes {
+				r.overflow = true
+				r.body.Reset() // release memory immediately
+			} else {
+				r.body.Write(b[:n])
+			}
 		}
 	}
 	return n, err
@@ -60,9 +79,9 @@ func (r *ResponseRecorder) Flush() {
 	}
 }
 
-// ShouldCache checks if the recorded response satisfies caching conditions (2xx, non-SSE, non-empty).
+// ShouldCache checks if the recorded response satisfies caching conditions (2xx, non-SSE, non-empty, no overflow).
 func (r *ResponseRecorder) ShouldCache() bool {
-	if r.statusCode < 200 || r.statusCode >= 300 {
+	if r.overflow || r.statusCode < 200 || r.statusCode >= 300 {
 		return false
 	}
 	ct := r.underlying.Header().Get("Content-Type")

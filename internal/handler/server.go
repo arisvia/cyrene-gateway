@@ -952,6 +952,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
 	}
+	if s.Cache != nil {
+		s.Cache.Clear()
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
@@ -986,6 +989,9 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.SaveSettings(&updated); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
+	}
+	if s.Cache != nil {
+		s.Cache.Clear()
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
@@ -1342,6 +1348,9 @@ func (s *Server) handleCreateCombo(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create combo"})
 		return
 	}
+	if s.Cache != nil {
+		s.Cache.Clear()
+	}
 	writeJSON(w, http.StatusCreated, c)
 }
 
@@ -1390,6 +1399,9 @@ func (s *Server) handleUpdateCombo(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update combo"})
 		return
 	}
+	if s.Cache != nil {
+		s.Cache.Clear()
+	}
 	s.Combos.ResetRotation(existing.Name)
 	writeJSON(w, http.StatusOK, existing)
 }
@@ -1399,6 +1411,9 @@ func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 	if err := s.DB.DeleteCombo(id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete combo"})
 		return
+	}
+	if s.Cache != nil {
+		s.Cache.Clear()
 	}
 	s.Combos.ResetRotation("")
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
