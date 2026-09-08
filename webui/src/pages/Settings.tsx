@@ -2,18 +2,16 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
-import { Card, Badge, Button, Input, Select, Toggle, Field } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
+import { toast } from '@/lib/toast'
 const Settings: Component = () => {
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
   const [saving, setSaving] = createSignal(false)
   const [local, setLocal] = createSignal<Record<string, unknown>>({})
   const [pw, setPw] = createSignal('')
-  const [pwMsg, setPwMsg] = createSignal('')
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
-  const [bgMsg, setBgMsg] = createSignal('')
-
   onMount(async () => {
     await store.loadSettings()
     setLocal({ ...store.settings() })
@@ -31,18 +29,26 @@ const Settings: Component = () => {
 
   async function save() {
     setSaving(true)
-    try { await store.saveSettings(local()) } catch (e) { console.error(e) }
-    finally { setSaving(false) }
+    try {
+      await store.saveSettings(local())
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '保存设置失败')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function changePassword() {
-    if (pw().length < 8) { setPwMsg('密码至少 8 位'); return }
-    setPwMsg('')
+    if (pw().length < 8) {
+      toast.warning('新密码长度至少需要 8 位')
+      return
+    }
     try {
       await store.setPassword(pw())
       setPw('')
-      setPwMsg('密码已更新')
-    } catch (e: unknown) { setPwMsg(e instanceof Error ? e.message : '设置失败') }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '密码更新失败')
+    }
   }
 
   return (
@@ -68,9 +74,15 @@ const Settings: Component = () => {
               size="sm"
               variant="danger"
               onClick={async () => {
+                const ok = await confirm({
+                  title: '清除自定义壁纸',
+                  message: '确定要清除当前壁纸并恢复默认纯净背景吗？',
+                  variant: 'danger',
+                })
+                if (!ok) return
                 await bgStore.resetBackground()
                 setBgUrlInput('')
-                setBgMsg('已恢复默认背景')
+                toast.success('已恢复默认背景')
               }}
             >
               清除壁纸
@@ -100,7 +112,7 @@ const Settings: Component = () => {
                     blur: bgStore.bgConfig().blur ?? 0,
                     opacity: bgStore.bgConfig().opacity ?? 1,
                   })
-                  setBgMsg('已应用远程壁纸')
+                  toast.success('已应用远程壁纸')
                 }}
               >
                 应用
@@ -135,7 +147,7 @@ const Settings: Component = () => {
                         blur: bgStore.bgConfig().blur ?? 0,
                         opacity: bgStore.bgConfig().opacity ?? 1,
                       })
-                      setBgMsg(`已加载本地图片 (${file.name})`)
+                      toast.success(`已加载本地图片 (${file.name})`)
                     }
                     reader.readAsDataURL(file)
                   }}
@@ -194,9 +206,7 @@ const Settings: Component = () => {
           </div>
         </Show>
 
-        <Show when={bgMsg()}>
-          <p class="text-xs text-accent mt-1">{bgMsg()}</p>
-        </Show>
+
       </Card>
 
       {/* 访问控制 */}
@@ -259,10 +269,8 @@ const Settings: Component = () => {
         </Field>
         <div class="flex items-center gap-2">
           <Button variant="secondary" disabled={pw().length < 8} onClick={changePassword}>更新密码</Button>
-          <Show when={pwMsg()}><span class="text-xs text-faint">{pwMsg()}</span></Show>
         </div>
       </Card>
-
       {/* 版本 */}
       <Card class="p-5">
         <div class="flex items-center justify-between text-xs text-faint">

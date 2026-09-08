@@ -1,13 +1,14 @@
 import { createSignal, Show, type Component, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Button } from '@/components/ui'
+import { IconAlertCircle, IconAlertTriangle, IconInfo } from '@/components/ui/icons'
 
 export interface ConfirmOptions {
   title?: string
   message: string
   confirmText?: string
   cancelText?: string
-  variant?: 'danger' | 'primary'
+  variant?: 'danger' | 'warning' | 'primary'
 }
 
 interface DialogState extends ConfirmOptions {
@@ -90,33 +91,28 @@ export const ConfirmDialogHost: Component = () => {
         >
           <div class="flex items-start gap-4">
             <div
-              class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
                 s().variant === 'danger'
-                  ? 'bg-danger/15 text-danger border border-danger/30'
-                  : 'bg-accent/15 text-accent border border-accent/30'
+                  ? 'bg-danger/15 text-danger border-danger/30'
+                  : s().variant === 'warning'
+                    ? 'bg-warning/15 text-warning border-warning/30'
+                    : 'bg-accent/15 text-accent border-accent/30'
               }`}
             >
-              <Show
-                when={s().variant === 'danger'}
-                fallback={
-                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="16" x2="12" y2="12" />
-                    <line x1="12" y1="8" x2="12.01" y2="8" />
-                  </svg>
-                }
-              >
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
+              <Show when={s().variant === 'danger'}>
+                <IconAlertCircle size="md" class="w-5 h-5" />
+              </Show>
+              <Show when={s().variant === 'warning'}>
+                <IconAlertTriangle size="md" class="w-5 h-5" />
+              </Show>
+              <Show when={s().variant !== 'danger' && s().variant !== 'warning'}>
+                <IconInfo size="md" class="w-5 h-5" />
               </Show>
             </div>
 
             <div class="flex-1 min-w-0">
               <h3 class="text-base font-semibold text-foreground leading-snug">
-                {s().title || (s().variant === 'danger' ? '确认操作' : '提示')}
+                {s().title || (s().variant === 'danger' ? '确认操作' : s().variant === 'warning' ? '重要提醒' : '提示')}
               </h3>
               <p class="text-sm text-muted mt-1.5 leading-relaxed whitespace-pre-wrap break-words">
                 {s().message}

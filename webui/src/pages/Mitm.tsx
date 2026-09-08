@@ -1,6 +1,7 @@
 import { type Component, For, Show, createSignal, createResource } from 'solid-js'
 import { api, apiPost } from '@/lib/api'
-import { Card, Badge, Button, Empty, Skeleton } from '@/components/ui'
+import { Card, Badge, Button, Empty, Skeleton, confirm } from '@/components/ui'
+import { toast } from '@/lib/toast'
 
 interface MitmStatus {
   enabled?: boolean
@@ -29,9 +30,30 @@ const Mitm: Component = () => {
   const [busy, setBusy] = createSignal('')
 
   async function act(kind: string, path: string) {
+    if (kind === 'stop') {
+      const ok = await confirm({
+        title: '停止 MITM 调试代理',
+        message: '确定要停止本地流量抓包代理吗？运行中的 CLI 抓包将被中断。',
+        variant: 'warning',
+      })
+      if (!ok) return
+    }
     setBusy(kind)
-    try { await apiPost(path); await refetch() } catch (e) { console.error(e) }
-    finally { setBusy('') }
+    try {
+      await apiPost(path)
+      await refetch()
+      toast.success(kind === 'start' ? 'MITM 代理已启动' : 'MITM 代理已停止')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '操作失败')
+      console.error(e)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function handleRefreshTraffic() {
+    await refetchTraffic()
+    toast.info('流量记录已刷新')
   }
 
   return (
@@ -63,7 +85,7 @@ const Mitm: Component = () => {
               <Show when={status()?.running}>
                 <Button variant="danger" loading={busy() === 'stop'} onClick={() => act('stop', '/api/mitm/stop')}>停止</Button>
               </Show>
-              <Button variant="secondary" onClick={() => refetchTraffic()}>刷新流量</Button>
+              <Button variant="secondary" onClick={handleRefreshTraffic}>刷新流量</Button>
               <a href="/api/mitm/cert" target="_blank" rel="noreferrer">
                 <Button variant="ghost">下载证书</Button>
               </a>

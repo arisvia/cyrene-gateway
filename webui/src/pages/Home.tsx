@@ -146,7 +146,6 @@ const Home: Component = () => {
                       try {
                         await store.createKey(n)
                         setKeyName('')
-                        toast.success(`API Key「${n}」创建成功`)
                       } catch (err) {
                         console.error(err)
                         toast.error('创建密钥失败')
@@ -169,7 +168,6 @@ const Home: Component = () => {
                     try {
                       await store.createKey(n)
                       setKeyName('')
-                      toast.success(`API Key「${n}」创建成功`)
                     } catch (err) {
                       console.error(err)
                       toast.error('创建密钥失败')
@@ -232,7 +230,6 @@ const Home: Component = () => {
                                   })
                                   if (ok) {
                                     await store.deleteKey(k.id)
-                                    toast.info('密钥已删除')
                                   }
                                 }}
                             >

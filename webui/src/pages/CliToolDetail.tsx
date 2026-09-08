@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createResource } from 'solid-js'
 import { A, useParams } from '@solidjs/router'
 import { api, apiPost, apiDelete } from '@/lib/api'
-import { Card, Badge, Button, Input, Empty, Skeleton, ProviderAvatar } from '@/components/ui'
+import { Card, Badge, Button, Input, Empty, Skeleton, ProviderAvatar, Alert, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import type { CLITool } from '@/types/domain'
 
@@ -73,6 +73,12 @@ const CliToolDetail: Component = () => {
 
   async function handleReset() {
     if (!tool()) return
+    const ok = await confirm({
+      title: '恢复默认设置',
+      message: `确定要将「${t().name}」恢复为官方默认设置吗？已写入的网关代理参数将被清除。`,
+      variant: 'danger',
+    })
+    if (!ok) return
     setBusy(true)
     try {
       await apiDelete('/api/cli-tools/' + t().id)
@@ -155,17 +161,11 @@ const CliToolDetail: Component = () => {
               <div class="grid gap-2 mt-5 pt-4 border-t border-subtle/50">
                 <For each={t().notes ?? []}>
                   {n => (
-                    <div
-                      class={`px-3.5 py-2.5 rounded-xl text-xs border ${
-                        n.type === 'warning'
-                          ? 'border-warning/30 bg-warning/10 text-warning'
-                          : n.type === 'error'
-                          ? 'border-danger/30 bg-danger/10 text-danger'
-                          : 'border-subtle bg-hover/40 text-muted'
-                      }`}
+                    <Alert
+                      variant={n.type === 'error' ? 'danger' : n.type === 'warning' ? 'warning' : 'info'}
                     >
                       {n.text}
-                    </div>
+                    </Alert>
                   )}
                 </For>
               </div>

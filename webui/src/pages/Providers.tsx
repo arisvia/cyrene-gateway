@@ -22,6 +22,7 @@ import {
   IconZap,
   IconCheck,
   IconClose,
+  Alert,
 } from '@/components/ui'
 import {api, apiPost} from '@/lib/api'
 import {useToast} from '@/lib/toast'
@@ -1221,13 +1222,14 @@ const Providers: Component = () => {
                   <div class="space-y-3">
                     {/* 错误提示始终渲染在外层，杜绝静默吞错 */}
                     <Show when={wizardOAuthError()}>
-                      <div class="p-3 rounded-xl bg-danger/10 border border-danger/30 text-xs text-danger flex items-start gap-2">
-                        <span class="shrink-0 mt-0.5 font-bold">✕</span>
-                        <div class="flex-1">
-                          <div class="font-semibold">授权遇到问题</div>
-                          <div class="mt-0.5 leading-relaxed">{wizardOAuthError()}</div>
-                        </div>
-                      </div>
+                      <Alert
+                        variant="danger"
+                        title="授权遇到问题"
+                        closable
+                        onClose={() => setWizardOAuthError('')}
+                      >
+                        {wizardOAuthError()}
+                      </Alert>
                     </Show>
 
                     {/* 令牌导入界面 (如 Cursor) */}

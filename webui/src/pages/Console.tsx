@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, createResource } from 'solid-js'
 import { api, apiPost } from '@/lib/api'
-import { Card, Badge, Button, Input, Select, Empty } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Empty, Alert } from '@/components/ui'
 
 interface Turn { role: string; content: string }
 
@@ -81,7 +81,7 @@ const Console: Component = () => {
       </Card>
 
       <Show when={err()}>
-        <div class="px-3 py-2 rounded-control text-xs bg-danger/10 text-danger">{err()}</div>
+        <Alert variant="danger" closable onClose={() => setErr('')}>{err()}</Alert>
       </Show>
 
       <Card class="p-3 flex gap-2">

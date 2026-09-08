@@ -1,7 +1,8 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
+import { toast } from '@/lib/toast'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
 
@@ -121,8 +122,11 @@ const Media: Component = () => {
       if (model()) body.model = model()
       const r = await apiPost(cap.endpoint, body)
       setResult(r)
+      toast.success(`${cap.label} 调用完成`)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '请求失败')
+      const msg = e instanceof Error ? e.message : '请求失败'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setBusy(false)
     }
@@ -298,9 +302,7 @@ const Media: Component = () => {
           </div>
 
           <Show when={error()}>
-            <div class="px-3 py-2 rounded-control text-xs bg-danger/10 text-danger border border-danger/20">
-              {error()}
-            </div>
+            <Alert variant="danger">{error()}</Alert>
           </Show>
 
           {/* 生图结果预览画廊 */}

@@ -1,8 +1,9 @@
 import { type Component, For, Show, createSignal, createMemo, createResource } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
+import { toast } from '@/lib/toast'
 import type { Combo } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Modal, Field, Empty, IconClose } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Modal, Field, Empty, IconClose, confirm } from '@/components/ui'
 
 const STRATEGY_LABEL: Record<string, string> = {
   fallback: '故障回退', 'round-robin': '轮询',
@@ -73,8 +74,9 @@ const Combos: Component = () => {
         models: form().models,
       })
       setOpen(false)
-    } catch (e) { console.error('[combos] save failed:', e) }
-    finally { setSaving(false) }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '保存组合失败')
+    } finally { setSaving(false) }
   }
 
   return (
@@ -121,7 +123,22 @@ const Combos: Component = () => {
                   </div>
                   <div class="flex gap-1.5 shrink-0">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>编辑</Button>
-                    <Button size="sm" variant="danger" onClick={() => store.deleteCombo(c.id)}>删除</Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: '删除模型组合',
+                          message: `确定要删除组合「${c.name}」吗？依赖此组合的下游请求将无法正常解析。`,
+                          variant: 'danger',
+                        })
+                        if (ok) {
+                          await store.deleteCombo(c.id)
+                        }
+                      }}
+                    >
+                      删除
+                    </Button>
                   </div>
                 </div>
               </Card>

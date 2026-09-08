@@ -1,7 +1,8 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty } from '@/components/ui'
+import { toast } from '@/lib/toast'
+import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
@@ -34,8 +35,9 @@ const ProxyPools: Component = () => {
     try {
       await store.saveProxyPool({ id: editing()?.id, ...f })
       setOpen(false)
-    } catch (e) { console.error('[pools] save failed:', e) }
-    finally { setSaving(false) }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '保存代理池失败')
+    } finally { setSaving(false) }
   }
 
   return (
@@ -70,7 +72,22 @@ const ProxyPools: Component = () => {
                   <div class="flex items-center gap-1.5 shrink-0">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>编辑</Button>
                     <Toggle checked={p.isActive} onChange={() => store.toggleProxyPool(p)} />
-                    <Button size="sm" variant="danger" onClick={() => store.deleteProxyPool(p.id)}>删除</Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: '删除代理池',
+                          message: `确定要删除代理池「${p.name}」吗？绑定该代理池的提供商将恢复直连模式。`,
+                          variant: 'danger',
+                        })
+                        if (ok) {
+                          await store.deleteProxyPool(p.id)
+                        }
+                      }}
+                    >
+                      删除
+                    </Button>
                   </div>
                 </div>
               </Card>

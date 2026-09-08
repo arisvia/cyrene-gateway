@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, createResource, createMemo } f
 import type { CLITool } from '@/types/domain'
 import { A } from '@solidjs/router'
 import { api, apiPost, apiDelete } from '@/lib/api'
-import { Card, Badge, Button, Input, Empty, Skeleton, ProviderAvatar } from '@/components/ui'
+import { Card, Badge, Button, Input, Empty, Skeleton, ProviderAvatar, Alert, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 
 interface ToolRow extends CLITool {
@@ -86,6 +86,12 @@ const CliTools: Component = () => {
   }
 
   async function reset(id: string) {
+    const ok = await confirm({
+      title: '重置 CLI 配置',
+      message: `确定要清除「${id}」的网关代理配置并还原吗？`,
+      variant: 'danger',
+    })
+    if (!ok) return
     setBusy(id)
     setErr('')
     try {
@@ -211,10 +217,7 @@ const CliTools: Component = () => {
       </div>
 
       <Show when={err()}>
-        <div class="px-4 py-3 rounded-xl text-xs bg-danger/10 text-danger border border-danger/20 flex items-center justify-between">
-          <span>{err()}</span>
-          <button type="button" onClick={() => setErr('')} class="underline ml-4">关闭</button>
-        </div>
+        <Alert variant="danger" closable onClose={() => setErr('')}>{err()}</Alert>
       </Show>
 
       {/* 工具网格卡片 */}

@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm, alert } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, Alert, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm, alert } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -596,13 +596,29 @@ const ProviderDetail: Component = () => {
 
   async function addCustomModel(modelId: string, modelName: string) {
     if (!modelId.trim()) return
-    await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || modelId.trim() })
-    refetchModels()
+    try {
+      await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || modelId.trim() })
+      toast.success(`已添加自定义模型「${modelId.trim()}」`)
+      refetchModels()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '添加模型失败')
+    }
   }
 
   async function removeCustomModel(modelId: string) {
-    await store.deleteProviderModel(params.id, modelId)
-    refetchModels()
+    const ok = await confirm({
+      title: '删除模型',
+      message: `确定要删除自定义模型「${modelId}」吗？`,
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await store.deleteProviderModel(params.id, modelId)
+      toast.success(`已删除模型「${modelId}」`)
+      refetchModels()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '删除模型失败')
+    }
   }
 
   return (
@@ -1310,9 +1326,9 @@ const ProviderDetail: Component = () => {
                 </Card>
 
                 <Show when={chatErr()}>
-                  <div class="px-3.5 py-2.5 rounded-xl text-xs bg-danger/10 text-danger border border-danger/20">
+                  <Alert variant="danger" closable onClose={() => setChatErr('')}>
                     {chatErr()}
-                  </div>
+                  </Alert>
                 </Show>
 
                 <Card class="p-3 flex gap-2">
@@ -1485,10 +1501,9 @@ const ProviderDetail: Component = () => {
           {/* 1. 纯错误展示（未处于导入流程时优先接管展示与重试） */}
           <Show when={deviceError() && !isImportFlow()}>
             <div class="space-y-4 py-2">
-              <div class="p-3 rounded-card bg-danger/10 border border-danger/30 text-xs text-danger text-left">
-                <div class="font-semibold mb-1">授权遇到问题</div>
-                <div class="leading-relaxed">{deviceError()}</div>
-              </div>
+              <Alert variant="danger" title="授权遇到问题">
+                {deviceError()}
+              </Alert>
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
                   关闭
@@ -1516,9 +1531,9 @@ const ProviderDetail: Component = () => {
                 />
               </div>
               <Show when={deviceError()}>
-                <div class="p-2.5 rounded bg-danger/10 border border-danger/30 text-xs text-danger">
+                <Alert variant="danger">
                   {deviceError()}
-                </div>
+                </Alert>
               </Show>
               <div class="flex justify-end gap-2 pt-2 border-t border-subtle">
                 <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>

@@ -1,7 +1,7 @@
 import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { useToast } from '@/lib/toast'
-import { IconClose } from './icons'
+import { useToast, dismiss } from '@/lib/toast'
+import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo } from './icons'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export * from './icons'
 export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
@@ -105,22 +105,156 @@ export const StatusPulse: Component<{
 
 export function ToastHost() {
   const { toasts } = useToast()
+
+  const kindStyles = {
+    success: {
+      card: 'border-success/30 bg-bg-elevated/95',
+      iconWrap: 'bg-success/15 text-success border-success/30',
+    },
+    error: {
+      card: 'border-danger/30 bg-bg-elevated/95',
+      iconWrap: 'bg-danger/15 text-danger border-danger/30',
+    },
+    warning: {
+      card: 'border-warning/30 bg-bg-elevated/95',
+      iconWrap: 'bg-warning/15 text-warning border-warning/30',
+    },
+    info: {
+      card: 'border-subtle bg-bg-elevated/95',
+      iconWrap: 'bg-accent/15 text-accent border-accent/30',
+    },
+  }
+
   return (
-    <div class="fixed top-4 right-4 z-[80] space-y-2" role="status" aria-live="polite">
+    <div class="fixed top-4 right-4 z-[130] w-full max-w-sm pointer-events-none flex flex-col gap-2.5 px-3 sm:px-0" role="status" aria-live="polite">
       <For each={toasts()}>
-        {t => (
-          <div
-            class={`max-w-sm px-4 py-2.5 rounded-xl text-sm shadow-lg border backdrop-blur-xl animate-slide-up ${t.kind === 'success'
-              ? 'border-success/30 bg-success/10 text-success'
-              : t.kind === 'error'
-                ? 'border-danger/30 bg-danger/10 text-danger'
-                : 'border-subtle bg-bg-elevated text-text'}`}
-          >
-            {t.message}
-          </div>
-        )}
+        {t => {
+          const style = () => kindStyles[t.kind] || kindStyles.info
+          return (
+            <div
+              class={`pointer-events-auto relative w-full p-3 rounded-xl border shadow-glass-hover backdrop-blur-2xl transition-all duration-200 animate-slide-up flex items-start gap-3 select-none ${style().card}`}
+            >
+              <div class={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border mt-0.5 ${style().iconWrap}`}>
+                <Show when={t.kind === 'success'}>
+                  <IconCheck size="sm" class="w-3.5 h-3.5" />
+                </Show>
+                <Show when={t.kind === 'error'}>
+                  <IconAlertCircle size="sm" class="w-3.5 h-3.5" />
+                </Show>
+                <Show when={t.kind === 'warning'}>
+                  <IconAlertTriangle size="sm" class="w-3.5 h-3.5" />
+                </Show>
+                <Show when={t.kind === 'info'}>
+                  <IconInfo size="sm" class="w-3.5 h-3.5" />
+                </Show>
+              </div>
+
+              <div class="flex-1 min-w-0 pt-0.5">
+                <Show when={t.title}>
+                  <div class="text-xs font-semibold text-foreground mb-0.5 leading-snug">
+                    {t.title}
+                  </div>
+                </Show>
+                <div class="text-xs text-muted leading-relaxed break-words whitespace-pre-wrap">
+                  {t.message}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                aria-label="关闭提示"
+                onClick={() => dismiss(t.id)}
+                class="text-faint hover:text-foreground p-1 rounded-md hover:bg-hover transition-colors shrink-0 -mr-1 -mt-1 cursor-pointer"
+              >
+                <IconClose size="xs" class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )
+        }}
       </For>
     </div>
+  )
+}
+
+export const Alert: Component<{
+  variant?: 'info' | 'success' | 'warning' | 'danger'
+  title?: string
+  children?: JSX.Element
+  closable?: boolean
+  onClose?: () => void
+  class?: string
+}> = props => {
+  const [closed, setClosed] = createSignal(false)
+  const variant = () => props.variant ?? 'info'
+
+  const styles = {
+    info: {
+      box: 'border-subtle bg-bg-elevated/80 text-foreground',
+      iconWrap: 'text-accent',
+    },
+    success: {
+      box: 'border-success/30 bg-success/10 text-foreground',
+      iconWrap: 'text-success',
+    },
+    warning: {
+      box: 'border-warning/30 bg-warning/10 text-foreground',
+      iconWrap: 'text-warning',
+    },
+    danger: {
+      box: 'border-danger/30 bg-danger/10 text-foreground',
+      iconWrap: 'text-danger',
+    },
+  }
+
+  const s = () => styles[variant()] || styles.info
+
+  return (
+    <Show when={!closed()}>
+      <div
+        role="alert"
+        class={`relative flex items-start gap-3 p-3.5 rounded-xl border backdrop-blur-md text-xs transition-all duration-150 ${s().box} ${props.class ?? ''}`}
+      >
+        <div class={`shrink-0 mt-0.5 ${s().iconWrap}`}>
+          <Show when={variant() === 'success'}>
+            <IconCheck size="sm" class="w-4 h-4" />
+          </Show>
+          <Show when={variant() === 'danger'}>
+            <IconAlertCircle size="sm" class="w-4 h-4" />
+          </Show>
+          <Show when={variant() === 'warning'}>
+            <IconAlertTriangle size="sm" class="w-4 h-4" />
+          </Show>
+          <Show when={variant() === 'info'}>
+            <IconInfo size="sm" class="w-4 h-4" />
+          </Show>
+        </div>
+
+        <div class="flex-1 min-w-0">
+          <Show when={props.title}>
+            <div class="font-semibold text-foreground mb-0.5 leading-snug">
+              {props.title}
+            </div>
+          </Show>
+          <div class="text-muted leading-relaxed break-words">
+            {props.children}
+          </div>
+        </div>
+
+        <Show when={props.closable}>
+          <button
+            type="button"
+            aria-label="关闭提示"
+            onClick={() => {
+              setClosed(true)
+              props.onClose?.()
+            }}
+            class="text-faint hover:text-foreground p-1 rounded-md hover:bg-hover transition-colors shrink-0 -mr-1 -mt-1 cursor-pointer"
+          >
+            <IconClose size="xs" class="w-3.5 h-3.5" />
+          </button>
+        </Show>
+      </div>
+    </Show>
   )
 }
 

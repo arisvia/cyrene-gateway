@@ -1,7 +1,8 @@
 import { type Component, For, Show, createSignal, createResource } from 'solid-js'
 import { api } from '@/lib/api'
 import type { BadgeTone, TunnelStatus } from '@/types/domain'
-import { Card, Badge, Button, Empty, Skeleton } from '@/components/ui'
+import { Card, Badge, Button, Empty, Skeleton, confirm } from '@/components/ui'
+import { toast } from '@/lib/toast'
 
 const Tunnel: Component = () => {
   const [status, { refetch }] = createResource(async () => {
@@ -16,7 +17,12 @@ const Tunnel: Component = () => {
     setBusy('install'); setLogs([])
     try {
       const res = await fetch('/api/tunnel/tailscale-install', { method: 'POST' })
-      if (!res.body) { setMsg('无法读取安装流'); return }
+      if (!res.body) {
+        const err = '无法读取安装流'
+        setMsg(err)
+        toast.error(err)
+        return
+      }
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
@@ -32,26 +38,54 @@ const Tunnel: Component = () => {
           let payload: { message?: string; error?: string; success?: boolean } = {}
           try { payload = JSON.parse(dataLine.slice(5).trim()) } catch { continue }
           if (payload.message) setLogs(l => [...l, payload.message!])
-          if (payload.error) { setLogs(l => [...l, '错误：' + payload.error]); setMsg(payload.error) }
-          if (payload.success) setMsg('安装完成')
+          if (payload.error) {
+            setLogs(l => [...l, '错误：' + payload.error])
+            setMsg(payload.error)
+            toast.error(`Tailscale 安装失败: ${payload.error}`)
+          }
+          if (payload.success) {
+            setMsg('安装完成')
+            toast.success('Tailscale 安装完成')
+          }
         }
       }
       await refetch()
-    } catch (e: unknown) { setMsg(e instanceof Error ? e.message : '安装失败') }
-    finally { setBusy('') }
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e.message : '安装失败'
+      setMsg(err)
+      toast.error(err)
+    } finally { setBusy('') }
   }
 
   async function act(kind: string, path: string) {
+    if (kind === 'disable') {
+      const ok = await confirm({
+        title: '关闭 Funnel 远程访问',
+        message: '确定要关闭 Tailscale Funnel 吗？公网访问地址将立即失效。',
+        variant: 'warning',
+      })
+      if (!ok) return
+    }
     setBusy(kind); setMsg('')
     try {
       const res = await fetch(path, { method: 'POST' })
       let payload: { error?: string; message?: string; url?: string } | null = null
       try { payload = await res.json() } catch { /* 非 JSON 响应 */ }
-      if (!res.ok) setMsg(payload?.error || ('HTTP ' + res.status))
-      else setMsg(payload?.message || payload?.url || '已完成')
+      if (!res.ok) {
+        const err = payload?.error || ('HTTP ' + res.status)
+        setMsg(err)
+        toast.error(err)
+      } else {
+        const succ = payload?.message || (payload?.url ? `Funnel 已开启: ${payload.url}` : '操作已完成')
+        setMsg(succ)
+        toast.success(succ)
+      }
       await refetch()
-    } catch (e: unknown) { setMsg(e instanceof Error ? e.message : '操作失败') }
-    finally { setBusy('') }
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e.message : '操作失败'
+      setMsg(err)
+      toast.error(err)
+    } finally { setBusy('') }
   }
 
   const Row = (props: { label: string; value: string | number | boolean | undefined | null; tone?: BadgeTone }) => (
