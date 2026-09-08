@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, Alert, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, Alert, PageHeader, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -623,33 +623,41 @@ const ProviderDetail: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      {/* 顶部吸顶区：保证「← 返回连接列表」与操作栏永远触手可及 */}
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 shadow-glass transition-all">
-        <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 mb-1">
-          ← 返回连接列表
-        </A>
-        <Show when={!loading() && conn()}>
-          {c => (
-            <div class="flex items-center gap-3 mt-1 flex-wrap">
-              <h1 class="text-xl font-semibold">{c().name || c().provider}</h1>
-              <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? '启用' : '停用'}</Badge>
-              <Badge tone="blue">{c().authType}</Badge>
-              <span class="text-xs text-faint font-mono">{c().id.slice(0, 12)}…</span>
-              <div class="ml-auto flex items-center gap-3">
+      <Show when={!loading() && conn()}>
+        {c => (
+          <PageHeader
+            title={
+              <div class="flex items-center gap-2.5">
+                <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 font-normal">
+                  ← 返回
+                </A>
+                <span>{c().name || c().provider}</span>
+              </div>
+            }
+            badge={
+              <div class="flex items-center gap-2 flex-wrap">
+                <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? '启用' : '停用'}</Badge>
+                <Badge tone="blue">{c().authType}</Badge>
+                <span class="text-xs text-faint font-mono">{c().id.slice(0, 12)}…</span>
+              </div>
+            }
+            actions={
+              <div class="flex items-center gap-3">
                 <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
                 <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
-            </div>
-          )}
-        </Show>
-        <Show when={testResult()}>
-          <div class={`mt-2 text-xs px-3 py-1.5 rounded-control inline-block ${testResult()!.ok
-            ? 'bg-success/10 text-success'
-            : 'bg-danger/10 text-danger'}`}>
-            {testResult()!.msg}
-          </div>
-        </Show>
-      </div>
+            }
+          >
+            <Show when={testResult()}>
+              <div class={`text-xs px-3 py-1.5 rounded-control inline-block ${testResult()!.ok
+                ? 'bg-success/10 text-success'
+                : 'bg-danger/10 text-danger'}`}>
+                {testResult()!.msg}
+              </div>
+            </Show>
+          </PageHeader>
+        )}
+      </Show>
 
       <Show when={loading()}>
         <Card class="p-6 space-y-3"><Skeleton class="h-6 w-48" /><Skeleton class="h-4 w-full" /><Skeleton class="h-4 w-2/3" /></Card>

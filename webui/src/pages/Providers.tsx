@@ -9,6 +9,7 @@ import {
   Field,
   Input,
   Modal,
+  PageHeader,
   ProviderAvatar,
   Select,
   IconChat,
@@ -640,18 +641,11 @@ const Providers: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      {/* 头部标题与视窗切换：悬浮圆角毛玻璃卡片 */}
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card p-4 sm:p-5 space-y-3 shadow-glass transition-all">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 class="text-xl font-semibold">模型提供商接入</h1>
-            <p class="text-sm text-faint mt-0.5">
-              统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池
-            </p>
-          </div>
-
-          {/* 现代分段切换药丸 (Segmented Control) */}
-          <div class="inline-flex p-1 rounded-xl bg-card border border-subtle shadow-sm">
+      <PageHeader
+        title="模型提供商接入"
+        subtitle="统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池"
+        actions={
+          <div class="inline-flex p-1 rounded-xl bg-hover/60 border border-subtle shadow-sm">
             <button
               type="button"
               class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
@@ -675,10 +669,10 @@ const Providers: Component = () => {
               提供商市场 ({store.registryList().length})
             </button>
           </div>
-        </div>
-
-        {/* 搜索与过滤工具栏 */}
-        <Card class="p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+        }
+      >
+        {/* 搜索与过滤工具栏：轻量透明容器，杜绝在 PageHeader 内嵌套实心 Card 导致纯白/纯黑 */}
+        <div class="p-3 rounded-xl bg-hover/40 border border-subtle/50 flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
               class="w-64!"
@@ -763,8 +757,8 @@ const Providers: Component = () => {
               </Button>
             </Show>
           </div>
-        </Card>
-      </div>
+        </div>
+      </PageHeader>
 
       {/* 视窗 1：我的连接列表 */}
       <Show when={activeTab() === 'connections'}>

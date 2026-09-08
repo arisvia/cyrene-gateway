@@ -23,6 +23,41 @@ export const Card: Component<{
     {props.children}
   </div>
 )
+export interface PageHeaderProps {
+  title: string | JSX.Element
+  subtitle?: string | JSX.Element
+  badge?: JSX.Element
+  actions?: JSX.Element
+  children?: JSX.Element
+  class?: string
+}
+
+export const PageHeader: Component<PageHeaderProps> = props => (
+  <header class={`sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-4 shadow-glass transition-all space-y-3 ${props.class ?? ''}`}>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <h1 class="text-lg sm:text-xl font-semibold text-foreground truncate">{props.title}</h1>
+          {props.badge}
+        </div>
+        <Show when={props.subtitle}>
+          <p class="text-xs sm:text-sm text-faint mt-0.5 truncate">{props.subtitle}</p>
+        </Show>
+      </div>
+      <Show when={props.actions}>
+        <div class="flex items-center gap-2.5 flex-wrap shrink-0">
+          {props.actions}
+        </div>
+      </Show>
+    </div>
+    <Show when={props.children}>
+      <div class="pt-0.5">
+        {props.children}
+      </div>
+    </Show>
+  </header>
+)
+
 
 export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blue'; class?: string; children?: JSX.Element }> = props => {
   const tones: Record<string, string> = {

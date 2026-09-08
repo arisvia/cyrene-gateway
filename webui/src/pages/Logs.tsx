@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, onMount, onCleanup, createMemo } from 'solid-js'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Input, Select } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, PageHeader } from '@/components/ui'
 
 interface LogItem {
   time: string
@@ -103,31 +103,25 @@ const LogsPage: Component = () => {
 
   return (
     <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
-      {/* 头部与状态栏 (吸顶固定) */}
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-glass transition-all">
-        <div>
-          <h1 class="text-xl font-semibold flex items-center gap-2.5">
-            <span>网关系统日志</span>
-            <span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm animate-pulse' : 'bg-zinc-600'}`} />
-          </h1>
-          <p class="text-sm text-faint mt-0.5">
-            实时捕获与推送 Cyrene Gateway 后端请求转发、上游故障重试与轮转事件
-          </p>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant={autoScroll() ? 'primary' : 'secondary'}
-            onClick={() => setAutoScroll(!autoScroll())}
-          >
-            {autoScroll() ? '自动滚动: 开' : '自动滚动: 关'}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setLogs([])}>
-            清屏
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="网关系统日志"
+        badge={<span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm animate-pulse' : 'bg-zinc-600'}`} />}
+        subtitle="实时捕获与推送 Cyrene Gateway 后端请求转发、上游故障重试与轮转事件"
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant={autoScroll() ? 'primary' : 'secondary'}
+              onClick={() => setAutoScroll(!autoScroll())}
+            >
+              {autoScroll() ? '自动滚动: 开' : '自动滚动: 关'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setLogs([])}>
+              清屏
+            </Button>
+          </>
+        }
+      />
 
       {/* 过滤工具栏 */}
       <Card class="p-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shrink-0">

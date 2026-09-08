@@ -3,7 +3,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Combo } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Modal, Field, Empty, IconClose, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Modal, Field, Empty, PageHeader, IconClose, confirm } from '@/components/ui'
 
 const STRATEGY_LABEL: Record<string, string> = {
   fallback: '故障回退', 'round-robin': '轮询',
@@ -82,18 +82,16 @@ const Combos: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-glass transition-all">
-        <div>
-          <h1 class="text-xl font-semibold">模型组合</h1>
-          <p class="text-sm text-faint mt-0.5">
-            把多个模型编排为一个入口，按策略自动轮转或回退
-          </p>
-        </div>
-        <div class="flex gap-2">
-          <Button variant="ghost" onClick={() => refetch()}>刷新模型表</Button>
-          <Button variant="primary" onClick={openCreate}>+ 新建组合</Button>
-        </div>
-      </div>
+      <PageHeader
+        title="模型组合"
+        subtitle="把多个模型编排为一个入口，按策略自动轮转或回退"
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => refetch()}>刷新模型表</Button>
+            <Button variant="primary" onClick={openCreate}>+ 新建组合</Button>
+          </>
+        }
+      />
 
       <Show when={store.combos().length > 0} fallback={
         <Card class="p-6"><Empty message="还没有组合。新建一个把多个上游模型串成统一入口。" /></Card>

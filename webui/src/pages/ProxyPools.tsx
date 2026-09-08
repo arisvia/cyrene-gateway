@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
 import { useToast } from '@/lib/toast'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
@@ -43,13 +43,11 @@ const ProxyPools: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex items-center justify-between gap-3 shadow-glass transition-all">
-        <div>
-          <h1 class="text-xl font-semibold">代理池</h1>
-          <p class="text-sm text-faint mt-0.5">出站请求的 HTTP 代理轮换</p>
-        </div>
-        <Button variant="primary" onClick={openCreate}>+ 新建代理池</Button>
-      </div>
+      <PageHeader
+        title="代理池"
+        subtitle="出站请求的 HTTP 代理轮换"
+        actions={<Button variant="primary" onClick={openCreate}>+ 新建代理池</Button>}
+      />
       <Show when={store.proxyPools().length > 0} fallback={
         <Card class="p-6"><Empty message="尚未配置代理池。" /></Card>
       }>

@@ -21,7 +21,7 @@ export const DEFAULT_WALLPAPER_CONFIG: WallpaperConfig = {
   enabled: false,
   blur: 0,
   opacity: 1,
-  surfaceAlpha: 0.78,
+  surfaceAlpha: 0.62,
   glassBlur: 20,
 }
 

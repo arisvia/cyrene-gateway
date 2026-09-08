@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse } from '@/components/ui'
+import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -105,47 +105,47 @@ const Usage: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-glass transition-all">
-        <div>
-          <h1 class="text-xl font-semibold">用量统计</h1>
-          <p class="text-sm text-faint mt-0.5">累计 {fmtNum(store.usageStats.totalRequestsLifetime ?? 0)} 次请求 · 实时监控流量路由分发</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <div class="inline-flex p-1 rounded-xl bg-card border border-subtle shadow-sm">
-            <button
-              type="button"
-              class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                subTab() === 'overview'
-                  ? 'bg-accent text-on-accent shadow-sm'
-                  : 'text-muted hover:text-foreground'
-              }`}
-              onClick={() => setSubTab('overview')}
-            >
-              概览
-            </button>
-            <button
-              type="button"
-              class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                subTab() === 'details'
-                  ? 'bg-accent text-on-accent shadow-sm'
-                  : 'text-muted hover:text-foreground'
-              }`}
-              onClick={() => setSubTab('details')}
-            >
-              请求明细 ({store.requestDetailsPagination().totalItems || 0})
-            </button>
-          </div>
+      <PageHeader
+        title="用量统计"
+        subtitle={`累计 ${fmtNum(store.usageStats.totalRequestsLifetime ?? 0)} 次请求 · 实时监控流量路由分发`}
+        actions={
+          <>
+            <div class="inline-flex p-1 rounded-xl bg-hover/60 border border-subtle shadow-sm">
+              <button
+                type="button"
+                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  subTab() === 'overview'
+                    ? 'bg-accent text-on-accent shadow-sm'
+                    : 'text-muted hover:text-foreground'
+                }`}
+                onClick={() => setSubTab('overview')}
+              >
+                概览
+              </button>
+              <button
+                type="button"
+                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  subTab() === 'details'
+                    ? 'bg-accent text-on-accent shadow-sm'
+                    : 'text-muted hover:text-foreground'
+                }`}
+                onClick={() => setSubTab('details')}
+              >
+                请求明细 ({store.requestDetailsPagination().totalItems || 0})
+              </button>
+            </div>
 
-          <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
-            <StatusPulse
-              status={live() ? 'active' : 'paused'}
-              tone={live() ? 'red' : 'accent'}
-              size="sm"
-            />
-            <span>{live() ? '停止实时' : '实时事件'}</span>
-          </Button>
-        </div>
-      </div>
+            <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
+              <StatusPulse
+                status={live() ? 'active' : 'paused'}
+                tone={live() ? 'red' : 'accent'}
+                size="sm"
+              />
+              <span>{live() ? '停止实时' : '实时事件'}</span>
+            </Button>
+          </>
+        }
+      />
 
       {/* 拓扑图 (9router 风格网关拓扑) */}
       <Show when={subTab() === 'overview'}>

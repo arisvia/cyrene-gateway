@@ -82,28 +82,33 @@
 
 /* 自定义壁纸模式：现代液态毛玻璃拟态 (Liquid Glass / Frosted Acrylic, 对齐 zashboard 体验) */
 .custom-background {
-  --app-surface-alpha: 0.78;
+  --app-surface-alpha: 0.60;
   --app-glass-blur: 20px;
 
+  /* 面板使用颜色混合 + 高饱和度毛玻璃，使壁纸衬托下的内容层次分明且通透 */
   --glass: color-mix(in oklab, var(--bg-elevated) calc(var(--app-surface-alpha) * 100%), transparent);
   --glass-hover: color-mix(in oklab, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.08, 0.95) * 100%), transparent);
   --glass-blur: var(--app-glass-blur);
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-border-hover: rgba(255, 255, 255, 0.28);
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%);
-  --glass-depth: 0 12px 36px -8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
-  --glass-depth-hover: 0 20px 48px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.16) inset;
+  --glass-border: transparent;
+  --glass-border-hover: rgba(255, 255, 255, 0.20);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 40%, transparent 100%);
+  /* 外层卡片依靠柔和环境光阴影与模糊拟态区分层次，不加突兀的外边框 */
+  --glass-depth: 0 10px 32px -4px rgba(0, 0, 0, 0.38);
+  --glass-depth-hover: 0 18px 44px -6px rgba(0, 0, 0, 0.55);
+  --subtle: rgba(255, 255, 255, 0.10);
 }
 
 .light.custom-background,
 :root.light.custom-background {
+  --app-surface-alpha: 0.62;
   --glass: color-mix(in oklab, #ffffff calc(var(--app-surface-alpha) * 100%), transparent);
   --glass-hover: color-mix(in oklab, #ffffff calc(min(var(--app-surface-alpha) + 0.08, 0.98) * 100%), transparent);
-  --glass-border: rgba(15, 23, 42, 0.12);
-  --glass-border-hover: rgba(15, 23, 42, 0.22);
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.5) 45%, transparent 100%);
-  --glass-depth: 0 12px 36px -8px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
-  --glass-depth-hover: 0 20px 48px -12px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.95) inset;
+  --glass-border: transparent;
+  --glass-border-hover: rgba(15, 23, 42, 0.16);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.4) 45%, transparent 100%);
+  --glass-depth: 0 10px 30px -4px rgba(15, 23, 42, 0.07);
+  --glass-depth-hover: 0 18px 40px -6px rgba(15, 23, 42, 0.12);
+  --subtle: rgba(15, 23, 42, 0.08);
 }
 
 /* 注册 Tailwind v4 主题 token —— 只有 --color- 前缀才会生成对应的 bg/text/border 工具类 */

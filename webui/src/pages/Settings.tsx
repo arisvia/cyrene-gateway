@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
-import { Card, Badge, Button, Input, Select, Toggle, Field, confirm, IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 
@@ -184,16 +184,15 @@ const Settings: Component = () => {
 
   return (
     <div class="max-w-3xl mx-auto space-y-6 stagger">
-      {/* 顶部粘性操作栏：悬浮圆角毛玻璃卡片 */}
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex items-center justify-between gap-3 shadow-glass transition-all">
-        <div class="min-w-0">
-          <h1 class="text-lg sm:text-xl font-semibold text-foreground truncate">系统设置</h1>
-          <p class="text-xs sm:text-sm text-faint mt-0.5 truncate">网关运行参数、访问控制与效能引擎</p>
-        </div>
-        <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">
-          {dirty() ? '保存修改' : '全部已保存'}
-        </Button>
-      </div>
+      <PageHeader
+        title="系统设置"
+        subtitle="网关运行参数、访问控制与效能引擎"
+        actions={
+          <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">
+            {dirty() ? '保存修改' : '全部已保存'}
+          </Button>
+        }
+      />
 
       {/* ── 分组 1：安全与访问控制 ── */}
       <div class="space-y-3.5">
@@ -610,6 +609,21 @@ const Settings: Component = () => {
                     if (!url) return
                     setLoadingBgUrl(true)
                     try {
+                      // 预先校验图片是否能够成功渲染与加载，杜绝失效 URL 或拦截导致的静默白屏
+                      const img = new Image()
+                      img.referrerPolicy = 'no-referrer'
+                      const { promise: imgPromise, resolve: imgResolve, reject: imgReject } = Promise.withResolvers<boolean>()
+                      img.onload = () => imgResolve(true)
+                      img.onerror = () => imgReject(new Error('image load failed'))
+                      img.src = url
+
+                      try {
+                        await imgPromise
+                      } catch {
+                        toast.error('远程图片加载失败：请检查链接有效性或防盗链设置')
+                        return
+                      }
+
                       let dataUrl = ''
                       try {
                         const resp = await fetch(url, { referrerPolicy: 'no-referrer' })

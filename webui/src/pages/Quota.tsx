@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight } from '@/components/ui'
+import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, PageHeader } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
 import { A } from '@solidjs/router'
 import type { ProviderUsage } from '@/types/domain'
@@ -231,52 +231,48 @@ const Quota: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      {/* 顶部工具栏：悬浮圆角毛玻璃卡片 */}
-      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-glass transition-all">
-        <div>
-          <h1 class="text-xl font-semibold">配额中心</h1>
-          <p class="text-sm text-faint mt-0.5">
-            按账号与节点双列实时呈现官方真实余量 (Credits / Quota) 与自动轮换状态
-          </p>
-        </div>
+      <PageHeader
+        title="配额中心"
+        subtitle="按账号与节点双列实时呈现官方真实余量 (Credits / Quota) 与自动轮换状态"
+        actions={
+          <>
+            <Show when={providerOptions().length > 1}>
+              <Select
+                size="sm"
+                class="w-44"
+                value={providerFilter()}
+                onChange={setProviderFilter}
+                options={[
+                  { value: '', label: `全部供应商 (${store.providers().length})` },
+                  ...providerOptions().map(p => ({ value: p, label: p })),
+                ]}
+              />
+            </Show>
 
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <Show when={providerOptions().length > 1}>
-            <Select
+            <button
+              type="button"
+              class={`text-xs px-2.5 py-1.5 rounded-control border transition-all flex items-center gap-1.5 cursor-pointer ${
+                autoRefresh()
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 font-medium'
+                  : 'bg-hover border-subtle text-faint hover:text-foreground'
+              }`}
+              onClick={() => setAutoRefresh(!autoRefresh())}
+            >
+              <span>自动刷新</span>
+              <span class="text-[10px] opacity-75">{autoRefresh() ? '(开启 60s)' : '(关闭)'}</span>
+            </button>
+
+            <Button
               size="sm"
-              class="w-44"
-              value={providerFilter()}
-              onChange={setProviderFilter}
-              options={[
-                { value: '', label: `全部供应商 (${store.providers().length})` },
-                ...providerOptions().map(p => ({ value: p, label: p })),
-              ]}
-            />
-          </Show>
-
-          <button
-            type="button"
-            class={`text-xs px-2.5 py-1.5 rounded-control border transition-all flex items-center gap-1.5 cursor-pointer ${
-              autoRefresh()
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 font-medium'
-                : 'bg-hover border-subtle text-faint hover:text-foreground'
-            }`}
-            onClick={() => setAutoRefresh(!autoRefresh())}
-          >
-            <span>自动刷新</span>
-            <span class="text-[10px] opacity-75">{autoRefresh() ? '(开启 60s)' : '(关闭)'}</span>
-          </button>
-
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={refreshing()}
-            onClick={() => { setRefreshing(true); load(); }}
-          >
-            刷新数据
-          </Button>
-        </div>
-      </div>
+              variant="secondary"
+              loading={refreshing()}
+              onClick={() => { setRefreshing(true); load(); }}
+            >
+              刷新数据
+            </Button>
+          </>
+        }
+      />
 
       <Show
         when={!loading()}
