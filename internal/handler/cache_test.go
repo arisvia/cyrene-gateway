@@ -241,12 +241,11 @@ func TestResponseCachePanicSafety(t *testing.T) {
 	settings.ResponseCacheAll = true
 	database.SaveSettings(settings)
 
-	// Upstream server that writes partial bytes then disconnects/panics
+	// Upstream server returns a normal 200 OK response
 	upstreamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"partial":`)) // truncated JSON
-		panic("simulated upstream processing panic")
+		w.Write([]byte(`{"choices":[{"message":{"content":"valid response"}}]}`))
 	}))
 	defer upstreamSrv.Close()
 
@@ -266,14 +265,27 @@ func TestResponseCachePanicSafety(t *testing.T) {
 
 	reqBody := []byte(`{"model":"mock-panic","messages":[{"role":"user","content":"test"}]}`)
 	req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(reqBody))
-	w := httptest.NewRecorder()
+	rec := httptest.NewRecorder()
+	pw := &panickingResponseWriter{ResponseWriter: rec}
 
 	// Execute through full handler chain (including Recovery middleware)
-	srv.Handler.ServeHTTP(w, req)
-
+	srv.Handler.ServeHTTP(pw, req)
 	// Verify cache does NOT have the entry
 	stats := srv.Cache.Stats()
 	if stats.Entries != 0 {
 		t.Fatalf("expected 0 cache entries after panicking request, got %d", stats.Entries)
 	}
+}
+
+type panickingResponseWriter struct {
+	http.ResponseWriter
+	panicked bool
+}
+
+func (p *panickingResponseWriter) Write(b []byte) (int, error) {
+	if !p.panicked {
+		p.panicked = true
+		panic("simulated downstream write panic mid-response")
+	}
+	return p.ResponseWriter.Write(b)
 }
