@@ -38,6 +38,9 @@ func InjectPonytail(body map[string]any, format string, level string) {
 func injectMessagesSystem(body map[string]any, prompt string) {
 	// OpenAI Responses API: top-level string field
 	if instructions, ok := body["instructions"].(string); ok {
+		if strings.Contains(instructions, prompt) {
+			return
+		}
 		if instructions != "" {
 			body["instructions"] = instructions + sep + prompt
 		} else {

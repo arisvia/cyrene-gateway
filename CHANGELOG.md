@@ -24,7 +24,11 @@
 - **提供商创建接口防线**：POST `/api/providers` 强化校验，强制要求 `provider` ID 必填（400）、`api-key` 类型密钥必填（400），并在同 provider+authType 已存在活跃连接时拦截重复创建（409）。
 - **OAuth 回调 CSRF 防御**：GET `/api/oauth/{provider}/callback` 强制校验 `state` 必填且会话未过期，彻底杜绝无 state 绕过 PKCE 校验的安全风险。
 - **CI / Release 职责解耦**：PR 与主干推送走 `build.yml` 门禁（类型检查、单元测试 `-race` 与单二进制冒烟测试）；Tag 推送专走 `release.yml`（多架构二进制交叉编译与 Docker 镜像推送）。
-
+- **RTK 令牌节省与多格式压缩强化**：
+  - RTK 工具结果压缩原生支持 Gemini `contents` 与 Anthropic 内容块结构，新增大于 16KB 单行/少行大文本的字符尺度截断兜底；
+  - 完善 System Prompt 注入幂等性防御（覆盖 `messages`、`instructions`、`system` 及 `systemInstruction`），杜绝请求重试时提示词重复叠加；
+  - 修复 Caveman 与 Ponytail 在未显式选级时因空字符串导致功能空转的缺陷，增加自动降级默认级别并在 WebUI 提供可视化级别配置；
+  - 修复 `TokenSaverExclude` 排除规则对解析后提供商名字段的精确匹配。
 ### Fixed
 - **出站请求全链路 SSRF 防护加固**：
   - 修复 Anthropic passthrough、Embeddings passthrough、后台模型同步与外部面板下载中绕过 `SafeHTTPClient` 的直接客户端构造，统一实施 dial-time IP 拦截与私网跳转防护；

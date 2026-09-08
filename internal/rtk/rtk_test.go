@@ -306,4 +306,15 @@ func TestInjectSystemPrompt_Idempotency(t *testing.T) {
 	if firstClaude != secondClaude {
 		t.Errorf("expected idempotent injection for Claude, but content changed")
 	}
+
+	bodyResponses := map[string]any{
+		"instructions": "Be helpful.",
+	}
+	InjectCaveman(bodyResponses, "openai", CavemanLite)
+	firstResp := bodyResponses["instructions"].(string)
+	InjectCaveman(bodyResponses, "openai", CavemanLite)
+	secondResp := bodyResponses["instructions"].(string)
+	if firstResp != secondResp {
+		t.Errorf("expected idempotent injection for instructions field, but content changed")
+	}
 }
