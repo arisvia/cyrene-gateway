@@ -251,12 +251,12 @@ func TestResponseCachePanicSafety(t *testing.T) {
 	defer upstreamSrv.Close()
 
 	conn := &model.ProviderConnection{
-		ID:        "mock-panic-conn",
-		Provider:  "openai",
-		Name:      "Mock Panic",
-		AuthType:  "api-key",
-		IsActive:  true,
-		Priority:  1,
+		ID:       "mock-panic-conn",
+		Provider: "openai",
+		Name:     "Mock Panic",
+		AuthType: "api-key",
+		IsActive: true,
+		Priority: 1,
 		Data: model.ConnectionData{
 			APIKey:  "sk-mock",
 			BaseURL: upstreamSrv.URL + "/v1",
