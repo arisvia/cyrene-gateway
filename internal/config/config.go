@@ -15,8 +15,6 @@ type Config struct {
 	PanelURL             string
 	Secret               string
 	Port                 int
-	MITMPort             int
-	MITM                 bool
 	AllowPrivateNetworks bool
 }
 
@@ -28,8 +26,6 @@ func Load() *Config {
 	flag.IntVar(&cfg.Port, "port", envIntOrDefault("CYRENE_PORT", 20128), "Port to bind the gateway")
 	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded)")
 	flag.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "Dashboard access password")
-	flag.BoolVar(&cfg.MITM, "mitm", false, "Enable MITM proxy (local deployments only, requires localhost bind)")
-	flag.IntVar(&cfg.MITMPort, "mitm-port", envIntOrDefault("CYRENE_MITM_PORT", 443), "MITM proxy listen port")
 	flag.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers)")
 	flag.Parse()
 

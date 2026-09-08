@@ -31,6 +31,13 @@
   - Anthropic 协议转换保留 `cache_control` 断点标记（覆盖 tools、messages 文本块与工具结果），并在出站头中声明 `prompt-caching-2024-07-31`，支持长上下文与工具 Prompt Cache 命中；
   - 修复 Caveman 与 Ponytail 在未显式选级时因空字符串导致功能空转的缺陷，增加自动降级默认级别并在 WebUI 提供可视化级别配置；
   - 修复 `TokenSaverExclude` 排除规则对解析后提供商名字段的精确匹配。
+- **架构瘦身与冗余边缘模块清理**：
+  - 彻底移除与服务端核心职责脱节的 CLI 工具配置注入适配器（`internal/cli`）及对应前端页面与路由；
+  - 彻底移除存在端口冲突与 SSL Pinning 死穴的 MITM 本地抓包代理（`internal/mitm`）；
+  - 彻底移除越界执行系统特权安装脚本的 Tailscale 隧道管理（`internal/tunnel`）；
+  - 彻底移除无业务逻辑的静态技能清单（`internal/skills`）与遗弃的未路由控制台（`Console.tsx`）；
+  - 净削减 3,500+ 行非核心代码，消除了改写 hosts、特权安装脚本、盲写用户目录等安全隐患，将出站代理池（ProxyPools）正向纳入管理控制台核心导航。
+### Fixed
 - **出站请求全链路 SSRF 防护加固**：
   - 修复 Anthropic passthrough、Embeddings passthrough、后台模型同步与外部面板下载中绕过 `SafeHTTPClient` 的直接客户端构造，统一实施 dial-time IP 拦截与私网跳转防护；
   - `POST /api/providers/test-credentials` 与媒体凭证测试中前置 `ValidateUpstreamURL` 校验，拦截针对私网与云元数据地址（169.254.0.0/16）的探测请求；

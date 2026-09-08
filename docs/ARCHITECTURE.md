@@ -6,7 +6,7 @@
 
 ## 1. 架构总览
 
-Cyrene Gateway 是一个单二进制运行的 LLM API 统一网关，核心职责包括协议转换、多账号/多提供商凭证调度、自动故障转移与配额管理、用量审计以及配套的开发者/管理工具（面板、MITM、CLI 适配器、Tailscale 隧道）。
+Cyrene Gateway 是一个单二进制运行的高性能 LLM API 统一网关，核心职责包括协议转换、多账号/多提供商凭证调度、自动故障转移与配额管理、用量审计以及配套的出站代理池调度与响应式管理控制台。
 
 ```
 +-------------------------------------------------------------------------------+
@@ -31,8 +31,7 @@ Cyrene Gateway 是一个单二进制运行的 LLM API 统一网关，核心职�
 |  - /v1/messages (Anthropic)  |                                  |  - /api/combos (模型组合)    |
 |  - /v1/embeddings            |                                  |  - /api/oauth/* (PKCE/设备码)|
 |  - /v1/models (聚合目录)     |                                  |  - /api/usage/* (统计/流式)  |
-+--------------+---------------+                                  |  - /api/cli-tools / tunnel   |
-               |                                                  |  - /api/mitm/* (TLS 代理)    |
+|  - /api/proxy-pools (代理池) |
                v                                                  +--------------+---------------+
 +---------------------------------------------------------------+                |
 |                    Provider 调度与执行层                      |                |
@@ -73,9 +72,6 @@ Cyrene Gateway 是一个单二进制运行的 LLM API 统一网关，核心职�
 | `internal/usage/` | `ExtractFromOpenAI`, `ExtractFromClaude` | 从多协议的响应体与 SSE 事件中抽取 input / output / cached / reasoning token 并做规范化记账。 |
 | `internal/loopguard/` | `DetectLoop` | 对话历史死循环检测：识别重复工具调用或纯文本复读，在单模型和 Combo 流程中注入打断提示。 |
 | `internal/media/` | `Client`, `GetConfig` | 媒体 API 接入适配（Embeddings / STT / TTS / Image / Video / Web Search）。 |
-| `internal/mitm/` | `Server`, `CertManager`, `DNSManager` | 本地 TLS 拦截代理，生成自签名根 CA，劫持 hosts 抓包排查 CLI 工具请求。仅限本机部署开启。 |
-| `internal/tunnel/` | `Manager` | Tailscale 状态探测、安装、登录、启动/关闭 Funnel 隧道暴露到公网。 |
-| `internal/cli/` | `Manager`, `Adapter` | 十余款终端 AI 工具（Claude Code、Codex 等）的配置自动注入与重置。 |
 | `webui/` | Solid.js + Vite + Tailwind CSS v4 | 响应式管理控制台，支持深色玻璃拟物风格、矢量图标库与无内联 any 严格类型，通过 `embed.go` 编译内嵌到二进制中。 |
 
 ---
@@ -166,7 +162,3 @@ Client 接收最终响应
 3. 若支持 live catalog，配置 `ModelsURL` 与 `ModelsAuth`；若有特殊鉴权 Header，配置 `AuthHeader` / `AuthScheme`。
 4. 在 `internal/provider/registry.go` 的 `modelPrefixProviders` 中追加模型名称前缀，便于路由自动推断。
 
-### 5.2 新增一个 CLI 工具适配器
-1. 在 `internal/cli/` 下创建 `adapter_<name>.go`，实现 `cli.Adapter` 接口（`Status()`、`Apply()`、`Reset()`）。
-2. 在 `internal/cli/registry.go` 中注册工具元数据（ID、名称、主页、支持的模型等）。
-3. 在 `internal/cli/manager.go` 的 `Adapter(id)` switch 中引入新适配器实例。

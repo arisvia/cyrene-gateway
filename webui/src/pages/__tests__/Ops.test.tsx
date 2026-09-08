@@ -4,13 +4,8 @@ import { render, cleanup } from '@solidjs/testing-library'
 import { MemoryRouter, Route } from '@solidjs/router'
 import { api } from '@/lib/api'
 import ProxyPools from '@/pages/ProxyPools'
-import CliTools from '@/pages/CliTools'
-import Skills from '@/pages/Skills'
-import Console from '@/pages/Console'
 import Media from '@/pages/Media'
 import Quota from '@/pages/Quota'
-import Tunnel from '@/pages/Tunnel'
-import Mitm from '@/pages/Mitm'
 
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(),
@@ -58,49 +53,6 @@ describe('运维与工具页渲染', () => {
     expect(text).toContain('home-proxy')
     expect(text).toContain('http://127.0.0.1:7890')
   })
-
-  it('CliTools 渲染工具卡片与接入按钮', async () => {
-    vi.mocked(api).mockResolvedValue({
-      tools: [
-        { id: 'claude', name: 'Claude Code', description: 'Anthropic CLI', configType: 'env', configured: false },
-        { id: 'codex', name: 'OpenAI Codex', description: 'Codex CLI', configType: 'json', configured: true },
-      ],
-    })
-    mount(CliTools)
-    await tick()
-    const text = document.body.textContent || ''
-    expect(text).toContain('CLI 工具接入')
-    expect(text).toContain('Claude Code')
-    expect(text).toContain('接入')
-    expect(text).toContain('已接入')
-  })
-
-  it('Skills 渲染技能列表与搜索', async () => {
-    vi.mocked(api).mockResolvedValue({
-      count: 2,
-      skills: [
-        { id: 's1', name: 'cyrene-chat', description: 'Chat capability' },
-        { id: 's2', name: 'cyrene-search', description: 'Web search' },
-      ],
-    })
-    mount(Skills)
-    await tick()
-    const text = document.body.textContent || ''
-    expect(text).toContain('技能清单')
-    expect(text).toContain('cyrene-chat')
-    expect(text).toContain('cyrene-search')
-  })
-
-  it('Console 渲染模型选择器与输入区', async () => {
-    vi.mocked(api).mockResolvedValue({ data: [{ id: 'anthropic/*' }, { id: 'openai/*' }] })
-    mount(Console)
-    await tick()
-    const text = document.body.textContent || ''
-    expect(text).toContain('控制台')
-    expect(text).toContain('选择模型')
-    expect(text).toContain('发送一条消息开始测试')
-  })
-
   it('Media 渲染能力切换', async () => {
     vi.mocked(api).mockResolvedValue(null)
     mount(Media)
@@ -130,30 +82,5 @@ describe('运维与工具页渲染', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('配额')
     expect(text).toContain('anthropic')
-  })
-
-  it('Tunnel 渲染状态与操作', async () => {
-    vi.mocked(api).mockResolvedValue({
-      installed: true, daemonRunning: true, loggedIn: true,
-      funnelRunning: false, tunnelUrl: '', platform: 'windows',
-    })
-    mount(Tunnel)
-    await tick()
-    const text = document.body.textContent || ''
-    expect(text).toContain('内网穿透')
-    expect(text).toContain('Tailscale')
-    expect(text).toContain('开启 Funnel')
-  })
-
-  it('Mitm 在未启用时显示原因说明', async () => {
-    vi.mocked(api).mockResolvedValue({
-      enabled: false, running: false,
-      reason: 'MITM is disabled. Start the gateway with -mitm to enable (local deployments only).',
-    })
-    mount(Mitm)
-    await tick()
-    const text = document.body.textContent || ''
-    expect(text).toContain('MITM 调试代理')
-    expect(text).toContain('MITM is disabled')
   })
 })

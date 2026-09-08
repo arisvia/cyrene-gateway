@@ -13,16 +13,13 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
-	"github.com/arisvia/cyrene-gateway/internal/cli"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/metrics"
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
-	"github.com/arisvia/cyrene-gateway/internal/mitm"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
-	"github.com/arisvia/cyrene-gateway/internal/tunnel"
 )
 
 type Server struct {
@@ -34,11 +31,8 @@ type Server struct {
 	MediaClient *media.Client
 	Dashboard   *DashboardHandler
 	Auth        *AuthHandler
-	Tunnel      *TunnelHandler
-	CLI         *CLIHandler
 	Endpoints   *EndpointHandler
 	Events      *EventBroadcaster
-	MITM        *MITMHandler
 	Metrics     *metrics.M
 	Config      *config.Config
 	startTime   time.Time
@@ -55,16 +49,6 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		proxyMgr = provider.NewProxyManager(nil)
 	}
 
-	tunnelMgr := tunnel.NewManager(cfg.DataDir, cfg.Port)
-
-	// MITM proxy: only enabled with explicit -mitm flag AND localhost bind (safety)
-	mitmEnabled := cfg.MITM && (cfg.Host == "127.0.0.1" || cfg.Host == "localhost")
-	if cfg.MITM && !mitmEnabled {
-		slog.Warn("MITM requested but host is not localhost — refusing to enable (server mode safety)",
-			slog.String("host", cfg.Host))
-	}
-	mitmSrv := mitm.NewServer(cfg.MITMPort, cfg.Port, cfg.DataDir)
-
 	s := &Server{
 		DB:          database,
 		Router:      mux,
@@ -73,10 +57,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		MediaClient: media.NewClient(),
 		Dashboard:   NewDashboardHandler(cfg),
 		Auth:        NewAuthHandler(database),
-		Tunnel:      NewTunnelHandler(tunnelMgr),
-		CLI:         NewCLIHandler(cli.NewManager()),
-		Endpoints:   NewEndpointHandler(cfg, database, tunnelMgr),
-		MITM:        NewMITMHandler(mitmSrv, mitmEnabled),
+		Endpoints:   NewEndpointHandler(cfg, database),
 		Events:      NewEventBroadcaster(),
 		Metrics:     metrics.New(Version()),
 		Config:      cfg,
@@ -207,30 +188,7 @@ func (s *Server) registerRoutes() {
 	// Per-connection real usage/quota from provider APIs (Phase 31)
 	s.Router.HandleFunc("GET /api/usage/connection/{id}", s.handleConnectionUsage)
 
-	// Tunnel management
-	s.Router.HandleFunc("GET /api/tunnel/status", s.Tunnel.HandleStatus)
-	s.Router.HandleFunc("POST /api/tunnel/tailscale-install", s.Tunnel.HandleInstall)
-	s.Router.HandleFunc("POST /api/tunnel/tailscale-enable", s.Tunnel.HandleEnable)
-	s.Router.HandleFunc("POST /api/tunnel/tailscale-disable", s.Tunnel.HandleDisable)
-
-	// CLI tools integration
-	s.Router.HandleFunc("GET /api/cli-tools", s.CLI.HandleList)
-	s.Router.HandleFunc("GET /api/cli-tools/all-statuses", s.CLI.HandleAllStatuses)
-	s.Router.HandleFunc("GET /api/cli-tools/{id}", s.CLI.HandleGet)
-	s.Router.HandleFunc("POST /api/cli-tools/{id}", s.CLI.HandleApply)
-	s.Router.HandleFunc("DELETE /api/cli-tools/{id}", s.CLI.HandleReset)
-
-	// Endpoints & Skills
 	s.Router.HandleFunc("GET /api/endpoints", s.Endpoints.HandleEndpoints)
-	s.Router.HandleFunc("GET /api/skills", s.Endpoints.HandleSkills)
-
-	// MITM proxy management
-	s.Router.HandleFunc("GET /api/mitm/status", s.MITM.HandleStatus)
-	s.Router.HandleFunc("POST /api/mitm/start", s.MITM.HandleStart)
-	s.Router.HandleFunc("POST /api/mitm/stop", s.MITM.HandleStop)
-	s.Router.HandleFunc("GET /api/mitm/cert", s.MITM.HandleCert)
-	s.Router.HandleFunc("POST /api/mitm/dns", s.MITM.HandleDNS)
-	s.Router.HandleFunc("GET /api/mitm/traffic", s.MITM.HandleTraffic)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

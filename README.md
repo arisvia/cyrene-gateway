@@ -19,9 +19,7 @@ Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(O
 - **令牌节省**:RTK 压缩、Caveman、Ponytail 三档 token saver,支持按提供商排除。
 - **循环防护(loopguard)**:检测重复工具调用与文本复读,注入提示打断死循环。
 - **用量观测**:逐请求 token 记账(含 cached/reasoning tokens)、每日聚合、成本估算、请求详情、SSE 实时事件流(`/api/usage/stream`)。
-- **MITM 调试代理**(仅 localhost):本地 TLS 拦截配合 DNS 劫持,观察 CLI 工具的 LLM 流量,帮助编写适配器。
-- **CLI 工具一键接入**:为 Claude Code / Codex / OpenCode / Cline / Copilot CLI 等十余款工具写配置。
-- **Tailscale 隧道**:检测/安装/启用 Funnel,把本地网关暴露到公网。
+- **出站代理池 (ProxyPools)**: 支持轮询调度出站 HTTP/SOCKS 代理,统一经 SafeHTTPClient 实施 SSRF 强化与超时约束,助力跨地域与受限网络访问。
 - **内置管理面板**: 基于 Solid.js + Vite + Tailwind CSS v4 构建的现代化单页控制台，具备完整深色玻璃拟物风格、统一矢量图标库、无内联 `any` 严格类型安全与流畅动画。
 ## 快速开始
 
@@ -110,10 +108,6 @@ internal/
   translator/       # OpenAI ↔ Anthropic ↔ Gemini 响应格式互转
   usage/            # 各格式响应的 token 用量提取
   media/            # embeddings / TTS / STT / image / video / web 媒体端点
-  mitm/             # TLS 拦截代理、根 CA、DNS 劫持、流量环形日志
-  tunnel/           # Tailscale 隧道管理
-  cli/              # CLI 工具适配器(claude/codex/opencode/cline/…)
-  skills/           # cyrene-* 技能清单(chat/search/fetch/tts/stt/image/embeddings)
   loopguard/        # 对话死循环检测
 webui/              # Solid.js + Vite 管理面板（构建产物由 CI 嵌入二进制，源码不提交 dist）
 schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
@@ -124,11 +118,9 @@ schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
 
 ## 安全要点
-
 - 默认只绑 `127.0.0.1`;管理 API(`/api/*`)对非环回来源**始终**要求会话认证。
 - `/v1/*` 可通过设置开启 API Key 强制校验(HMAC 签名 + 数据库白名单)。
 - 出站请求默认启用 SSRF 防护(解析期 + 拨号期双重校验,含重定向校验)。
-- MITM 代理仅在 `-mitm` 且 localhost 绑定时可用。
 - 登录失败按 IP 指数锁定(30s → 30m);密码使用 Argon2id(兼容旧 HMAC 哈希自动迁移)。
 
 ## License

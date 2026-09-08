@@ -139,46 +139,6 @@ export interface ProviderUsage {
   overQuota?: boolean
 }
 
-export interface CLITool {
-  id: string
-  name: string
-  category?: 'cli' | 'extension' | 'ide' | string
-  description?: string
-  icon?: string
-  color?: string
-  configType?: string
-  configured?: boolean
-  docsUrl?: string
-  defaultModels?: Array<{ id: string; name: string; alias?: string }>
-  notes?: Array<{ type: string; text: string }>
-  guideSteps?: Array<{ step: number; title: string; desc?: string; value?: string; type?: string }>
-}
-
-export interface Skill {
-  id: string
-  name: string
-  description?: string
-  content?: string
-  version?: string
-}
-
-export interface ToolStatus {
-  configured?: boolean
-  target?: string
-  status?: string
-  detail?: string
-}
-
-export interface TunnelStatus {
-  installed: boolean
-  daemonRunning: boolean
-  loggedIn: boolean
-  funnelRunning: boolean
-  tunnelUrl?: string
-  platform?: string
-  version?: string
-  error?: string
-}
 
 export interface LiveUsageEvent {
   timestamp?: string

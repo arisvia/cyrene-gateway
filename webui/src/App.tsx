@@ -11,13 +11,8 @@ import Combos from './pages/Combos'
 import Usage from './pages/Usage'
 import Quota from './pages/Quota'
 import Media from './pages/Media'
-import CliTools from './pages/CliTools'
-import CliToolDetail from './pages/CliToolDetail'
 import LogsPage from './pages/Logs'
 import ProxyPools from './pages/ProxyPools'
-import Tunnel from './pages/Tunnel'
-import Mitm from './pages/Mitm'
-import Skills from './pages/Skills'
 import Settings from './pages/Settings'
 
 // 现代 SVG 矢量侧边栏图标
@@ -69,12 +64,6 @@ const NavIcons = {
       <path d="M2 12h20" />
     </svg>
   ),
-  cli: () => (
-    <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="4 17 10 11 4 5" />
-      <line x1="12" y1="19" x2="20" y2="19" />
-    </svg>
-  ),
   logs: () => (
     <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -82,29 +71,6 @@ const NavIcons = {
       <line x1="16" y1="13" x2="8" y2="13" />
       <line x1="16" y1="17" x2="8" y2="17" />
       <polyline points="10 9 9 9 8 9" />
-    </svg>
-  ),
-  tunnel: () => (
-    <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 14a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-      <path d="M6 12V8a6 6 0 0 1 12 0v4" />
-    </svg>
-  ),
-  mitm: () => (
-    <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
-    </svg>
-  ),
-  skills: () => (
-    <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 2v4" />
-      <path d="m4.93 4.93 2.83 2.83" />
-      <path d="M2 12h4" />
-      <path d="m4.93 19.07 2.83-2.83" />
-      <path d="M12 18v4" />
-      <path d="m16.24 16.24 2.83 2.83" />
-      <path d="M18 12h4" />
-      <path d="m16.24 7.76 2.83-2.83" />
     </svg>
   ),
 }
@@ -124,10 +90,8 @@ const NAV = [
     group: '系统',
     items: [
       { href: '/media', label: '媒体', icon: NavIcons.media },
+      { href: '/proxy-pools', label: '代理池', icon: NavIcons.proxy },
       { href: '/logs', label: '日志', icon: NavIcons.logs },
-      { href: '/cli-tools', label: '工具', icon: NavIcons.cli },
-      { href: '/mitm', label: 'MITM', icon: NavIcons.mitm },
-      { href: '/skills', label: '技能', icon: NavIcons.skills },
     ],
   },
 ]
@@ -262,12 +226,7 @@ const App: Component = () => {
       <Route path="/quota" component={Quota} />
       <Route path="/media" component={Media} />
       <Route path="/proxy-pools" component={ProxyPools} />
-      <Route path="/cli-tools" component={CliTools} />
-      <Route path="/cli-tools/:id" component={CliToolDetail} />
       <Route path="/logs" component={LogsPage} />
-      <Route path="/tunnel" component={Tunnel} />
-      <Route path="/mitm" component={Mitm} />
-      <Route path="/skills" component={Skills} />
       <Route path="/settings" component={Settings} />
       <Route path="*" component={Home} />
     </HashRouter>

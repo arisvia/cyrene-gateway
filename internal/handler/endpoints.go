@@ -7,19 +7,16 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
-	"github.com/arisvia/cyrene-gateway/internal/skills"
-	"github.com/arisvia/cyrene-gateway/internal/tunnel"
 )
 
-// EndpointHandler serves endpoint discovery and skills APIs.
+// EndpointHandler serves endpoint discovery API.
 type EndpointHandler struct {
-	cfg    *config.Config
-	db     *db.DB
-	tunnel *tunnel.Manager
+	cfg *config.Config
+	db  *db.DB
 }
 
-func NewEndpointHandler(cfg *config.Config, database *db.DB, tunnelMgr *tunnel.Manager) *EndpointHandler {
-	return &EndpointHandler{cfg: cfg, db: database, tunnel: tunnelMgr}
+func NewEndpointHandler(cfg *config.Config, database *db.DB) *EndpointHandler {
+	return &EndpointHandler{cfg: cfg, db: database}
 }
 
 func (h *EndpointHandler) HandleEndpoints(w http.ResponseWriter, r *http.Request) {
@@ -48,18 +45,6 @@ func (h *EndpointHandler) HandleEndpoints(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	// Tunnel (if active)
-	if h.tunnel != nil {
-		st := h.tunnel.GetStatus()
-		if st.FunnelRunning && st.TunnelURL != "" {
-			endpoints = append(endpoints, Endpoint{
-				Label: "Tunnel (Tailscale)",
-				URL:   st.TunnelURL,
-				Type:  "tunnel",
-			})
-		}
-	}
-
 	// Auth status
 	requireAuth := false
 	if settings, err := h.db.GetSettings(); err == nil && settings != nil {
@@ -70,14 +55,6 @@ func (h *EndpointHandler) HandleEndpoints(w http.ResponseWriter, r *http.Request
 		"endpoints":   endpoints,
 		"requireAuth": requireAuth,
 		"port":        port,
-	})
-}
-
-func (h *EndpointHandler) HandleSkills(w http.ResponseWriter, r *http.Request) {
-	list := skills.List()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"skills": list,
-		"count":  len(list),
 	})
 }
 
