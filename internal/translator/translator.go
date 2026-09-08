@@ -113,20 +113,24 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 			}
 		case "tool":
 			// Tool results become user messages with tool_result content
+			toolBlock := map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": msg["tool_call_id"],
+				"content":     extractText(msg["content"]),
+			}
+			if isError, ok := msg["is_error"].(bool); ok && isError {
+				toolBlock["is_error"] = true
+			}
+			if cc, ok := msg["cache_control"]; ok {
+				toolBlock["cache_control"] = cc
+			}
 			toolResult := map[string]any{
-				"role": "user",
-				"content": []any{
-					map[string]any{
-						"type":        "tool_result",
-						"tool_use_id": msg["tool_call_id"],
-						"content":     extractText(msg["content"]),
-					},
-				},
+				"role":    "user",
+				"content": []any{toolBlock},
 			}
 			claudeMessages = append(claudeMessages, toolResult)
 		}
 	}
-
 	if len(systemParts) > 0 {
 		result["system"] = strings.Join(systemParts, "\n")
 	}
@@ -169,11 +173,17 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 			if !ok {
 				continue
 			}
-			claudeTools = append(claudeTools, map[string]any{
+			claudeTool := map[string]any{
 				"name":         fn["name"],
 				"description":  fn["description"],
 				"input_schema": fn["parameters"],
-			})
+			}
+			if cc, ok := tool["cache_control"]; ok {
+				claudeTool["cache_control"] = cc
+			} else if cc, ok := fn["cache_control"]; ok {
+				claudeTool["cache_control"] = cc
+			}
+			claudeTools = append(claudeTools, claudeTool)
 		}
 		if len(claudeTools) > 0 {
 			result["tools"] = claudeTools
@@ -209,8 +219,11 @@ func convertMessageToClaude(msg map[string]any) map[string]any {
 			}
 			switch p["type"] {
 			case "text":
-				blocks = append(blocks, map[string]any{"type": "text", "text": p["text"]})
-			case "image_url":
+				textBlock := map[string]any{"type": "text", "text": p["text"]}
+				if cc, ok := p["cache_control"]; ok {
+					textBlock["cache_control"] = cc
+				}
+				blocks = append(blocks, textBlock)
 				if imgURL, ok := p["image_url"].(map[string]any); ok {
 					url, _ := imgURL["url"].(string)
 					if strings.HasPrefix(url, "data:") {

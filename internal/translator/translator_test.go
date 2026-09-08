@@ -80,6 +80,70 @@ func TestOpenAIToClaudeWithTools(t *testing.T) {
 	}
 }
 
+func TestOpenAIToClaude_PreserveCacheControl(t *testing.T) {
+	ephemeral := map[string]any{"type": "ephemeral"}
+	body := map[string]any{
+		"model": "gpt-4",
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{
+						"type":          "text",
+						"text":          "Cached user prompt",
+						"cache_control": ephemeral,
+					},
+				},
+			},
+			map[string]any{
+				"role":          "tool",
+				"tool_call_id":  "call_123",
+				"content":       "Tool result text",
+				"cache_control": ephemeral,
+			},
+		},
+		"tools": []any{
+			map[string]any{
+				"type": "function",
+				"function": map[string]any{
+					"name":          "get_weather",
+					"parameters":    map[string]any{"type": "object"},
+					"cache_control": ephemeral,
+				},
+			},
+		},
+	}
+
+	result, err := openAIToClaude("claude-sonnet-4-20250514", body, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify tools preserve cache_control
+	tools := result["tools"].([]any)
+	tool0 := tools[0].(map[string]any)
+	if tool0["cache_control"] == nil {
+		t.Errorf("expected tool to preserve cache_control")
+	}
+
+	// Verify message text block preserves cache_control
+	msgs := result["messages"].([]any)
+	userMsg := msgs[0].(map[string]any)
+	userParts := userMsg["content"].([]any)
+	part0 := userParts[0].(map[string]any)
+	if part0["cache_control"] == nil {
+		t.Errorf("expected user text block to preserve cache_control")
+	}
+
+	// Verify tool result block preserves cache_control
+	toolMsg := msgs[1].(map[string]any)
+	toolParts := toolMsg["content"].([]any)
+	toolBlock := toolParts[0].(map[string]any)
+	if toolBlock["cache_control"] == nil {
+		t.Errorf("expected tool_result block to preserve cache_control")
+	}
+}
+
 func TestOpenAIToGeminiRequest(t *testing.T) {
 	body := map[string]any{
 		"model": "gpt-4",

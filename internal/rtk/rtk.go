@@ -3,6 +3,9 @@
 package rtk
 
 import (
+	"bytes"
+	"encoding/json"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -132,16 +135,67 @@ func CompressMessages(body map[string]any, enabled bool) int {
 	return saved
 }
 
-// compressText applies smart truncation to large tool outputs.
+var (
+	ansiRegex    = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
+	multiNLRegex = regexp.MustCompile(`\n{3,}`)
+)
+
+// cleanAndCompactText performs lossless pre-compression on tool result text:
+// 1. Strips terminal ANSI color and cursor escape sequences.
+// 2. Collapses redundant consecutive blank lines (\n{3,} -> \n\n).
+// 3. Compacts formatted JSON objects or arrays into dense minified JSON.
+func cleanAndCompactText(text string) string {
+	// 1. Strip ANSI escape sequences if present
+	if strings.Contains(text, "\x1b[") {
+		text = ansiRegex.ReplaceAllString(text, "")
+	}
+
+	// 2. Collapse 3+ newlines to 2 newlines (\n\n)
+	if strings.Contains(text, "\n\n\n") {
+		text = multiNLRegex.ReplaceAllString(text, "\n\n")
+	}
+
+	// 3. Lossless JSON compaction
+	trimmed := strings.TrimSpace(text)
+	if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+		(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, []byte(trimmed)); err == nil {
+			compacted := buf.String()
+			if len(compacted) < len(text) {
+				text = compacted
+			}
+		}
+	}
+
+	return text
+}
+
+// compressText applies lossless cleaning/compacting followed by smart truncation.
 func compressText(text string) string {
 	n := len(text)
 	if n < minCompressSize || n > rawCap {
 		return text
 	}
 
+	// Phase 1: Lossless pre-compression
+	cleaned := cleanAndCompactText(text)
+	if len(cleaned) < n {
+		text = cleaned
+		n = len(text)
+	}
+
+	// Check if lossless compression brought the text within comfortable bounds
+	const safeLineThreshold = 250
+	const maxCharThreshold = 16 * 1024 // 16 KiB (~4k tokens)
+
 	lines := strings.Split(text, "\n")
-	if len(lines) > 250 {
-		// Smart truncate: keep head + tail
+	if len(lines) <= safeLineThreshold && n <= maxCharThreshold {
+		return text
+	}
+
+	// Phase 2: Smart line-based truncation if exceeding line threshold
+	if len(lines) > safeLineThreshold {
 		const headLines = 120
 		const tailLines = 60
 
@@ -164,8 +218,7 @@ func compressText(text string) string {
 		}
 	}
 
-	// Fallback for massive outputs with few/no newlines (e.g. minified JSON/dumps)
-	const maxCharThreshold = 16 * 1024 // 16 KiB (~4k tokens)
+	// Phase 3: Fallback character truncation for massive outputs with few/no newlines
 	if n > maxCharThreshold {
 		const headChars = 8 * 1024
 		const tailChars = 4 * 1024

@@ -8,7 +8,7 @@ package provider
 // claudeCodeHeaders provides default headers for Anthropic-compatible providers supporting thinking beta
 var claudeCodeHeaders = map[string]string{
 	"anthropic-version": "2023-06-01",
-	"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14",
+	"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31",
 }
 
 func init() {

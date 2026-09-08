@@ -258,7 +258,7 @@ const Settings: Component = () => {
       <Card class="p-5 space-y-4">
         <h3 class="text-sm font-semibold">Token 节省</h3>
         <div class="flex items-start justify-between gap-4">
-          <Field label="RTK 压缩" hint="智能截断工具超长输出（保留首尾上下文，跳过错误堆栈）">
+          <Field label="RTK 压缩" hint="无损清洗工具输出（ANSI 剥离、JSON 紧凑化、空行折叠）与超长首尾截断">
             <span />
           </Field>
           <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />

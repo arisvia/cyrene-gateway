@@ -25,11 +25,12 @@
 - **OAuth 回调 CSRF 防御**：GET `/api/oauth/{provider}/callback` 强制校验 `state` 必填且会话未过期，彻底杜绝无 state 绕过 PKCE 校验的安全风险。
 - **CI / Release 职责解耦**：PR 与主干推送走 `build.yml` 门禁（类型检查、单元测试 `-race` 与单二进制冒烟测试）；Tag 推送专走 `release.yml`（多架构二进制交叉编译与 Docker 镜像推送）。
 - **RTK 令牌节省与多格式压缩强化**：
-  - RTK 工具结果压缩原生支持 Gemini `contents` 与 Anthropic 内容块结构，新增大于 16KB 单行/少行大文本的字符尺度截断兜底；
+  - RTK 工具结果压缩引入无损预压缩流水线（ANSI 转义序列清洗、多余空行折叠、结构化 JSON `json.Compact` 就地紧凑化），大幅降低 Token 并使落入阈值内的工具数据完整无损保留；
+  - 原生支持 Gemini `contents` 与 Anthropic 内容块结构，新增大于 16KB 单行/少行大文本的字符尺度截断兜底；
   - 完善 System Prompt 注入幂等性防御（覆盖 `messages`、`instructions`、`system` 及 `systemInstruction`），杜绝请求重试时提示词重复叠加；
+  - Anthropic 协议转换保留 `cache_control` 断点标记（覆盖 tools、messages 文本块与工具结果），并在出站头中声明 `prompt-caching-2024-07-31`，支持长上下文与工具 Prompt Cache 命中；
   - 修复 Caveman 与 Ponytail 在未显式选级时因空字符串导致功能空转的缺陷，增加自动降级默认级别并在 WebUI 提供可视化级别配置；
   - 修复 `TokenSaverExclude` 排除规则对解析后提供商名字段的精确匹配。
-### Fixed
 - **出站请求全链路 SSRF 防护加固**：
   - 修复 Anthropic passthrough、Embeddings passthrough、后台模型同步与外部面板下载中绕过 `SafeHTTPClient` 的直接客户端构造，统一实施 dial-time IP 拦截与私网跳转防护；
   - `POST /api/providers/test-credentials` 与媒体凭证测试中前置 `ValidateUpstreamURL` 校验，拦截针对私网与云元数据地址（169.254.0.0/16）的探测请求；

@@ -318,3 +318,76 @@ func TestInjectSystemPrompt_Idempotency(t *testing.T) {
 		t.Errorf("expected idempotent injection for instructions field, but content changed")
 	}
 }
+
+func TestCleanAndCompactText(t *testing.T) {
+	// 1. Test ANSI code stripping
+	ansiText := "\x1b[32mPASS\x1b[0m tests/unit.test.ts\n\x1b[1;31mFAIL\x1b[0m tests/e2e.test.ts\x1b[?25h"
+	cleanedAnsi := cleanAndCompactText(ansiText)
+	if strings.Contains(cleanedAnsi, "\x1b[") {
+		t.Errorf("expected ANSI codes to be stripped, got: %q", cleanedAnsi)
+	}
+	if !strings.Contains(cleanedAnsi, "PASS tests/unit.test.ts") {
+		t.Errorf("expected clean text preserved, got: %q", cleanedAnsi)
+	}
+
+	// 2. Test multi-newline collapsing
+	multiNL := "line 1\n\n\n\n\nline 2\n\n\nline 3"
+	collapsed := cleanAndCompactText(multiNL)
+	if strings.Contains(collapsed, "\n\n\n") {
+		t.Errorf("expected redundant newlines to be collapsed, got: %q", collapsed)
+	}
+	if collapsed != "line 1\n\nline 2\n\nline 3" {
+		t.Errorf("unexpected collapsed result: %q", collapsed)
+	}
+
+	// 3. Test JSON compaction
+	prettyJSON := "{\n  \"status\": \"ok\",\n  \"data\": {\n    \"count\": 42,\n    \"items\": [\n      1,\n      2\n    ]\n  }\n}"
+	compacted := cleanAndCompactText(prettyJSON)
+	expected := `{"status":"ok","data":{"count":42,"items":[1,2]}}`
+	if compacted != expected {
+		t.Errorf("expected compacted JSON %q, got %q", expected, compacted)
+	}
+}
+
+func TestCompressMessages_JSONCompactedWithoutTruncation(t *testing.T) {
+	// A pretty-printed JSON of ~800 bytes with ~30 lines:
+	// Larger than minCompressSize (500), but within 250 lines & 16KB.
+	// It should be losslessly compacted into 1 line without any omitted marker.
+	var builder strings.Builder
+	builder.WriteString("[\n")
+	for i := range 15 {
+		builder.WriteString("  {\n")
+		builder.WriteString("    \"id\": " + strconv.Itoa(i) + ",\n")
+		builder.WriteString("    \"description\": \"this is a test entry with some padding\",\n")
+		builder.WriteString("    \"active\": true\n")
+		if i < 14 {
+			builder.WriteString("  },\n")
+		} else {
+			builder.WriteString("  }\n")
+		}
+	}
+	builder.WriteString("]\n")
+
+	raw := builder.String()
+	if len(raw) < 500 {
+		t.Fatalf("test setup error: raw JSON must be > 500 bytes, got %d", len(raw))
+	}
+
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "tool", "content": raw},
+		},
+	}
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Errorf("expected positive savings from JSON compaction, got %d", saved)
+	}
+
+	res := body["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(res, "omitted") {
+		t.Errorf("expected lossless compaction WITHOUT truncation, but got omitted marker: %s", res)
+	}
+	if strings.Contains(res, "\n") {
+		t.Errorf("expected single-line compacted JSON, but found newlines: %s", res)
+	}
+}
