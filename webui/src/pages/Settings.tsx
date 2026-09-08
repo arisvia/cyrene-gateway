@@ -42,6 +42,33 @@ const Settings: Component = () => {
   const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
   const [clearingCache, setClearingCache] = createSignal(false)
 
+  // TokenSaver 排除项状态
+  const [excludeInput, setExcludeInput] = createSignal('')
+  const excludedProviders = () => {
+    const list = local().tokenSaverExclude
+    return Array.isArray(list) ? (list as string[]) : []
+  }
+  const addExcludeProvider = (providerName: string) => {
+    const trimmed = providerName.trim()
+    if (!trimmed) return
+    const current = excludedProviders()
+    if (!current.includes(trimmed)) {
+      set('tokenSaverExclude', [...current, trimmed])
+    }
+    setExcludeInput('')
+  }
+  const removeExcludeProvider = (providerName: string) => {
+    const current = excludedProviders()
+    set('tokenSaverExclude', current.filter(p => p !== providerName))
+  }
+  const quickSuggestions = () => {
+    const configured = store.providers().map(p => p.provider)
+    const defaults = ['deepseek', 'openai', 'anthropic', 'gemini']
+    const merged = Array.from(new Set([...defaults, ...configured]))
+    const current = excludedProviders()
+    return merged.filter(p => !current.includes(p))
+  }
+
   async function fetchCacheStats() {
     try {
       const res = await api<CacheStats>('/api/cache/stats')
@@ -73,6 +100,9 @@ const Settings: Component = () => {
 
   onMount(async () => {
     await store.loadSettings()
+    if (store.providers().length === 0) {
+      void store.loadProvidersOnly()
+    }
     setLocal({ ...store.settings() })
     if (bgStore.bgConfig().type === 'url') {
       setBgUrlInput(bgStore.bgConfig().value)
@@ -82,7 +112,17 @@ const Settings: Component = () => {
 
   const dirty = () => {
     const orig = store.settings()
-    return Object.keys(local()).some(k => local()[k] !== orig[k])
+    const keys = new Set([...Object.keys(local()), ...Object.keys(orig)])
+    for (const k of keys) {
+      const lv = local()[k]
+      const ov = orig[k]
+      if (Array.isArray(lv) || Array.isArray(ov)) {
+        if (JSON.stringify(lv ?? []) !== JSON.stringify(ov ?? [])) return true
+      } else if (lv !== ov) {
+        return true
+      }
+    }
+    return false
   }
 
   const set = (k: string, v: unknown) => setLocal(l => ({ ...l, [k]: v }))
@@ -91,6 +131,7 @@ const Settings: Component = () => {
     setSaving(true)
     try {
       await store.saveSettings(local())
+      setLocal({ ...store.settings() })
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '保存设置失败')
     } finally {
@@ -357,6 +398,80 @@ const Settings: Component = () => {
               />
             </div>
           </Show>
+        </div>
+
+        {/* TokenSaver 排除提供商 */}
+        <div class="space-y-2.5 pt-1 border-t border-subtle/50">
+          <Field
+            label="排除提供商 (TokenSaver 排除名单)"
+            hint="对指定上游提供商或推理模型（如 deepseek）跳过 RTK 压缩与 Caveman/Ponytail 提示词注入，防止打乱思维链或格式冲突"
+          >
+            <span />
+          </Field>
+          <div class="space-y-2">
+            <div class="flex items-center gap-1.5 flex-wrap min-h-6">
+              <Show
+                when={excludedProviders().length > 0}
+                fallback={<span class="text-xs text-faint italic">暂无排除项（所有提供商均应用 Token 节省规则）</span>}
+              >
+                <For each={excludedProviders()}>
+                  {p => (
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-warning/10 text-warning text-xs font-mono">
+                      <span>{p}</span>
+                      <button
+                        type="button"
+                        class="hover:text-foreground cursor-pointer text-sm leading-none opacity-70 hover:opacity-100"
+                        onClick={() => removeExcludeProvider(p)}
+                        title="移除排除"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                </For>
+              </Show>
+            </div>
+
+            <div class="flex items-center gap-2 max-w-md">
+              <Input
+                value={excludeInput()}
+                placeholder="输入提供商标识（如 deepseek）回车添加"
+                class="flex-1 !h-8 text-xs font-mono"
+                onInput={setExcludeInput}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addExcludeProvider(excludeInput())
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!excludeInput().trim()}
+                onClick={() => addExcludeProvider(excludeInput())}
+              >
+                添加
+              </Button>
+            </div>
+
+            <Show when={quickSuggestions().length > 0}>
+              <div class="flex items-center gap-1.5 flex-wrap text-xs text-faint pt-0.5">
+                <span>快速添加：</span>
+                <For each={quickSuggestions()}>
+                  {p => (
+                    <button
+                      type="button"
+                      class="px-1.5 py-0.5 rounded bg-hover hover:bg-subtle text-muted hover:text-foreground text-[11px] font-mono cursor-pointer transition-colors"
+                      onClick={() => addExcludeProvider(p)}
+                    >
+                      + {p}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
         </div>
 
         {/* 响应缓存 (Exact Response Cache) */}

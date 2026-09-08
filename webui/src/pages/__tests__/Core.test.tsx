@@ -128,6 +128,7 @@ describe('Settings 页', () => {
         return Promise.resolve({
           requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
           comboStrategy: 'fallback', rtkEnabled: false, cavemanEnabled: false, ponytailEnabled: false,
+          tokenSaverExclude: ['deepseek'],
         })
       }
       return Promise.resolve(null)
@@ -140,5 +141,7 @@ describe('Settings 页', () => {
     expect(text).toContain('要求 API Key')
     expect(text).toContain('API Key 速率限制')
     expect(text).toContain('Token 节省')
+    expect(text).toContain('排除提供商')
+    expect(text).toContain('deepseek')
   })
 })

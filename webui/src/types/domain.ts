@@ -152,3 +152,21 @@ export interface LiveUsageEvent {
 export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue'
 export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
 export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'
+
+export interface GatewaySettings {
+  requireLogin?: boolean
+  requireApiKey?: boolean
+  apiKeyRpm?: number
+  comboStrategy?: string
+  rtkEnabled?: boolean
+  cavemanEnabled?: boolean
+  cavemanLevel?: string
+  ponytailEnabled?: boolean
+  ponytailLevel?: string
+  tokenSaverExclude?: string[]
+  responseCacheEnabled?: boolean
+  responseCacheTTL?: number
+  responseCacheAll?: boolean
+  providerStrategies?: Record<string, { fallbackStrategy?: string; stickyRoundRobinLimit?: number }>
+  providerThinking?: Record<string, { mode?: string }>
+}
