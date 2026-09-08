@@ -399,7 +399,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			return nil, fmt.Errorf("codebuddy state request returned status %d: %s", resp.StatusCode, string(body))
 		}
 		var res struct {
@@ -410,7 +410,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 				AuthURL string `json:"authUrl"`
 			} `json:"data"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&res); err != nil {
 			return nil, fmt.Errorf("failed to decode codebuddy state response: %w", err)
 		}
 		if res.Code != 0 || res.Data.State == "" || res.Data.AuthURL == "" {
@@ -578,7 +578,7 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			return nil, fmt.Errorf("codebuddy poll returned status %d: %s", resp.StatusCode, string(body))
 		}
 		var res struct {
@@ -591,10 +591,11 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 				ExpiresIn    int    `json:"expiresIn"`
 			} `json:"data"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&res); err != nil {
 			return nil, fmt.Errorf("failed to decode poll response: %w", err)
 		}
-		if res.Code == 11217 {
+		const codebuddyPendingCode = 11217
+		if res.Code == codebuddyPendingCode {
 			return &PollDeviceCodeResult{Pending: true}, nil
 		}
 		if res.Code == 0 && res.Data.AccessToken != "" {
@@ -608,7 +609,6 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 					AccessToken:  res.Data.AccessToken,
 					RefreshToken: res.Data.RefreshToken,
 					ExpiresIn:    expiresIn,
-					DisplayName:  info.Name,
 				},
 			}, nil
 		}

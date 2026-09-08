@@ -463,8 +463,11 @@ const Providers: Component = () => {
       }
 
       if (wizardPollTimer) clearInterval(wizardPollTimer)
+      let inFlight = false
       const intervalMs = res.interval ? res.interval * 1000 : 2500
       wizardPollTimer = window.setInterval(async () => {
+        if (inFlight) return
+        inFlight = true
         try {
           const pollRes = (await apiPost(`/api/oauth/${reg.id}/device-code/poll`, {
             deviceCode: res.deviceCode,
@@ -472,7 +475,6 @@ const Providers: Component = () => {
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
           })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
-
           if (pollRes?.success) {
             clearInterval(wizardPollTimer)
             wizardPollTimer = undefined
@@ -490,6 +492,8 @@ const Providers: Component = () => {
           }
         } catch {
           // 忽略轮询偶发错误
+        } finally {
+          inFlight = false
         }
       }, intervalMs)
     } catch (e: unknown) {
@@ -1117,7 +1121,7 @@ const Providers: Component = () => {
       <Modal
         open={wizardOpen()}
         title={selectedReg() ? `接入提供商：${selectedReg()!.name}` : '添加提供商'}
-        onClose={() => setWizardOpen(false)}
+        onClose={() => { cancelWizardOAuth(); setWizardOpen(false) }}
       >
         <Show when={selectedReg()}>
           {reg => {

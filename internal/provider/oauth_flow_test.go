@@ -3,6 +3,7 @@ package provider
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -249,7 +250,7 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 	orig := Registry["codebuddy-cn"]
 	defer func() { Registry["codebuddy-cn"] = orig }()
 
-	var step int
+	var step atomic.Int32
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Errorf("expected GET, got %s", r.Method)
@@ -261,7 +262,7 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 			t.Errorf("expected X-Domain copilot.tencent.com")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		switch step {
+		switch step.Load() {
 		case 0:
 			// Pending
 			w.Write([]byte(`{"code":11217,"msg":"RetryFetchToken"}`))
@@ -280,7 +281,7 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 	Registry["codebuddy-cn"] = info
 
 	// Step 0: Pending
-	step = 0
+	step.Store(0)
 	res, err := PollDeviceCode("codebuddy-cn", "cb-state-123", "", nil, ts.Client())
 	if err != nil {
 		t.Fatalf("step 0 poll failed: %v", err)
@@ -290,7 +291,7 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 	}
 
 	// Step 1: Success
-	step = 1
+	step.Store(1)
 	res, err = PollDeviceCode("codebuddy-cn", "cb-state-123", "", nil, ts.Client())
 	if err != nil {
 		t.Fatalf("step 1 poll failed: %v", err)
@@ -306,13 +307,69 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 	}
 
 	// Step 2: Error
-	step = 2
+	step.Store(2)
 	res, err = PollDeviceCode("codebuddy-cn", "cb-state-123", "", nil, ts.Client())
 	if err != nil {
 		t.Fatalf("step 2 poll failed: %v", err)
 	}
 	if res.Error != "token expired or revoked" {
 		t.Errorf("expected error 'token expired or revoked', got %q", res.Error)
+	}
+}
+
+func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
+	orig := Registry["codebuddy-intl"]
+	defer func() { Registry["codebuddy-intl"] = orig }()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("platform") != "ide" {
+			t.Errorf("expected platform=ide, got %s", r.URL.Query().Get("platform"))
+		}
+		if r.Header.Get("X-Domain") != "www.codebuddy.ai" {
+			t.Errorf("expected X-Domain www.codebuddy.ai, got %s", r.Header.Get("X-Domain"))
+		}
+		if r.Header.Get("User-Agent") != "IDE/2.108.1 CodeBuddy/2.108.1" {
+			t.Errorf("expected IDE User-Agent, got %s", r.Header.Get("User-Agent"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"code":0,"msg":"ok","data":{"state":"cb-intl-state","authUrl":"https://www.codebuddy.ai/auth?state=cb-intl-state"}}`))
+	}))
+	defer ts.Close()
+
+	info := orig
+	info.DeviceCodeURL = ts.URL
+	Registry["codebuddy-intl"] = info
+
+	resp, err := RequestDeviceCode("codebuddy-intl", ts.Client())
+	if err != nil {
+		t.Fatalf("RequestDeviceCode failed: %v", err)
+	}
+	if resp.DeviceCode != "cb-intl-state" {
+		t.Errorf("expected deviceCode cb-intl-state, got %q", resp.DeviceCode)
+	}
+	if resp.VerificationURI != "https://www.codebuddy.ai/auth?state=cb-intl-state" {
+		t.Errorf("unexpected verificationURI: %q", resp.VerificationURI)
+	}
+}
+
+func TestRequestDeviceCode_CodeBuddy_Negative(t *testing.T) {
+	orig := Registry["codebuddy-cn"]
+	defer func() { Registry["codebuddy-cn"] = orig }()
+
+	// Server returning 500
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`server error`))
+	}))
+	defer ts.Close()
+
+	info := orig
+	info.DeviceCodeURL = ts.URL
+	Registry["codebuddy-cn"] = info
+
+	_, err := RequestDeviceCode("codebuddy-cn", ts.Client())
+	if err == nil {
+		t.Error("expected error on 500 status, got nil")
 	}
 }
 

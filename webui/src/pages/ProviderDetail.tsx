@@ -291,8 +291,11 @@ const ProviderDetail: Component = () => {
       }
 
       clearInterval(pollTimer)
+      let inFlight = false
       const intervalMs = res.interval ? res.interval * 1000 : 2500
       pollTimer = window.setInterval(async () => {
+        if (inFlight) return
+        inFlight = true
         try {
           const pollRes = (await apiPost(`/api/oauth/${p}/device-code/poll`, {
             deviceCode: res.deviceCode,
@@ -300,7 +303,6 @@ const ProviderDetail: Component = () => {
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
           })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
-
           if (pollRes?.success) {
             clearInterval(pollTimer)
             pollTimer = undefined
@@ -319,6 +321,8 @@ const ProviderDetail: Component = () => {
           }
         } catch {
           // 忽略轮询网络偶发错误
+        } finally {
+          inFlight = false
         }
       }, intervalMs)
     } catch (e: unknown) {

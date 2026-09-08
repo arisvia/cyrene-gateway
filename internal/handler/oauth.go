@@ -300,6 +300,17 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Request) {
 	providerID := r.PathValue("provider")
 
+	if _, ok := provider.GetProvider(providerID); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerID})
+		return
+	}
+
+	flowType := provider.GetProviderFlowType(providerID)
+	if flowType != provider.FlowDeviceCode {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider does not support device code flow"})
+		return
+	}
+
 	var req struct {
 		ExtraData    map[string]any `json:"extraData"`
 		DeviceCode   string         `json:"deviceCode"`
