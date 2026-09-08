@@ -1,11 +1,40 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
-import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 
+const cavemanOptions = [
+  { value: 'lite', label: '精简 (lite)' },
+  { value: 'full', label: '标准极简 (full)' },
+  { value: 'ultra', label: '极致极简 (ultra)' },
+  { value: 'wenyan-lite', label: '半文言 (wenyan-lite)' },
+  { value: 'wenyan', label: '文言文 (wenyan)' },
+  { value: 'wenyan-ultra', label: '极限文言 (wenyan-ultra)' },
+]
+
+const ponytailOptions = [
+  { value: 'lite', label: '精简建议 (lite)' },
+  { value: 'full', label: '阶梯原则 (full)' },
+  { value: 'ultra', label: '极致极简 (ultra)' },
+]
+
+interface CacheStats {
+  hits: number
+  misses: number
+  hitRate: number
+  entries: number
+  maxEntries: number
+  bytesUsed: number
+  tokensSaved: number
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
 const Settings: Component = () => {
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
@@ -15,13 +44,86 @@ const Settings: Component = () => {
   const [pw, setPw] = createSignal('')
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
+  // 响应缓存状态
+  const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
+  const [clearingCache, setClearingCache] = createSignal(false)
+  const [refreshingStats, setRefreshingStats] = createSignal(false)
+
+  // TokenSaver 排除项状态
+  const [excludeInput, setExcludeInput] = createSignal('')
+  const excludedProviders = () => {
+    const list = local().tokenSaverExclude
+    return Array.isArray(list) ? (list as string[]) : []
+  }
+  const addExcludeProvider = (providerName: string) => {
+    const trimmed = providerName.trim()
+    if (!trimmed) return
+    const current = excludedProviders()
+    if (!current.includes(trimmed)) {
+      set('tokenSaverExclude', [...current, trimmed])
+    }
+    setExcludeInput('')
+  }
+  const removeExcludeProvider = (providerName: string) => {
+    const current = excludedProviders()
+    set('tokenSaverExclude', current.filter(p => p !== providerName))
+  }
+  const quickSuggestions = () => {
+    const configured = store.providers().map(p => p.provider)
+    const defaults = ['deepseek', 'openai', 'anthropic', 'gemini']
+    const merged = Array.from(new Set([...defaults, ...configured]))
+    const current = excludedProviders()
+    return merged.filter(p => !current.includes(p))
+  }
+
+  async function fetchCacheStats() {
+    try {
+      const res = await api<CacheStats>('/api/cache/stats')
+      setCacheStats(res)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleRefreshStats() {
+    setRefreshingStats(true)
+    try {
+      await fetchCacheStats()
+      toast.success('缓存统计已刷新')
+    } finally {
+      setRefreshingStats(false)
+    }
+  }
+
+  async function handleClearCache() {
+    const ok = await confirm({
+      title: '清空响应缓存',
+      message: '确定清空当前内存中的所有响应缓存条目吗？后续相同请求将重新向上游发起。',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setClearingCache(true)
+    try {
+      await apiPost('/api/cache/clear')
+      toast.success('响应缓存已清空')
+      await fetchCacheStats()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '清空缓存失败')
+    } finally {
+      setClearingCache(false)
+    }
+  }
 
   onMount(async () => {
     await store.loadSettings()
+    if (store.providers().length === 0) {
+      void store.loadProvidersOnly()
+    }
     setLocal({ ...store.settings() })
     if (bgStore.bgConfig().type === 'url') {
       setBgUrlInput(bgStore.bgConfig().value)
     }
+    await fetchCacheStats()
   })
 
   const dirty = () => {
@@ -46,8 +148,8 @@ const Settings: Component = () => {
     try {
       await store.saveSettings(local())
       setLocal({ ...store.settings() })
+      toast.success('设置已保存')
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '保存设置失败')
     } finally {
       setSaving(false)
     }
@@ -74,7 +176,7 @@ const Settings: Component = () => {
           <p class="text-sm text-faint mt-0.5">网关运行参数与访问控制</p>
         </div>
         <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save}>
-          {dirty() ? '保存更改' : '已是最新'}
+          {dirty() ? '保存修改' : '全部已保存'}
         </Button>
       </div>
       {/* 界面与背景自定义 */}
@@ -252,26 +354,248 @@ const Settings: Component = () => {
         </Field>
       </Card>
 
-      {/* Token 节省与响应缓存独立页面导航 */}
-      <Card class="p-5 flex items-center justify-between gap-4">
-        <div class="space-y-0.5">
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-semibold text-foreground">Token 节省与优化</h3>
-            <Badge tone="blue">已独立为专属页面</Badge>
+      {/* 响应精确缓存 */}
+      <Card class="p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+          <div class="flex items-center gap-2.5">
+            <h3 class="text-sm font-semibold">响应精确缓存</h3>
+            <Badge tone="blue">1ms 直出 · 0 Token</Badge>
           </div>
-          <p class="text-xs text-faint">
-            全链路响应精确缓存、RTK 工具压缩、Caveman/Ponytail 极简指令与提供商保护名单已整合至独立控制台。
-          </p>
+          <div class="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={refreshingStats()}
+              onClick={handleRefreshStats}
+              title="刷新统计指标"
+            >
+              刷新
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              class="text-danger hover:text-danger hover:bg-danger/10"
+              loading={clearingCache()}
+              onClick={handleClearCache}
+              title="清空所有内存缓存条目"
+            >
+              清空缓存
+            </Button>
+          </div>
         </div>
-        <A
-          href="/tokensaver"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-medium bg-primary text-primary-fg hover:opacity-90 transition-opacity shrink-0"
-        >
-          <span>前往配置</span>
-          <span aria-hidden="true">→</span>
-        </A>
+
+        {/* 缓存指标数据小横条 */}
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-subtle/20 p-3 rounded-control border border-subtle/40 text-xs">
+          <div>
+            <span class="text-faint block">命中率</span>
+            <span class="font-semibold text-foreground text-sm">
+              {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
+            </span>
+            <span class="text-[10px] text-muted block mt-0.5">
+              {cacheStats()?.hits ?? 0} 命中 / {cacheStats()?.misses ?? 0} 未命中
+            </span>
+          </div>
+          <div>
+            <span class="text-faint block">累计节省 Token</span>
+            <span class="font-semibold text-accent text-sm">
+              {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
+            </span>
+            <span class="text-[10px] text-muted block mt-0.5">直出避免消耗</span>
+          </div>
+          <div>
+            <span class="text-faint block">在存条目</span>
+            <span class="font-semibold text-foreground text-sm">
+              {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
+            </span>
+            <span class="text-[10px] text-muted block mt-0.5">LRU 内存置换池</span>
+          </div>
+          <div>
+            <span class="text-faint block">内存占用</span>
+            <span class="font-semibold text-foreground text-sm">
+              {formatBytes(cacheStats()?.bytesUsed ?? 0)}
+            </span>
+            <span class="text-[10px] text-muted block mt-0.5">单条 ≤2 MiB 保护</span>
+          </div>
+        </div>
+
+        {/* 控制项 */}
+        <div class="flex items-start justify-between gap-4 pt-1">
+          <Field label="启用响应精确缓存" hint="对完全一致的对话请求（temperature=0、相同消息与模型）直接直出缓存，1ms 返回且 0 Token 消耗">
+            <span />
+          </Field>
+          <Toggle
+            checked={!!local().responseCacheEnabled}
+            onChange={v => {
+              set('responseCacheEnabled', v)
+              if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
+            }}
+          />
+        </div>
+
+        <Show when={!!local().responseCacheEnabled}>
+          <div class="space-y-3 pt-2 border-t border-subtle/50">
+            <Field label="缓存有效期 (TTL)" hint="缓存条目的生存时间（秒），默认 3600 秒（1 小时），过期自动剔除">
+              <Input
+                type="number"
+                class="!w-36"
+                value={String(local().responseCacheTTL ?? 3600)}
+                onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
+              />
+            </Field>
+            <div class="flex items-start justify-between gap-4 pt-1">
+              <Field label="缓存全部非流式请求" hint="开启后不论 temperature 为何值均全量缓存；关闭则仅精确缓存确定性请求（temperature=0 与 embeddings）">
+                <span />
+              </Field>
+              <Toggle
+                checked={!!local().responseCacheAll}
+                onChange={v => set('responseCacheAll', v)}
+              />
+            </div>
+          </div>
+        </Show>
       </Card>
 
+      {/* 令牌节省引擎 */}
+      <Card class="p-5 space-y-4">
+        <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+          <div class="flex items-center gap-2.5">
+            <h3 class="text-sm font-semibold">令牌节省引擎</h3>
+            <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
+          </div>
+        </div>
+
+        {/* RTK 压缩 */}
+        <div class="flex items-start justify-between gap-4">
+          <Field label="RTK 压缩" hint="无损清洗工具输出（ANSI 剥离、JSON 紧凑化、空行折叠）与超长结果首尾截断（保留前 120 行与后 60 行，避免大文件淹没上下文）">
+            <span />
+          </Field>
+          <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
+        </div>
+
+        {/* Caveman 极简表达 */}
+        <div class="space-y-3 pt-2 border-t border-subtle/50">
+          <div class="flex items-start justify-between gap-4">
+            <Field label="Caveman 极简表达" hint="注入极简表达指令（洞穴人模式），压制寒暄客套，最大化削减模型回复 Token 消耗">
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().cavemanEnabled}
+              onChange={v => {
+                set('cavemanEnabled', v)
+                if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
+              }}
+            />
+          </div>
+          <Show when={!!local().cavemanEnabled}>
+            <div class="pl-4 border-l-2 border-primary/30">
+              <Field label="压缩级别" hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
+                <Select
+                  value={String(local().cavemanLevel || 'lite')}
+                  options={cavemanOptions}
+                  onChange={v => set('cavemanLevel', v)}
+                />
+              </Field>
+            </div>
+          </Show>
+        </div>
+
+        {/* Ponytail 极简代码 */}
+        <div class="space-y-3 pt-2 border-t border-subtle/50">
+          <div class="flex items-start justify-between gap-4">
+            <Field label="Ponytail 极简代码" hint="注入极简代码规范指令（马尾模式），推崇 YAGNI，严禁过度设计与冗余样板代码">
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().ponytailEnabled}
+              onChange={v => {
+                set('ponytailEnabled', v)
+                if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
+              }}
+            />
+          </div>
+          <Show when={!!local().ponytailEnabled}>
+            <div class="pl-4 border-l-2 border-primary/30">
+              <Field label="压缩级别" hint="lite: 提供最简替代方案 | full: 严格执行阶梯原则 | ultra: 极致单行与挑战需求">
+                <Select
+                  value={String(local().ponytailLevel || 'lite')}
+                  options={ponytailOptions}
+                  onChange={v => set('ponytailLevel', v)}
+                />
+              </Field>
+            </div>
+          </Show>
+        </div>
+
+        {/* 排除名单 */}
+        <div class="space-y-3 pt-3 border-t border-subtle/50">
+          <div>
+            <Field
+              label="排除提供商名单 (TokenSaver Exclude)"
+              hint="指定跳过 RTK 压缩与 Caveman/Ponytail 提示词注入的提供商（例如保护遵循能力强的深度推理模型）"
+            >
+              <span />
+            </Field>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-bg-elevated border border-subtle">
+            <Show
+              when={excludedProviders().length > 0}
+              fallback={<span class="text-xs text-faint">暂无排除项（所有提供商均应用 Token 节省规则）</span>}
+            >
+              <For each={excludedProviders()}>
+                {p => (
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-warning/10 text-warning text-xs font-mono">
+                    <span>{p}</span>
+                    <button
+                      type="button"
+                      class="hover:opacity-75 focus:outline-none"
+                      title="移除排除"
+                      onClick={() => removeExcludeProvider(p)}
+                    >
+                      &times;
+                    </button>
+                  </span>
+                )}
+              </For>
+            </Show>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <Input
+              placeholder="输入提供商名称（如 deepseek）后回车或点击添加"
+              class="flex-1 text-xs"
+              value={excludeInput()}
+              onInput={setExcludeInput}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addExcludeProvider(excludeInput())
+                }
+              }}
+            />
+            <Button size="sm" variant="secondary" onClick={() => addExcludeProvider(excludeInput())}>
+              添加
+            </Button>
+          </div>
+
+          <Show when={quickSuggestions().length > 0}>
+            <div class="flex flex-wrap items-center gap-1 text-[11px] text-faint">
+              <span>快速添加已配提供商:</span>
+              <For each={quickSuggestions()}>
+                {name => (
+                  <button
+                    type="button"
+                    class="px-1.5 py-0.5 rounded bg-subtle hover:bg-hover text-muted hover:text-foreground transition-colors font-mono"
+                    onClick={() => addExcludeProvider(name)}
+                  >
+                    +{name}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </Card>
 
       {/* 改密码 */}
       <Card class="p-5 space-y-3">

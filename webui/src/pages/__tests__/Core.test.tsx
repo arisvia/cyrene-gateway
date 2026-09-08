@@ -6,7 +6,6 @@ import { useGatewayStore } from '@/stores/gateway'
 import Combos from '@/pages/Combos'
 import Usage from '@/pages/Usage'
 import Settings from '@/pages/Settings'
-import TokenSaverPage from '@/pages/TokenSaver'
 
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(),
@@ -122,34 +121,7 @@ describe('Usage 页', () => {
 
 describe('Settings 页', () => {
   afterEach(() => cleanup())
-
-  it('渲染全部设置项含 apiKeyRpm', async () => {
-    vi.mocked(api).mockImplementation((path: string) => {
-      if (path === '/api/settings') {
-        return Promise.resolve({
-          requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
-          comboStrategy: 'fallback', rtkEnabled: false, cavemanEnabled: false, ponytailEnabled: false,
-          tokenSaverExclude: ['deepseek'],
-        })
-      }
-      return Promise.resolve(null)
-    })
-    await useGatewayStore().loadSettings()
-    mount(Settings)
-    await tick()
-    const text = document.body.textContent || ''
-    expect(text).toContain('访问控制')
-    expect(text).toContain('要求 API Key')
-    expect(text).toContain('API Key 速率限制')
-    expect(text).toContain('Token 节省与优化')
-    expect(document.body.querySelector('a[href*="tokensaver"]')).toBeTruthy()
-  })
-})
-
-describe('TokenSaver 页', () => {
-  afterEach(() => cleanup())
-
-  it('渲染实时指标与各项配置卡片', async () => {
+  it('渲染全部设置项含访问控制、响应精确缓存与令牌节省引擎', async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/settings') {
         return Promise.resolve({
@@ -167,29 +139,33 @@ describe('TokenSaver 页', () => {
       }
       return Promise.resolve(null)
     })
-
     await useGatewayStore().loadSettings()
-    mount(TokenSaverPage)
+    mount(Settings)
     await tick()
 
     const text = document.body.textContent || ''
-    expect(text).toContain('Token 节省与优化')
+    expect(text).toContain('访问控制')
+    expect(text).toContain('要求 API Key')
+    expect(text).toContain('API Key 速率限制')
+    expect(text).toContain('响应精确缓存')
     expect(text).toContain('缓存命中率')
     expect(text).toContain('84.0%')
     expect(text).toContain('累计节省 Token')
     expect(text).toContain('12,500')
-    expect(text).toContain('响应精确缓存')
+    expect(text).toContain('令牌节省引擎')
     expect(text).toContain('RTK 压缩')
-    expect(text).toContain('Caveman')
-    expect(text).toContain('Ponytail')
+    expect(text).toContain('Caveman 极简表达')
+    expect(text).toContain('Ponytail 极简代码')
     expect(text).toContain('排除提供商名单')
     expect(text).toContain('deepseek')
+    expect(text).toContain('全部已保存')
   })
 
-  it('支持交互式添加与移除排除提供商', async () => {
+  it('支持在设置页中交互式添加与移除排除提供商并触发保存状态变更', async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/settings') {
         return Promise.resolve({
+          requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
           rtkEnabled: true,
           tokenSaverExclude: ['deepseek'],
         })
@@ -198,10 +174,11 @@ describe('TokenSaver 页', () => {
     })
 
     await useGatewayStore().loadSettings()
-    mount(TokenSaverPage)
+    mount(Settings)
     await tick()
 
     expect(document.body.textContent).toContain('deepseek')
+    expect(document.body.textContent).toContain('全部已保存')
 
     // 输入并添加 ollama
     const input = document.body.querySelector('input[placeholder*="deepseek"]') as HTMLInputElement
@@ -216,6 +193,8 @@ describe('TokenSaver 页', () => {
     await tick()
 
     expect(document.body.textContent).toContain('ollama')
+    // 脏检查生效，按钮变为 保存修改
+    expect(document.body.textContent).toContain('保存修改')
 
     // 点击移除 deepseek
     const removeBtns = Array.from(document.body.querySelectorAll('button[title="移除排除"]'))

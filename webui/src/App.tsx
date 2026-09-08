@@ -14,7 +14,6 @@ import Media from './pages/Media'
 import LogsPage from './pages/Logs'
 import ProxyPools from './pages/ProxyPools'
 import Settings from './pages/Settings'
-import TokenSaverPage from './pages/TokenSaver'
 
 // 现代 SVG 矢量侧边栏图标
 const NavIcons = {
@@ -74,11 +73,6 @@ const NavIcons = {
       <polyline points="10 9 9 9 8 9" />
     </svg>
   ),
-  tokensaver: () => (
-    <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-    </svg>
-  ),
 }
 
 const NAV = [
@@ -90,7 +84,6 @@ const NAV = [
       { href: '/combos', label: '组合', icon: NavIcons.combos },
       { href: '/usage', label: '用量', icon: NavIcons.usage },
       { href: '/quota', label: '配额', icon: NavIcons.quota },
-      { href: '/tokensaver', label: 'Token 节省', icon: NavIcons.tokensaver },
     ],
   },
   {
@@ -234,7 +227,6 @@ const App: Component = () => {
       <Route path="/media" component={Media} />
       <Route path="/proxy-pools" component={ProxyPools} />
       <Route path="/logs" component={LogsPage} />
-      <Route path="/tokensaver" component={TokenSaverPage} />
       <Route path="/settings" component={Settings} />
       <Route path="*" component={Home} />
     </HashRouter>
