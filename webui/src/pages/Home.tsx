@@ -159,6 +159,7 @@ const Home: Component = () => {
               />
               <Button
                   variant="primary"
+                  class="shrink-0"
                   loading={creatingKey()}
                   disabled={!keyName().trim()}
                   onClick={async () => {

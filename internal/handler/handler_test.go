@@ -638,6 +638,88 @@ func TestDashboardAuthEnforcement(t *testing.T) {
 	}
 }
 
+func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// 1. Initial state: hasPassword should be false
+	req := httptest.NewRequest("GET", "/api/settings", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var sResp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &sResp)
+	if sResp["hasPassword"] != false {
+		t.Fatalf("expected hasPassword=false, got %v", sResp["hasPassword"])
+	}
+
+	// 2. Attempt to enable requireLogin via PUT without password: must be rejected with 400
+	body := `{"requireLogin":true}`
+	req = httptest.NewRequest("PUT", "/api/settings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when enabling requireLogin without password, got %d", w.Code)
+	}
+
+	// 3. Attempt to enable requireLogin via PATCH without password: must be rejected with 400
+	req = httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when enabling requireLogin via PATCH without password, got %d", w.Code)
+	}
+
+	// 4. Set password via /api/auth/password
+	pwBody := `{"password":"admin-password-123"}`
+	req = httptest.NewRequest("POST", "/api/auth/password", strings.NewReader(pwBody))
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 setting password, got %d", w.Code)
+	}
+
+	// Verify hasPassword is now true
+	req = httptest.NewRequest("GET", "/api/settings", nil)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	json.Unmarshal(w.Body.Bytes(), &sResp)
+	if sResp["hasPassword"] != true {
+		t.Fatalf("expected hasPassword=true, got %v", sResp["hasPassword"])
+	}
+
+	// 5. Now enabling requireLogin via PATCH should succeed
+	req = httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(body))
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 enabling requireLogin after password set, got %d", w.Code)
+	}
+	loginBody := `{"password":"admin-password-123"}`
+	req = httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from login, got %d", w.Code)
+	}
+	cookie := w.Result().Cookies()[0]
+
+	// 7. Verify that saving settings with passwordHash="" does NOT wipe existing password
+	patchEmptyPw := `{"apiKeyRpm":10,"passwordHash":""}`
+	req = httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(patchEmptyPw))
+	req.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from patch, got %d", w.Code)
+	}
+	st, _ := database.GetSettings()
+	if st.PasswordHash == "" {
+		t.Fatal("passwordHash was wiped out by patch!")
+	}
+}
+
 func TestCreateAPIKeyEndpoint(t *testing.T) {
 	srv, _ := setupTestServer(t)
 

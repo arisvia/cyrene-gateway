@@ -208,4 +208,26 @@ describe('Settings 页', () => {
     expect(chips).toContain('ollama')
     expect(chips).not.toContain('deepseek')
   })
+
+  it('未设置密码时禁用要求登录开关以防锁死，并给出警示文案', async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/settings') {
+        return Promise.resolve({
+          hasPassword: false,
+          requireLogin: false,
+        })
+      }
+      return Promise.resolve(null)
+    })
+    await useGatewayStore().loadSettings()
+    mount(Settings)
+    await tick()
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('未初始化密码')
+    expect(text).toContain('请先在下方设置管理密码再开启要求登录')
+    const requireLoginToggle = document.body.querySelector('button[role="switch"][disabled]') as HTMLButtonElement
+    expect(requireLoginToggle).toBeTruthy()
+    expect(requireLoginToggle.disabled).toBe(true)
+  })
 })

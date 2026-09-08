@@ -25,6 +25,7 @@ type Settings struct {
 	ProviderStrategies map[string]ProviderStrategyOverride `json:"providerStrategies,omitempty"`
 	ProviderThinking   map[string]ProviderThinkingConfig   `json:"providerThinking,omitempty"`
 	PasswordHash       string                              `json:"passwordHash,omitempty"`
+	HasPassword        bool                                `json:"hasPassword"`
 	ComboStrategy      string                              `json:"comboStrategy,omitempty"`
 	CavemanLevel       string                              `json:"cavemanLevel,omitempty"`
 	PonytailLevel      string                              `json:"ponytailLevel,omitempty"`

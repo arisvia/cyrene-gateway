@@ -154,6 +154,7 @@ export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
 export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'
 
 export interface GatewaySettings {
+  hasPassword?: boolean
   requireLogin?: boolean
   requireApiKey?: boolean
   apiKeyRpm?: number

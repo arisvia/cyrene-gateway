@@ -936,8 +936,9 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
 		return
 	}
-	// Redact PasswordHash from settings response
+	// Redact PasswordHash from settings response and populate HasPassword flag
 	sanitized := *settings
+	sanitized.HasPassword = settings.PasswordHash != ""
 	sanitized.PasswordHash = ""
 	writeJSON(w, http.StatusOK, sanitized)
 }
@@ -948,6 +949,24 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
+
+	current, err := s.DB.GetSettings()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
+		return
+	}
+
+	// Preserve password hash if omitted/empty (passwords are set via /api/auth/password)
+	if settings.PasswordHash == "" && current != nil {
+		settings.PasswordHash = current.PasswordHash
+	}
+
+	// Guard: cannot require login without an initialized password (prevents lockout)
+	if settings.RequireLogin && settings.PasswordHash == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请先设置管理员密码再开启要求登录，以防面板被锁死"})
+		return
+	}
+
 	if err := s.DB.SaveSettings(&settings); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
@@ -973,6 +992,13 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
 		return
 	}
+	// Do not allow wiping password hash via generic patch; password is set via /api/auth/password
+	if rawPw, exists := patch["passwordHash"]; exists {
+		var pwStr string
+		if json.Unmarshal(rawPw, &pwStr) == nil && pwStr == "" {
+			delete(patch, "passwordHash")
+		}
+	}
 
 	// Marshal current settings, unmarshal patch on top, re-save
 	currentBytes, _ := json.Marshal(current)
@@ -986,6 +1012,13 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid patch data"})
 		return
 	}
+
+	// Guard: cannot require login without an initialized password (prevents lockout)
+	if updated.RequireLogin && updated.PasswordHash == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请先设置管理员密码再开启要求登录，以防面板被锁死"})
+		return
+	}
+
 	if err := s.DB.SaveSettings(&updated); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
