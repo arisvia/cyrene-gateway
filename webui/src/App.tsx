@@ -125,14 +125,35 @@ const App: Component = () => {
     return (
       <div class="min-h-screen bg-bg text-text relative selection:bg-accent/25">
         <Show when={hasCustomBg()}>
-          <div
-            class="fixed inset-0 pointer-events-none -z-20 transition-all duration-300 ease-out"
-            style={bgStyle()}
-          />
+          <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+            <Show
+              when={bgStore.bgConfig().type === 'url'}
+              fallback={
+                <div
+                  class="w-full h-full transition-all duration-300 ease-out"
+                  style={bgStyle()}
+                />
+              }
+            >
+              <img
+                src={bgStore.bgConfig().value}
+                alt=""
+                referrerpolicy="no-referrer"
+                class="w-full h-full object-cover transition-all duration-300 ease-out"
+                style={{
+                  filter: bgStore.bgConfig().blur ? `blur(${bgStore.bgConfig().blur}px)` : undefined,
+                  opacity: bgStore.bgConfig().opacity ?? 1,
+                  transform: bgStore.bgConfig().blur ? 'scale(1.05)' : undefined,
+                }}
+              />
+            </Show>
+            {/* 半透明遮罩：防止高亮壁纸冲淡文字对比度 */}
+            <div class="absolute inset-0 bg-bg/50 pointer-events-none" />
+          </div>
         </Show>
         {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
-        <div class="fixed top-[-10%] left-[20%] w-125 h-125 bg-accent/5 rounded-full blur-[140px] pointer-events-none -z-10" />
-        <div class="fixed bottom-[-10%] right-[10%] w-150 h-150 bg-accent-2/5 rounded-full blur-[160px] pointer-events-none -z-10" />
+        <div class="fixed top-[-10%] left-[20%] w-125 h-125 bg-accent/5 rounded-full blur-[140px] pointer-events-none z-0" />
+        <div class="fixed bottom-[-10%] right-[10%] w-150 h-150 bg-accent-2/5 rounded-full blur-[160px] pointer-events-none z-0" />
         <ToastHost />
         <ConfirmDialogHost />
         {/* 桌面侧栏 */}
@@ -201,7 +222,7 @@ const App: Component = () => {
       </Show>
 
       {/* 主区 */}
-      <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen">
+      <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
         <header class="h-16 sticky top-0 z-30 flex items-center justify-between gap-3 px-4 lg:px-10 border-b border-subtle bg-bg/85 backdrop-blur-xl shrink-0 box-border">
           <button
             type="button"

@@ -41,25 +41,37 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-
 			// Validate signature first (fast path)
 			if !auth.VerifyAPIKeySignature(keyStr) {
-				writeAuthError(w, http.StatusUnauthorized, "invalid API key signature")
+				if requireKey {
+					writeAuthError(w, http.StatusUnauthorized, "invalid API key signature")
+					return
+				}
+				// Open gateway mode: unverified key treated as anonymous caller
+				next.ServeHTTP(w, r)
 				return
 			}
 
 			// Validate against database
 			keyObj, err := database.GetAPIKeyByKey(keyStr)
 			if err != nil || keyObj == nil || !keyObj.IsActive {
-				writeAuthError(w, http.StatusUnauthorized, "invalid or inactive API key")
+				if requireKey {
+					writeAuthError(w, http.StatusUnauthorized, "invalid or inactive API key")
+					return
+				}
+				// Open gateway mode: unknown/inactive key treated as anonymous caller
+				next.ServeHTTP(w, r)
 				return
 			}
 			if keyObj.IsExpired() {
-				writeAuthError(w, http.StatusUnauthorized, "API key has expired")
+				if requireKey {
+					writeAuthError(w, http.StatusUnauthorized, "API key has expired")
+					return
+				}
+				// Open gateway mode: expired key treated as anonymous caller
+				next.ServeHTTP(w, r)
 				return
 			}
-
-			// Inject authenticated key into request context
 			ctx := auth.WithAPIKey(r.Context(), keyObj)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

@@ -25,7 +25,6 @@ type Settings struct {
 	ProviderStrategies map[string]ProviderStrategyOverride `json:"providerStrategies,omitempty"`
 	ProviderThinking   map[string]ProviderThinkingConfig   `json:"providerThinking,omitempty"`
 	PasswordHash       string                              `json:"passwordHash,omitempty"`
-	HasPassword        bool                                `json:"hasPassword"`
 	ComboStrategy      string                              `json:"comboStrategy,omitempty"`
 	CavemanLevel       string                              `json:"cavemanLevel,omitempty"`
 	PonytailLevel      string                              `json:"ponytailLevel,omitempty"`
@@ -34,13 +33,14 @@ type Settings struct {
 	// APIKeyRPM caps requests per API key per minute for /v1/* calls.
 	// 0 disables inbound rate limiting (default, backwards compatible).
 	APIKeyRPM            int  `json:"apiKeyRpm,omitempty"`
+	ResponseCacheTTL     int  `json:"responseCacheTTL,omitempty"`
+	HasPassword          bool `json:"hasPassword"`
 	RequireLogin         bool `json:"requireLogin"`
 	RequireAPIKey        bool `json:"requireApiKey"`
 	RTKEnabled           bool `json:"rtkEnabled"`
 	CavemanEnabled       bool `json:"cavemanEnabled"`
 	PonytailEnabled      bool `json:"ponytailEnabled"`
 	ResponseCacheEnabled bool `json:"responseCacheEnabled"`
-	ResponseCacheTTL     int  `json:"responseCacheTTL,omitempty"`
 	ResponseCacheAll     bool `json:"responseCacheAll,omitempty"`
 }
 

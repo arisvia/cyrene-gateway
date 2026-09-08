@@ -84,12 +84,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		middleware.RequestSizeLimiter(),
 		middleware.CORS,
 		middleware.APIKeyAuth(database),
-		middleware.APIKeyRateLimit(func(keyStr string) int {
-			if keyStr != "" {
-				if k, err := database.GetAPIKeyByKey(keyStr); err == nil && k != nil && k.RPM > 0 {
-					return k.RPM
-				}
-			}
+		middleware.APIKeyRateLimit(func(_ string) int {
 			if st, err := database.GetSettings(); err == nil && st != nil {
 				return st.APIKeyRPM
 			}

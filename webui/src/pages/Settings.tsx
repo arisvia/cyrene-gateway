@@ -47,6 +47,7 @@ const Settings: Component = () => {
 
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
+  const [loadingBgUrl, setLoadingBgUrl] = createSignal(false)
   // 响应缓存状态
   const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
   const [clearingCache, setClearingCache] = createSignal(false)
@@ -602,17 +603,52 @@ const Settings: Component = () => {
                 <Button
                   variant="secondary"
                   disabled={!bgUrlInput().trim()}
+                  loading={loadingBgUrl()}
                   class="shrink-0"
                   onClick={async () => {
                     const url = bgUrlInput().trim()
                     if (!url) return
-                    await bgStore.setBackground({
-                      type: 'url',
-                      value: url,
-                      blur: bgStore.bgConfig().blur ?? 0,
-                      opacity: bgStore.bgConfig().opacity ?? 1,
-                    })
-                    toast.success('已应用远程壁纸')
+                    setLoadingBgUrl(true)
+                    try {
+                      let cached = false
+                      try {
+                        const resp = await fetch(url)
+                        if (resp.ok) {
+                          const blob = await resp.blob()
+                          if (blob.type.startsWith('image/')) {
+                            const reader = new FileReader()
+                            reader.onload = async () => {
+                              const dataUrl = reader.result as string
+                              await bgStore.setBackground({
+                                type: 'image',
+                                value: dataUrl,
+                                blur: bgStore.bgConfig().blur ?? 0,
+                                opacity: bgStore.bgConfig().opacity ?? 1,
+                              })
+                              toast.success('已下载并离线缓存远程壁纸')
+                            }
+                            reader.readAsDataURL(blob)
+                            cached = true
+                          }
+                        }
+                      } catch {
+                        // 跨域或安全拦截直接拉取时，降级到 direct url
+                      }
+
+                      if (!cached) {
+                        await bgStore.setBackground({
+                          type: 'url',
+                          value: url,
+                          blur: bgStore.bgConfig().blur ?? 0,
+                          opacity: bgStore.bgConfig().opacity ?? 1,
+                        })
+                        toast.success('已应用远程壁纸直链')
+                      }
+                    } catch {
+                      toast.error('应用远程壁纸失败')
+                    } finally {
+                      setLoadingBgUrl(false)
+                    }
                   }}
                 >
                   应用
