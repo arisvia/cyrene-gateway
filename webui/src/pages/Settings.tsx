@@ -4,6 +4,22 @@ import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
+
+const cavemanOptions = [
+  { value: 'lite', label: '精简 (lite)' },
+  { value: 'full', label: '标准极简 (full)' },
+  { value: 'ultra', label: '极致极简 (ultra)' },
+  { value: 'wenyan-lite', label: '半文言 (wenyan-lite)' },
+  { value: 'wenyan', label: '文言文 (wenyan)' },
+  { value: 'wenyan-ultra', label: '极限文言 (wenyan-ultra)' },
+]
+
+const ponytailOptions = [
+  { value: 'lite', label: '精简建议 (lite)' },
+  { value: 'full', label: '阶梯原则 (full)' },
+  { value: 'ultra', label: '极致极简 (ultra)' },
+]
+
 const Settings: Component = () => {
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
@@ -242,22 +258,62 @@ const Settings: Component = () => {
       <Card class="p-5 space-y-4">
         <h3 class="text-sm font-semibold">Token 节省</h3>
         <div class="flex items-start justify-between gap-4">
-          <Field label="RTK 压缩" hint="对重复上下文做引用压缩">
+          <Field label="RTK 压缩" hint="智能截断工具超长输出（保留首尾上下文，跳过错误堆栈）">
             <span />
           </Field>
           <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
         </div>
-        <div class="flex items-start justify-between gap-4">
-          <Field label="Caveman" hint="极简表达，最大幅度压缩">
-            <span />
-          </Field>
-          <Toggle checked={!!local().cavemanEnabled} onChange={v => set('cavemanEnabled', v)} />
+        <div class="space-y-3 pt-1 border-t border-subtle/50">
+          <div class="flex items-start justify-between gap-4">
+            <Field label="Caveman" hint="注入极简表达指令，大幅削减模型输出 Token">
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().cavemanEnabled}
+              onChange={v => {
+                set('cavemanEnabled', v)
+                if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
+              }}
+            />
+          </div>
+          <Show when={local().cavemanEnabled}>
+            <div class="flex items-center justify-between gap-4 pl-4 border-l-2 border-subtle">
+              <span class="text-xs text-muted">压缩级别</span>
+              <Select
+                size="sm"
+                class="!w-44"
+                value={String(local().cavemanLevel || 'lite')}
+                options={cavemanOptions}
+                onChange={v => set('cavemanLevel', v)}
+              />
+            </div>
+          </Show>
         </div>
-        <div class="flex items-start justify-between gap-4">
-          <Field label="Ponytail" hint="保留尾部关键信息的压缩">
-            <span />
-          </Field>
-          <Toggle checked={!!local().ponytailEnabled} onChange={v => set('ponytailEnabled', v)} />
+        <div class="space-y-3 pt-1 border-t border-subtle/50">
+          <div class="flex items-start justify-between gap-4">
+            <Field label="Ponytail" hint="注入极简代码指令（Lazy Senior Dev 原则），抑制过度工程">
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().ponytailEnabled}
+              onChange={v => {
+                set('ponytailEnabled', v)
+                if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
+              }}
+            />
+          </div>
+          <Show when={local().ponytailEnabled}>
+            <div class="flex items-center justify-between gap-4 pl-4 border-l-2 border-subtle">
+              <span class="text-xs text-muted">约束级别</span>
+              <Select
+                size="sm"
+                class="!w-44"
+                value={String(local().ponytailLevel || 'lite')}
+                options={ponytailOptions}
+                onChange={v => set('ponytailLevel', v)}
+              />
+            </div>
+          </Show>
         </div>
       </Card>
 

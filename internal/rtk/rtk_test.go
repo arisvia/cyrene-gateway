@@ -1,6 +1,7 @@
 package rtk
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -36,7 +37,7 @@ func TestCompressMessages_LargeToolContent(t *testing.T) {
 	// Build a tool message with >250 lines
 	var lines []string
 	for i := range 400 {
-		lines = append(lines, "line "+itoa(i)+" with some padding content to make it longer than minimum")
+		lines = append(lines, "line "+strconv.Itoa(i)+" with some padding content to make it longer than minimum")
 	}
 	content := strings.Join(lines, "\n")
 
@@ -61,7 +62,7 @@ func TestCompressMessages_LargeToolContent(t *testing.T) {
 func TestCompressMessages_ToolResultBlock(t *testing.T) {
 	var lines []string
 	for i := range 300 {
-		lines = append(lines, "output line "+itoa(i)+" padding padding padding padding")
+		lines = append(lines, "output line "+strconv.Itoa(i)+" padding padding padding padding")
 	}
 	content := strings.Join(lines, "\n")
 
@@ -84,7 +85,7 @@ func TestCompressMessages_ToolResultBlock(t *testing.T) {
 func TestCompressMessages_ErrorBlockPreserved(t *testing.T) {
 	var lines []string
 	for i := range 300 {
-		lines = append(lines, "error line "+itoa(i)+" padding padding padding padding")
+		lines = append(lines, "error line "+strconv.Itoa(i)+" padding padding padding padding")
 	}
 	content := strings.Join(lines, "\n")
 
@@ -228,5 +229,81 @@ func TestAllPonytailLevelsExist(t *testing.T) {
 		if _, ok := PonytailPrompts[l]; !ok {
 			t.Errorf("missing ponytail prompt for level %q", l)
 		}
+	}
+}
+
+func TestCompressMessages_SingleLineLargeContent(t *testing.T) {
+	// Massive single line (e.g. minified JSON > 16KB)
+	content := strings.Repeat("{\"key\": \"very large value that repeats over and over again\"},", 400)
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "tool", "content": content},
+		},
+	}
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Errorf("expected positive savings for single-line large tool output, got %d", saved)
+	}
+	compressed := body["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !strings.Contains(compressed, "characters omitted") {
+		t.Errorf("expected 'characters omitted' marker, got %s", compressed)
+	}
+}
+
+func TestCompressMessages_GeminiContents(t *testing.T) {
+	var lines []string
+	for i := range 300 {
+		lines = append(lines, "gemini output line "+strconv.Itoa(i)+" "+strings.Repeat("x", 40))
+	}
+	content := strings.Join(lines, "\n")
+
+	body := map[string]any{
+		"contents": []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{
+						"functionResponse": map[string]any{
+							"name": "search",
+							"response": map[string]any{
+								"content": content,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Errorf("expected positive savings for Gemini contents, got %d", saved)
+	}
+}
+
+func TestInjectSystemPrompt_Idempotency(t *testing.T) {
+	bodyOpenAI := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": "You are helpful."},
+		},
+	}
+	InjectCaveman(bodyOpenAI, "openai", CavemanLite)
+	first := bodyOpenAI["messages"].([]any)[0].(map[string]any)["content"].(string)
+
+	// Injecting again should be a no-op
+	InjectCaveman(bodyOpenAI, "openai", CavemanLite)
+	second := bodyOpenAI["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if first != second {
+		t.Errorf("expected idempotent injection for OpenAI, but content changed: %s vs %s", first, second)
+	}
+
+	bodyClaude := map[string]any{
+		"system": "Be concise.",
+	}
+	InjectPonytail(bodyClaude, "anthropic", PonytailLite)
+	firstClaude := bodyClaude["system"].(string)
+	InjectPonytail(bodyClaude, "anthropic", PonytailLite)
+	secondClaude := bodyClaude["system"].(string)
+	if firstClaude != secondClaude {
+		t.Errorf("expected idempotent injection for Claude, but content changed")
 	}
 }

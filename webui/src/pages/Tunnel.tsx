@@ -10,7 +10,6 @@ const Tunnel: Component = () => {
     try { return await api('/api/tunnel/status') as TunnelStatus | null } catch { return null }
   })
   const [busy, setBusy] = createSignal('')
-  const [msg, setMsg] = createSignal('')
   const [logs, setLogs] = createSignal<string[]>([])
 
   // install 返回 text/event-stream（tunnel.go:23-47），必须流式读取而非 JSON
@@ -20,7 +19,6 @@ const Tunnel: Component = () => {
       const res = await fetch('/api/tunnel/tailscale-install', { method: 'POST' })
       if (!res.body) {
         const err = '无法读取安装流'
-        setMsg(err)
         toast.error(err)
         return
       }
@@ -41,11 +39,9 @@ const Tunnel: Component = () => {
           if (payload.message) setLogs(l => [...l, payload.message!])
           if (payload.error) {
             setLogs(l => [...l, '错误：' + payload.error])
-            setMsg(payload.error)
             toast.error(`Tailscale 安装失败: ${payload.error}`)
           }
           if (payload.success) {
-            setMsg('安装完成')
             toast.success('Tailscale 安装完成')
           }
         }
@@ -53,7 +49,6 @@ const Tunnel: Component = () => {
       await refetch()
     } catch (e: unknown) {
       const err = e instanceof Error ? e.message : '安装失败'
-      setMsg(err)
       toast.error(err)
     } finally { setBusy('') }
   }
@@ -67,24 +62,21 @@ const Tunnel: Component = () => {
       })
       if (!ok) return
     }
-    setBusy(kind); setMsg('')
+    setBusy(kind)
     try {
       const res = await fetch(path, { method: 'POST' })
       let payload: { error?: string; message?: string; url?: string } | null = null
       try { payload = await res.json() } catch { /* 非 JSON 响应 */ }
       if (!res.ok) {
         const err = payload?.error || ('HTTP ' + res.status)
-        setMsg(err)
         toast.error(err)
       } else {
         const succ = payload?.message || (payload?.url ? `Funnel 已开启: ${payload.url}` : '操作已完成')
-        setMsg(succ)
         toast.success(succ)
       }
       await refetch()
     } catch (e: unknown) {
       const err = e instanceof Error ? e.message : '操作失败'
-      setMsg(err)
       toast.error(err)
     } finally { setBusy('') }
   }
@@ -153,9 +145,6 @@ const Tunnel: Component = () => {
                       {l => <div class="text-xs font-mono text-faint leading-relaxed">{l}</div>}
                     </For>
                   </div>
-                </Show>
-                <Show when={msg()}>
-                  <div class="text-xs text-muted pt-1">{msg()}</div>
                 </Show>
               </Card>
             </div>

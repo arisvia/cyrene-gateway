@@ -3,6 +3,7 @@
 package rtk
 
 import (
+	"strconv"
 	"strings"
 )
 
@@ -11,64 +12,123 @@ const (
 	minCompressSize = 500              // bytes; skip tiny blobs
 )
 
-// CompressMessages compresses tool_result content in-place within an OpenAI-shaped
-// request body (map with "messages" key). Returns bytes saved or 0.
+// CompressMessages compresses tool_result content in-place within an OpenAI,
+// Anthropic, or Gemini shaped request body. Returns bytes saved or 0.
 func CompressMessages(body map[string]any, enabled bool) int {
 	if !enabled || body == nil {
 		return 0
 	}
 
-	msgs, ok := body["messages"].([]any)
-	if !ok {
-		return 0
-	}
-
 	saved := 0
-	for _, m := range msgs {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			continue
-		}
 
-		// OpenAI tool message: {role:"tool", content:"string"}
-		role, _ := msg["role"].(string)
-		if role == "tool" {
-			if content, ok := msg["content"].(string); ok {
-				compressed := compressText(content)
-				if len(compressed) < len(content) {
-					saved += len(content) - len(compressed)
-					msg["content"] = compressed
-				}
-			}
-			continue
-		}
-
-		// Content blocks array with tool_result entries
-		contentArr, ok := msg["content"].([]any)
-		if !ok {
-			continue
-		}
-		for _, block := range contentArr {
-			b, ok := block.(map[string]any)
+	// OpenAI / Anthropic format: body["messages"]
+	if msgs, ok := body["messages"].([]any); ok {
+		for _, m := range msgs {
+			msg, ok := m.(map[string]any)
 			if !ok {
 				continue
 			}
-			blockType, _ := b["type"].(string)
-			if blockType != "tool_result" {
+
+			// OpenAI tool message: {role:"tool", content:"string"} or content parts
+			role, _ := msg["role"].(string)
+			if role == "tool" {
+				if content, ok := msg["content"].(string); ok {
+					compressed := compressText(content)
+					if len(compressed) < len(content) {
+						saved += len(content) - len(compressed)
+						msg["content"] = compressed
+					}
+				} else if parts, ok := msg["content"].([]any); ok {
+					for _, part := range parts {
+						if p, ok := part.(map[string]any); ok {
+							if text, ok := p["text"].(string); ok {
+								compressed := compressText(text)
+								if len(compressed) < len(text) {
+									saved += len(text) - len(compressed)
+									p["text"] = compressed
+								}
+							}
+						}
+					}
+				}
 				continue
 			}
-			if isError, _ := b["is_error"].(bool); isError {
+
+			// Content blocks array with tool_result entries (Anthropic format)
+			contentArr, ok := msg["content"].([]any)
+			if !ok {
 				continue
 			}
-			if text, ok := b["content"].(string); ok {
-				compressed := compressText(text)
-				if len(compressed) < len(text) {
-					saved += len(text) - len(compressed)
-					b["content"] = compressed
+			for _, block := range contentArr {
+				b, ok := block.(map[string]any)
+				if !ok {
+					continue
+				}
+				blockType, _ := b["type"].(string)
+				if blockType != "tool_result" {
+					continue
+				}
+				if isError, _ := b["is_error"].(bool); isError {
+					continue
+				}
+				if text, ok := b["content"].(string); ok {
+					compressed := compressText(text)
+					if len(compressed) < len(text) {
+						saved += len(text) - len(compressed)
+						b["content"] = compressed
+					}
+				} else if innerArr, ok := b["content"].([]any); ok {
+					for _, inner := range innerArr {
+						if ib, ok := inner.(map[string]any); ok {
+							if text, ok := ib["text"].(string); ok {
+								compressed := compressText(text)
+								if len(compressed) < len(text) {
+									saved += len(text) - len(compressed)
+									ib["text"] = compressed
+								}
+							}
+						}
+					}
 				}
 			}
 		}
 	}
+
+	// Gemini format: body["contents"] -> parts -> functionResponse -> response -> content
+	if contents, ok := body["contents"].([]any); ok {
+		for _, c := range contents {
+			contentMap, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			parts, ok := contentMap["parts"].([]any)
+			if !ok {
+				continue
+			}
+			for _, p := range parts {
+				partMap, ok := p.(map[string]any)
+				if !ok {
+					continue
+				}
+				fnResp, ok := partMap["functionResponse"].(map[string]any)
+				if !ok {
+					continue
+				}
+				resp, ok := fnResp["response"].(map[string]any)
+				if !ok {
+					continue
+				}
+				if content, ok := resp["content"].(string); ok {
+					compressed := compressText(content)
+					if len(compressed) < len(content) {
+						saved += len(content) - len(compressed)
+						resp["content"] = compressed
+					}
+				}
+			}
+		}
+	}
+
 	return saved
 }
 
@@ -80,46 +140,49 @@ func compressText(text string) string {
 	}
 
 	lines := strings.Split(text, "\n")
-	if len(lines) <= 250 {
-		return text
+	if len(lines) > 250 {
+		// Smart truncate: keep head + tail
+		const headLines = 120
+		const tailLines = 60
+
+		if len(lines) > headLines+tailLines {
+			head := lines[:headLines]
+			tail := lines[len(lines)-tailLines:]
+			omitted := len(lines) - headLines - tailLines
+
+			var sb strings.Builder
+			sb.WriteString(strings.Join(head, "\n"))
+			sb.WriteString("\n\n... [")
+			sb.WriteString(strconv.Itoa(omitted))
+			sb.WriteString(" lines omitted] ...\n\n")
+			sb.WriteString(strings.Join(tail, "\n"))
+
+			result := sb.String()
+			if len(result) < n {
+				return result
+			}
+		}
 	}
 
-	// Smart truncate: keep head + tail
-	const headLines = 120
-	const tailLines = 60
+	// Fallback for massive outputs with few/no newlines (e.g. minified JSON/dumps)
+	const maxCharThreshold = 16 * 1024 // 16 KiB (~4k tokens)
+	if n > maxCharThreshold {
+		const headChars = 8 * 1024
+		const tailChars = 4 * 1024
+		omittedChars := n - headChars - tailChars
 
-	if len(lines) <= headLines+tailLines {
-		return text
+		var sb strings.Builder
+		sb.WriteString(text[:headChars])
+		sb.WriteString("\n\n... [")
+		sb.WriteString(strconv.Itoa(omittedChars))
+		sb.WriteString(" characters omitted] ...\n\n")
+		sb.WriteString(text[n-tailChars:])
+
+		result := sb.String()
+		if len(result) < n {
+			return result
+		}
 	}
 
-	head := lines[:headLines]
-	tail := lines[len(lines)-tailLines:]
-	omitted := len(lines) - headLines - tailLines
-
-	var sb strings.Builder
-	sb.WriteString(strings.Join(head, "\n"))
-	sb.WriteString("\n\n... [")
-	sb.WriteString(itoa(omitted))
-	sb.WriteString(" lines omitted] ...\n\n")
-	sb.WriteString(strings.Join(tail, "\n"))
-
-	result := sb.String()
-	if len(result) >= n {
-		return text
-	}
-	return result
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
+	return text
 }

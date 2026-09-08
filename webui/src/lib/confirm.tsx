@@ -53,6 +53,7 @@ export const ConfirmDialogHost: Component = () => {
   const s = () => state()
   let prevFocus: HTMLElement | null = null
   let confirmBtnRef: HTMLButtonElement | undefined
+  let cancelBtnRef: HTMLButtonElement | undefined
 
   const handleClose = (res: boolean) => {
     const fn = state().resolve
@@ -68,7 +69,11 @@ export const ConfirmDialogHost: Component = () => {
     if (s().isOpen) {
       prevFocus = document.activeElement as HTMLElement | null
       queueMicrotask(() => {
-        confirmBtnRef?.focus()
+        if (!s().isAlert && (s().variant === 'danger' || s().variant === 'warning')) {
+          cancelBtnRef?.focus()
+        } else {
+          confirmBtnRef?.focus()
+        }
       })
     }
   })
@@ -79,6 +84,25 @@ export const ConfirmDialogHost: Component = () => {
       if (e.key === 'Escape') {
         e.preventDefault()
         handleClose(false)
+        return
+      }
+      if (e.key === 'Tab') {
+        if (s().isAlert) {
+          e.preventDefault()
+          confirmBtnRef?.focus()
+          return
+        }
+        if (e.shiftKey) {
+          if (document.activeElement === cancelBtnRef) {
+            e.preventDefault()
+            confirmBtnRef?.focus()
+          }
+        } else {
+          if (document.activeElement === confirmBtnRef) {
+            e.preventDefault()
+            cancelBtnRef?.focus()
+          }
+        }
       }
     }
     window.addEventListener('keydown', handleKey)
@@ -135,6 +159,7 @@ export const ConfirmDialogHost: Component = () => {
           <div class="mt-6 flex items-center justify-end gap-2.5">
             <Show when={!s().isAlert}>
               <Button
+                ref={cancelBtnRef}
                 variant="secondary"
                 size="sm"
                 onClick={() => handleClose(false)}

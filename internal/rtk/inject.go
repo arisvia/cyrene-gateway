@@ -83,8 +83,22 @@ func injectMessagesSystem(body map[string]any, prompt string) {
 func appendToMessage(msg map[string]any, prompt string) {
 	switch content := msg["content"].(type) {
 	case string:
-		msg["content"] = content + sep + prompt
+		if strings.Contains(content, prompt) {
+			return
+		}
+		if content != "" {
+			msg["content"] = content + sep + prompt
+		} else {
+			msg["content"] = prompt
+		}
 	case []any:
+		for _, b := range content {
+			if bm, ok := b.(map[string]any); ok {
+				if t, ok := bm["text"].(string); ok && strings.Contains(t, prompt) {
+					return
+				}
+			}
+		}
 		msg["content"] = append(content, map[string]any{"type": "input_text", "text": prompt})
 	default:
 		msg["content"] = prompt
@@ -94,12 +108,22 @@ func appendToMessage(msg map[string]any, prompt string) {
 func injectClaudeSystem(body map[string]any, prompt string) {
 	switch sys := body["system"].(type) {
 	case string:
+		if strings.Contains(sys, prompt) {
+			return
+		}
 		if sys != "" {
 			body["system"] = sys + sep + prompt
 		} else {
 			body["system"] = prompt
 		}
 	case []any:
+		for _, b := range sys {
+			if bm, ok := b.(map[string]any); ok {
+				if t, ok := bm["text"].(string); ok && strings.Contains(t, prompt) {
+					return
+				}
+			}
+		}
 		block := map[string]any{"type": "text", "text": prompt}
 		body["system"] = append(sys, block)
 	default:
@@ -122,6 +146,13 @@ func injectGeminiSystem(body map[string]any, prompt string) {
 
 	if sys, ok := target[key].(map[string]any); ok {
 		if parts, ok := sys["parts"].([]any); ok {
+			for _, p := range parts {
+				if pm, ok := p.(map[string]any); ok {
+					if t, ok := pm["text"].(string); ok && strings.Contains(t, prompt) {
+						return
+					}
+				}
+			}
 			sys["parts"] = append(parts, map[string]any{"text": prompt})
 			return
 		}

@@ -45,6 +45,8 @@ func DefaultSettings() *Settings {
 		RequireLogin:  false,
 		RequireAPIKey: false,
 		ComboStrategy: "fallback",
+		CavemanLevel:  "lite",
+		PonytailLevel: "lite",
 	}
 }
 

@@ -568,8 +568,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
 
 		// Phase 13: Token saver (RTK + caveman + ponytail)
-		s.applyTokenSaver(bodyMap, "openai")
-
+		s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider)
 		bodyBytes, err = json.Marshal(bodyMap)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
@@ -580,6 +579,12 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		// Translate request to provider format — use raw body to preserve unknown fields
 		var bodyMap map[string]any
 		json.Unmarshal(rawBody, &bodyMap)
+		// Pre-compression of tool messages before translation ensures all formats (Anthropic/Gemini) inherit compressed outputs
+		if settings, err := s.DB.GetSettings(); err == nil && settings.RTKEnabled && !slices.Contains(settings.TokenSaverExclude, modelInfo.Provider) {
+			if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
+				slog.Debug("RTK pre-compressed tool results before translation", slog.Int("bytes_saved", saved))
+			}
+		}
 
 		// Phase 9: Loop guard + termination prompt for translated formats
 		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
@@ -599,8 +604,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, translated)
 
 		// Phase 13: Token saver (RTK + caveman + ponytail)
-		s.applyTokenSaver(translated, string(targetFormat))
-
+		s.applyTokenSaver(translated, string(targetFormat), modelInfo.Provider)
 		bodyBytes, err = json.Marshal(translated)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal translated request"})
@@ -1174,21 +1178,25 @@ func (s *Server) selectAvailableConnection(conns []model.ProviderConnection, mod
 }
 
 // applyTokenSaver applies RTK compression, caveman, and ponytail based on settings.
-func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
+func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, providerID string) {
 	settings, err := s.DB.GetSettings()
 	if err != nil {
 		return
 	}
 
 	// Check per-provider exclusion (9router#2767)
-	providerID, _ := bodyMap["model"].(string)
-	if providerID != "" {
-		if idx := strings.Index(providerID, "/"); idx > 0 {
-			providerID = providerID[:idx]
+	// Check explicitly passed providerID, or model prefix if available
+	candidates := []string{providerID}
+	if m, _ := bodyMap["model"].(string); m != "" {
+		candidates = append(candidates, m)
+		if idx := strings.Index(m, "/"); idx > 0 {
+			candidates = append(candidates, m[:idx])
 		}
 	}
-	if slices.Contains(settings.TokenSaverExclude, providerID) {
-		return
+	for _, cand := range candidates {
+		if cand != "" && slices.Contains(settings.TokenSaverExclude, cand) {
+			return
+		}
 	}
 
 	// RTK compression of tool results
@@ -1198,14 +1206,22 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string) {
 		}
 	}
 
-	// Caveman: inject terse-style system prompt
-	if settings.CavemanEnabled && settings.CavemanLevel != "" {
-		rtk.InjectCaveman(bodyMap, format, settings.CavemanLevel)
+	// Caveman: inject terse-style system prompt (defaults to lite if level is unset)
+	if settings.CavemanEnabled {
+		level := settings.CavemanLevel
+		if level == "" {
+			level = rtk.CavemanLite
+		}
+		rtk.InjectCaveman(bodyMap, format, level)
 	}
 
-	// Ponytail: inject lazy-senior-dev system prompt
-	if settings.PonytailEnabled && settings.PonytailLevel != "" {
-		rtk.InjectPonytail(bodyMap, format, settings.PonytailLevel)
+	// Ponytail: inject lazy-senior-dev system prompt (defaults to lite if level is unset)
+	if settings.PonytailEnabled {
+		level := settings.PonytailLevel
+		if level == "" {
+			level = rtk.PonytailLite
+		}
+		rtk.InjectPonytail(bodyMap, format, level)
 	}
 }
 
