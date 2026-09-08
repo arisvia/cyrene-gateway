@@ -31,8 +31,9 @@ Cyrene Gateway 是一个单二进制运行的高性能 LLM API 统一网关，�
 |  - /v1/messages (Anthropic)  |                                  |  - /api/combos (模型组合)    |
 |  - /v1/embeddings            |                                  |  - /api/oauth/* (PKCE/设备码)|
 |  - /v1/models (聚合目录)     |                                  |  - /api/usage/* (统计/流式)  |
-|  - /api/proxy-pools (代理池) |
-               v                                                  +--------------+---------------+
++--------------+---------------+                                  |  - /api/proxy-pools (代理池) |
+               |                                                  +--------------+---------------+
+               v                                                                 |
 +---------------------------------------------------------------+                |
 |                    Provider 调度与执行层                      |                |
 |  - 模型与组合解析 (ResolveModel / Combos)                     |                |

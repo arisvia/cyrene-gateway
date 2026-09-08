@@ -33,10 +33,11 @@
   - 修复 `TokenSaverExclude` 排除规则对解析后提供商名字段的精确匹配。
 - **架构瘦身与冗余边缘模块清理**：
   - 彻底移除与服务端核心职责脱节的 CLI 工具配置注入适配器（`internal/cli`）及对应前端页面与路由；
-  - 彻底移除存在端口冲突与 SSL Pinning 死穴的 MITM 本地抓包代理（`internal/mitm`）；
+  - 彻底移除架构存在缺陷的 MITM 本地抓包代理（`internal/mitm`）：上游透传按 hostname 拨号在 hosts 劫持后导致自旋回环死锁、`X-MITM-Tool` 请求头全仓库无消费方、4 款目标工具中仅 Antigravity 勉强命中 URL pattern 实际兑现率仅 1/4；
   - 彻底移除越界执行系统特权安装脚本的 Tailscale 隧道管理（`internal/tunnel`）；
-  - 彻底移除无业务逻辑的静态技能清单（`internal/skills`）与遗弃的未路由控制台（`Console.tsx`）；
-  - 净削减 3,500+ 行非核心代码，消除了改写 hosts、特权安装脚本、盲写用户目录等安全隐患，将出站代理池（ProxyPools）正向纳入管理控制台核心导航。
+  - 将嵌入的 8 份技能描述平移为静态文档参考（`docs/skills/`），清理后端无业务逻辑的 `internal/skills` 模块与遗弃的未路由控制台（`Console.tsx`）；
+  - 净削减 3,500+ 行非核心代码，消除了改写 hosts、特权安装脚本、盲写用户目录等安全隐患，将出站代理池（ProxyPools）正向纳入管理控制台核心导航；
+  - **破坏性变更（Breaking Change）**：命令行参数 `-mitm` 与 `-mitm-port` 已移除，旧启动脚本若继续传递这些参数将在 `flag.Parse()` 时报错并退出进程。
 ### Fixed
 - **出站请求全链路 SSRF 防护加固**：
   - 修复 Anthropic passthrough、Embeddings passthrough、后台模型同步与外部面板下载中绕过 `SafeHTTPClient` 的直接客户端构造，统一实施 dial-time IP 拦截与私网跳转防护；

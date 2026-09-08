@@ -57,8 +57,6 @@ go build -o cyrene-gateway ./cmd/gateway
 | `-secret` | `CYRENE_SECRET` | 空 | 面板访问密码;空则自动生成并持久化 |
 | `-dashboard` | `CYRENE_DASHBOARD` | 空 | 本地面板目录(开发用),空则用嵌入式面板 |
 | `-panel-url` | `CYRENE_PANEL_URL` | 空 | 面板更新包 URL(dist.zip 或单 HTML),空则用嵌入式 |
-| `-mitm` | — | `false` | 启用 MITM 代理(强制要求 localhost 绑定) |
-| `-mitm-port` | `CYRENE_MITM_PORT` | `443` | MITM 代理端口 |
 | `-allow-private-networks` | `CYRENE_ALLOW_PRIVATE_NETWORKS` | `false` | 允许出站访问私网地址(本地 mock 测试用) |
 ### 使用示例
 
