@@ -2,9 +2,10 @@ import { type Component, For, Show, createSignal, createResource } from 'solid-j
 import { api } from '@/lib/api'
 import type { BadgeTone, TunnelStatus } from '@/types/domain'
 import { Card, Badge, Button, Empty, Skeleton, confirm } from '@/components/ui'
-import { toast } from '@/lib/toast'
+import { useToast } from '@/lib/toast'
 
 const Tunnel: Component = () => {
+  const toast = useToast()
   const [status, { refetch }] = createResource(async () => {
     try { return await api('/api/tunnel/status') as TunnelStatus | null } catch { return null }
   })

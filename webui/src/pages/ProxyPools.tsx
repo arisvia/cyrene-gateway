@@ -1,11 +1,12 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
-import { toast } from '@/lib/toast'
+import { useToast } from '@/lib/toast'
 import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
+  const toast = useToast()
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<ProxyPool | null>(null)
   const [saving, setSaving] = createSignal(false)

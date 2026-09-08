@@ -3,10 +3,11 @@ import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
-import { toast } from '@/lib/toast'
+import { useToast } from '@/lib/toast'
 const Settings: Component = () => {
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
+  const toast = useToast()
   const [saving, setSaving] = createSignal(false)
   const [local, setLocal] = createSignal<Record<string, unknown>>({})
   const [pw, setPw] = createSignal('')

@@ -1,4 +1,4 @@
-import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo } from './icons'
@@ -266,17 +266,21 @@ export const controlSizes = {
 
 export type ControlSize = keyof typeof controlSizes
 
-export const Button: Component<{
+export interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'ghost' | 'danger' | 'secondary'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   loading?: boolean
   onClick?: (e: MouseEvent) => void
-  type?: 'button' | 'submit'
+  type?: 'button' | 'submit' | 'reset'
   title?: string
   children?: JSX.Element
   class?: string
-}> = props => {
+  ref?: HTMLButtonElement | ((el: HTMLButtonElement) => void)
+}
+
+export const Button: Component<ButtonProps> = props => {
+  const [local, others] = splitProps(props, ['variant', 'size', 'disabled', 'loading', 'children', 'class', 'ref', 'type'])
   const base =
     'inline-flex items-center justify-center font-medium transition-all duration-150 select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
   const sizes: Record<ControlSize, string> = {
@@ -292,17 +296,17 @@ export const Button: Component<{
   }
   return (
     <button
-      type={props.type ?? 'button'}
-      title={props.title}
-      class={`${base} ${sizes[props.size ?? 'md']} ${variants[props.variant ?? 'secondary']} ${props.class ?? ''}`}
-      disabled={props.disabled || props.loading}
-      aria-busy={props.loading || undefined}
-      onClick={props.onClick}
+      ref={local.ref}
+      type={local.type ?? 'button'}
+      class={`${base} ${sizes[local.size ?? 'md']} ${variants[local.variant ?? 'secondary']} ${local.class ?? ''}`}
+      disabled={local.disabled || local.loading}
+      aria-busy={local.loading || undefined}
+      {...others}
     >
-      <Show when={props.loading}>
-        <Spinner size={props.size} />
+      <Show when={local.loading}>
+        <Spinner size={local.size} />
       </Show>
-      {props.children}
+      {local.children}
     </button>
   )
 }

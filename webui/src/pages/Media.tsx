@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
 import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
-import { toast } from '@/lib/toast'
+import { useToast } from '@/lib/toast'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
 
@@ -31,6 +31,7 @@ const CAPS: { id: Cap; label: string; endpoint: string; hint: string; kindKey: s
 ]
 
 const Media: Component = () => {
+  const toast = useToast()
   const [active, setActive] = createSignal<Cap>('image')
   const [providers, setProviders] = createSignal<MediaProvider[]>([])
   const [loadingProviders, setLoadingProviders] = createSignal(false)

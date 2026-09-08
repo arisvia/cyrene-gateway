@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createResource } from 'solid-js'
 import { api, apiPost } from '@/lib/api'
 import { Card, Badge, Button, Empty, Skeleton, confirm } from '@/components/ui'
-import { toast } from '@/lib/toast'
+import { useToast } from '@/lib/toast'
 
 interface MitmStatus {
   enabled?: boolean
@@ -21,6 +21,7 @@ interface MitmTrafficItem {
 }
 
 const Mitm: Component = () => {
+  const toast = useToast()
   const [status, { refetch }] = createResource(async () => {
     try { return await api<MitmStatus>('/api/mitm/status') } catch { return null }
   })

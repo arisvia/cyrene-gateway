@@ -9,8 +9,20 @@ vi.mock('@/lib/api', () => ({
   apiPatch: vi.fn(() => Promise.resolve(null)),
   apiDelete: vi.fn(() => Promise.resolve(null)),
 }))
+const mockToast = vi.hoisted(() => ({
+  toasts: () => [],
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+  dismiss: vi.fn(),
+  clear: vi.fn(),
+}))
 vi.mock('@/lib/toast', () => ({
-  useToast: () => ({ toasts: () => [], success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+  toast: mockToast,
+  useToast: () => mockToast,
+  dismiss: vi.fn(),
+  clear: vi.fn(),
 }))
 
 // 回归：此前侧栏 <A> 位于 <Route> 之外 → 整页抛错白屏

@@ -9,8 +9,20 @@ vi.mock('@/lib/api', () => ({
   apiDelete: vi.fn(),
 }))
 
+const mockToast = vi.hoisted(() => ({
+  toasts: () => [],
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+  dismiss: vi.fn(),
+  clear: vi.fn(),
+}))
 vi.mock('@/lib/toast', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+  toast: mockToast,
+  useToast: () => mockToast,
+  dismiss: vi.fn(),
+  clear: vi.fn(),
 }))
 
 import { api, apiPost } from '@/lib/api'

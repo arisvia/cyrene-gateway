@@ -5,8 +5,19 @@ export interface IconProps extends JSX.SvgSVGAttributes<SVGSVGElement> {
   class?: string
 }
 
+const NAMED_SIZES: Record<string, number> = {
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 20,
+  xl: 24,
+}
+
 function baseAttrs(props: IconProps, defaultSize = 16) {
-  const sz = props.size ?? defaultSize
+  let sz: number | string = props.size ?? defaultSize
+  if (typeof sz === 'string' && sz in NAMED_SIZES) {
+    sz = NAMED_SIZES[sz]
+  }
   return {
     'width': sz,
     'height': sz,

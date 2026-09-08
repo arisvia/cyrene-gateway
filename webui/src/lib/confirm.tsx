@@ -1,4 +1,4 @@
-import { createSignal, Show, type Component, onMount, onCleanup } from 'solid-js'
+import { createSignal, Show, type Component, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Button } from '@/components/ui'
 import { IconAlertCircle, IconAlertTriangle, IconInfo } from '@/components/ui/icons'
@@ -51,12 +51,27 @@ export function alert(message: string, title?: string): Promise<boolean> {
 
 export const ConfirmDialogHost: Component = () => {
   const s = () => state()
+  let prevFocus: HTMLElement | null = null
+  let confirmBtnRef: HTMLButtonElement | undefined
 
   const handleClose = (res: boolean) => {
     const fn = state().resolve
     setState(prev => ({ ...prev, isOpen: false }))
     fn(res)
+    if (prevFocus && typeof prevFocus.focus === 'function') {
+      prevFocus.focus()
+      prevFocus = null
+    }
   }
+
+  createEffect(() => {
+    if (s().isOpen) {
+      prevFocus = document.activeElement as HTMLElement | null
+      queueMicrotask(() => {
+        confirmBtnRef?.focus()
+      })
+    }
+  })
 
   onMount(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -64,9 +79,6 @@ export const ConfirmDialogHost: Component = () => {
       if (e.key === 'Escape') {
         e.preventDefault()
         handleClose(false)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        handleClose(true)
       }
     }
     window.addEventListener('keydown', handleKey)
@@ -76,7 +88,7 @@ export const ConfirmDialogHost: Component = () => {
   return (
     <Show when={s().isOpen}>
       <Portal>
-        <div class="fixed inset-0 z-[120] flex items-center justify-center p-4">
+        <div class="fixed inset-0 z-120 flex items-center justify-center p-4">
         <div
           class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in"
           onClick={() => handleClose(false)}
@@ -114,7 +126,7 @@ export const ConfirmDialogHost: Component = () => {
               <h3 class="text-base font-semibold text-foreground leading-snug">
                 {s().title || (s().variant === 'danger' ? '确认操作' : s().variant === 'warning' ? '重要提醒' : '提示')}
               </h3>
-              <p class="text-sm text-muted mt-1.5 leading-relaxed whitespace-pre-wrap break-words">
+              <p class="text-sm text-muted mt-1.5 leading-relaxed whitespace-pre-wrap wrap-break-word">
                 {s().message}
               </p>
             </div>
@@ -131,6 +143,7 @@ export const ConfirmDialogHost: Component = () => {
               </Button>
             </Show>
             <Button
+              ref={confirmBtnRef}
               variant={s().variant === 'danger' ? 'danger' : 'primary'}
               size="sm"
               onClick={() => handleClose(true)}

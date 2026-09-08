@@ -15,8 +15,20 @@ import Mitm from '@/pages/Mitm'
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(),
 }))
+const mockToast = vi.hoisted(() => ({
+  toasts: () => [],
+  success: vi.fn(),
+  error: vi.fn(),
+  warning: vi.fn(),
+  info: vi.fn(),
+  dismiss: vi.fn(),
+  clear: vi.fn(),
+}))
 vi.mock('@/lib/toast', () => ({
-  useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+  toast: mockToast,
+  useToast: () => mockToast,
+  dismiss: vi.fn(),
+  clear: vi.fn(),
 }))
 
 const tick = () => new Promise(r => setTimeout(r, 40))

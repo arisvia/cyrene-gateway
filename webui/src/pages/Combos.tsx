@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, createResource } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
-import { toast } from '@/lib/toast'
+import { useToast } from '@/lib/toast'
 import type { Combo } from '@/types/domain'
 import { Card, Badge, Button, Input, Select, Modal, Field, Empty, IconClose, confirm } from '@/components/ui'
 
@@ -11,6 +11,7 @@ const STRATEGY_LABEL: Record<string, string> = {
 
 const Combos: Component = () => {
   const store = useGatewayStore()
+  const toast = useToast()
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<Combo | null>(null)
   const [saving, setSaving] = createSignal(false)
