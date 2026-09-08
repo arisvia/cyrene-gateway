@@ -32,21 +32,25 @@ type Settings struct {
 	TokenSaverExclude []string `json:"tokenSaverExclude,omitempty"`
 	// APIKeyRPM caps requests per API key per minute for /v1/* calls.
 	// 0 disables inbound rate limiting (default, backwards compatible).
-	APIKeyRPM       int  `json:"apiKeyRpm,omitempty"`
-	RequireLogin    bool `json:"requireLogin"`
-	RequireAPIKey   bool `json:"requireApiKey"`
-	RTKEnabled      bool `json:"rtkEnabled"`
-	CavemanEnabled  bool `json:"cavemanEnabled"`
-	PonytailEnabled bool `json:"ponytailEnabled"`
+	APIKeyRPM            int  `json:"apiKeyRpm,omitempty"`
+	RequireLogin         bool `json:"requireLogin"`
+	RequireAPIKey        bool `json:"requireApiKey"`
+	RTKEnabled           bool `json:"rtkEnabled"`
+	CavemanEnabled       bool `json:"cavemanEnabled"`
+	PonytailEnabled      bool `json:"ponytailEnabled"`
+	ResponseCacheEnabled bool `json:"responseCacheEnabled"`
+	ResponseCacheTTL     int  `json:"responseCacheTTL,omitempty"`
+	ResponseCacheAll     bool `json:"responseCacheAll,omitempty"`
 }
 
 func DefaultSettings() *Settings {
 	return &Settings{
-		RequireLogin:  false,
-		RequireAPIKey: false,
-		ComboStrategy: "fallback",
-		CavemanLevel:  "lite",
-		PonytailLevel: "lite",
+		RequireLogin:     false,
+		RequireAPIKey:    false,
+		ComboStrategy:    "fallback",
+		CavemanLevel:     "lite",
+		PonytailLevel:    "lite",
+		ResponseCacheTTL: 3600,
 	}
 }
 

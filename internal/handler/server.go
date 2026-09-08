@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
+	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
@@ -35,6 +36,7 @@ type Server struct {
 	Events      *EventBroadcaster
 	Metrics     *metrics.M
 	Config      *config.Config
+	Cache       *cache.Cache
 	startTime   time.Time
 }
 
@@ -61,6 +63,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		Events:      NewEventBroadcaster(),
 		Metrics:     metrics.New(Version()),
 		Config:      cfg,
+		Cache:       cache.New(2000, time.Hour),
 		startTime:   time.Now(),
 	}
 	if s.MediaClient != nil {
@@ -118,6 +121,8 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/settings", s.handleGetSettings)
 	s.Router.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	s.Router.HandleFunc("PATCH /api/settings", s.handlePatchSettings)
+	s.Router.HandleFunc("GET /api/cache/stats", s.handleGetCacheStats)
+	s.Router.HandleFunc("POST /api/cache/clear", s.handleClearCache)
 	s.Router.HandleFunc("GET /api/providers", s.handleListProviders)
 	s.Router.HandleFunc("GET /api/providers/{id}", s.handleGetProvider)
 	s.Router.HandleFunc("POST /api/providers", s.handleCreateProvider)
@@ -983,6 +988,20 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+func (s *Server) handleGetCacheStats(w http.ResponseWriter, r *http.Request) {
+	if s.Cache == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"entries": 0, "hits": 0, "misses": 0})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.Cache.Stats())
+}
+
+func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {
+	if s.Cache != nil {
+		s.Cache.Clear()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {

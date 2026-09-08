@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
-
+import { api, apiPost } from '@/lib/api'
 const cavemanOptions = [
   { value: 'lite', label: '精简 (lite)' },
   { value: 'full', label: '标准极简 (full)' },
@@ -29,12 +29,55 @@ const Settings: Component = () => {
   const [pw, setPw] = createSignal('')
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
+  // 响应缓存状态
+  interface CacheStats {
+    hits: number
+    misses: number
+    hitRate: number
+    entries: number
+    maxEntries: number
+    bytesUsed: number
+    tokensSaved: number
+  }
+  const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
+  const [clearingCache, setClearingCache] = createSignal(false)
+
+  async function fetchCacheStats() {
+    try {
+      const res = await api<CacheStats>('/api/cache/stats')
+      setCacheStats(res)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleClearCache() {
+    const ok = await confirm({
+      title: '清空响应缓存',
+      message: '确定要清空全部在存的响应缓存吗？后续相同请求将重新向上游发起。',
+      confirmText: '立即清空',
+      variant: 'danger',
+    })
+    if (!ok) return
+    setClearingCache(true)
+    try {
+      await apiPost('/api/cache/clear')
+      toast.success('已成功清空响应缓存')
+      await fetchCacheStats()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '清空缓存失败')
+    } finally {
+      setClearingCache(false)
+    }
+  }
+
   onMount(async () => {
     await store.loadSettings()
     setLocal({ ...store.settings() })
     if (bgStore.bgConfig().type === 'url') {
       setBgUrlInput(bgStore.bgConfig().value)
     }
+    await fetchCacheStats()
   })
 
   const dirty = () => {
@@ -312,6 +355,64 @@ const Settings: Component = () => {
                 options={ponytailOptions}
                 onChange={v => set('ponytailLevel', v)}
               />
+            </div>
+          </Show>
+        </div>
+
+        {/* 响应缓存 (Exact Response Cache) */}
+        <div class="space-y-3 pt-1 border-t border-subtle/50">
+          <div class="flex items-start justify-between gap-4">
+            <Field label="响应缓存 (Exact Response Cache)" hint="对重复的确定性请求（temperature=0、结构化提取与嵌入向量）进行精确缓存，<1ms 返回且 0 Token 消耗">
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().responseCacheEnabled}
+              onChange={v => {
+                set('responseCacheEnabled', v)
+                if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
+              }}
+            />
+          </div>
+          <Show when={local().responseCacheEnabled}>
+            <div class="space-y-3 pl-4 border-l-2 border-subtle">
+              <div class="flex items-center justify-between gap-4">
+                <Field label="缓存全部非流式请求" hint="开启后不论 temperature 为何值均做响应缓存；关闭则仅缓存确定性请求（temperature=0 与 embeddings）">
+                  <span />
+                </Field>
+                <Toggle
+                  checked={!!local().responseCacheAll}
+                  onChange={v => set('responseCacheAll', v)}
+                />
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-xs text-muted">缓存有效期 (秒)</span>
+                <Input
+                  type="number"
+                  class="!w-36"
+                  value={String(local().responseCacheTTL ?? 3600)}
+                  onInput={v => set('responseCacheTTL', Number(v) || 3600)}
+                />
+              </div>
+
+              {/* 缓存指标与清空 */}
+              <div class="pt-2 border-t border-subtle/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-3 font-mono">
+                  <span class="text-muted">缓存条目: <strong class="text-foreground">{cacheStats()?.entries ?? 0}</strong></span>
+                  <span class="text-muted">命中次数: <strong class="text-emerald-500">{cacheStats()?.hits ?? 0}</strong></span>
+                  <span class="text-muted">命中率: <strong class="text-foreground">{((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%</strong></span>
+                  <Show when={(cacheStats()?.tokensSaved ?? 0) > 0}>
+                    <span class="text-muted">累计节省: <strong class="text-accent">{cacheStats()?.tokensSaved} Tokens</strong></span>
+                  </Show>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={clearingCache()}
+                  onClick={handleClearCache}
+                >
+                  清空缓存
+                </Button>
+              </div>
             </div>
           </Show>
         </div>

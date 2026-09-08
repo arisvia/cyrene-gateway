@@ -7,10 +7,10 @@
 
 ## 一、项目概况
 
-**Cyrene Gateway** 是一个单二进制运行的 LLM API 统一网关（Go 1.26+ 重写自 9router / Next.js），前端为 Vue 3 + Vite + Pinia 管理面板（编译内嵌）。
+**Cyrene Gateway** 是一个单二进制运行的高性能 LLM API 统一网关（Go 1.26+），前端为 Solid.js + Vite + Tailwind CSS v4 管理面板（编译内嵌）。
 
-- **核心能力**：OpenAI ↔ Anthropic ↔ Gemini 协议互转、多提供商/多账号凭证调度（优先级 / 冷却 / 配额感知 / OAuth PKCE+设备码）、Combo 故障转移、用量审计（明细 + 日聚合 + SSE 实时流）、LoopGuard 死循环打断、Token 压缩（RTK/Caveman/Ponytail）、SSRF 出站防护、媒体 API 接入、MITM 抓包、CLI 工具配置注入、Tailscale Funnel 隧道、Prometheus `/metrics`、Docker 多架构镜像。
-- **代码规模**：171 个索引文件（codegraph：2,411 节点 / 6,715 边），`internal/` 约 25 个包，webui 14 个页面。
+- **核心能力**：OpenAI ↔ Anthropic ↔ Gemini 协议互转、多提供商/多账号凭证调度（优先级 / 冷却 / 配额感知 / OAuth PKCE+设备码）、Combo 故障转移、用量审计（明细 + 日聚合 + SSE 实时流）、LoopGuard 死循环打断、Token 压缩（RTK/Caveman/Ponytail）、出站代理池（ProxyPools）、SSRF 出站防护、媒体 API 接入、Prometheus `/metrics`、Docker 多架构镜像。
+- **代码规模**：`internal/` 约 13 个核心业务包，webui 10 个管理页面。
 - **架构文档**：`docs/ARCHITECTURE.md`（权威）；历史沿革见 `CHANGELOG.md`（自 2026-07-21 起）。
 
 ---

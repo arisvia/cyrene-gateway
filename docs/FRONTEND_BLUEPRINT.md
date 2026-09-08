@@ -1,8 +1,6 @@
 # Cyrene Gateway 前端重构蓝图（SolidJS + Vite 8 + Tailwind 4）
 
-> **状态：已实施（2026-09-01 样式层修复后）**。16 页全部迁移完成；本轮修复了
-> 未分层 reset 击穿 Tailwind 工具类导致的「全页挤压」回归，并按 9router
-> `globals.css` 的做法补齐语义 token 体系。
+> **状态：历史归档文档（迁移已于 2026-09 全部完成）**。记录最初从 Vue 迁移至 SolidJS 的蓝图设计。
 > 目标：借鉴 9router 面板的简洁布局，功能全保留（MITM/Tunnel 简化呈现），砍掉死掉的 i18n。
 > 本文档为重构唯一依据，实施前需确认。
 

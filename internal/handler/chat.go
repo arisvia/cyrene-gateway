@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/metrics"
@@ -86,6 +87,44 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if provider.IsModelDisabled(req.Model, s.DB) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
 		return
+	}
+
+	// Phase: Response Cache check
+	settings, _ := s.DB.GetSettings()
+	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
+	var cacheKey string
+	if cacheEnabled && !cache.ShouldBypass(r.Header) {
+		eligible, key, err := cache.IsEligible("chat", rawBody, settings.ResponseCacheAll)
+		if err == nil && eligible {
+			cacheKey = key
+			if entry, hit := s.Cache.Get(key); hit {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cyrene-Cache", "HIT")
+				if entry.ServedModel != "" {
+					w.Header().Set("X-Cyrene-Served-Model", entry.ServedModel)
+				}
+				w.WriteHeader(entry.StatusCode)
+				w.Write(entry.Body)
+				return
+			}
+		}
+	}
+
+	if cacheKey != "" {
+		w.Header().Set("X-Cyrene-Cache", "MISS")
+		rec := cache.NewRecorder(w)
+		defer func() {
+			if rec.ShouldCache() {
+				ttl := time.Duration(settings.ResponseCacheTTL) * time.Second
+				if ttl <= 0 {
+					ttl = time.Hour
+				}
+				servedModel := rec.Header().Get("X-Cyrene-Served-Model")
+				tokens := rec.ExtractTokens()
+				s.Cache.Set(cacheKey, rec.StatusCode(), rec.HeaderMap(), rec.BodyBytes(), ttl, servedModel, tokens)
+			}
+		}()
+		w = rec
 	}
 
 	// Check if model string is a combo
@@ -929,6 +968,44 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Phase: Response Cache check
+	settings, _ := s.DB.GetSettings()
+	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
+	var cacheKey string
+	if cacheEnabled && !cache.ShouldBypass(r.Header) {
+		eligible, key, err := cache.IsEligible("messages", bodyBytes, settings.ResponseCacheAll)
+		if err == nil && eligible {
+			cacheKey = key
+			if entry, hit := s.Cache.Get(key); hit {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cyrene-Cache", "HIT")
+				if entry.ServedModel != "" {
+					w.Header().Set("X-Cyrene-Served-Model", entry.ServedModel)
+				}
+				w.WriteHeader(entry.StatusCode)
+				w.Write(entry.Body)
+				return
+			}
+		}
+	}
+
+	if cacheKey != "" {
+		w.Header().Set("X-Cyrene-Cache", "MISS")
+		rec := cache.NewRecorder(w)
+		defer func() {
+			if rec.ShouldCache() {
+				ttl := time.Duration(settings.ResponseCacheTTL) * time.Second
+				if ttl <= 0 {
+					ttl = time.Hour
+				}
+				servedModel := rec.Header().Get("X-Cyrene-Served-Model")
+				tokens := rec.ExtractTokens()
+				s.Cache.Set(cacheKey, rec.StatusCode(), rec.HeaderMap(), rec.BodyBytes(), ttl, servedModel, tokens)
+			}
+		}()
+		w = rec
+	}
+
 	providerInfo, ok := provider.GetProvider(modelInfo.Provider)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown provider: %s", modelInfo.Provider)})
@@ -1099,11 +1176,17 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+		return
+	}
+
 	var req struct {
 		Model string          `json:"model"`
 		Input json.RawMessage `json:"input"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(rawBody, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
@@ -1114,6 +1197,42 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Phase: Response Cache check
+	settings, _ := s.DB.GetSettings()
+	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
+	var cacheKey string
+	if cacheEnabled && !cache.ShouldBypass(r.Header) {
+		eligible, key, err := cache.IsEligible("embeddings", rawBody, true)
+		if err == nil && eligible {
+			cacheKey = key
+			if entry, hit := s.Cache.Get(key); hit {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cyrene-Cache", "HIT")
+				if entry.ServedModel != "" {
+					w.Header().Set("X-Cyrene-Served-Model", entry.ServedModel)
+				}
+				w.WriteHeader(entry.StatusCode)
+				w.Write(entry.Body)
+				return
+			}
+		}
+	}
+
+	if cacheKey != "" {
+		w.Header().Set("X-Cyrene-Cache", "MISS")
+		rec := cache.NewRecorder(w)
+		defer func() {
+			if rec.ShouldCache() {
+				ttl := time.Duration(settings.ResponseCacheTTL) * time.Second
+				if ttl <= 0 {
+					ttl = time.Hour
+				}
+				tokens := rec.ExtractTokens()
+				s.Cache.Set(cacheKey, rec.StatusCode(), rec.HeaderMap(), rec.BodyBytes(), ttl, req.Model, tokens)
+			}
+		}()
+		w = rec
+	}
 	providerInfo, ok := provider.GetProvider(modelInfo.Provider)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown provider: %s", modelInfo.Provider)})

@@ -24,6 +24,12 @@
 - **提供商创建接口防线**：POST `/api/providers` 强化校验，强制要求 `provider` ID 必填（400）、`api-key` 类型密钥必填（400），并在同 provider+authType 已存在活跃连接时拦截重复创建（409）。
 - **OAuth 回调 CSRF 防御**：GET `/api/oauth/{provider}/callback` 强制校验 `state` 必填且会话未过期，彻底杜绝无 state 绕过 PKCE 校验的安全风险。
 - **CI / Release 职责解耦**：PR 与主干推送走 `build.yml` 门禁（类型检查、单元测试 `-race` 与单二进制冒烟测试）；Tag 推送专走 `release.yml`（多架构二进制交叉编译与 Docker 镜像推送）。
+- **精准响应缓存（Exact Response Cache）与零延迟回放**：
+  - 新增基于有界 LRU 与 TTL 的无锁快速响应缓存模块（`internal/cache`），支持毫秒级提取与零上游网络穿透；
+  - 采用全量归一化请求体散列算法（`json.Marshal` 规范化 map，安全剔除 `stream` 传输标识），完整保留 `temperature`、`top_p`、`seed`、`tools`、`response_format` 等所有模型控制参数，彻底消除字段遗漏引发的哈希碰撞与误命中；
+  - 在 `/v1/chat/completions`、`/v1/messages` 与 `/v1/embeddings` 三大核心入口处接入流式无侵入式响应捕获器（`ResponseRecorder`），仅对非流式 2xx 成功 JSON 响应建立缓存，安全绕过 SSE 事件流与错误状态；
+  - 原生支持 `Cache-Control: no-cache`、`X-Cache-Control` 及 `Pragma` 客户端请求头穿透绕过；
+  - WebUI「设置」页面整合缓存开关、TTL 配置、全局/确定性切换、实时条目与 Token 节省指标看板，以及一键清空管理。
 - **RTK 令牌节省与多格式压缩强化**：
   - RTK 工具结果压缩引入无损预压缩流水线（ANSI 转义序列清洗、多余空行折叠、结构化 JSON `json.Compact` 就地紧凑化），大幅降低 Token 并使落入阈值内的工具数据完整无损保留；
   - 原生支持 Gemini `contents` 与 Anthropic 内容块结构，新增大于 16KB 单行/少行大文本的字符尺度截断兜底；
