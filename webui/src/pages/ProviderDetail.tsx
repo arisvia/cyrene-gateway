@@ -624,7 +624,7 @@ const ProviderDetail: Component = () => {
   return (
     <div class="space-y-5 stagger">
       {/* 顶部吸顶区：保证「← 返回连接列表」与操作栏永远触手可及 */}
-      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 border-b border-subtle/50">
+      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 shadow-glass transition-all">
         <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 mb-1">
           ← 返回连接列表
         </A>

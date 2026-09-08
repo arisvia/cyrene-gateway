@@ -184,10 +184,10 @@ const Settings: Component = () => {
 
   return (
     <div class="max-w-3xl mx-auto space-y-6 stagger">
-      {/* 顶部粘性操作栏：与 max-w-3xl 居中同宽 */}
-      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between gap-3 border-b border-subtle/50">
+      {/* 顶部粘性操作栏：悬浮圆角毛玻璃卡片 */}
+      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex items-center justify-between gap-3 shadow-glass transition-all">
         <div class="min-w-0">
-          <h1 class="text-lg sm:text-xl font-semibold truncate">系统设置</h1>
+          <h1 class="text-lg sm:text-xl font-semibold text-foreground truncate">系统设置</h1>
           <p class="text-xs sm:text-sm text-faint mt-0.5 truncate">网关运行参数、访问控制与效能引擎</p>
         </div>
         <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">

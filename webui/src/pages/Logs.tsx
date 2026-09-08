@@ -104,7 +104,7 @@ const LogsPage: Component = () => {
   return (
     <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
       {/* 头部与状态栏 (吸顶固定) */}
-      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 border-b border-subtle/50">
+      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 shadow-glass transition-all">
         <div>
           <h1 class="text-xl font-semibold flex items-center gap-2.5">
             <span>网关系统日志</span>

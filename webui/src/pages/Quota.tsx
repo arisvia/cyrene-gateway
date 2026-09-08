@@ -231,8 +231,8 @@ const Quota: Component = () => {
 
   return (
     <div class="space-y-5 stagger">
-      {/* 顶部工具栏 (吸顶固定) */}
-      <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle/50">
+      {/* 顶部工具栏：悬浮圆角毛玻璃卡片 */}
+      <div class="sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-glass transition-all">
         <div>
           <h1 class="text-xl font-semibold">配额中心</h1>
           <p class="text-sm text-faint mt-0.5">
