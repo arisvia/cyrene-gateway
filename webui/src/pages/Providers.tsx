@@ -273,20 +273,23 @@ const Providers: Component = () => {
   const [wizardOAuthPolling, setWizardOAuthPolling] = createSignal(false)
   const [wizardOAuthError, setWizardOAuthError] = createSignal('')
   const [wizardOAuthCopied, setWizardOAuthCopied] = createSignal(false)
-  let wizardPollTimer: ReturnType<typeof setInterval> | undefined
+  const [wizardIsImport, setWizardIsImport] = createSignal(false)
+  const [wizardImportToken, setWizardImportToken] = createSignal('')
+  const [wizardImporting, setWizardImporting] = createSignal(false)
+  let wizardPollTimer: number | undefined
 
   onCleanup(() => {
-    if (wizardPollTimer) clearInterval(wizardPollTimer)
+    clearInterval(wizardPollTimer)
   })
 
   function cancelWizardOAuth() {
-    if (wizardPollTimer) {
-      clearInterval(wizardPollTimer)
-      wizardPollTimer = undefined
-    }
+    clearInterval(wizardPollTimer)
+    wizardPollTimer = undefined
     setWizardOAuthPolling(false)
     setWizardOAuthFlow(null)
     setWizardOAuthError('')
+    setWizardIsImport(false)
+    setWizardImportToken('')
   }
 
   // 打开添加向导
@@ -391,7 +394,15 @@ const Providers: Component = () => {
       }
       const flowType = statusRes?.flowType
       const initialConnMap = new Map((statusRes?.connections || []).map(c => [c.id, `${c.expiresAt || ''}:${c.updatedAt || ''}`]))
-      // 1. 网页授权码 / PKCE 流（如 Antigravity, Claude, Google 等）
+
+      // 1. 令牌导入流 (如 Cursor 等)
+      if (flowType === 'import_token') {
+        setWizardOAuthPolling(false)
+        setWizardIsImport(true)
+        return
+      }
+
+      // 2. 网页授权码 / PKCE 流（如 Antigravity, Claude, Google 等）
       if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
         const callbackUri = `${window.location.origin}/api/oauth/${reg.id}/callback`
         const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}`)) as {
@@ -405,7 +416,7 @@ const Providers: Component = () => {
 
         // 轮询检测是否产生新连接
         if (wizardPollTimer) clearInterval(wizardPollTimer)
-        wizardPollTimer = setInterval(async () => {
+        wizardPollTimer = window.setInterval(async () => {
           try {
             const pollStatus = (await api(`/api/oauth/${reg.id}/status`)) as {
               connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
@@ -433,7 +444,7 @@ const Providers: Component = () => {
         return
       }
 
-      // 2. 设备码流（Device Code Flow，如 GitHub, Kimi, Qoder, X.AI 等）
+      // 3. 设备码流（Device Code Flow，如 GitHub, Kimi, CodeBuddy, Qoder, Grok CLI 等）
       const res = (await apiPost(`/api/oauth/${reg.id}/device-code`)) as {
         verificationUri: string
         verificationUriComplete?: string
@@ -453,7 +464,7 @@ const Providers: Component = () => {
 
       if (wizardPollTimer) clearInterval(wizardPollTimer)
       const intervalMs = res.interval ? res.interval * 1000 : 2500
-      wizardPollTimer = setInterval(async () => {
+      wizardPollTimer = window.setInterval(async () => {
         try {
           const pollRes = (await apiPost(`/api/oauth/${reg.id}/device-code/poll`, {
             deviceCode: res.deviceCode,
@@ -483,7 +494,38 @@ const Providers: Component = () => {
       }, intervalMs)
     } catch (e: unknown) {
       setWizardOAuthPolling(false)
-      setWizardOAuthError(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      setWizardOAuthError(msg)
+      toast.error(`发起授权失败: ${msg}`)
+    }
+  }
+
+  // 提交 Token 导入
+  async function handleWizardImportSubmit() {
+    const reg = selectedReg()
+    if (!reg) return
+    const token = wizardImportToken().trim()
+    if (!token) {
+      toast.error('请输入访问令牌 (Access Token)')
+      return
+    }
+    setWizardImporting(true)
+    try {
+      await apiPost(`/api/oauth/${reg.id}/import`, {
+        accessToken: token,
+        name: form().name || reg.name,
+      })
+      toast.success(`${reg.name} 令牌导入成功！已保存连接。`)
+      cancelWizardOAuth()
+      setWizardOpen(false)
+      setActiveTab('connections')
+      await store.loadProvidersOnly()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setWizardOAuthError(msg)
+      toast.error(`导入失败: ${msg}`)
+    } finally {
+      setWizardImporting(false)
     }
   }
 
@@ -1173,58 +1215,128 @@ const Providers: Component = () => {
                 {/* OAuth 模式说明与直接授权发起 */}
                 <Show when={form().authType === 'oauth'}>
                   <div class="space-y-3">
-                    <Show
-                      when={wizardOAuthFlow()}
-                      fallback={
-                        <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
-                          <div class="font-medium text-accent flex items-center gap-1.5">
-                            <IconCheck size={14} /> 已选择 OAuth 快捷授权模式
-                          </div>
-                          <p class="text-faint leading-relaxed">
-                            点击下方「发起 OAuth 授权」后将直接呼出浏览器授权弹窗与设备码，<strong>在第三方平台成功授权通过后才保存连接</strong>，免去繁琐的密钥配置。
-                          </p>
+                    {/* 错误提示始终渲染在外层，杜绝静默吞错 */}
+                    <Show when={wizardOAuthError()}>
+                      <div class="p-3 rounded-xl bg-danger/10 border border-danger/30 text-xs text-danger flex items-start gap-2">
+                        <span class="shrink-0 mt-0.5 font-bold">✕</span>
+                        <div class="flex-1">
+                          <div class="font-semibold">授权遇到问题</div>
+                          <div class="mt-0.5 leading-relaxed">{wizardOAuthError()}</div>
                         </div>
-                      }
-                    >
-                      {flow => (
-                        <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3 text-center">
-                          <div class="text-xs font-semibold text-accent">正在进行 OAuth 设备码授权</div>
-                          <div class="text-xs text-faint">请在新打开的页面中输入下方验证码完成授权：</div>
-                          <div class="flex items-center justify-center gap-2">
-                            <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
-                              {flow().userCode || '------'}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                if (flow().userCode) {
-                                  navigator.clipboard.writeText(flow().userCode!)
-                                  setWizardOAuthCopied(true)
-                                  setTimeout(() => setWizardOAuthCopied(false), 2000)
-                                }
-                              }}
+                      </div>
+                    </Show>
+
+                    {/* 令牌导入界面 (如 Cursor) */}
+                    <Show when={wizardIsImport()}>
+                      <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3">
+                        <div class="text-xs font-semibold text-accent flex items-center gap-1.5">
+                          <span>Token 导入授权模式</span>
+                        </div>
+                        <p class="text-xs text-faint leading-relaxed">
+                          该提供商不支持网页跳转或设备码直接登录，请填入从客户端或环境获取的访问凭据 (Access Token / Session Token)：
+                        </p>
+                        <div class="space-y-1.5">
+                          <textarea
+                            rows={3}
+                            value={wizardImportToken()}
+                            onInput={e => setWizardImportToken(e.currentTarget.value)}
+                            placeholder="粘贴从本地配置或数据库提取的 Access Token / JWT..."
+                            class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
+                          />
+                        </div>
+                        <div class="flex items-center justify-end gap-2 pt-1">
+                          <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
+                            取消
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            loading={wizardImporting()}
+                            disabled={!wizardImportToken().trim()}
+                            onClick={handleWizardImportSubmit}
+                          >
+                            导入并连接
+                          </Button>
+                        </div>
+                      </div>
+                    </Show>
+
+                    {/* 设备码 / 网页流卡片 */}
+                    <Show when={!wizardIsImport()}>
+                      <Show
+                        when={wizardOAuthFlow()}
+                        fallback={
+                          <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
+                            <div class="font-medium text-accent flex items-center gap-1.5">
+                              <IconCheck size={14} /> 已选择 OAuth 快捷授权模式
+                            </div>
+                            <p class="text-faint leading-relaxed">
+                              点击下方「发起 OAuth 授权」后将呼出浏览器授权页面或设备码，<strong>在第三方平台成功授权通过后才保存连接</strong>，免去繁琐的密钥配置。
+                            </p>
+                          </div>
+                        }
+                      >
+                        {flow => (
+                          <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3 text-center">
+                            <div class="text-xs font-semibold text-accent">正在进行 OAuth 快捷授权</div>
+
+                            {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
+                            <Show
+                              when={flow().userCode}
+                              fallback={
+                                <div class="space-y-2 py-1">
+                                  <div class="text-xs text-faint">已在新窗口中打开授权网页，请在网页中完成登录并确认授权：</div>
+                                  <div class="flex items-center justify-center gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="secondary"
+                                      onClick={() => {
+                                        const url = flow().verificationUriComplete || flow().verificationUri
+                                        if (url) window.open(url, '_blank')
+                                      }}
+                                    >
+                                      打开授权网页 ↗
+                                    </Button>
+                                  </div>
+                                </div>
+                              }
                             >
-                              {wizardOAuthCopied() ? '已复制' : '复制码'}
-                            </Button>
+                              <div class="text-xs text-faint">请在新打开的页面中输入下方验证码完成授权：</div>
+                              <div class="flex items-center justify-center gap-2">
+                                <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
+                                  {flow().userCode}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    if (flow().userCode) {
+                                      navigator.clipboard.writeText(flow().userCode!)
+                                      setWizardOAuthCopied(true)
+                                      setTimeout(() => setWizardOAuthCopied(false), 2000)
+                                    }
+                                  }}
+                                >
+                                  {wizardOAuthCopied() ? '已复制' : '复制码'}
+                                </Button>
+                              </div>
+                            </Show>
+
+                            <div class="text-[11px] text-faint break-all bg-bg/80 p-2 rounded border border-subtle">
+                              {flow().verificationUriComplete || flow().verificationUri}
+                            </div>
+                            <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
+                              <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
+                              <span>等待浏览器授权完成... 授权成功将自动保存</span>
+                            </div>
+                            <div class="pt-2 flex justify-center">
+                              <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
+                                取消当前授权
+                              </Button>
+                            </div>
                           </div>
-                          <div class="text-[11px] text-faint break-all bg-bg/80 p-2 rounded border border-subtle">
-                            {flow().verificationUriComplete || flow().verificationUri}
-                          </div>
-                          <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
-                            <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
-                            <span>等待浏览器授权完成... 授权成功将自动保存</span>
-                          </div>
-                          <Show when={wizardOAuthError()}>
-                            <div class="text-xs text-danger">{wizardOAuthError()}</div>
-                          </Show>
-                          <div class="pt-2 flex justify-center">
-                            <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
-                              取消当前授权
-                            </Button>
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </Show>
                     </Show>
                   </div>
                 </Show>

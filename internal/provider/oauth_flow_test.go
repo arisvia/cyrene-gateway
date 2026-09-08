@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -43,6 +45,8 @@ func TestGetProviderFlowType(t *testing.T) {
 		{"github", FlowDeviceCode},
 		{"kimi", FlowDeviceCode},
 		{"grok-cli", FlowDeviceCode},
+		{"codebuddy-cn", FlowDeviceCode},
+		{"codebuddy-intl", FlowDeviceCode},
 		{"claude", FlowAuthorizationCodePKCE},
 		{"codex", FlowAuthorizationCodePKCE},
 		{"nonexistent", ""},
@@ -200,6 +204,115 @@ func TestDedupRefresh_NoToken(t *testing.T) {
 	}
 	if called != 1 {
 		t.Errorf("expected fn called once, got %d", called)
+	}
+}
+
+func TestRequestDeviceCode_CodeBuddy(t *testing.T) {
+	orig := Registry["codebuddy-cn"]
+	defer func() { Registry["codebuddy-cn"] = orig }()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Query().Get("platform") != "CLI" {
+			t.Errorf("expected platform=CLI, got %s", r.URL.Query().Get("platform"))
+		}
+		if r.Header.Get("X-Domain") != "copilot.tencent.com" {
+			t.Errorf("expected X-Domain copilot.tencent.com, got %s", r.Header.Get("X-Domain"))
+		}
+		if r.Header.Get("X-No-Authorization") != "true" {
+			t.Errorf("expected X-No-Authorization true")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"code":0,"msg":"ok","data":{"state":"cb-state-123","authUrl":"https://copilot.tencent.com/auth?state=cb-state-123"}}`))
+	}))
+	defer ts.Close()
+
+	info := orig
+	info.DeviceCodeURL = ts.URL
+	Registry["codebuddy-cn"] = info
+
+	resp, err := RequestDeviceCode("codebuddy-cn", ts.Client())
+	if err != nil {
+		t.Fatalf("RequestDeviceCode failed: %v", err)
+	}
+	if resp.DeviceCode != "cb-state-123" {
+		t.Errorf("expected deviceCode cb-state-123, got %q", resp.DeviceCode)
+	}
+	if resp.VerificationURI != "https://copilot.tencent.com/auth?state=cb-state-123" {
+		t.Errorf("unexpected verificationURI: %q", resp.VerificationURI)
+	}
+}
+
+func TestPollDeviceCode_CodeBuddy(t *testing.T) {
+	orig := Registry["codebuddy-cn"]
+	defer func() { Registry["codebuddy-cn"] = orig }()
+
+	var step int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Query().Get("state") != "cb-state-123" {
+			t.Errorf("expected state cb-state-123, got %s", r.URL.Query().Get("state"))
+		}
+		if r.Header.Get("X-Domain") != "copilot.tencent.com" {
+			t.Errorf("expected X-Domain copilot.tencent.com")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch step {
+		case 0:
+			// Pending
+			w.Write([]byte(`{"code":11217,"msg":"RetryFetchToken"}`))
+		case 1:
+			// Success
+			w.Write([]byte(`{"code":0,"msg":"ok","data":{"accessToken":"cb-acc-token","refreshToken":"cb-ref-token","expiresIn":7200}}`))
+		default:
+			// Error
+			w.Write([]byte(`{"code":11218,"msg":"token expired or revoked"}`))
+		}
+	}))
+	defer ts.Close()
+
+	info := orig
+	info.TokenURL = ts.URL
+	Registry["codebuddy-cn"] = info
+
+	// Step 0: Pending
+	step = 0
+	res, err := PollDeviceCode("codebuddy-cn", "cb-state-123", "", nil, ts.Client())
+	if err != nil {
+		t.Fatalf("step 0 poll failed: %v", err)
+	}
+	if !res.Pending {
+		t.Errorf("expected pending true, got false")
+	}
+
+	// Step 1: Success
+	step = 1
+	res, err = PollDeviceCode("codebuddy-cn", "cb-state-123", "", nil, ts.Client())
+	if err != nil {
+		t.Fatalf("step 1 poll failed: %v", err)
+	}
+	if !res.Success || res.Tokens == nil {
+		t.Fatalf("expected success with tokens, got %+v", res)
+	}
+	if res.Tokens.AccessToken != "cb-acc-token" || res.Tokens.RefreshToken != "cb-ref-token" {
+		t.Errorf("unexpected tokens: %+v", res.Tokens)
+	}
+	if res.Tokens.ExpiresIn != 7200 {
+		t.Errorf("expected expiresIn 7200, got %d", res.Tokens.ExpiresIn)
+	}
+
+	// Step 2: Error
+	step = 2
+	res, err = PollDeviceCode("codebuddy-cn", "cb-state-123", "", nil, ts.Client())
+	if err != nil {
+		t.Fatalf("step 2 poll failed: %v", err)
+	}
+	if res.Error != "token expired or revoked" {
+		t.Errorf("expected error 'token expired or revoked', got %q", res.Error)
 	}
 }
 

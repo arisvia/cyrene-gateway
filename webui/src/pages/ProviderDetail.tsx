@@ -199,10 +199,13 @@ const ProviderDetail: Component = () => {
   const [deviceSuccess, setDeviceSuccess] = createSignal(false)
   const [deviceError, setDeviceError] = createSignal('')
   const [copiedCode, setCopiedCode] = createSignal(false)
-  let pollTimer: ReturnType<typeof setInterval> | undefined
+  const [isImportFlow, setIsImportFlow] = createSignal(false)
+  const [importTokenText, setImportTokenText] = createSignal('')
+  const [importingToken, setImportingToken] = createSignal(false)
+  let pollTimer: number | undefined
 
   onCleanup(() => {
-    if (pollTimer) clearInterval(pollTimer)
+    clearInterval(pollTimer)
   })
 
   async function startDeviceFlow() {
@@ -220,7 +223,14 @@ const ProviderDetail: Component = () => {
       }
       const flowType = statusRes?.flowType
       const initialConnMap = new Map((statusRes?.connections || []).map(c => [c.id, `${c.expiresAt || ''}:${c.updatedAt || ''}`]))
-      // 1. 网页授权码 / PKCE 流（如 Antigravity, Claude 等）
+      // 1. 令牌导入流 (如 Cursor 等)
+      if (flowType === 'import_token') {
+        setDevicePolling(false)
+        setIsImportFlow(true)
+        return
+      }
+
+      // 2. 网页授权码 / PKCE 流（如 Antigravity, Claude 等）
       if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
         const callbackUri = `${window.location.origin}/api/oauth/${p}/callback`
         const authRes = (await api(`/api/oauth/${p}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}`)) as {
@@ -233,7 +243,7 @@ const ProviderDetail: Component = () => {
         }
 
         clearInterval(pollTimer)
-        pollTimer = setInterval(async () => {
+        pollTimer = window.setInterval(async () => {
           try {
             const pollStatus = (await api(`/api/oauth/${p}/status`)) as {
               connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
@@ -282,7 +292,7 @@ const ProviderDetail: Component = () => {
 
       clearInterval(pollTimer)
       const intervalMs = res.interval ? res.interval * 1000 : 2500
-      pollTimer = setInterval(async () => {
+      pollTimer = window.setInterval(async () => {
         try {
           const pollRes = (await apiPost(`/api/oauth/${p}/device-code/poll`, {
             deviceCode: res.deviceCode,
@@ -313,17 +323,48 @@ const ProviderDetail: Component = () => {
       }, intervalMs)
     } catch (e: unknown) {
       setDevicePolling(false)
-      setDeviceError(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      setDeviceError(msg)
+      toast.error(`发起授权失败: ${msg}`)
+    }
+  }
+
+  async function handleImportToken() {
+    const p = conn()?.provider
+    if (!p) return
+    const token = importTokenText().trim()
+    if (!token) {
+      toast.error('请输入访问令牌 (Access Token)')
+      return
+    }
+    setImportingToken(true)
+    try {
+      await apiPost(`/api/oauth/${p}/import`, {
+        accessToken: token,
+        name: name().trim() || undefined,
+      })
+      toast.success('令牌导入成功！已更新连接凭据。')
+      cancelDeviceFlow()
+      await store.loadProvidersOnly()
+      await load()
+      refetchOAuth()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setDeviceError(msg)
+      toast.error(`导入失败: ${msg}`)
+    } finally {
+      setImportingToken(false)
     }
   }
 
   function cancelDeviceFlow() {
-    if (pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = undefined
-    }
+    clearInterval(pollTimer)
+    pollTimer = undefined
     setDevicePolling(false)
     setDeviceFlow(null)
+    setDeviceError('')
+    setIsImportFlow(false)
+    setImportTokenText('')
   }
   async function load(idToLoad?: string) {
     const target = idToLoad || params.id
@@ -1432,102 +1473,176 @@ const ProviderDetail: Component = () => {
       </Modal>
       {/* 统一设备码 OAuth 授权弹窗 (9router 同款弹窗体验) */}
       <Modal
-        open={!!deviceFlow() || devicePolling()}
-        title={`连接 ${conn()?.name || conn()?.provider || '供应商'}`}
+        open={!!deviceFlow() || devicePolling() || isImportFlow() || !!deviceError()}
+        title={isImportFlow() ? `导入 ${conn()?.name || conn()?.provider || '供应商'} 访问令牌` : `连接 ${conn()?.name || conn()?.provider || '供应商'}`}
         onClose={cancelDeviceFlow}
       >
-        <div class="space-y-4 text-center py-2">
-          <Show when={deviceFlow()} fallback={
-            <div class="py-8 flex flex-col items-center justify-center gap-3">
-              <span class="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-              <p class="text-xs text-faint">正在向上游申请授权验证码...</p>
+        <div class="space-y-4 py-2">
+          {/* 1. 纯错误展示（未处于导入流程时优先接管展示与重试） */}
+          <Show when={deviceError() && !isImportFlow()}>
+            <div class="space-y-4 py-2">
+              <div class="p-3 rounded-card bg-danger/10 border border-danger/30 text-xs text-danger text-left">
+                <div class="font-semibold mb-1">授权遇到问题</div>
+                <div class="leading-relaxed">{deviceError()}</div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
+                  关闭
+                </Button>
+                <Button size="sm" variant="primary" onClick={startDeviceFlow}>
+                  重试
+                </Button>
+              </div>
             </div>
-          }>
-            {flow => (
-              <div class="space-y-4">
-                <p class="text-xs text-faint leading-relaxed">
-                  请访问下方登录授权网址并在浏览器中确认授权：
-                </p>
+          </Show>
 
-                {/* 登录 URL 卡片 */}
-                <div class="p-3.5 rounded-card bg-hover/80 border border-subtle text-left space-y-2">
-                  <div class="text-[11px] text-faint font-medium text-center">Login URL</div>
-                  <div class="font-mono text-xs break-all text-foreground select-all bg-bg/70 p-2.5 rounded border border-subtle leading-relaxed">
-                    {flow().verificationUriComplete || flow().verificationUri}
-                  </div>
-                  <div class="flex items-center justify-end gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        const url = flow().verificationUriComplete || flow().verificationUri
-                        if (url) {
-                          navigator.clipboard.writeText(url)
-                          toast.success('登录网址已复制')
-                        }
-                      }}
-                    >
-                      复制网址
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        const url = flow().verificationUriComplete || flow().verificationUri
-                        if (url) window.open(url, '_blank')
-                      }}
-                    >
-                      打开网页 ↗
-                    </Button>
-                  </div>
+          {/* 2. 令牌导入流程 (如 Cursor) */}
+          <Show when={isImportFlow()}>
+            <div class="space-y-3 text-left py-1">
+              <p class="text-xs text-faint leading-relaxed">
+                该提供商为令牌导入模式，请填入从本地环境或配置提取的访问凭据 (Access Token / Session Token)：
+              </p>
+              <div class="space-y-1.5">
+                <textarea
+                  rows={4}
+                  value={importTokenText()}
+                  onInput={e => setImportTokenText(e.currentTarget.value)}
+                  placeholder="粘贴 Access Token / JWT..."
+                  class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
+                />
+              </div>
+              <Show when={deviceError()}>
+                <div class="p-2.5 rounded bg-danger/10 border border-danger/30 text-xs text-danger">
+                  {deviceError()}
                 </div>
+              </Show>
+              <div class="flex justify-end gap-2 pt-2 border-t border-subtle">
+                <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
+                  取消
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  loading={importingToken()}
+                  disabled={!importTokenText().trim()}
+                  onClick={handleImportToken}
+                >
+                  导入并保存
+                </Button>
+              </div>
+            </div>
+          </Show>
 
-                {/* 验证码卡片 */}
-                <Show when={flow().userCode}>
-                  <div class="p-4 rounded-card bg-accent/10 border border-accent/30 space-y-1.5">
-                    <div class="text-[11px] text-faint font-medium">Your Code / 授权验证码</div>
-                    <div class="flex items-center justify-center gap-3">
-                      <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
-                        {flow().userCode}
-                      </span>
-                      <button
-                        type="button"
-                        class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
-                        title="复制验证码"
+          {/* 3. 设备码 / 网页流卡片 */}
+          <Show when={!isImportFlow() && (deviceFlow() || devicePolling()) && !deviceError()}>
+            <Show
+              when={deviceFlow()}
+              fallback={
+                <div class="py-8 flex flex-col items-center justify-center gap-3">
+                  <span class="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                  <p class="text-xs text-faint">正在向上游申请授权验证码...</p>
+                </div>
+              }
+            >
+              {flow => (
+                <div class="space-y-4 text-center">
+                  {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
+                  <Show
+                    when={flow().userCode}
+                    fallback={
+                      <div class="space-y-2 py-1">
+                        <div class="text-xs text-faint">已在浏览器新标签页中打开授权网页，请在网页中完成登录并确认授权：</div>
+                        <div class="flex items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const url = flow().verificationUriComplete || flow().verificationUri
+                              if (url) window.open(url, '_blank')
+                            }}
+                          >
+                            打开授权网页 ↗
+                          </Button>
+                        </div>
+                      </div>
+                    }
+                  >
+                    <p class="text-xs text-faint leading-relaxed">
+                      请访问下方登录授权网址并在浏览器中确认授权：
+                    </p>
+                    {/* 验证码卡片 */}
+                    <div class="p-4 rounded-card bg-accent/10 border border-accent/30 space-y-1.5">
+                      <div class="text-[11px] text-faint font-medium">Your Code / 授权验证码</div>
+                      <div class="flex items-center justify-center gap-3">
+                        <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
+                          {flow().userCode}
+                        </span>
+                        <button
+                          type="button"
+                          class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
+                          title="复制验证码"
+                          onClick={() => {
+                            if (flow().userCode) {
+                              navigator.clipboard.writeText(flow().userCode!)
+                              setCopiedCode(true)
+                              toast.success('验证码已复制')
+                              setTimeout(() => setCopiedCode(false), 2000)
+                            }
+                          }}
+                        >
+                          {copiedCode() ? <IconCheck size={14} class="text-success" /> : <IconClipboard size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </Show>
+
+                  {/* 登录 URL 卡片 */}
+                  <div class="p-3.5 rounded-card bg-hover/80 border border-subtle text-left space-y-2">
+                    <div class="text-[11px] text-faint font-medium text-center">Login URL</div>
+                    <div class="font-mono text-xs break-all text-foreground select-all bg-bg/70 p-2.5 rounded border border-subtle leading-relaxed">
+                      {flow().verificationUriComplete || flow().verificationUri}
+                    </div>
+                    <div class="flex items-center justify-end gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         onClick={() => {
-                          if (flow().userCode) {
-                            navigator.clipboard.writeText(flow().userCode!)
-                            setCopiedCode(true)
-                            toast.success('验证码已复制')
-                            setTimeout(() => setCopiedCode(false), 2000)
+                          const url = flow().verificationUriComplete || flow().verificationUri
+                          if (url) {
+                            navigator.clipboard.writeText(url)
+                            toast.success('登录网址已复制')
                           }
                         }}
                       >
-                        {copiedCode() ? <IconCheck size={14} class="text-success" /> : <IconClipboard size={14} />}
-                      </button>
+                        复制网址
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          const url = flow().verificationUriComplete || flow().verificationUri
+                          if (url) window.open(url, '_blank')
+                        }}
+                      >
+                        打开网页 ↗
+                      </Button>
                     </div>
                   </div>
-                </Show>
 
-                {/* 轮询等待状态 */}
-                <div class="flex items-center justify-center gap-2 pt-2 text-xs text-faint">
-                  <span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-                  <span>Waiting for authorization / 等待浏览器授权完成...</span>
-                </div>
-
-                <Show when={deviceError()}>
-                  <div class="p-3 rounded bg-danger/10 border border-danger/30 text-xs text-danger">
-                    {deviceError()}
+                  {/* 轮询等待状态 */}
+                  <div class="flex items-center justify-center gap-2 pt-2 text-xs text-faint">
+                    <span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                    <span>Waiting for authorization / 等待浏览器授权完成...</span>
                   </div>
-                </Show>
 
-                <div class="pt-2 border-t border-subtle flex justify-end">
-                  <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
-                    取消
-                  </Button>
+                  <div class="pt-2 border-t border-subtle flex justify-end">
+                    <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
+                      取消
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </Show>
           </Show>
         </div>
       </Modal>

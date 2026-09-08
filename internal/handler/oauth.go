@@ -630,8 +630,12 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 		},
 	}
 
-	if conn.Name == "" && conn.Email != "" {
-		conn.Name = conn.Email
+	if conn.Name == "" {
+		if conn.Email != "" {
+			conn.Name = conn.Email
+		} else if info, ok := provider.GetProvider(providerID); ok {
+			conn.Name = info.Name
+		}
 	}
 
 	if err := s.DB.CreateConnection(conn); err != nil {

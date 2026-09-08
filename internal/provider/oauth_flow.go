@@ -371,6 +371,62 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
+	case "codebuddy-cn", "codebuddy-intl":
+		platform := "CLI"
+		domain := "copilot.tencent.com"
+		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
+		if providerID == "codebuddy-intl" {
+			platform = "ide"
+			domain = "www.codebuddy.ai"
+			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
+		}
+		targetURL := info.DeviceCodeURL + "?platform=" + platform
+		req, reqErr := http.NewRequest("POST", targetURL, strings.NewReader("{}"))
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("X-Domain", domain)
+		req.Header.Set("X-No-Authorization", "true")
+		req.Header.Set("X-No-User-Id", "true")
+		req.Header.Set("X-Product", "SaaS")
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("device code request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("codebuddy state request returned status %d: %s", resp.StatusCode, string(body))
+		}
+		var res struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+			Data struct {
+				State   string `json:"state"`
+				AuthURL string `json:"authUrl"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			return nil, fmt.Errorf("failed to decode codebuddy state response: %w", err)
+		}
+		if res.Code != 0 || res.Data.State == "" || res.Data.AuthURL == "" {
+			errMsg := res.Msg
+			if errMsg == "" {
+				errMsg = fmt.Sprintf("codebuddy state error (code %d)", res.Code)
+			}
+			return nil, fmt.Errorf("codebuddy state error: %s", errMsg)
+		}
+		return &DeviceCodeResponse{
+			DeviceCode:              res.Data.State,
+			VerificationURI:         res.Data.AuthURL,
+			VerificationURIComplete: res.Data.AuthURL,
+			ExpiresIn:               300,
+			Interval:                5,
+		}, nil
 	default:
 		// Generic device code request
 		params := url.Values{
@@ -495,6 +551,72 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
+	case "codebuddy-cn", "codebuddy-intl":
+		domain := "copilot.tencent.com"
+		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
+		if providerID == "codebuddy-intl" {
+			domain = "www.codebuddy.ai"
+			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
+		}
+		pollURL := info.TokenURL + "?state=" + url.QueryEscape(deviceCode)
+		req, reqErr := http.NewRequest("GET", pollURL, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("X-Requested-With", "XMLHttpRequest")
+		req.Header.Set("X-Domain", domain)
+		req.Header.Set("X-No-Authorization", "true")
+		req.Header.Set("X-No-User-Id", "true")
+		req.Header.Set("X-No-Enterprise-Id", "true")
+		req.Header.Set("X-No-Department-Info", "true")
+		req.Header.Set("X-Product", "SaaS")
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("poll request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("codebuddy poll returned status %d: %s", resp.StatusCode, string(body))
+		}
+		var res struct {
+			Code int    `json:"code"`
+			Msg  string `json:"msg"`
+			Data struct {
+				AccessToken  string `json:"accessToken"`
+				RefreshToken string `json:"refreshToken"`
+				TokenType    string `json:"tokenType"`
+				ExpiresIn    int    `json:"expiresIn"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+			return nil, fmt.Errorf("failed to decode poll response: %w", err)
+		}
+		if res.Code == 11217 {
+			return &PollDeviceCodeResult{Pending: true}, nil
+		}
+		if res.Code == 0 && res.Data.AccessToken != "" {
+			expiresIn := res.Data.ExpiresIn
+			if expiresIn <= 0 {
+				expiresIn = 86400
+			}
+			return &PollDeviceCodeResult{
+				Success: true,
+				Tokens: &TokenExchangeResult{
+					AccessToken:  res.Data.AccessToken,
+					RefreshToken: res.Data.RefreshToken,
+					ExpiresIn:    expiresIn,
+					DisplayName:  info.Name,
+				},
+			}, nil
+		}
+		errMsg := res.Msg
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("codebuddy auth error (code %d)", res.Code)
+		}
+		return &PollDeviceCodeResult{Error: errMsg}, nil
 	default:
 		params := url.Values{
 			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
