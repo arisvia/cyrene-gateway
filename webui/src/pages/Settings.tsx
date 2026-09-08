@@ -5,20 +5,6 @@ import { useBackgroundStore } from '@/stores/background'
 import { Card, Badge, Button, Input, Select, Toggle, Field, confirm } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
-const cavemanOptions = [
-  { value: 'lite', label: '精简 (lite)' },
-  { value: 'full', label: '标准极简 (full)' },
-  { value: 'ultra', label: '极致极简 (ultra)' },
-  { value: 'wenyan-lite', label: '半文言 (wenyan-lite)' },
-  { value: 'wenyan', label: '文言文 (wenyan)' },
-  { value: 'wenyan-ultra', label: '极限文言 (wenyan-ultra)' },
-]
-
-const ponytailOptions = [
-  { value: 'lite', label: '精简建议 (lite)' },
-  { value: 'full', label: '阶梯原则 (full)' },
-  { value: 'ultra', label: '极致极简 (ultra)' },
-]
 
 const Settings: Component = () => {
   const store = useGatewayStore()
@@ -29,85 +15,13 @@ const Settings: Component = () => {
   const [pw, setPw] = createSignal('')
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
-  // 响应缓存状态
-  interface CacheStats {
-    hits: number
-    misses: number
-    hitRate: number
-    entries: number
-    maxEntries: number
-    bytesUsed: number
-    tokensSaved: number
-  }
-  const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
-  const [clearingCache, setClearingCache] = createSignal(false)
-
-  // TokenSaver 排除项状态
-  const [excludeInput, setExcludeInput] = createSignal('')
-  const excludedProviders = () => {
-    const list = local().tokenSaverExclude
-    return Array.isArray(list) ? (list as string[]) : []
-  }
-  const addExcludeProvider = (providerName: string) => {
-    const trimmed = providerName.trim()
-    if (!trimmed) return
-    const current = excludedProviders()
-    if (!current.includes(trimmed)) {
-      set('tokenSaverExclude', [...current, trimmed])
-    }
-    setExcludeInput('')
-  }
-  const removeExcludeProvider = (providerName: string) => {
-    const current = excludedProviders()
-    set('tokenSaverExclude', current.filter(p => p !== providerName))
-  }
-  const quickSuggestions = () => {
-    const configured = store.providers().map(p => p.provider)
-    const defaults = ['deepseek', 'openai', 'anthropic', 'gemini']
-    const merged = Array.from(new Set([...defaults, ...configured]))
-    const current = excludedProviders()
-    return merged.filter(p => !current.includes(p))
-  }
-
-  async function fetchCacheStats() {
-    try {
-      const res = await api<CacheStats>('/api/cache/stats')
-      setCacheStats(res)
-    } catch {
-      // ignore
-    }
-  }
-
-  async function handleClearCache() {
-    const ok = await confirm({
-      title: '清空响应缓存',
-      message: '确定要清空全部在存的响应缓存吗？后续相同请求将重新向上游发起。',
-      confirmText: '立即清空',
-      variant: 'danger',
-    })
-    if (!ok) return
-    setClearingCache(true)
-    try {
-      await apiPost('/api/cache/clear')
-      toast.success('已成功清空响应缓存')
-      await fetchCacheStats()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '清空缓存失败')
-    } finally {
-      setClearingCache(false)
-    }
-  }
 
   onMount(async () => {
     await store.loadSettings()
-    if (store.providers().length === 0) {
-      void store.loadProvidersOnly()
-    }
     setLocal({ ...store.settings() })
     if (bgStore.bgConfig().type === 'url') {
       setBgUrlInput(bgStore.bgConfig().value)
     }
-    await fetchCacheStats()
   })
 
   const dirty = () => {
@@ -338,199 +252,24 @@ const Settings: Component = () => {
         </Field>
       </Card>
 
-      {/* Token 节省 */}
-      <Card class="p-5 space-y-4">
-        <h3 class="text-sm font-semibold">Token 节省</h3>
-        <div class="flex items-start justify-between gap-4">
-          <Field label="RTK 压缩" hint="无损清洗工具输出（ANSI 剥离、JSON 紧凑化、空行折叠）与超长首尾截断">
-            <span />
-          </Field>
-          <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
-        </div>
-        <div class="space-y-3 pt-1 border-t border-subtle/50">
-          <div class="flex items-start justify-between gap-4">
-            <Field label="Caveman" hint="注入极简表达指令，大幅削减模型输出 Token">
-              <span />
-            </Field>
-            <Toggle
-              checked={!!local().cavemanEnabled}
-              onChange={v => {
-                set('cavemanEnabled', v)
-                if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
-              }}
-            />
+      {/* Token 节省与响应缓存独立页面导航 */}
+      <Card class="p-5 flex items-center justify-between gap-4">
+        <div class="space-y-0.5">
+          <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-foreground">Token 节省与优化</h3>
+            <Badge tone="blue">已独立为专属页面</Badge>
           </div>
-          <Show when={local().cavemanEnabled}>
-            <div class="flex items-center justify-between gap-4 pl-4 border-l-2 border-subtle">
-              <span class="text-xs text-muted">压缩级别</span>
-              <Select
-                size="sm"
-                class="!w-44"
-                value={String(local().cavemanLevel || 'lite')}
-                options={cavemanOptions}
-                onChange={v => set('cavemanLevel', v)}
-              />
-            </div>
-          </Show>
+          <p class="text-xs text-faint">
+            全链路响应精确缓存、RTK 工具压缩、Caveman/Ponytail 极简指令与提供商保护名单已整合至独立控制台。
+          </p>
         </div>
-        <div class="space-y-3 pt-1 border-t border-subtle/50">
-          <div class="flex items-start justify-between gap-4">
-            <Field label="Ponytail" hint="注入极简代码指令（Lazy Senior Dev 原则），抑制过度工程">
-              <span />
-            </Field>
-            <Toggle
-              checked={!!local().ponytailEnabled}
-              onChange={v => {
-                set('ponytailEnabled', v)
-                if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
-              }}
-            />
-          </div>
-          <Show when={local().ponytailEnabled}>
-            <div class="flex items-center justify-between gap-4 pl-4 border-l-2 border-subtle">
-              <span class="text-xs text-muted">约束级别</span>
-              <Select
-                size="sm"
-                class="!w-44"
-                value={String(local().ponytailLevel || 'lite')}
-                options={ponytailOptions}
-                onChange={v => set('ponytailLevel', v)}
-              />
-            </div>
-          </Show>
-        </div>
-
-        {/* TokenSaver 排除提供商 */}
-        <div class="space-y-2.5 pt-1 border-t border-subtle/50">
-          <Field
-            label="排除提供商 (TokenSaver 排除名单)"
-            hint="对指定上游提供商或推理模型（如 deepseek）跳过 RTK 压缩与 Caveman/Ponytail 提示词注入，防止打乱思维链或格式冲突"
-          >
-            <span />
-          </Field>
-          <div class="space-y-2">
-            <div class="flex items-center gap-1.5 flex-wrap min-h-6">
-              <Show
-                when={excludedProviders().length > 0}
-                fallback={<span class="text-xs text-faint italic">暂无排除项（所有提供商均应用 Token 节省规则）</span>}
-              >
-                <For each={excludedProviders()}>
-                  {p => (
-                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-warning/10 text-warning text-xs font-mono">
-                      <span>{p}</span>
-                      <button
-                        type="button"
-                        class="hover:text-foreground cursor-pointer text-sm leading-none opacity-70 hover:opacity-100"
-                        onClick={() => removeExcludeProvider(p)}
-                        title="移除排除"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                </For>
-              </Show>
-            </div>
-
-            <div class="flex items-center gap-2 max-w-md">
-              <Input
-                value={excludeInput()}
-                placeholder="输入提供商标识（如 deepseek）回车添加"
-                class="flex-1 !h-8 text-xs font-mono"
-                onInput={setExcludeInput}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    addExcludeProvider(excludeInput())
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!excludeInput().trim()}
-                onClick={() => addExcludeProvider(excludeInput())}
-              >
-                添加
-              </Button>
-            </div>
-
-            <Show when={quickSuggestions().length > 0}>
-              <div class="flex items-center gap-1.5 flex-wrap text-xs text-faint pt-0.5">
-                <span>快速添加：</span>
-                <For each={quickSuggestions()}>
-                  {p => (
-                    <button
-                      type="button"
-                      class="px-1.5 py-0.5 rounded bg-hover hover:bg-subtle text-muted hover:text-foreground text-[11px] font-mono cursor-pointer transition-colors"
-                      onClick={() => addExcludeProvider(p)}
-                    >
-                      + {p}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </Show>
-          </div>
-        </div>
-
-        {/* 响应缓存 (Exact Response Cache) */}
-        <div class="space-y-3 pt-1 border-t border-subtle/50">
-          <div class="flex items-start justify-between gap-4">
-            <Field label="响应缓存 (Exact Response Cache)" hint="对重复的确定性请求（temperature=0、结构化提取与嵌入向量）进行精确缓存，<1ms 返回且 0 Token 消耗">
-              <span />
-            </Field>
-            <Toggle
-              checked={!!local().responseCacheEnabled}
-              onChange={v => {
-                set('responseCacheEnabled', v)
-                if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
-              }}
-            />
-          </div>
-          <Show when={local().responseCacheEnabled}>
-            <div class="space-y-3 pl-4 border-l-2 border-subtle">
-              <div class="flex items-center justify-between gap-4">
-                <Field label="缓存全部非流式请求" hint="开启后不论 temperature 为何值均做响应缓存；关闭则仅缓存确定性请求（temperature=0 与 embeddings）">
-                  <span />
-                </Field>
-                <Toggle
-                  checked={!!local().responseCacheAll}
-                  onChange={v => set('responseCacheAll', v)}
-                />
-              </div>
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-xs text-muted">缓存有效期 (秒)</span>
-                <Input
-                  type="number"
-                  class="!w-36"
-                  value={String(local().responseCacheTTL ?? 3600)}
-                  onInput={v => set('responseCacheTTL', Number(v) || 3600)}
-                />
-              </div>
-
-              {/* 缓存指标与清空 */}
-              <div class="pt-2 border-t border-subtle/40 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div class="flex items-center gap-3 font-mono">
-                  <span class="text-muted">缓存条目: <strong class="text-foreground">{cacheStats()?.entries ?? 0}</strong></span>
-                  <span class="text-muted">命中次数: <strong class="text-emerald-500">{cacheStats()?.hits ?? 0}</strong></span>
-                  <span class="text-muted">命中率: <strong class="text-foreground">{((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%</strong></span>
-                  <Show when={(cacheStats()?.tokensSaved ?? 0) > 0}>
-                    <span class="text-muted">累计节省: <strong class="text-accent">{cacheStats()?.tokensSaved} Tokens</strong></span>
-                  </Show>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  loading={clearingCache()}
-                  onClick={handleClearCache}
-                >
-                  清空缓存
-                </Button>
-              </div>
-            </div>
-          </Show>
-        </div>
+        <A
+          href="/tokensaver"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-medium bg-primary text-primary-fg hover:opacity-90 transition-opacity shrink-0"
+        >
+          <span>前往配置</span>
+          <span aria-hidden="true">→</span>
+        </A>
       </Card>
 
 

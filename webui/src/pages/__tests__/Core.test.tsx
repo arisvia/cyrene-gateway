@@ -6,6 +6,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import Combos from '@/pages/Combos'
 import Usage from '@/pages/Usage'
 import Settings from '@/pages/Settings'
+import TokenSaverPage from '@/pages/TokenSaver'
 
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(),
@@ -140,8 +141,92 @@ describe('Settings 页', () => {
     expect(text).toContain('访问控制')
     expect(text).toContain('要求 API Key')
     expect(text).toContain('API Key 速率限制')
-    expect(text).toContain('Token 节省')
-    expect(text).toContain('排除提供商')
+    expect(text).toContain('Token 节省与优化')
+    expect(document.body.querySelector('a[href*="tokensaver"]')).toBeTruthy()
+  })
+})
+
+describe('TokenSaver 页', () => {
+  afterEach(() => cleanup())
+
+  it('渲染实时指标与各项配置卡片', async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/settings') {
+        return Promise.resolve({
+          requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
+          comboStrategy: 'fallback', rtkEnabled: true, cavemanEnabled: true, cavemanLevel: 'lite',
+          ponytailEnabled: true, ponytailLevel: 'lite',
+          responseCacheEnabled: true, responseCacheTTL: 3600, responseCacheAll: false,
+          tokenSaverExclude: ['deepseek'],
+        })
+      }
+      if (path === '/api/cache/stats') {
+        return Promise.resolve({
+          hits: 42, misses: 8, hitRate: 0.84, entries: 50, maxEntries: 1000, bytesUsed: 102400, tokensSaved: 12500,
+        })
+      }
+      return Promise.resolve(null)
+    })
+
+    await useGatewayStore().loadSettings()
+    mount(TokenSaverPage)
+    await tick()
+
+    const text = document.body.textContent || ''
+    expect(text).toContain('Token 节省与优化')
+    expect(text).toContain('缓存命中率')
+    expect(text).toContain('84.0%')
+    expect(text).toContain('累计节省 Token')
+    expect(text).toContain('12,500')
+    expect(text).toContain('响应精确缓存')
+    expect(text).toContain('RTK 压缩')
+    expect(text).toContain('Caveman')
+    expect(text).toContain('Ponytail')
+    expect(text).toContain('排除提供商名单')
     expect(text).toContain('deepseek')
+  })
+
+  it('支持交互式添加与移除排除提供商', async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/settings') {
+        return Promise.resolve({
+          rtkEnabled: true,
+          tokenSaverExclude: ['deepseek'],
+        })
+      }
+      return Promise.resolve(null)
+    })
+
+    await useGatewayStore().loadSettings()
+    mount(TokenSaverPage)
+    await tick()
+
+    expect(document.body.textContent).toContain('deepseek')
+
+    // 输入并添加 ollama
+    const input = document.body.querySelector('input[placeholder*="deepseek"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+    input.value = 'ollama'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+
+    const addBtn = Array.from(document.body.querySelectorAll('button')).find(b => b.textContent?.trim() === '添加')
+    expect(addBtn).toBeTruthy()
+    addBtn!.click()
+    await tick()
+
+    expect(document.body.textContent).toContain('ollama')
+
+    // 点击移除 deepseek
+    const removeBtns = Array.from(document.body.querySelectorAll('button[title="移除排除"]'))
+    expect(removeBtns.length).toBeGreaterThanOrEqual(1)
+    const deepseekRemoveBtn = removeBtns[0] as HTMLButtonElement
+    deepseekRemoveBtn.click()
+    await tick()
+
+    // deepseek chip 已被移除
+    const chips = Array.from(document.body.querySelectorAll('span.font-mono > span')).map(el => el.textContent?.trim())
+    expect(chips).toContain('ollama')
+    expect(chips).not.toContain('deepseek')
   })
 })

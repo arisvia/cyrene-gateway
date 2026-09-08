@@ -45,6 +45,8 @@ describe('App 根组件（白屏回归）', () => {
     expect(text).toContain('Cyrene Gateway')
     expect(text).toContain('提供商')
     expect(text).toContain('用量')
+    expect(text).toContain('Token 节省')
+    expect(document.body.querySelector('a[href*="tokensaver"]')).toBeTruthy()
     expect(document.body.querySelector('a[href*="settings"]')).toBeTruthy()
     expect(text).toContain('运行中')
     expect(container).toBeTruthy()
