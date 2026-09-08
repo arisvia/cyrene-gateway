@@ -1,33 +1,66 @@
 import { createSignal, createRoot, type Accessor } from 'solid-js'
 import {
-  getStoredBackground,
-  saveStoredBackground,
-  clearStoredBackground,
-  type CustomBackgroundConfig,
+  getWallpaperConfig,
+  saveWallpaperConfig,
+  getStoredWallpaper,
+  saveStoredWallpaper,
+  clearStoredWallpaper,
+  cleanupLegacyStorage,
+  type WallpaperConfig,
+  DEFAULT_WALLPAPER_CONFIG,
 } from '@/lib/backgroundStore'
 
 export interface BackgroundStore {
-  bgConfig: Accessor<CustomBackgroundConfig>
+  config: Accessor<WallpaperConfig>
+  imageData: Accessor<string>
+  hasCustomBg: Accessor<boolean>
   loaded: Accessor<boolean>
   init: () => Promise<void>
-  setBackground: (config: CustomBackgroundConfig) => Promise<void>
-  resetBackground: () => Promise<void>
+  setWallpaper: (dataUrl: string, meta?: { sourceType?: 'remote' | 'upload'; remoteUrl?: string }) => Promise<void>
+  updateConfig: (partial: Partial<WallpaperConfig>) => void
+  resetWallpaper: () => Promise<void>
+}
+
+function applyAppearanceVariables(config: WallpaperConfig, enabled: boolean) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  if (enabled) {
+    root.classList.add('custom-background')
+    root.style.setProperty('--app-surface-alpha', `${config.surfaceAlpha}`)
+    root.style.setProperty('--app-glass-blur', `${config.glassBlur}px`)
+  } else {
+    root.classList.remove('custom-background')
+    root.style.removeProperty('--app-surface-alpha')
+    root.style.removeProperty('--app-glass-blur')
+  }
 }
 
 function createCustomBgStore(): BackgroundStore {
-  const [bgConfig, setBgConfig] = createSignal<CustomBackgroundConfig>({
-    type: 'none',
-    value: '',
-    blur: 0,
-    opacity: 1,
-  })
+  const [config, setConfig] = createSignal<WallpaperConfig>(getWallpaperConfig())
+  const [imageData, setImageData] = createSignal<string>('')
   const [loaded, setLoaded] = createSignal(false)
+
+  const hasCustomBg = () => config().enabled && !!imageData()
 
   async function init() {
     try {
-      const stored = await getStoredBackground()
-      if (stored) {
-        setBgConfig(stored)
+      cleanupLegacyStorage()
+      const cfg = getWallpaperConfig()
+      setConfig(cfg)
+      if (cfg.enabled) {
+        const data = await getStoredWallpaper()
+        if (data) {
+          setImageData(data)
+          applyAppearanceVariables(cfg, true)
+        } else {
+          // 无图片数据时重置开关
+          const disabledCfg = { ...cfg, enabled: false }
+          setConfig(disabledCfg)
+          saveWallpaperConfig(disabledCfg)
+          applyAppearanceVariables(disabledCfg, false)
+        }
+      } else {
+        applyAppearanceVariables(cfg, false)
       }
     } catch (e) {
       console.warn('[bgStore] init failed:', e)
@@ -36,26 +69,51 @@ function createCustomBgStore(): BackgroundStore {
     }
   }
 
-  async function setBackground(config: CustomBackgroundConfig) {
-    setBgConfig(config)
-    if (config.type === 'none') {
-      await clearStoredBackground()
-    } else {
-      await saveStoredBackground(config)
+  async function setWallpaper(dataUrl: string, meta?: { sourceType?: 'remote' | 'upload'; remoteUrl?: string }) {
+    await saveStoredWallpaper(dataUrl)
+    setImageData(dataUrl)
+    const newConfig: WallpaperConfig = {
+      ...config(),
+      enabled: true,
+      sourceType: meta?.sourceType ?? 'upload',
+      remoteUrl: meta?.remoteUrl ?? config().remoteUrl,
     }
+    setConfig(newConfig)
+    saveWallpaperConfig(newConfig)
+    applyAppearanceVariables(newConfig, true)
   }
 
-  async function resetBackground() {
-    setBgConfig({ type: 'none', value: '', blur: 0, opacity: 1 })
-    await clearStoredBackground()
+  function updateConfig(partial: Partial<WallpaperConfig>) {
+    const next: WallpaperConfig = {
+      ...config(),
+      ...partial,
+    }
+    setConfig(next)
+    saveWallpaperConfig(next)
+    applyAppearanceVariables(next, next.enabled && !!imageData())
+  }
+
+  async function resetWallpaper() {
+    await clearStoredWallpaper()
+    setImageData('')
+    const resetCfg: WallpaperConfig = {
+      ...DEFAULT_WALLPAPER_CONFIG,
+      remoteUrl: '',
+    }
+    setConfig(resetCfg)
+    saveWallpaperConfig(resetCfg)
+    applyAppearanceVariables(resetCfg, false)
   }
 
   return {
-    bgConfig,
+    config,
+    imageData,
+    hasCustomBg,
     loaded,
     init,
-    setBackground,
-    resetBackground,
+    setWallpaper,
+    updateConfig,
+    resetWallpaper,
   }
 }
 

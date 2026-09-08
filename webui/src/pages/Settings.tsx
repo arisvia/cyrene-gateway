@@ -46,7 +46,7 @@ const Settings: Component = () => {
   const [hasPw, setHasPw] = createSignal(false)
 
   // 背景自定义状态
-  const [bgUrlInput, setBgUrlInput] = createSignal('')
+  const [bgUrlInput, setBgUrlInput] = createSignal(bgStore.config().remoteUrl || '')
   const [loadingBgUrl, setLoadingBgUrl] = createSignal(false)
   // 响应缓存状态
   const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
@@ -125,8 +125,8 @@ const Settings: Component = () => {
     }
     setLocal({ ...store.settings() })
     setHasPw(!!store.settings().hasPassword)
-    if (bgStore.bgConfig().type === 'url') {
-      setBgUrlInput(bgStore.bgConfig().value)
+    if (bgStore.config().sourceType === 'remote' && bgStore.config().remoteUrl) {
+      setBgUrlInput(bgStore.config().remoteUrl || '')
     }
     await fetchCacheStats()
   })
@@ -565,10 +565,10 @@ const Settings: Component = () => {
               <IconPalette size={16} class="text-accent shrink-0" />
               <div>
                 <h3 class="text-sm font-semibold">界面与壁纸</h3>
-                <p class="text-xs text-faint mt-0.5">本地存储于浏览器 IndexedDB，不占用网关空间</p>
+                <p class="text-xs text-faint mt-0.5">大图持久化于浏览器 IndexedDB，外观配置实时保存在 localStorage</p>
               </div>
             </div>
-            <Show when={bgStore.bgConfig().type !== 'none'}>
+            <Show when={bgStore.hasCustomBg()}>
               <Button
                 size="sm"
                 variant="danger"
@@ -579,7 +579,7 @@ const Settings: Component = () => {
                     variant: 'danger',
                   })
                   if (!ok) return
-                  await bgStore.resetBackground()
+                  await bgStore.resetWallpaper()
                   setBgUrlInput('')
                   toast.success('已恢复默认背景')
                 }}
@@ -610,42 +610,32 @@ const Settings: Component = () => {
                     if (!url) return
                     setLoadingBgUrl(true)
                     try {
-                      let cached = false
+                      let dataUrl = ''
                       try {
-                        const resp = await fetch(url)
+                        const resp = await fetch(url, { referrerPolicy: 'no-referrer' })
                         if (resp.ok) {
                           const blob = await resp.blob()
                           if (blob.type.startsWith('image/')) {
                             const reader = new FileReader()
-                            reader.onload = async () => {
-                              const dataUrl = reader.result as string
-                              await bgStore.setBackground({
-                                type: 'image',
-                                value: dataUrl,
-                                blur: bgStore.bgConfig().blur ?? 0,
-                                opacity: bgStore.bgConfig().opacity ?? 1,
-                              })
-                              toast.success('已下载并离线缓存远程壁纸')
-                            }
+                            const { promise, resolve, reject } = Promise.withResolvers<string>()
+                            reader.onload = () => resolve(reader.result as string)
+                            reader.onerror = () => reject(reader.error)
                             reader.readAsDataURL(blob)
-                            cached = true
+                            dataUrl = await promise
                           }
                         }
                       } catch {
-                        // 跨域或安全拦截直接拉取时，降级到 direct url
+                        // 跨域或安全拦截直接拉取时，降级使用 direct url 保存进 IndexedDB
                       }
 
-                      if (!cached) {
-                        await bgStore.setBackground({
-                          type: 'url',
-                          value: url,
-                          blur: bgStore.bgConfig().blur ?? 0,
-                          opacity: bgStore.bgConfig().opacity ?? 1,
-                        })
-                        toast.success('已应用远程壁纸直链')
+                      if (!dataUrl) {
+                        dataUrl = url
                       }
+
+                      await bgStore.setWallpaper(dataUrl, { sourceType: 'remote', remoteUrl: url })
+                      toast.success('已保存远程壁纸至本地存储')
                     } catch {
-                      toast.error('应用远程壁纸失败')
+                      toast.error('保存远程壁纸失败')
                     } finally {
                       setLoadingBgUrl(false)
                     }
@@ -676,13 +666,8 @@ const Settings: Component = () => {
                     const reader = new FileReader()
                     reader.onload = async () => {
                       const dataUrl = reader.result as string
-                      await bgStore.setBackground({
-                        type: 'image',
-                        value: dataUrl,
-                        blur: bgStore.bgConfig().blur ?? 0,
-                        opacity: bgStore.bgConfig().opacity ?? 1,
-                      })
-                      toast.success(`已加载本地图片 (${file.name})`)
+                      await bgStore.setWallpaper(dataUrl, { sourceType: 'upload' })
+                      toast.success(`已保存本地图片至数据库 (${file.name})`)
                     }
                     reader.readAsDataURL(file)
                   }}
@@ -691,51 +676,86 @@ const Settings: Component = () => {
             </div>
           </div>
 
-          {/* 壁纸虚化与透明度微调 */}
-          <Show when={bgStore.bgConfig().type !== 'none'}>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-subtle/50">
-              <div class="space-y-1">
-                <div class="flex justify-between text-xs">
-                  <span class="text-muted">背景虚化 (Blur)</span>
-                  <span class="font-mono text-faint">{bgStore.bgConfig().blur || 0}px</span>
+          {/* 壁纸与毛玻璃微调控制面板（仿 zashboard 外观微调系统） */}
+          <Show when={bgStore.hasCustomBg()}>
+            <div class="space-y-3 pt-3 border-t border-subtle/50">
+              <div class="text-xs font-semibold text-muted">毛玻璃拟态与外观微调</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 背景虚化 */}
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-muted">背景虚化 (Blur)</span>
+                    <span class="font-mono text-faint">{bgStore.config().blur || 0}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="30"
+                    step="1"
+                    class="w-full accent-accent cursor-pointer"
+                    value={bgStore.config().blur || 0}
+                    onInput={e => {
+                      bgStore.updateConfig({ blur: Number(e.currentTarget.value) })
+                    }}
+                  />
                 </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="30"
-                  step="1"
-                  class="w-full accent-accent cursor-pointer"
-                  value={bgStore.bgConfig().blur || 0}
-                  onInput={async e => {
-                    const val = Number(e.currentTarget.value)
-                    await bgStore.setBackground({
-                      ...bgStore.bgConfig(),
-                      blur: val,
-                    })
-                  }}
-                />
-              </div>
 
-              <div class="space-y-1">
-                <div class="flex justify-between text-xs">
-                  <span class="text-muted">背景不透明度 (Opacity)</span>
-                  <span class="font-mono text-faint">{Math.round((bgStore.bgConfig().opacity ?? 1) * 100)}%</span>
+                {/* 背景不透明度 */}
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-muted">背景不透明度 (Opacity)</span>
+                    <span class="font-mono text-faint">{Math.round((bgStore.config().opacity ?? 1) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    class="w-full accent-accent cursor-pointer"
+                    value={bgStore.config().opacity ?? 1}
+                    onInput={e => {
+                      bgStore.updateConfig({ opacity: Number(e.currentTarget.value) })
+                    }}
+                  />
                 </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1"
-                  step="0.05"
-                  class="w-full accent-accent cursor-pointer"
-                  value={bgStore.bgConfig().opacity ?? 1}
-                  onInput={async e => {
-                    const val = Number(e.currentTarget.value)
-                    await bgStore.setBackground({
-                      ...bgStore.bgConfig(),
-                      opacity: val,
-                    })
-                  }}
-                />
+
+                {/* 面板底色不透明度 */}
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-muted">面板底色透明度 (Surface Alpha)</span>
+                    <span class="font-mono text-faint">{Math.round((bgStore.config().surfaceAlpha ?? 0.78) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.4"
+                    max="0.95"
+                    step="0.02"
+                    class="w-full accent-accent cursor-pointer"
+                    value={bgStore.config().surfaceAlpha ?? 0.78}
+                    onInput={e => {
+                      bgStore.updateConfig({ surfaceAlpha: Number(e.currentTarget.value) })
+                    }}
+                  />
+                </div>
+
+                {/* 面板毛玻璃强度 */}
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="text-muted">毛玻璃模糊度 (Glass Blur)</span>
+                    <span class="font-mono text-faint">{bgStore.config().glassBlur ?? 20}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="40"
+                    step="2"
+                    class="w-full accent-accent cursor-pointer"
+                    value={bgStore.config().glassBlur ?? 20}
+                    onInput={e => {
+                      bgStore.updateConfig({ glassBlur: Number(e.currentTarget.value) })
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </Show>

@@ -80,6 +80,32 @@
   color-scheme: light;
 }
 
+/* 自定义壁纸模式：现代液态毛玻璃拟态 (Liquid Glass / Frosted Acrylic, 对齐 zashboard 体验) */
+.custom-background {
+  --app-surface-alpha: 0.78;
+  --app-glass-blur: 20px;
+
+  --glass: color-mix(in oklab, var(--bg-elevated) calc(var(--app-surface-alpha) * 100%), transparent);
+  --glass-hover: color-mix(in oklab, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.08, 0.95) * 100%), transparent);
+  --glass-blur: var(--app-glass-blur);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-hover: rgba(255, 255, 255, 0.28);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%);
+  --glass-depth: 0 12px 36px -8px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  --glass-depth-hover: 0 20px 48px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.16) inset;
+}
+
+.light.custom-background,
+:root.light.custom-background {
+  --glass: color-mix(in oklab, #ffffff calc(var(--app-surface-alpha) * 100%), transparent);
+  --glass-hover: color-mix(in oklab, #ffffff calc(min(var(--app-surface-alpha) + 0.08, 0.98) * 100%), transparent);
+  --glass-border: rgba(15, 23, 42, 0.12);
+  --glass-border-hover: rgba(15, 23, 42, 0.22);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.5) 45%, transparent 100%);
+  --glass-depth: 0 12px 36px -8px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
+  --glass-depth-hover: 0 20px 48px -12px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.95) inset;
+}
+
 /* 注册 Tailwind v4 主题 token —— 只有 --color- 前缀才会生成对应的 bg/text/border 工具类 */
 @theme inline {
   --color-bg: var(--bg);
@@ -93,6 +119,7 @@
   --color-accent-2: var(--accent-2);
   --color-on-accent: var(--on-accent);
   --color-subtle: var(--glass-border);
+  --color-glass-border: var(--glass-border);
   --color-hover: var(--glass-hover);
   --color-card: var(--glass);
   --color-success: var(--success);
@@ -139,6 +166,11 @@
     min-height: 100vh;
   }
 
+  html.custom-background,
+  html.custom-background body,
+  .custom-background .app-root-shell {
+    background-color: transparent !important;
+  }
   /* Tailwind v4 移除了 button 的 pointer 光标，按 9router 做法恢复 */
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),
@@ -252,16 +284,18 @@
 /* ---- 语义组合工具（组件层） ---- */
 @utility glass-panel {
   background-color: var(--glass);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background-image: var(--glass-sheen);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-depth);
 }
 
 @utility glass-card {
   background-color: var(--glass);
   background-image: var(--glass-sheen);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-depth);
 }

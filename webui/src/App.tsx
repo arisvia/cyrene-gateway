@@ -107,48 +107,23 @@ const App: Component = () => {
 
   // 布局作为 root 传入 Router：这样侧栏/头部里的 <A> 处于路由上下文内
   const Layout: Component<{ children?: JSX.Element }> = props => {
-    const hasCustomBg = () => bgStore.bgConfig().type !== 'none' && !!bgStore.bgConfig().value
-    const bgStyle = () => {
-      if (!hasCustomBg()) return {}
-      const conf = bgStore.bgConfig()
-      return {
-        'background-image': `url("${conf.value}")`,
-        'background-size': 'cover',
-        'background-position': 'center',
-        'background-attachment': 'fixed',
-        'filter': conf.blur ? `blur(${conf.blur}px)` : undefined,
-        'opacity': conf.opacity ?? 1,
-        'transform': conf.blur ? 'scale(1.05)' : undefined, // 防止边缘虚化留白
-      }
-    }
-
     return (
-      <div class="min-h-screen bg-bg text-text relative selection:bg-accent/25">
-        <Show when={hasCustomBg()}>
+      <div class={`min-h-screen text-text relative selection:bg-accent/25 app-root-shell ${bgStore.hasCustomBg() ? '' : 'bg-bg'}`}>
+        <Show when={bgStore.hasCustomBg()}>
           <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-            <Show
-              when={bgStore.bgConfig().type === 'url'}
-              fallback={
-                <div
-                  class="w-full h-full transition-all duration-300 ease-out"
-                  style={bgStyle()}
-                />
-              }
-            >
-              <img
-                src={bgStore.bgConfig().value}
-                alt=""
-                referrerpolicy="no-referrer"
-                class="w-full h-full object-cover transition-all duration-300 ease-out"
-                style={{
-                  filter: bgStore.bgConfig().blur ? `blur(${bgStore.bgConfig().blur}px)` : undefined,
-                  opacity: bgStore.bgConfig().opacity ?? 1,
-                  transform: bgStore.bgConfig().blur ? 'scale(1.05)' : undefined,
-                }}
-              />
-            </Show>
-            {/* 半透明遮罩：防止高亮壁纸冲淡文字对比度 */}
-            <div class="absolute inset-0 bg-bg/50 pointer-events-none" />
+            <img
+              src={bgStore.imageData()}
+              alt=""
+              referrerpolicy="no-referrer"
+              class="w-full h-full object-cover transition-all duration-300 ease-out"
+              style={{
+                filter: bgStore.config().blur ? `blur(${bgStore.config().blur}px)` : undefined,
+                opacity: bgStore.config().opacity ?? 1,
+                transform: bgStore.config().blur ? 'scale(1.05)' : undefined,
+              }}
+            />
+            {/* 轻微暗色叠加滤镜，确保亮色图片下文字保持高对比度 */}
+            <div class="absolute inset-0 bg-bg/30 pointer-events-none" />
           </div>
         </Show>
         {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
@@ -157,7 +132,7 @@ const App: Component = () => {
         <ToastHost />
         <ConfirmDialogHost />
         {/* 桌面侧栏 */}
-        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 bg-bg/85 backdrop-blur-xl border-r border-subtle">
+        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 bg-card/85 backdrop-blur-2xl border-r border-glass-border shadow-glass">
           <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
             <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
             <div class="min-w-0">
@@ -165,7 +140,7 @@ const App: Component = () => {
             </div>
           </div>
           <SidebarNav onNavigate={() => setOpen(false)} />
-          <div class="h-14 px-4 border-t border-subtle flex items-center justify-between bg-bg/40">
+          <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40">
             <ThemeToggle />
             <A
               href="/settings"
@@ -185,7 +160,7 @@ const App: Component = () => {
       <Show when={open()}>
         <div class="md:hidden fixed inset-0 z-50">
           <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
-          <aside class="absolute inset-y-0 left-0 w-65 bg-bg/95 backdrop-blur-xl border-r border-subtle flex flex-col animate-slide-up shadow-2xl">
+          <aside class="absolute inset-y-0 left-0 w-65 bg-card/95 backdrop-blur-2xl border-r border-glass-border flex flex-col animate-slide-up shadow-2xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
               <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
@@ -202,7 +177,7 @@ const App: Component = () => {
               </button>
             </div>
             <SidebarNav onNavigate={() => setOpen(false)} />
-            <div class="h-14 px-4 border-t border-subtle flex items-center justify-between bg-bg/40 shrink-0">
+            <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40 shrink-0">
               <ThemeToggle />
               <A
                 href="/settings"
@@ -223,24 +198,32 @@ const App: Component = () => {
 
       {/* 主区 */}
       <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
-        <header class="h-16 sticky top-0 z-30 flex items-center justify-between gap-3 px-4 lg:px-10 border-b border-subtle bg-bg/85 backdrop-blur-xl shrink-0 box-border">
-          <button
-            type="button"
-            class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle"
-            onClick={() => setOpen(true)}
-            aria-label="打开菜单"
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="4" y1="18" x2="20" y2="18" />
-            </svg>
-          </button>
-          <div class="ml-auto flex items-center gap-3">
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card border border-subtle shadow-sm text-xs">
-              <span class="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span class="font-medium text-foreground">{store.activeConnections()}</span>
-              <span class="text-faint">活跃连接</span>
+        <header class="sticky top-0 z-30 px-4 lg:px-10 pt-3.5 pb-2 transition-all pointer-events-none">
+          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border bg-card/80 backdrop-blur-2xl shadow-glass transition-all pointer-events-auto">
+            <button
+              type="button"
+              class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle shrink-0"
+              onClick={() => setOpen(true)}
+              aria-label="打开菜单"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
+            <div class="flex items-center gap-2 text-xs font-medium text-muted truncate">
+              <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+              <span class="text-foreground font-semibold">Cyrene Gateway</span>
+              <span class="text-faint hidden sm:inline">/</span>
+              <span class="text-faint hidden sm:inline">Unified LLM Gateway</span>
+            </div>
+            <div class="ml-auto flex items-center gap-3">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg/50 border border-subtle shadow-sm text-xs backdrop-blur-sm">
+                <span class="w-2 h-2 rounded-full bg-success animate-pulse" />
+                <span class="font-medium text-foreground">{store.activeConnections()}</span>
+                <span class="text-faint">活跃连接</span>
+              </div>
             </div>
           </div>
         </header>
