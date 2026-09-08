@@ -992,13 +992,8 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get settings"})
 		return
 	}
-	// Do not allow wiping password hash via generic patch; password is set via /api/auth/password
-	if rawPw, exists := patch["passwordHash"]; exists {
-		var pwStr string
-		if json.Unmarshal(rawPw, &pwStr) == nil && pwStr == "" {
-			delete(patch, "passwordHash")
-		}
-	}
+	// Do not allow wiping or mutating password hash via generic patch; password is set via /api/auth/password
+	delete(patch, "passwordHash")
 
 	// Marshal current settings, unmarshal patch on top, re-save
 	currentBytes, _ := json.Marshal(current)

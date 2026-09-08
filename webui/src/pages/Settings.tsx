@@ -35,6 +35,7 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
+
 const Settings: Component = () => {
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
@@ -42,6 +43,8 @@ const Settings: Component = () => {
   const [saving, setSaving] = createSignal(false)
   const [local, setLocal] = createSignal<Record<string, unknown>>({})
   const [pw, setPw] = createSignal('')
+  const [hasPw, setHasPw] = createSignal(false)
+
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal('')
   // 响应缓存状态
@@ -120,6 +123,7 @@ const Settings: Component = () => {
       void store.loadProvidersOnly()
     }
     setLocal({ ...store.settings() })
+    setHasPw(!!store.settings().hasPassword)
     if (bgStore.bgConfig().type === 'url') {
       setBgUrlInput(bgStore.bgConfig().value)
     }
@@ -128,8 +132,10 @@ const Settings: Component = () => {
 
   const dirty = () => {
     const orig = store.settings()
+    const ignored = new Set(['hasPassword', 'passwordHash'])
     const keys = new Set([...Object.keys(local()), ...Object.keys(orig)])
     for (const k of keys) {
+      if (ignored.has(k)) continue
       const lv = local()[k]
       const ov = orig[k]
       if (Array.isArray(lv) || Array.isArray(ov)) {
@@ -146,10 +152,15 @@ const Settings: Component = () => {
   async function save() {
     setSaving(true)
     try {
-      await store.saveSettings(local())
+      const payload = { ...local() }
+      delete payload.hasPassword
+      delete payload.passwordHash
+      await store.saveSettings(payload)
       setLocal({ ...store.settings() })
+      setHasPw(!!store.settings().hasPassword)
       toast.success('设置已保存')
     } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : '保存设置失败')
     } finally {
       setSaving(false)
     }
@@ -163,7 +174,7 @@ const Settings: Component = () => {
     try {
       await store.setPassword(pw())
       setPw('')
-      set('hasPassword', true)
+      setHasPw(true)
       toast.success('密码已更新')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '密码更新失败')
@@ -171,8 +182,8 @@ const Settings: Component = () => {
   }
 
   return (
-    <div class="space-y-5 stagger">
-      {/* 顶部通栏粘性保存栏 */}
+    <div class="max-w-3xl mx-auto space-y-6 stagger">
+      {/* 顶部粘性操作栏：与 max-w-3xl 居中同宽 */}
       <div class="sticky top-16 z-20 bg-bg/90 backdrop-blur-md pt-1 pb-3 flex items-center justify-between gap-3 border-b border-subtle/50">
         <div class="min-w-0">
           <h1 class="text-lg sm:text-xl font-semibold truncate">系统设置</h1>
@@ -183,496 +194,553 @@ const Settings: Component = () => {
         </Button>
       </div>
 
-      {/* 响应式双列布局：大屏双列独立排列，移动端自然回落单列 */}
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        {/* 左列：安全、访问控制与系统定制 */}
-        <div class="space-y-5">
-          {/* 访问控制 */}
-          <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+      {/* ── 分组 1：安全与访问控制 ── */}
+      <div class="space-y-3.5">
+        <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
+          <svg class="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <span>安全与访问控制</span>
+        </div>
+
+        {/* 访问控制卡片 */}
+        <Card class="p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
               <h3 class="text-sm font-semibold">访问控制</h3>
-              <Badge tone={local().requireLogin || local().requireApiKey ? 'blue' : 'gray'}>
-                {local().requireLogin || local().requireApiKey ? '已启用防护' : '公开直通'}
-              </Badge>
             </div>
+            <Badge tone={local().requireLogin || local().requireApiKey ? 'blue' : 'gray'}>
+              {local().requireLogin || local().requireApiKey ? '已启用防护' : '公开直通'}
+            </Badge>
+          </div>
 
-            <div class="flex items-start justify-between gap-4">
-              <Field
-                label="要求登录"
-                hint={
-                  local().hasPassword
-                    ? '开启后管理面板需密码登录（远程非本机访问默认强制要求）'
-                    : '⚠️ 请先在下方设置管理密码再开启要求登录，以防面板被永久锁死'
+          <div class="flex items-start justify-between gap-4">
+            <Field
+              label="要求登录"
+              hint={
+                hasPw()
+                  ? '开启后管理面板需密码登录（远程非本机访问默认强制要求）'
+                  : '⚠️ 请先在下方设置管理密码再开启要求登录，以防面板被永久锁死'
+              }
+            >
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().requireLogin}
+              disabled={!hasPw()}
+              onChange={v => {
+                if (v && !hasPw()) {
+                  toast.warning('请先在下方设置管理员密码再开启要求登录')
+                  return
                 }
-              >
-                <span />
-              </Field>
-              <Toggle
-                checked={!!local().requireLogin}
-                disabled={!local().hasPassword}
-                onChange={v => {
-                  if (v && !local().hasPassword) {
-                    toast.warning('请先在下方设置管理员密码再开启要求登录')
-                    return
-                  }
-                  set('requireLogin', v)
-                }}
+                set('requireLogin', v)
+              }}
+            />
+          </div>
+
+          <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
+            <Field label="要求 API Key" hint="开启后所有 /v1/* 接口调用均必须在请求头中携带有效密钥 (Bearer cg-...)">
+              <span />
+            </Field>
+            <Toggle checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
+          </div>
+
+          <div class="pt-1 border-t border-subtle/50">
+            <Field label="API Key 速率限制 (RPM)" hint="单个 Key 每分钟请求上限，超出返回 429；填 0 表示不限速">
+              <Input
+                type="number"
+                class="!w-full sm:!w-36 mt-1"
+                value={String(local().apiKeyRpm ?? 0)}
+                onInput={v => set('apiKeyRpm', Number(v) || 0)}
               />
-            </div>
+            </Field>
+          </div>
+        </Card>
 
-            <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
-              <Field label="要求 API Key" hint="开启后所有 /v1/* 接口调用均必须在请求头中携带有效密钥 (Bearer cg-...)">
-                <span />
-              </Field>
-              <Toggle checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
+        {/* 管理密码卡片 */}
+        <Card class="p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="7.5" cy="15.5" r="5.5" />
+                <path d="m21 2-9.6 9.6" />
+                <path d="m15.5 7.5 3 3L22 7l-3-3" />
+              </svg>
+              <h3 class="text-sm font-semibold">管理密码</h3>
             </div>
+            <Badge tone={hasPw() ? 'green' : 'amber'}>
+              {hasPw() ? '已设置密码' : '未初始化密码'}
+            </Badge>
+          </div>
+          <Field label="更新管理员密码" hint="长度至少 8 位，密码通过 Argon2id 散列存储，保障管理接口防护">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+              <Input
+                type="password"
+                value={pw()}
+                onInput={setPw}
+                placeholder="输入新管理密码..."
+                class="flex-1 !w-full"
+              />
+              <Button
+                variant="secondary"
+                disabled={pw().length < 8}
+                onClick={changePassword}
+                class="shrink-0"
+              >
+                更新密码
+              </Button>
+            </div>
+          </Field>
+        </Card>
+      </div>
 
-            <div class="pt-1 border-t border-subtle/50">
-              <Field label="API Key 速率限制 (RPM)" hint="单个 Key 每分钟请求上限，超出返回 429；填 0 表示不限速">
+      {/* ── 分组 2：效能与节省引擎 ── */}
+      <div class="space-y-3.5">
+        <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
+          <svg class="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+          <span>效能与节省引擎</span>
+        </div>
+
+        {/* 响应精确缓存卡片 */}
+        <Card class="p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <h3 class="text-sm font-semibold">响应精确缓存</h3>
+              <Badge tone="blue">1ms 直出 · 0 Token</Badge>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={refreshingStats()}
+                onClick={handleRefreshStats}
+                title="刷新统计指标"
+              >
+                刷新
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                class="text-danger hover:text-danger hover:bg-danger/10"
+                loading={clearingCache()}
+                onClick={handleClearCache}
+                title="清空所有内存缓存条目"
+              >
+                清空缓存
+              </Button>
+            </div>
+          </div>
+
+          {/* 缓存指标数据小横条：移动端 2 列，平板及以上 4 列 */}
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-subtle/20 p-3 rounded-control border border-subtle/40 text-xs">
+            <div>
+              <span class="text-faint block text-[11px]">命中率</span>
+              <span class="font-semibold text-foreground text-sm">
+                {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
+              </span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">
+                {cacheStats()?.hits ?? 0} 命中 / {cacheStats()?.misses ?? 0} 未中
+              </span>
+            </div>
+            <div>
+              <span class="text-faint block text-[11px]">累计节省 Token</span>
+              <span class="font-semibold text-accent text-sm">
+                {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
+              </span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">直接节省消耗</span>
+            </div>
+            <div>
+              <span class="text-faint block text-[11px]">在存条目</span>
+              <span class="font-semibold text-foreground text-sm">
+                {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
+              </span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">LRU 内存置换池</span>
+            </div>
+            <div>
+              <span class="text-faint block text-[11px]">内存占用</span>
+              <span class="font-semibold text-foreground text-sm">
+                {formatBytes(cacheStats()?.bytesUsed ?? 0)}
+              </span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">单条 ≤2MB 保护</span>
+            </div>
+          </div>
+
+          {/* 控制项 */}
+          <div class="flex items-start justify-between gap-4 pt-1">
+            <Field label="启用响应精确缓存" hint="对完全一致的对话请求（temperature=0、相同上下文）直接直出缓存">
+              <span />
+            </Field>
+            <Toggle
+              checked={!!local().responseCacheEnabled}
+              onChange={v => {
+                set('responseCacheEnabled', v)
+                if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
+              }}
+            />
+          </div>
+
+          <Show when={!!local().responseCacheEnabled}>
+            <div class="space-y-3 pt-2 border-t border-subtle/50">
+              <Field label="缓存有效期 (TTL)" hint="缓存条目的生存秒数，默认 3600 秒（1 小时），过期自动清理">
                 <Input
                   type="number"
                   class="!w-full sm:!w-36 mt-1"
-                  value={String(local().apiKeyRpm ?? 0)}
-                  onInput={v => set('apiKeyRpm', Number(v) || 0)}
+                  value={String(local().responseCacheTTL ?? 3600)}
+                  onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
                 />
               </Field>
-            </div>
-          </Card>
-
-          {/* 管理密码 */}
-          <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-              <h3 class="text-sm font-semibold">管理密码</h3>
-              <Badge tone={local().hasPassword ? 'green' : 'amber'}>
-                {local().hasPassword ? '已设置密码' : '未初始化密码'}
-              </Badge>
-            </div>
-            <Field label="更新管理员密码" hint="长度至少 8 位，密码通过 Argon2id 散列存储，保障管理接口防护">
-              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-                <Input
-                  type="password"
-                  value={pw()}
-                  onInput={setPw}
-                  placeholder="输入新管理密码..."
-                  class="flex-1 !w-full"
+              <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
+                <Field label="缓存全部非流式请求" hint="开启后不论 temperature 为何值均缓存；关闭则仅缓存确定性请求">
+                  <span />
+                </Field>
+                <Toggle
+                  checked={!!local().responseCacheAll}
+                  onChange={v => set('responseCacheAll', v)}
                 />
-                <Button
-                  variant="secondary"
-                  disabled={pw().length < 8}
-                  onClick={changePassword}
-                  class="shrink-0"
-                >
-                  更新密码
-                </Button>
               </div>
-            </Field>
-          </Card>
+            </div>
+          </Show>
+        </Card>
 
-          {/* 界面与壁纸 */}
-          <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+        {/* 令牌节省引擎卡片 */}
+        <Card class="p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+              </svg>
+              <h3 class="text-sm font-semibold">令牌节省引擎</h3>
+              <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
+            </div>
+          </div>
+
+          {/* RTK 压缩 */}
+          <div class="flex items-start justify-between gap-4">
+            <Field label="RTK 压缩" hint="无损清洗工具输出并对超长结果实施首尾智能截断（保留前 120 行与后 60 行）">
+              <span />
+            </Field>
+            <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
+          </div>
+
+          {/* Caveman 极简表达 */}
+          <div class="space-y-3 pt-2 border-t border-subtle/50">
+            <div class="flex items-start justify-between gap-4">
+              <Field label="Caveman 极简表达" hint="注入极简表达指令（洞穴人模式），压制客套寒暄，大幅削减回复 Token">
+                <span />
+              </Field>
+              <Toggle
+                checked={!!local().cavemanEnabled}
+                onChange={v => {
+                  set('cavemanEnabled', v)
+                  if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
+                }}
+              />
+            </div>
+            <Show when={!!local().cavemanEnabled}>
+              <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
+                <Field label="压缩级别" hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
+                  <Select
+                    value={String(local().cavemanLevel || 'lite')}
+                    options={cavemanOptions}
+                    onChange={v => set('cavemanLevel', v)}
+                    class="w-full mt-1"
+                  />
+                </Field>
+              </div>
+            </Show>
+          </div>
+
+          {/* Ponytail 极简代码 */}
+          <div class="space-y-3 pt-2 border-t border-subtle/50">
+            <div class="flex items-start justify-between gap-4">
+              <Field label="Ponytail 极简代码" hint="注入极简代码原则指令（马尾模式），推崇 YAGNI，严禁多余抽象与样板代码">
+                <span />
+              </Field>
+              <Toggle
+                checked={!!local().ponytailEnabled}
+                onChange={v => {
+                  set('ponytailEnabled', v)
+                  if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
+                }}
+              />
+            </div>
+            <Show when={!!local().ponytailEnabled}>
+              <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
+                <Field label="压缩级别" hint="lite: 最简替代 | full: 严格阶梯 | ultra: 极致单行">
+                  <Select
+                    value={String(local().ponytailLevel || 'lite')}
+                    options={ponytailOptions}
+                    onChange={v => set('ponytailLevel', v)}
+                    class="w-full mt-1"
+                  />
+                </Field>
+              </div>
+            </Show>
+          </div>
+
+          {/* 排除名单 */}
+          <div class="space-y-3 pt-3 border-t border-subtle/50">
+            <div>
+              <Field
+                label="排除提供商名单 (TokenSaver Exclude)"
+                hint="指定跳过 RTK 压缩与极简提示词注入的提供商（如保护复杂指令遵循模型）"
+              >
+                <span />
+              </Field>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-bg-elevated border border-subtle">
+              <Show
+                when={excludedProviders().length > 0}
+                fallback={<span class="text-xs text-faint">暂无排除项（所有提供商均应用 Token 节省规则）</span>}
+              >
+                <For each={excludedProviders()}>
+                  {p => (
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-warning/10 text-warning text-xs font-mono">
+                      <span>{p}</span>
+                      <button
+                        type="button"
+                        class="hover:opacity-75 focus:outline-none"
+                        title="移除排除"
+                        onClick={() => removeExcludeProvider(p)}
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  )}
+                </For>
+              </Show>
+            </div>
+
+            {/* 输入框与添加按钮：移动端自动换行/占满，大屏并排 */}
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <Input
+                placeholder="输入提供商名称（如 deepseek）后回车或点击添加"
+                class="flex-1 text-xs !w-full"
+                value={excludeInput()}
+                onInput={setExcludeInput}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addExcludeProvider(excludeInput())
+                  }
+                }}
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                class="shrink-0"
+                onClick={() => addExcludeProvider(excludeInput())}
+              >
+                添加
+              </Button>
+            </div>
+
+            <Show when={quickSuggestions().length > 0}>
+              <div class="flex flex-wrap items-center gap-1 text-[11px] text-faint">
+                <span>快速添加已配提供商:</span>
+                <For each={quickSuggestions()}>
+                  {name => (
+                    <button
+                      type="button"
+                      class="px-1.5 py-0.5 rounded bg-subtle hover:bg-hover text-muted hover:text-foreground transition-colors font-mono"
+                      onClick={() => addExcludeProvider(name)}
+                    >
+                      +{name}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </Card>
+      </div>
+
+      {/* ── 分组 3：外观与系统偏好 ── */}
+      <div class="space-y-3.5">
+        <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
+          <svg class="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span>界面与系统偏好</span>
+        </div>
+
+        {/* 界面与壁纸卡片 */}
+        <Card class="p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2Z" />
+              </svg>
               <div>
                 <h3 class="text-sm font-semibold">界面与壁纸</h3>
                 <p class="text-xs text-faint mt-0.5">本地存储于浏览器 IndexedDB，不占用网关空间</p>
               </div>
-              <Show when={bgStore.bgConfig().type !== 'none'}>
+            </div>
+            <Show when={bgStore.bgConfig().type !== 'none'}>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: '清除自定义壁纸',
+                    message: '确定清除当前壁纸并恢复默认纯净背景吗？',
+                    variant: 'danger',
+                  })
+                  if (!ok) return
+                  await bgStore.resetBackground()
+                  setBgUrlInput('')
+                  toast.success('已恢复默认背景')
+                }}
+              >
+                清除壁纸
+              </Button>
+            </Show>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            {/* 远程图片链接 */}
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-muted">远程图片 URL</label>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <Input
+                  value={bgUrlInput()}
+                  placeholder="https://..."
+                  onInput={setBgUrlInput}
+                  class="flex-1 !w-full"
+                />
                 <Button
-                  size="sm"
-                  variant="danger"
+                  variant="secondary"
+                  disabled={!bgUrlInput().trim()}
+                  class="shrink-0"
                   onClick={async () => {
-                    const ok = await confirm({
-                      title: '清除自定义壁纸',
-                      message: '确定清除当前壁纸并恢复默认纯净背景吗？',
-                      variant: 'danger',
+                    const url = bgUrlInput().trim()
+                    if (!url) return
+                    await bgStore.setBackground({
+                      type: 'url',
+                      value: url,
+                      blur: bgStore.bgConfig().blur ?? 0,
+                      opacity: bgStore.bgConfig().opacity ?? 1,
                     })
-                    if (!ok) return
-                    await bgStore.resetBackground()
-                    setBgUrlInput('')
-                    toast.success('已恢复默认背景')
+                    toast.success('已应用远程壁纸')
                   }}
                 >
-                  清除壁纸
+                  应用
                 </Button>
-              </Show>
+              </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              {/* 远程图片链接 */}
-              <div class="space-y-1.5">
-                <label class="text-xs font-medium text-muted">远程图片 URL</label>
-                <div class="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    value={bgUrlInput()}
-                    placeholder="https://..."
-                    onInput={setBgUrlInput}
-                    class="flex-1 !w-full"
-                  />
-                  <Button
-                    variant="secondary"
-                    disabled={!bgUrlInput().trim()}
-                    class="shrink-0"
-                    onClick={async () => {
-                      const url = bgUrlInput().trim()
-                      if (!url) return
+            {/* 本地图片上传 */}
+            <div class="space-y-1.5">
+              <label class="text-xs font-medium text-muted">本地图片上传</label>
+              <label class="cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control border border-dashed border-subtle hover:border-accent text-xs text-muted hover:text-text transition-colors bg-card/40 min-h-[34px]">
+                <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                  <circle cx="9" cy="9" r="2" />
+                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                </svg>
+                <span class="truncate">选择本地图片...</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  onChange={e => {
+                    const file = e.currentTarget.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = async () => {
+                      const dataUrl = reader.result as string
                       await bgStore.setBackground({
-                        type: 'url',
-                        value: url,
+                        type: 'image',
+                        value: dataUrl,
                         blur: bgStore.bgConfig().blur ?? 0,
                         opacity: bgStore.bgConfig().opacity ?? 1,
                       })
-                      toast.success('已应用远程壁纸')
-                    }}
-                  >
-                    应用
-                  </Button>
-                </div>
-              </div>
-
-              {/* 本地图片上传 */}
-              <div class="space-y-1.5">
-                <label class="text-xs font-medium text-muted">本地图片上传</label>
-                <label class="cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control border border-dashed border-subtle hover:border-accent text-xs text-muted hover:text-text transition-colors bg-card/40 min-h-[34px]">
-                  <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                    <circle cx="9" cy="9" r="2" />
-                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                  </svg>
-                  <span class="truncate">选择本地图片...</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    class="hidden"
-                    onChange={e => {
-                      const file = e.currentTarget.files?.[0]
-                      if (!file) return
-                      const reader = new FileReader()
-                      reader.onload = async () => {
-                        const dataUrl = reader.result as string
-                        await bgStore.setBackground({
-                          type: 'image',
-                          value: dataUrl,
-                          blur: bgStore.bgConfig().blur ?? 0,
-                          opacity: bgStore.bgConfig().opacity ?? 1,
-                        })
-                        toast.success(`已加载本地图片 (${file.name})`)
-                      }
-                      reader.readAsDataURL(file)
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-
-            {/* 壁纸虚化与透明度微调 */}
-            <Show when={bgStore.bgConfig().type !== 'none'}>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-subtle/50">
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-muted">背景虚化 (Blur)</span>
-                    <span class="font-mono text-faint">{bgStore.bgConfig().blur || 0}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="30"
-                    step="1"
-                    class="w-full accent-accent cursor-pointer"
-                    value={bgStore.bgConfig().blur || 0}
-                    onInput={async e => {
-                      const val = Number(e.currentTarget.value)
-                      await bgStore.setBackground({
-                        ...bgStore.bgConfig(),
-                        blur: val,
-                      })
-                    }}
-                  />
-                </div>
-
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-muted">背景不透明度 (Opacity)</span>
-                    <span class="font-mono text-faint">{Math.round((bgStore.bgConfig().opacity ?? 1) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.05"
-                    class="w-full accent-accent cursor-pointer"
-                    value={bgStore.bgConfig().opacity ?? 1}
-                    onInput={async e => {
-                      const val = Number(e.currentTarget.value)
-                      await bgStore.setBackground({
-                        ...bgStore.bgConfig(),
-                        opacity: val,
-                      })
-                    }}
-                  />
-                </div>
-              </div>
-            </Show>
-          </Card>
-
-          {/* 版本信息 */}
-          <Card class="p-4 flex items-center justify-between text-xs text-faint">
-            <span>Cyrene Gateway</span>
-            <Badge tone="gray">v{store.version()}</Badge>
-          </Card>
-        </div>
-
-        {/* 右列：响应缓存与令牌节省引擎 */}
-        <div class="space-y-5">
-          {/* 响应精确缓存 */}
-          <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-              <div class="flex items-center gap-2">
-                <h3 class="text-sm font-semibold">响应精确缓存</h3>
-                <Badge tone="blue">1ms 直出 · 0 Token</Badge>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  loading={refreshingStats()}
-                  onClick={handleRefreshStats}
-                  title="刷新统计指标"
-                >
-                  刷新
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  class="text-danger hover:text-danger hover:bg-danger/10"
-                  loading={clearingCache()}
-                  onClick={handleClearCache}
-                  title="清空所有内存缓存条目"
-                >
-                  清空缓存
-                </Button>
-              </div>
-            </div>
-
-            {/* 缓存指标数据小横条：移动端 2 列，平板及以上 4 列 */}
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-subtle/20 p-3 rounded-control border border-subtle/40 text-xs">
-              <div>
-                <span class="text-faint block text-[11px]">命中率</span>
-                <span class="font-semibold text-foreground text-sm">
-                  {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
-                </span>
-                <span class="text-[10px] text-muted block mt-0.5 truncate">
-                  {cacheStats()?.hits ?? 0} 命中 / {cacheStats()?.misses ?? 0} 未中
-                </span>
-              </div>
-              <div>
-                <span class="text-faint block text-[11px]">累计节省 Token</span>
-                <span class="font-semibold text-accent text-sm">
-                  {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
-                </span>
-                <span class="text-[10px] text-muted block mt-0.5 truncate">直接节省消耗</span>
-              </div>
-              <div>
-                <span class="text-faint block text-[11px]">在存条目</span>
-                <span class="font-semibold text-foreground text-sm">
-                  {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
-                </span>
-                <span class="text-[10px] text-muted block mt-0.5 truncate">LRU 内存置换池</span>
-              </div>
-              <div>
-                <span class="text-faint block text-[11px]">内存占用</span>
-                <span class="font-semibold text-foreground text-sm">
-                  {formatBytes(cacheStats()?.bytesUsed ?? 0)}
-                </span>
-                <span class="text-[10px] text-muted block mt-0.5 truncate">单条 ≤2MB 保护</span>
-              </div>
-            </div>
-
-            {/* 控制项 */}
-            <div class="flex items-start justify-between gap-4 pt-1">
-              <Field label="启用响应精确缓存" hint="对完全一致的对话请求（temperature=0、相同上下文）直接直出缓存">
-                <span />
-              </Field>
-              <Toggle
-                checked={!!local().responseCacheEnabled}
-                onChange={v => {
-                  set('responseCacheEnabled', v)
-                  if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
-                }}
-              />
-            </div>
-
-            <Show when={!!local().responseCacheEnabled}>
-              <div class="space-y-3 pt-2 border-t border-subtle/50">
-                <Field label="缓存有效期 (TTL)" hint="缓存条目的生存秒数，默认 3600 秒（1 小时），过期自动清理">
-                  <Input
-                    type="number"
-                    class="!w-full sm:!w-36 mt-1"
-                    value={String(local().responseCacheTTL ?? 3600)}
-                    onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
-                  />
-                </Field>
-                <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
-                  <Field label="缓存全部非流式请求" hint="开启后不论 temperature 为何值均缓存；关闭则仅缓存确定性请求">
-                    <span />
-                  </Field>
-                  <Toggle
-                    checked={!!local().responseCacheAll}
-                    onChange={v => set('responseCacheAll', v)}
-                  />
-                </div>
-              </div>
-            </Show>
-          </Card>
-
-          {/* 令牌节省引擎 */}
-          <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-              <div class="flex items-center gap-2">
-                <h3 class="text-sm font-semibold">令牌节省引擎</h3>
-                <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
-              </div>
-            </div>
-
-            {/* RTK 压缩 */}
-            <div class="flex items-start justify-between gap-4">
-              <Field label="RTK 压缩" hint="无损清洗工具输出并对超长结果实施首尾智能截断（保留前 120 行与后 60 行）">
-                <span />
-              </Field>
-              <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
-            </div>
-
-            {/* Caveman 极简表达 */}
-            <div class="space-y-3 pt-2 border-t border-subtle/50">
-              <div class="flex items-start justify-between gap-4">
-                <Field label="Caveman 极简表达" hint="注入极简表达指令（洞穴人模式），压制客套寒暄，大幅削减回复 Token">
-                  <span />
-                </Field>
-                <Toggle
-                  checked={!!local().cavemanEnabled}
-                  onChange={v => {
-                    set('cavemanEnabled', v)
-                    if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
-                  }}
-                />
-              </div>
-              <Show when={!!local().cavemanEnabled}>
-                <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                  <Field label="压缩级别" hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
-                    <Select
-                      value={String(local().cavemanLevel || 'lite')}
-                      options={cavemanOptions}
-                      onChange={v => set('cavemanLevel', v)}
-                      class="w-full mt-1"
-                    />
-                  </Field>
-                </div>
-              </Show>
-            </div>
-
-            {/* Ponytail 极简代码 */}
-            <div class="space-y-3 pt-2 border-t border-subtle/50">
-              <div class="flex items-start justify-between gap-4">
-                <Field label="Ponytail 极简代码" hint="注入极简代码原则指令（马尾模式），推崇 YAGNI，严禁多余抽象与样板代码">
-                  <span />
-                </Field>
-                <Toggle
-                  checked={!!local().ponytailEnabled}
-                  onChange={v => {
-                    set('ponytailEnabled', v)
-                    if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
-                  }}
-                />
-              </div>
-              <Show when={!!local().ponytailEnabled}>
-                <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                  <Field label="压缩级别" hint="lite: 最简替代 | full: 严格阶梯 | ultra: 极致单行">
-                    <Select
-                      value={String(local().ponytailLevel || 'lite')}
-                      options={ponytailOptions}
-                      onChange={v => set('ponytailLevel', v)}
-                      class="w-full mt-1"
-                    />
-                  </Field>
-                </div>
-              </Show>
-            </div>
-
-            {/* 排除名单 */}
-            <div class="space-y-3 pt-3 border-t border-subtle/50">
-              <div>
-                <Field
-                  label="排除提供商名单 (TokenSaver Exclude)"
-                  hint="指定跳过 RTK 压缩与极简提示词注入的提供商（如保护复杂指令遵循模型）"
-                >
-                  <span />
-                </Field>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-bg-elevated border border-subtle">
-                <Show
-                  when={excludedProviders().length > 0}
-                  fallback={<span class="text-xs text-faint">暂无排除项（所有提供商均应用 Token 节省规则）</span>}
-                >
-                  <For each={excludedProviders()}>
-                    {p => (
-                      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-warning/10 text-warning text-xs font-mono">
-                        <span>{p}</span>
-                        <button
-                          type="button"
-                          class="hover:opacity-75 focus:outline-none"
-                          title="移除排除"
-                          onClick={() => removeExcludeProvider(p)}
-                        >
-                          &times;
-                        </button>
-                      </span>
-                    )}
-                  </For>
-                </Show>
-              </div>
-
-              {/* 输入框与添加按钮：移动端自动换行/占满，大屏并排 */}
-              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <Input
-                  placeholder="输入提供商名称（如 deepseek）后回车或点击添加"
-                  class="flex-1 text-xs !w-full"
-                  value={excludeInput()}
-                  onInput={setExcludeInput}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addExcludeProvider(excludeInput())
+                      toast.success(`已加载本地图片 (${file.name})`)
                     }
+                    reader.readAsDataURL(file)
                   }}
                 />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  class="shrink-0"
-                  onClick={() => addExcludeProvider(excludeInput())}
-                >
-                  添加
-                </Button>
+              </label>
+            </div>
+          </div>
+
+          {/* 壁纸虚化与透明度微调 */}
+          <Show when={bgStore.bgConfig().type !== 'none'}>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-subtle/50">
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                  <span class="text-muted">背景虚化 (Blur)</span>
+                  <span class="font-mono text-faint">{bgStore.bgConfig().blur || 0}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="1"
+                  class="w-full accent-accent cursor-pointer"
+                  value={bgStore.bgConfig().blur || 0}
+                  onInput={async e => {
+                    const val = Number(e.currentTarget.value)
+                    await bgStore.setBackground({
+                      ...bgStore.bgConfig(),
+                      blur: val,
+                    })
+                  }}
+                />
               </div>
 
-              <Show when={quickSuggestions().length > 0}>
-                <div class="flex flex-wrap items-center gap-1 text-[11px] text-faint">
-                  <span>快速添加已配提供商:</span>
-                  <For each={quickSuggestions()}>
-                    {name => (
-                      <button
-                        type="button"
-                        class="px-1.5 py-0.5 rounded bg-subtle hover:bg-hover text-muted hover:text-foreground transition-colors font-mono"
-                        onClick={() => addExcludeProvider(name)}
-                      >
-                        +{name}
-                      </button>
-                    )}
-                  </For>
+              <div class="space-y-1">
+                <div class="flex justify-between text-xs">
+                  <span class="text-muted">背景不透明度 (Opacity)</span>
+                  <span class="font-mono text-faint">{Math.round((bgStore.bgConfig().opacity ?? 1) * 100)}%</span>
                 </div>
-              </Show>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+                  class="w-full accent-accent cursor-pointer"
+                  value={bgStore.bgConfig().opacity ?? 1}
+                  onInput={async e => {
+                    const val = Number(e.currentTarget.value)
+                    await bgStore.setBackground({
+                      ...bgStore.bgConfig(),
+                      opacity: val,
+                    })
+                  }}
+                />
+              </div>
             </div>
-          </Card>
-        </div>
+          </Show>
+        </Card>
+
+        {/* 版本信息卡片 */}
+        <Card class="p-4 flex items-center justify-between text-xs text-faint">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-muted shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <span>Cyrene Gateway</span>
+          </div>
+          <Badge tone="gray">v{store.version()}</Badge>
+        </Card>
       </div>
     </div>
   )

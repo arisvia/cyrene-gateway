@@ -133,7 +133,7 @@ const LogsPage: Component = () => {
       <Card class="p-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shrink-0">
         <div class="flex flex-wrap items-center gap-3 flex-1">
           <Input
-            class="!w-64"
+            class="!w-full sm:!w-64"
             placeholder="过滤日志内容 / 参数 / 路径…"
             value={query()}
             onInput={setQuery}
