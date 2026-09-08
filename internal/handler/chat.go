@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
@@ -83,10 +84,30 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	keyObj := auth.APIKeyFromContext(r.Context())
+	if keyObj != nil && !keyObj.IsModelAllowed(req.Model) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": fmt.Sprintf("model '%s' is not allowed for this API key", req.Model),
+		})
+		return
+	}
+
 	// Check if model is disabled
 	if provider.IsModelDisabled(req.Model, s.DB) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
 		return
+	}
+
+	// Inject per-key system prompt context pre-cache
+	if keyObj != nil && keyObj.SystemPrompt != "" {
+		var bodyMap map[string]any
+		if err := json.Unmarshal(rawBody, &bodyMap); err == nil {
+			rtk.InjectSystemPrompt(bodyMap, "openai", keyObj.SystemPrompt)
+			if updated, err := json.Marshal(bodyMap); err == nil {
+				rawBody = updated
+				_ = json.Unmarshal(rawBody, &req)
+			}
+		}
 	}
 
 	// Phase: Response Cache check
@@ -962,6 +983,21 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	keyObj := auth.APIKeyFromContext(r.Context())
+	if keyObj != nil && !keyObj.IsModelAllowed(modelStr) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": fmt.Sprintf("model '%s' is not allowed for this API key", modelStr),
+		})
+		return
+	}
+
+	// Inject per-key system prompt context pre-cache
+	if keyObj != nil && keyObj.SystemPrompt != "" {
+		rtk.InjectSystemPrompt(reqBody, "anthropic", keyObj.SystemPrompt)
+		if updated, err := json.Marshal(reqBody); err == nil {
+			bodyBytes = updated
+		}
+	}
 	stream, _ := reqBody["stream"].(bool)
 
 	// Resolve model
@@ -1196,6 +1232,18 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(rawBody, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+	if req.Model == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
+		return
+	}
+
+	keyObj := auth.APIKeyFromContext(r.Context())
+	if keyObj != nil && !keyObj.IsModelAllowed(req.Model) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": fmt.Sprintf("model '%s' is not allowed for this API key", req.Model),
+		})
 		return
 	}
 

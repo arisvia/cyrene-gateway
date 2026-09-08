@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+- **API Key 细粒度控制与请求级 Context 穿透**：
+  - **按 Key 传递 Context 与系统提示词注入**：在 `internal/auth` 中实现 Context 注入器（`WithAPIKey` / `APIKeyFromContext`），通过中间件管道向请求上下文贯通已认证的 API Key 实体；支持为 Key 配置预置 System Prompt（`systemPrompt`），并在响应缓存键生成（`cache.IsEligible`）前自动置入 OpenAI / Anthropic 消息体，天然分离不同业务端上下文的缓存哈希；
+  - **模型访问白名单**：支持为单个 API Key 设定模型访问名单（`allowedModels`），支持通配符（如 `deepseek/*`、`*`）与精确匹配；在 `/v1/chat/completions`、`/v1/messages` 与 `/v1/embeddings` 入口在进入缓存查找前严格校验，未授权请求直接拦截并返回 `403 Forbidden`；`/v1/models` 列表接口按当前 Key 白名单动态过滤可见模型；
+  - **独立速率限制 (RPM)**：API Key 支持配置专享限流上限（`rpm`），优先级高于系统全局 `settings.apiKeyRpm`；当全局未开启（0）但单个 Key 配置了 RPM 时精准生效；
+  - **密钥生命周期与更新接口**：新增 `PUT /api/keys/{id}` 接口，支持在不重新生成 Secret 的情况下热更新名称、状态、白名单、RPM 与预设 Prompt；DB 迁移自动检测补齐 `apiKeys` 扩展字段；支持设置过期时间并在鉴权时拦截过期 Key；
+  - **鉴权严格性增强**：即使用户未开启全局 `requireApiKey`，若客户端在请求头中携带了 API Key（Bearer / x-api-key），网关仍会严格校验其有效性与过期状态，非法或过期 Key 统一拦截（`401 Unauthorized`），合法 Key 则正常贯通请求 Context；
+  - **WebUI 控制台升级**：首页 API Key 列表卡片直观展示模型权限、专享限流与 Context 注入状态胶囊；新增「规则」弹窗，提供完整的白名单、RPM 与 System Context 编辑能力。
 - **统一能力标签体系与提供商市场重构**：
   - 后端 `/api/registry` 自动聚合与合成提供商的全量能力标签（`llm`、`image`、`tts`、`stt`、`video`、`embedding`、`web-search`、`web-fetch`），并将纯媒体提供商（如 ElevenLabs, Stability AI, Tavily, Exa）无缝合成进统一注册表市场；
   - 前端「提供商市场」作为所有凭证与连接创建的唯一入口，支持按能力标签与认证模式多维筛选、隐藏已接入项；

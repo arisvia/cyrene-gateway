@@ -38,7 +38,7 @@ func TestRateLimiterDisabled(t *testing.T) {
 
 func TestAPIKeyRateLimitMiddleware(t *testing.T) {
 	limit := 2
-	handler := APIKeyRateLimit(func() int { return limit })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := APIKeyRateLimit(func(key string) int { return limit })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -72,6 +72,43 @@ func TestAPIKeyRateLimitMiddleware(t *testing.T) {
 	limit = 100
 	if c := do(); c != 200 {
 		t.Fatalf("after limit raise: want 200 got %d", c)
+	}
+}
+func TestAPIKeyRateLimit_PerKeyOverride(t *testing.T) {
+	// Global limit is 0 (disabled), but key-specific limit is 2
+	handler := APIKeyRateLimit(func(key string) int {
+		if key == "cg-override.sig" {
+			return 2
+		}
+		return 0
+	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	doKey := func(key string) int {
+		req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	// Unrestricted key can make 10 requests without limit
+	for range 10 {
+		if c := doKey("cg-free.sig"); c != 200 {
+			t.Fatalf("free key should not be limited, got %d", c)
+		}
+	}
+
+	// Override key is capped at 2
+	if c := doKey("cg-override.sig"); c != 200 {
+		t.Fatalf("req1: want 200 got %d", c)
+	}
+	if c := doKey("cg-override.sig"); c != 200 {
+		t.Fatalf("req2: want 200 got %d", c)
+	}
+	if c := doKey("cg-override.sig"); c != http.StatusTooManyRequests {
+		t.Fatalf("req3: want 429 got %d", c)
 	}
 }
 

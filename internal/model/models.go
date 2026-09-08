@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ProviderConnection represents a provider account/connection
 type ProviderConnection struct {
@@ -60,12 +63,57 @@ type Combo struct {
 
 // APIKey represents a local API key
 type APIKey struct {
-	ID        string    `json:"id"`
-	Key       string    `json:"key"`
-	Name      string    `json:"name,omitempty"`
-	MachineID string    `json:"machineId,omitempty"`
-	IsActive  bool      `json:"isActive"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID            string    `json:"id"`
+	Key           string    `json:"key"`
+	Name          string    `json:"name,omitempty"`
+	MachineID     string    `json:"machineId,omitempty"`
+	IsActive      bool      `json:"isActive"`
+	AllowedModels []string  `json:"allowedModels,omitempty"`
+	RPM           int       `json:"rpm,omitempty"`
+	SystemPrompt  string    `json:"systemPrompt,omitempty"`
+	ExpiresAt     string    `json:"expiresAt,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// IsModelAllowed checks if the given model matches the key's allowed models list.
+// If AllowedModels is empty or contains "*", all models are allowed.
+// Supports wildcards like "deepseek/*" or "deepseek*".
+func (k *APIKey) IsModelAllowed(model string) bool {
+	if k == nil || len(k.AllowedModels) == 0 {
+		return true
+	}
+	for _, pattern := range k.AllowedModels {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" || pattern == "*" {
+			return true
+		}
+		if strings.HasSuffix(pattern, "/*") {
+			prefix := strings.TrimSuffix(pattern, "/*")
+			if strings.HasPrefix(model, prefix+"/") {
+				return true
+			}
+		} else if strings.HasSuffix(pattern, "*") {
+			prefix := strings.TrimSuffix(pattern, "*")
+			if strings.HasPrefix(model, prefix) {
+				return true
+			}
+		} else if strings.EqualFold(pattern, model) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsExpired reports whether the API key has expired.
+func (k *APIKey) IsExpired() bool {
+	if k == nil || k.ExpiresAt == "" {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339, k.ExpiresAt)
+	if err != nil {
+		return false
+	}
+	return time.Now().UTC().After(t)
 }
 
 // ModelInfo represents resolved model routing info

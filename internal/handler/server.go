@@ -84,8 +84,13 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		middleware.RequestSizeLimiter(),
 		middleware.CORS,
 		middleware.APIKeyAuth(database),
-		middleware.APIKeyRateLimit(func() int {
-			if st, err := database.GetSettings(); err == nil {
+		middleware.APIKeyRateLimit(func(keyStr string) int {
+			if keyStr != "" {
+				if k, err := database.GetAPIKeyByKey(keyStr); err == nil && k != nil && k.RPM > 0 {
+					return k.RPM
+				}
+			}
+			if st, err := database.GetSettings(); err == nil && st != nil {
 				return st.APIKeyRPM
 			}
 			return 0
@@ -139,6 +144,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("DELETE /api/combos/{id}", s.handleDeleteCombo)
 	s.Router.HandleFunc("GET /api/keys", s.handleListKeys)
 	s.Router.HandleFunc("POST /api/keys", s.handleCreateKey)
+	s.Router.HandleFunc("PUT /api/keys/{id}", s.handleUpdateKey)
 	s.Router.HandleFunc("DELETE /api/keys/{id}", s.handleDeleteKey)
 	s.Router.HandleFunc("GET /api/models/alias", s.handleListAliases)
 	s.Router.HandleFunc("POST /api/models/alias", s.handleSetAlias)
@@ -584,6 +590,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	models = filtered
+
+	keyObj := auth.APIKeyFromContext(r.Context())
+	if keyObj != nil && len(keyObj.AllowedModels) > 0 {
+		var allowed []ModelEntry
+		for _, m := range models {
+			if keyObj.IsModelAllowed(m.ID) {
+				allowed = append(allowed, m)
+			}
+		}
+		models = allowed
+	}
 
 	// Only exposed models for providers that actually have configured active connections
 	if models == nil {
@@ -1458,7 +1475,11 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
+		Name          string   `json:"name"`
+		AllowedModels []string `json:"allowedModels,omitempty"`
+		RPM           int      `json:"rpm,omitempty"`
+		SystemPrompt  string   `json:"systemPrompt,omitempty"`
+		ExpiresAt     string   `json:"expiresAt,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -1466,10 +1487,14 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := &model.APIKey{
-		ID:       generateID(),
-		Key:      auth.GenerateAPIKey(),
-		Name:     req.Name,
-		IsActive: true,
+		ID:            generateID(),
+		Key:           auth.GenerateAPIKey(),
+		Name:          req.Name,
+		IsActive:      true,
+		AllowedModels: req.AllowedModels,
+		RPM:           req.RPM,
+		SystemPrompt:  req.SystemPrompt,
+		ExpiresAt:     req.ExpiresAt,
 	}
 
 	if err := s.DB.CreateAPIKey(key); err != nil {
@@ -1479,6 +1504,52 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, key)
 }
 
+func (s *Server) handleUpdateKey(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	existing, err := s.DB.GetAPIKey(id)
+	if err != nil || existing == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "API key not found"})
+		return
+	}
+
+	var req struct {
+		Name          *string   `json:"name"`
+		IsActive      *bool     `json:"isActive"`
+		AllowedModels *[]string `json:"allowedModels"`
+		RPM           *int      `json:"rpm"`
+		SystemPrompt  *string   `json:"systemPrompt"`
+		ExpiresAt     *string   `json:"expiresAt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	if req.Name != nil {
+		existing.Name = *req.Name
+	}
+	if req.IsActive != nil {
+		existing.IsActive = *req.IsActive
+	}
+	if req.AllowedModels != nil {
+		existing.AllowedModels = *req.AllowedModels
+	}
+	if req.RPM != nil {
+		existing.RPM = *req.RPM
+	}
+	if req.SystemPrompt != nil {
+		existing.SystemPrompt = *req.SystemPrompt
+	}
+	if req.ExpiresAt != nil {
+		existing.ExpiresAt = *req.ExpiresAt
+	}
+
+	if err := s.DB.UpdateAPIKey(existing); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update API key"})
+		return
+	}
+	writeJSON(w, http.StatusOK, existing)
+}
 func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.DB.DeleteAPIKey(id); err != nil {

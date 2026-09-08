@@ -3,7 +3,7 @@ import { createStore, produce } from 'solid-js/store'
 import { api, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type {
-  Provider, RegistryCategory, Combo, ApiKey, ProxyPool, Endpoint,
+  Provider, RegistryCategory, Combo, ApiKey, ApiKeyInput, ProxyPool, Endpoint,
   UsageStats, RequestDetail, Pagination, ProviderUsage,
 } from '@/types/domain'
 
@@ -179,13 +179,20 @@ function createGatewayStore() {
   }
 
   // ── keys ──
-  async function createKey(name: string) {
-    const k = await apiPost<ApiKey>('/api/keys', { name })
-    toast.success(`API Key「${name || k?.id?.slice(0, 8)}」创建成功`)
+  async function createKey(input: string | ApiKeyInput) {
+    const payload = typeof input === 'string' ? { name: input } : input
+    const k = await apiPost<ApiKey>('/api/keys', payload)
+    toast.success(`API Key「${payload.name || k?.id?.slice(0, 8)}」创建成功`)
     await loadKeys()
     return k
   }
 
+  async function updateKey(id: string, payload: Partial<ApiKeyInput> & { isActive?: boolean }) {
+    const k = await apiPut<ApiKey>(`/api/keys/${id}`, payload)
+    toast.success(`API Key「${k.name || id.slice(0, 8)}」已更新`)
+    await loadKeys()
+    return k
+  }
   async function deleteKey(id: string) {
     await apiDelete(`/api/keys/${id}`)
     toast.success('API Key 已删除')
@@ -358,7 +365,7 @@ function createGatewayStore() {
     loadCore, loadProvidersOnly, loadKeys, loadProxyPools, loadSettings, loadUsage,
     loadRequestDetails, loadProviderUsage, loadUsageLogs, loadQuota,
     addProvider, toggleProvider, resetCooldown, deleteProvider, enableFree, testProvider,
-    createKey, deleteKey,
+    createKey, updateKey, deleteKey,
     saveCombo, deleteCombo,
     saveProxyPool, toggleProxyPool, deleteProxyPool,
     addAlias, deleteAlias,

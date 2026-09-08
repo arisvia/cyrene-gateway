@@ -89,6 +89,10 @@ func (d *DB) migrate() error {
 			name TEXT,
 			machineId TEXT,
 			isActive INTEGER DEFAULT 1,
+			allowedModels TEXT DEFAULT '',
+			rpm INTEGER DEFAULT 0,
+			systemPrompt TEXT DEFAULT '',
+			expiresAt TEXT DEFAULT '',
 			createdAt TEXT NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS combos (
@@ -145,9 +149,48 @@ func (d *DB) migrate() error {
 		}
 	}
 
+	if err := d.ensureAPIKeyColumns(); err != nil {
+		return fmt.Errorf("ensure apiKeys columns: %w", err)
+	}
+
 	// Set schema version
 	_, err := d.conn.Exec(
-		`INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '2')`,
+		`INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '3')`,
 	)
 	return err
+}
+
+func (d *DB) ensureAPIKeyColumns() error {
+	cols := []struct {
+		name string
+		def  string
+	}{
+		{"allowedModels", "TEXT DEFAULT ''"},
+		{"rpm", "INTEGER DEFAULT 0"},
+		{"systemPrompt", "TEXT DEFAULT ''"},
+		{"expiresAt", "TEXT DEFAULT ''"},
+	}
+	existing := make(map[string]bool)
+	rows, err := d.conn.Query(`PRAGMA table_info(apiKeys)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err == nil {
+			existing[name] = true
+		}
+	}
+	for _, col := range cols {
+		if !existing[col.name] {
+			if _, err := d.conn.Exec(fmt.Sprintf(`ALTER TABLE apiKeys ADD COLUMN %s %s`, col.name, col.def)); err != nil {
+				return fmt.Errorf("add column %s to apiKeys: %w", col.name, err)
+			}
+		}
+	}
+	return nil
 }

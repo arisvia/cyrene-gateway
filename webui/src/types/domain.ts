@@ -55,7 +55,19 @@ export interface ApiKey {
   name?: string
   key: string
   isActive: boolean
+  allowedModels?: string[]
+  rpm?: number
+  systemPrompt?: string
+  expiresAt?: string
   createdAt?: string
+}
+
+export interface ApiKeyInput {
+  name: string
+  allowedModels?: string[]
+  rpm?: number
+  systemPrompt?: string
+  expiresAt?: string
 }
 
 export interface ProxyPool {

@@ -10,7 +10,8 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/db"
 )
 
-// APIKeyAuth validates API keys for /v1/* endpoints when requireApiKey is enabled.
+// APIKeyAuth validates API keys for /v1/* endpoints when requireApiKey is enabled,
+// and injects the authenticated APIKey object into the request context.
 func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -22,37 +23,45 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 				return
 			}
 
+			// Extract API key
+			keyStr := auth.ExtractAPIKey(
+				r.Header.Get("Authorization"),
+				r.Header.Get("x-api-key"),
+			)
+
 			// Check if requireApiKey is enabled
 			settings, err := database.GetSettings()
-			if err != nil || !settings.RequireAPIKey {
+			requireKey := err == nil && settings != nil && settings.RequireAPIKey
+
+			if keyStr == "" {
+				if requireKey {
+					writeAuthError(w, http.StatusUnauthorized, "API key required")
+					return
+				}
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Extract API key
-			key := auth.ExtractAPIKey(
-				r.Header.Get("Authorization"),
-				r.Header.Get("x-api-key"),
-			)
-			if key == "" {
-				writeAuthError(w, http.StatusUnauthorized, "API key required")
-				return
-			}
-
 			// Validate signature first (fast path)
-			if !auth.VerifyAPIKeySignature(key) {
+			if !auth.VerifyAPIKeySignature(keyStr) {
 				writeAuthError(w, http.StatusUnauthorized, "invalid API key signature")
 				return
 			}
 
 			// Validate against database
-			active, err := database.ValidateAPIKey(key)
-			if err != nil || !active {
+			keyObj, err := database.GetAPIKeyByKey(keyStr)
+			if err != nil || keyObj == nil || !keyObj.IsActive {
 				writeAuthError(w, http.StatusUnauthorized, "invalid or inactive API key")
 				return
 			}
+			if keyObj.IsExpired() {
+				writeAuthError(w, http.StatusUnauthorized, "API key has expired")
+				return
+			}
 
-			next.ServeHTTP(w, r)
+			// Inject authenticated key into request context
+			ctx := auth.WithAPIKey(r.Context(), keyObj)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

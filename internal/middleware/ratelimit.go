@@ -36,9 +36,9 @@ func NewRateLimiter(limit int) *RateLimiter {
 	}
 }
 
-// Allow reports whether key may proceed this minute, incrementing its count.
-func (rl *RateLimiter) Allow(key string) bool {
-	if rl == nil || rl.limit <= 0 {
+// AllowWithLimit reports whether key may proceed this minute under the given limit, incrementing its count.
+func (rl *RateLimiter) AllowWithLimit(key string, limit int) bool {
+	if rl == nil || limit <= 0 {
 		return true
 	}
 	now := time.Now()
@@ -59,30 +59,57 @@ func (rl *RateLimiter) Allow(key string) bool {
 		rl.entries[key] = &windowEntry{count: 1, windowAt: now}
 		return true
 	}
-	if e.count >= rl.limit {
+	if e.count >= limit {
 		return false
 	}
 	e.count++
 	return true
 }
 
-// APIKeyRateLimit enforces the per-key RPM on /v1/* routes. limitFn is
-// evaluated per request so settings changes take effect without restart;
-// limit 0 disables the limiter entirely.
-func APIKeyRateLimit(limitFn func() int) func(http.Handler) http.Handler {
+// Allow reports whether key may proceed this minute, incrementing its count.
+func (rl *RateLimiter) Allow(key string) bool {
+	if rl == nil {
+		return true
+	}
+	return rl.AllowWithLimit(key, rl.limit)
+}
+
+// APIKeyRateLimit enforces per-key RPM on /v1/* routes.
+// If the authenticated APIKey has an explicit RPM > 0, it takes precedence.
+// Otherwise it falls back to limitFn(keyStr).
+func APIKeyRateLimit(limitFn func(key string) int) func(http.Handler) http.Handler {
+	rl := NewRateLimiter(0)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			limit := limitFn()
-			if limit <= 0 || !strings.HasPrefix(r.URL.Path, "/v1/") {
+			if !strings.HasPrefix(r.URL.Path, "/v1/") {
 				next.ServeHTTP(w, r)
 				return
 			}
-			key := auth.ExtractAPIKey(r.Header.Get("Authorization"), r.Header.Get("x-api-key"))
-			if key == "" {
+
+			keyObj := auth.APIKeyFromContext(r.Context())
+			var keyStr string
+			var limit int
+
+			if keyObj != nil {
+				keyStr = keyObj.Key
+				if keyObj.RPM > 0 {
+					limit = keyObj.RPM
+				}
+			}
+			if keyStr == "" {
+				keyStr = auth.ExtractAPIKey(r.Header.Get("Authorization"), r.Header.Get("x-api-key"))
+			}
+
+			if limit <= 0 && limitFn != nil {
+				limit = limitFn(keyStr)
+			}
+
+			if limit <= 0 || keyStr == "" {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if !limiterFor(limit).Allow(key) {
+
+			if !rl.AllowWithLimit(keyStr, limit) {
 				w.Header().Set("Retry-After", "60")
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)

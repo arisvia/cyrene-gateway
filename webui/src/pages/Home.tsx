@@ -1,6 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Empty, Button, Input, IconCheck, confirm } from '@/components/ui'
+import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, Modal, Field, confirm } from '@/components/ui'
+import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 
 const Home: Component = () => {
@@ -12,6 +13,45 @@ const Home: Component = () => {
   const [copiedKeyId, setCopiedKeyId] = createSignal<string | null>(null)
   const [copiedEndpoint, setCopiedEndpoint] = createSignal<string | null>(null)
 
+  // 细粒度规则编辑状态
+  const [editingKey, setEditingKey] = createSignal<ApiKey | null>(null)
+  const [editName, setEditName] = createSignal('')
+  const [editAllowedModels, setEditAllowedModels] = createSignal('')
+  const [editRpm, setEditRpm] = createSignal(0)
+  const [editSystemPrompt, setEditSystemPrompt] = createSignal('')
+  const [savingEdit, setSavingEdit] = createSignal(false)
+
+  const openEdit = (k: ApiKey) => {
+    setEditingKey(k)
+    setEditName(k.name || '')
+    setEditAllowedModels((k.allowedModels || []).join(', '))
+    setEditRpm(k.rpm || 0)
+    setEditSystemPrompt(k.systemPrompt || '')
+  }
+
+  const saveKeyEdit = async () => {
+    const k = editingKey()
+    if (!k) return
+    setSavingEdit(true)
+    try {
+      const models = editAllowedModels()
+        .split(',')
+        .map(m => m.trim())
+        .filter(Boolean)
+      await store.updateKey(k.id, {
+        name: editName().trim(),
+        allowedModels: models,
+        rpm: editRpm(),
+        systemPrompt: editSystemPrompt().trim(),
+      })
+      setEditingKey(null)
+    } catch (err) {
+      console.error(err)
+      toast.error('保存密钥规则失败')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
   onMount(() => {
     store.loadKeys()
   })
@@ -195,20 +235,47 @@ const Home: Component = () => {
                   {k => {
                     const isCopied = () => copiedKeyId() === k.id
                     return (
-                        <div class="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-subtle bg-card/40 hover:bg-card hover:border-accent/30 transition-all group">
-                          <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-2">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-subtle bg-card/40 hover:bg-card hover:border-accent/30 transition-all group">
+                          <div class="min-w-0 flex-1 space-y-1">
+                            <div class="flex items-center gap-2 flex-wrap">
                               <span class="text-sm font-medium text-foreground truncate">{k.name || '(未命名)'}</span>
                               <Badge tone="gray" class="text-[10px] scale-95">Bearer</Badge>
+                              <Show
+                                when={k.allowedModels && k.allowedModels.length > 0}
+                                fallback={<Badge tone="gray" class="text-[10px]">全模型</Badge>}
+                              >
+                                <Badge tone="blue" class="text-[10px]">
+                                  {k.allowedModels?.length} 个模型
+                                </Badge>
+                              </Show>
+                              <Show when={k.rpm && k.rpm > 0}>
+                                <Badge tone="amber" class="text-[10px]">{k.rpm} RPM</Badge>
+                              </Show>
+                              <Show when={k.systemPrompt}>
+                                <span title={k.systemPrompt}>
+                                  <Badge tone="blue" class="text-[10px]">注入 Context</Badge>
+                                </span>
+                              </Show>
                             </div>
-                            <div class="flex items-center gap-2 mt-1">
-                              <code class="text-xs text-muted font-mono truncate max-w-70 select-all">
+                            <div class="flex items-center gap-2 mt-0.5">
+                              <code class="text-xs text-muted font-mono truncate max-w-full sm:max-w-70 select-all">
                                 {k.key}
                               </code>
                             </div>
                           </div>
 
-                          <div class="flex items-center gap-2 shrink-0">
+                          <div class="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openEdit(k)}
+                                title="配置细粒度规则（白名单、RPM、Context）"
+                            >
+                              <span class="flex items-center gap-1">
+                                <IconEdit size={12} class="text-muted" />
+                                <span>规则</span>
+                              </span>
+                            </Button>
                             <Button
                                 size="sm"
                                 variant="secondary"
@@ -246,6 +313,69 @@ const Home: Component = () => {
           </Card>
         </div>
       </div>
+
+      {/* 细粒度规则配置弹窗 */}
+      <Modal
+        open={!!editingKey()}
+        title="配置 API Key 细粒度规则"
+        onClose={() => setEditingKey(null)}
+      >
+        <div class="space-y-4">
+          <Field label="密钥名称" hint="方便识别该 Key 绑定的设备或业务端">
+            <Input
+              value={editName()}
+              onInput={setEditName}
+              placeholder="如: MacBook-Claude / Staging-Bot"
+              class="w-full mt-1"
+            />
+          </Field>
+
+          <Field
+            label="模型访问白名单 (Allowed Models)"
+            hint="逗号分隔。支持通配符（如 deepseek/*）；留空表示允许调用所有可用模型"
+          >
+            <Input
+              value={editAllowedModels()}
+              onInput={setEditAllowedModels}
+              placeholder="如: deepseek/*, openai/gpt-4o"
+              class="w-full mt-1 font-mono text-xs"
+            />
+          </Field>
+
+          <Field
+            label="独立速率限制 (RPM)"
+            hint="该 Key 独享的每分钟请求上限。填 0 或留空表示沿用全局设置"
+          >
+            <Input
+              type="number"
+              value={String(editRpm())}
+              onInput={v => setEditRpm(Math.max(0, Number(v) || 0))}
+              class="w-full sm:w-36 mt-1"
+            />
+          </Field>
+
+          <Field
+            label="预设上下文注入 (System Context)"
+            hint="请求发往模型前自动置入 System 消息。各 Key 独立隔离，响应缓存自动分离哈希"
+          >
+            <textarea
+              class="w-full h-24 p-2.5 text-xs rounded-control bg-bg-elevated border border-subtle focus:border-accent font-mono resize-y mt-1 text-foreground"
+              value={editSystemPrompt()}
+              onInput={e => setEditSystemPrompt(e.currentTarget.value)}
+              placeholder="如: You are a coding assistant for team backend. Target environment: staging."
+            />
+          </Field>
+
+          <div class="flex items-center justify-end gap-2 pt-2 border-t border-subtle/50">
+            <Button variant="secondary" onClick={() => setEditingKey(null)}>
+              取消
+            </Button>
+            <Button variant="primary" loading={savingEdit()} onClick={saveKeyEdit}>
+              保存规则
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
