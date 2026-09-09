@@ -132,7 +132,7 @@ const App: Component = () => {
         <ToastHost />
         <ConfirmDialogHost />
         {/* 桌面侧栏 */}
-        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 bg-card/85 backdrop-blur-lg border-r border-glass-border shadow-glass">
+        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 glass-panel border-r border-glass-border shadow-glass">
           <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
             <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
             <div class="min-w-0">
@@ -160,7 +160,7 @@ const App: Component = () => {
       <Show when={open()}>
         <div class="md:hidden fixed inset-0 z-50">
           <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
-          <aside class="absolute inset-y-0 left-0 w-65 bg-card/95 backdrop-blur-lg border-r border-glass-border flex flex-col animate-slide-up shadow-xl">
+          <aside class="absolute inset-y-0 left-0 w-65 glass-panel border-r border-glass-border flex flex-col animate-slide-up shadow-xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
               <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
@@ -199,7 +199,7 @@ const App: Component = () => {
       {/* 主区 */}
       <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
         <header class="sticky top-0 z-30 px-4 lg:px-10 pt-3.5 pb-2 transition-all pointer-events-none">
-          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border bg-card/80 backdrop-blur-lg shadow-glass transition-all pointer-events-auto">
+          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-panel shadow-glass transition-all pointer-events-auto">
             <button
               type="button"
               class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle shrink-0"

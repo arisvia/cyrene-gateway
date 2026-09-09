@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { api, apiPost, apiPut, apiDelete } from '@/lib/api'
+import { api, apiPost, apiPut, apiDelete, ApiError } from '@/lib/api'
 
 describe('api lib', () => {
   beforeEach(() => {
@@ -43,7 +43,26 @@ describe('api lib', () => {
       json: () => Promise.resolve({ error: 'provider not found' }),
     })
 
-    await expect(api('/api/providers/bad')).rejects.toThrow('provider not found')
+    try {
+      await api('/api/providers/bad')
+      expect.unreachable()
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(ApiError)
+      expect((err as ApiError).status).toBe(404)
+      expect((err as ApiError).message).toBe('provider not found')
+    }
+  })
+
+  it('propagates AbortSignal to fetch', async () => {
+    const controller = new AbortController()
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('{"ok":true}'),
+    })
+
+    await api('/api/test', { signal: controller.signal })
+    expect(fetch).toHaveBeenCalledWith('/api/test', expect.objectContaining({ signal: controller.signal }))
   })
 
   it('returns undefined for 204 responses', async () => {

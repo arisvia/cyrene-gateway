@@ -89,6 +89,11 @@
   --glass: color-mix(in oklab, var(--bg-elevated) calc(var(--app-surface-alpha) * 100%), transparent);
   --glass-hover: color-mix(in oklab, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.08, 0.95) * 100%), transparent);
   --glass-blur: var(--app-glass-blur);
+  --blur-sm: var(--glass-blur);
+  --blur-md: var(--glass-blur);
+  --blur-lg: var(--glass-blur);
+  --blur-xl: var(--glass-blur);
+  --blur-2xl: var(--glass-blur);
   --glass-border: transparent;
   --glass-border-hover: transparent;
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 40%, transparent 100%);
@@ -103,6 +108,7 @@
   --app-surface-alpha: 0.62;
   --glass: color-mix(in oklab, #ffffff calc(var(--app-surface-alpha) * 100%), transparent);
   --glass-hover: color-mix(in oklab, #ffffff calc(min(var(--app-surface-alpha) + 0.08, 0.98) * 100%), transparent);
+  --glass-blur: var(--app-glass-blur);
   --glass-border: transparent;
   --glass-border-hover: transparent;
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.4) 45%, transparent 100%);
@@ -357,8 +363,8 @@
 @utility glass-panel {
   background-color: var(--glass);
   background-image: var(--glass-sheen);
-  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   border: none;
   box-shadow: var(--glass-depth);
 }
@@ -366,8 +372,8 @@
 @utility glass-card {
   background-color: var(--glass);
   background-image: var(--glass-sheen);
-  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   border: none;
   box-shadow: var(--glass-depth);
 }

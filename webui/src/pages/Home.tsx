@@ -107,7 +107,7 @@ const Home: Component = () => {
       {/* 核心功能区：API 密钥管理 + 端点与快速接入 */}
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* 网关统一端点与快捷客户端配置 (占据 5 列) */}
-        <div class="lg:col-span-12 space-y-6">
+        <div class="lg:col-span-5 space-y-6">
           {/* 端点卡片 */}
           <Card class="p-6 space-y-4">
             <div class="flex items-center justify-between">
@@ -154,7 +154,7 @@ const Home: Component = () => {
         </div>
 
         {/* API 密钥一等公民控制区 (占据 7 列) */}
-        <div class="lg:col-span-12 space-y-6">
+        <div class="lg:col-span-7 space-y-6">
           <Card class="p-6 space-y-5">
             <div class="flex items-center justify-between">
               <div>

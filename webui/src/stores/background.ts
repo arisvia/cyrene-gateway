@@ -28,10 +28,16 @@ function applyAppearanceVariables(config: WallpaperConfig, enabled: boolean) {
     root.classList.add('custom-background')
     root.style.setProperty('--app-surface-alpha', `${config.surfaceAlpha}`)
     root.style.setProperty('--app-glass-blur', `${config.glassBlur}px`)
+    root.style.setProperty('--glass-blur', `${config.glassBlur}px`)
+    root.style.setProperty('--blur-lg', `${config.glassBlur}px`)
+    root.style.setProperty('--blur-md', `${config.glassBlur}px`)
   } else {
     root.classList.remove('custom-background')
     root.style.removeProperty('--app-surface-alpha')
     root.style.removeProperty('--app-glass-blur')
+    root.style.removeProperty('--glass-blur')
+    root.style.removeProperty('--blur-lg')
+    root.style.removeProperty('--blur-md')
   }
 }
 

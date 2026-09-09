@@ -29,16 +29,26 @@ const Quota: Component = () => {
   const [details, setDetails] = createSignal<Record<string, ConnQuota>>({})
   const [providerFilter, setProviderFilter] = createSignal('')
   const [autoRefresh, setAutoRefresh] = createSignal(false)
+  let activeAbortController: AbortController | null = null
 
   async function load() {
+    activeAbortController?.abort()
+    const controller = new AbortController()
+    activeAbortController = controller
+    const { signal } = controller
+
     try {
       if (store.providers().length === 0) {
         await store.loadProvidersOnly()
       }
+      if (signal.aborted) return
+
       const [r, conns] = await Promise.all([
-        api<{ providers?: ProviderUsage[] }>('/api/usage/providers?period=7d'),
+        api<{ providers?: ProviderUsage[] }>('/api/usage/providers?period=7d', { signal }),
         Promise.resolve(store.providers()),
       ])
+      if (signal.aborted) return
+
       setRows(r?.providers ?? [])
 
       // 先让卡片网格渲染出来，真实额度逐个连接异步填充与流式上屏
@@ -47,25 +57,33 @@ const Quota: Component = () => {
       // 逐连接拉取真实额度（plan/credits/resetAt），各连接并行请求、谁先返回谁先上屏
       conns.forEach(async c => {
         try {
-          const res = await api<ConnQuota>(`/api/usage/connection/${c.id}`)
+          const res = await api<ConnQuota>(`/api/usage/connection/${c.id}`, { signal })
+          if (signal.aborted) return
           if (res) {
             setDetails(prev => ({ ...prev, [c.id]: res }))
           }
         } catch {
-          // provider 不支持或请求失败
+          // provider 不支持或请求取消
         }
       })
     } catch {
+      if (signal.aborted) return
       setRows([])
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (!signal.aborted) {
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }
 
   onMount(() => {
     load()
   })
+  onCleanup(() => {
+    activeAbortController?.abort()
+  })
+
 
   createEffect(() => {
     if (!autoRefresh()) return

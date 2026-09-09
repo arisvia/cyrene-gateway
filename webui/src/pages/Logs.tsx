@@ -7,6 +7,14 @@ interface LogItem {
   level: string
   msg: string
   attrs?: Record<string, unknown>
+  searchIndex?: string
+}
+
+function processLogItem(item: LogItem): LogItem {
+  return {
+    ...item,
+    searchIndex: `${item.msg} ${item.attrs ? JSON.stringify(item.attrs) : ''}`.toLowerCase(),
+  }
 }
 
 const LogsPage: Component = () => {
@@ -18,11 +26,41 @@ const LogsPage: Component = () => {
   let scrollContainer: HTMLDivElement | undefined
 
   let es: EventSource | null = null
+  let pendingBuffer: LogItem[] = []
+  let flushTimer: number | null = null
 
   function scrollToBottom() {
     if (autoScroll() && scrollContainer) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
     }
+  }
+
+  function flushBuffer() {
+    flushTimer = null
+    if (pendingBuffer.length === 0) return
+    const incoming = pendingBuffer
+    pendingBuffer = []
+    setLogs(prev => {
+      const next = prev.concat(incoming)
+      if (next.length > 2000) return next.slice(-2000)
+      return next
+    })
+    scrollToBottom()
+  }
+
+  function scheduleFlush() {
+    if (flushTimer === null) {
+      flushTimer = window.setTimeout(flushBuffer, 100)
+    }
+  }
+
+  function clearLogs() {
+    pendingBuffer = []
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+    setLogs([])
   }
 
   let disposed = false
@@ -32,7 +70,7 @@ const LogsPage: Component = () => {
       const res = await api('/api/system/logs') as { logs?: LogItem[] } | null
       if (disposed) return
       if (res?.logs) {
-        setLogs(res.logs)
+        setLogs(res.logs.map(processLogItem))
         scrollToBottom()
       }
     } catch (e: unknown) {
@@ -50,13 +88,9 @@ const LogsPage: Component = () => {
 
     es.addEventListener('log', e => {
       try {
-        const item = JSON.parse(e.data) as LogItem
-        setLogs(prev => {
-          const next = [...prev, item]
-          if (next.length > 2000) return next.slice(-2000)
-          return next
-        })
-        scrollToBottom()
+        const item = processLogItem(JSON.parse(e.data) as LogItem)
+        pendingBuffer.push(item)
+        scheduleFlush()
       } catch (err: unknown) {
         console.error('[logs] parse error:', err)
       }
@@ -69,6 +103,11 @@ const LogsPage: Component = () => {
 
   onCleanup(() => {
     disposed = true
+    pendingBuffer = []
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
     if (es) {
       es.close()
       es = null
@@ -81,9 +120,15 @@ const LogsPage: Component = () => {
     return logs().filter(l => {
       if (lvl && l.level !== lvl) return false
       if (!q) return true
-      const fullText = `${l.msg} ${JSON.stringify(l.attrs || {})}`.toLowerCase()
-      return fullText.includes(q)
+      return (l.searchIndex || l.msg.toLowerCase()).includes(q)
     })
+  })
+
+  const RENDER_LIMIT = 300
+  const displayedLogs = createMemo(() => {
+    const list = filteredLogs()
+    if (list.length <= RENDER_LIMIT) return list
+    return list.slice(-RENDER_LIMIT)
   })
 
   const levelColor = (level: string) => {
@@ -120,7 +165,7 @@ const LogsPage: Component = () => {
             >
               {autoScroll() ? '自动滚动: 开' : '自动滚动: 关'}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setLogs([])}>
+            <Button size="sm" variant="ghost" onClick={clearLogs}>
               清屏
             </Button>
           </>
@@ -149,7 +194,10 @@ const LogsPage: Component = () => {
           />
         </div>
         <div class="text-xs text-faint font-mono">
-          共 {logs().length} 条，显示 {filteredLogs().length} 条
+          共 {logs().length} 条，匹配 {filteredLogs().length} 条
+          <Show when={filteredLogs().length > RENDER_LIMIT}>
+            （显示最新 {displayedLogs().length} 条）
+          </Show>
         </div>
       </Card>
 
@@ -159,14 +207,19 @@ const LogsPage: Component = () => {
         class="flex-1 min-h-0 bg-[#0d1117] border border-subtle rounded-2xl p-4 font-mono text-xs overflow-y-auto space-y-1.5 selection:bg-accent/30 shadow-inner"
       >
         <Show
-          when={filteredLogs().length > 0}
+          when={displayedLogs().length > 0}
           fallback={
             <div class="h-full flex items-center justify-center text-zinc-600 text-sm">
               暂无匹配的系统运行日志…
             </div>
           }
         >
-          <For each={filteredLogs()}>
+          <Show when={filteredLogs().length > RENDER_LIMIT}>
+            <div class="text-center py-1 text-[11px] text-zinc-500 border-b border-subtle/30 select-none">
+              为保障流畅渲染，已仅展示最新 {RENDER_LIMIT} 条匹配日志（共 {filteredLogs().length} 条）
+            </div>
+          </Show>
+          <For each={displayedLogs()}>
             {log => (
               <div class="flex items-start gap-2.5 leading-relaxed hover:bg-white/[0.02] px-1.5 py-0.5 rounded transition-colors break-all">
                 <span class="text-zinc-500 shrink-0 select-none">{formatTime(log.time)}</span>
