@@ -630,7 +630,7 @@ const Providers: Component = () => {
         }
       >
         {/* 搜索与过滤工具栏：轻量透明容器，杜绝在 PageHeader 内嵌套实心 Card 导致纯白/纯黑 */}
-        <div class="p-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] flex flex-wrap items-center justify-between gap-3">
+        <div class="p-3 rounded-xl bg-black/3 dark:bg-white/4 flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
               class="w-64!"

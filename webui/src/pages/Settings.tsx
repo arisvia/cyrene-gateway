@@ -663,7 +663,7 @@ const Settings: Component = () => {
             {/* 本地图片上传 */}
             <div class="space-y-1.5">
               <label class="text-xs font-medium text-muted">本地图片上传</label>
-              <label class="cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.07] dark:hover:bg-white/[0.1] text-xs text-muted hover:text-foreground transition-all min-h-[34px] shadow-xs">
+              <label class="cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control bg-black/4 dark:bg-white/6 hover:bg-black/7 dark:hover:bg-white/10 text-xs text-muted hover:text-foreground transition-all min-h-[34px] shadow-xs">
                 <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
                   <circle cx="9" cy="9" r="2" />

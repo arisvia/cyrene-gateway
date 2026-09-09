@@ -224,7 +224,7 @@ export const Alert: Component<{
 
   const styles = {
     info: {
-      box: 'bg-black/[0.04] dark:bg-white/[0.06] text-foreground shadow-xs',
+      box: 'bg-black/4 dark:bg-white/6 text-foreground shadow-xs',
       iconWrap: 'text-accent',
     },
     success: {
@@ -325,8 +325,8 @@ export const Button: Component<ButtonProps> = props => {
   }
   const variants = {
     primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
-    secondary: 'bg-black/[0.04] dark:bg-white/[0.06] text-muted hover:text-foreground hover:bg-black/[0.08] dark:hover:bg-white/[0.1] shadow-xs',
-    ghost: 'text-muted hover:text-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.06]',
+    secondary: 'bg-black/4 dark:bg-white/6 text-muted hover:text-foreground hover:bg-black/8 dark:hover:bg-white/10 shadow-xs',
+    ghost: 'text-muted hover:text-foreground hover:bg-black/4 dark:hover:bg-white/6',
     danger: 'bg-danger/10 text-danger hover:bg-danger/20 shadow-xs',
   }
   return (
@@ -371,7 +371,7 @@ export const Input: Component<{
       aria-label={props.ariaLabel}
       onInput={e => props.onInput?.(e.currentTarget.value)}
       onKeyDown={props.onKeyDown}
-      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-black/[0.04] dark:bg-white/[0.06] text-text placeholder:text-faint focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text placeholder:text-faint focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
     />
   )
 }
@@ -524,7 +524,7 @@ export const Select: Component<{
         aria-label={props.ariaLabel || displayLabel()}
         disabled={props.disabled}
         onClick={toggleOpen}
-        class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/[0.04] dark:bg-white/[0.06] text-text hover:bg-black/[0.07] dark:hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
+        class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text hover:bg-black/7 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
           open() ? 'ring-2 ring-accent/30 bg-card' : ''
         } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
@@ -671,7 +671,7 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
   return (
     <div
       role="tablist"
-      class={`inline-flex items-center p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04] select-none ${props.class ?? ''}`}
+      class={`inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/8 border border-black/3 dark:border-white/4 select-none ${props.class ?? ''}`}
     >
       <For each={props.options}>
         {opt => {
@@ -692,7 +692,7 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
               } ${
                 isActive()
                   ? 'bg-bg-elevated text-foreground shadow-xs'
-                  : 'text-muted hover:text-foreground hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'
+                  : 'text-muted hover:text-foreground hover:bg-black/2 dark:hover:bg-white/2'
               }`}
             >
               <Show when={opt.icon}>
@@ -748,7 +748,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
             aria-label={props.title}
             class="relative w-full max-w-lg rounded-2xl bg-bg-elevated/95 backdrop-blur-lg shadow-glass-hover animate-scale-in"
           >
-            <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle/50 bg-black/[0.02] dark:bg-white/[0.02] rounded-t-2xl">
+            <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle/50 bg-black/2 dark:bg-white/2 rounded-t-2xl">
               <h3 class="text-sm font-semibold">{props.title}</h3>
               <button
                 type="button"

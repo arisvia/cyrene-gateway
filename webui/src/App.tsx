@@ -1,19 +1,20 @@
-import { type Component, type JSX, For, Show, createSignal, onMount } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, onMount, lazy } from 'solid-js'
 import { HashRouter, Route, A } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle } from './components/layout/Sidebar'
 import { ToastHost, ConfirmDialogHost } from './components/ui'
+
 import Home from './pages/Home'
-import Providers from './pages/Providers'
-import ProviderDetail from './pages/ProviderDetail'
-import Combos from './pages/Combos'
-import Usage from './pages/Usage'
-import Quota from './pages/Quota'
-import Media from './pages/Media'
-import LogsPage from './pages/Logs'
-import ProxyPools from './pages/ProxyPools'
-import Settings from './pages/Settings'
+const Providers = lazy(() => import('./pages/Providers'))
+const ProviderDetail = lazy(() => import('./pages/ProviderDetail'))
+const Combos = lazy(() => import('./pages/Combos'))
+const Usage = lazy(() => import('./pages/Usage'))
+const Quota = lazy(() => import('./pages/Quota'))
+const Media = lazy(() => import('./pages/Media'))
+const LogsPage = lazy(() => import('./pages/Logs'))
+const ProxyPools = lazy(() => import('./pages/ProxyPools'))
+const Settings = lazy(() => import('./pages/Settings'))
 
 // 现代 SVG 矢量侧边栏图标
 const NavIcons = {

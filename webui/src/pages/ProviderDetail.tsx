@@ -846,7 +846,7 @@ const ProviderDetail: Component = () => {
 
                 {/* 右侧 (7 cols)：当前正在编辑的账号详情与端点配置 (高度受控，内部滚动，底部按钮绝对吸底可见) */}
                 <div class="lg:col-span-7">
-                  <Card class="p-5 flex flex-col max-h-[calc(100vh-220px)] min-h-[480px]">
+                  <Card class="p-5 flex flex-col max-h-[calc(100vh-220px)] min-h-120">
                     <div class="flex items-center justify-between pb-3 border-b border-subtle shrink-0">
                       <div>
                         <div class="text-sm font-semibold flex items-center gap-2">
