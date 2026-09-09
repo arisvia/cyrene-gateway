@@ -446,16 +446,18 @@ const Providers: Component = () => {
       }
 
       // 3. 设备码流（Device Code Flow，如 GitHub, Kimi, CodeBuddy, Qoder, Grok CLI 等）
-      const res = (await apiPost(`/api/oauth/${reg.id}/device-code`)) as {
-        verificationUri: string
-        verificationUriComplete?: string
-        userCode?: string
-        deviceCode?: string
-        nonce?: string
-        codeVerifier?: string
-        machineId?: string
-        expiresIn?: number
-        interval?: number
+      const raw = (await apiPost(`/api/oauth/${reg.id}/device-code`)) as Record<string, unknown>
+      const res = {
+        verificationUri: ((raw.verificationUri || raw.verification_uri || '') as string),
+        verificationUriComplete: ((raw.verificationUriComplete || raw.verification_uri_complete || '') as string),
+        userCode: (raw.userCode || raw.user_code) as string | undefined,
+        deviceCode: (raw.deviceCode || raw.device_code) as string | undefined,
+        nonce: raw.nonce as string | undefined,
+        codeVerifier: (raw.codeVerifier || raw.code_verifier) as string | undefined,
+        machineId: (raw.machineId || raw.machine_id) as string | undefined,
+        extraData: (raw.extraData || raw.extra_data) as Record<string, unknown> | undefined,
+        expiresIn: (raw.expiresIn || raw.expires_in) as number | undefined,
+        interval: (raw.interval || 5) as number,
       }
       setWizardOAuthFlow(res)
       const targetUrl = res.verificationUriComplete || res.verificationUri
@@ -475,6 +477,7 @@ const Providers: Component = () => {
             nonce: res.nonce,
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
+            extraData: res.extraData,
           })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
           if (pollRes?.success) {
             clearInterval(wizardPollTimer)

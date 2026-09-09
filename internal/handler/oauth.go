@@ -312,17 +312,20 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req struct {
-		ExtraData    map[string]any `json:"extraData"`
-		DeviceCode   string         `json:"deviceCode"`
-		CodeVerifier string         `json:"codeVerifier"`
-		Nonce        string         `json:"nonce"`
-		MachineID    string         `json:"machineId"`
+		ExtraData       map[string]any `json:"extraData"`
+		DeviceCode      string         `json:"deviceCode"`
+		DeviceCodeSnake string         `json:"device_code"`
+		CodeVerifier    string         `json:"codeVerifier"`
+		Nonce           string         `json:"nonce"`
+		MachineID       string         `json:"machineId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-
+	if req.DeviceCode == "" && req.DeviceCodeSnake != "" {
+		req.DeviceCode = req.DeviceCodeSnake
+	}
 	// Qoder custom poll: GET with nonce + verifier
 	if providerID == "qoder" {
 		result, err := provider.PollQoderDeviceToken(req.Nonce, req.CodeVerifier, nil)

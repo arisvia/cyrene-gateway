@@ -1,8 +1,10 @@
 package provider
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -370,6 +372,36 @@ func TestRequestDeviceCode_CodeBuddy_Negative(t *testing.T) {
 	_, err := RequestDeviceCode("codebuddy-cn", ts.Client())
 	if err == nil {
 		t.Error("expected error on 500 status, got nil")
+	}
+}
+func TestDeviceCodeResponse_JSONCamelCase(t *testing.T) {
+	d := &DeviceCodeResponse{
+		DeviceCode:              "dev-123",
+		UserCode:                "usr-456",
+		VerificationURI:         "https://example.com/verify",
+		VerificationURIComplete: "https://example.com/verify?code=usr-456",
+		ExpiresIn:               300,
+		Interval:                5,
+	}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"deviceCode":"dev-123"`) {
+		t.Errorf("expected camelCase deviceCode, got %s", s)
+	}
+	if !strings.Contains(s, `"verificationUri":"https://example.com/verify"`) {
+		t.Errorf("expected camelCase verificationUri, got %s", s)
+	}
+	if !strings.Contains(s, `"verificationUriComplete":"https://example.com/verify?code=usr-456"`) {
+		t.Errorf("expected camelCase verificationUriComplete, got %s", s)
+	}
+	if !strings.Contains(s, `"expiresIn":300`) {
+		t.Errorf("expected camelCase expiresIn, got %s", s)
+	}
+	if strings.Contains(s, `"device_code"`) || strings.Contains(s, `"verification_uri"`) {
+		t.Errorf("unexpected snake_case keys in %s", s)
 	}
 }
 

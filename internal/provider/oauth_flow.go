@@ -302,15 +302,14 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 // DeviceCodeResponse holds the response from a device code request.
 type DeviceCodeResponse struct {
 	ExtraData               map[string]any `json:"extraData,omitempty"`
-	DeviceCode              string         `json:"device_code"`
-	UserCode                string         `json:"user_code"`
-	VerificationURI         string         `json:"verification_uri"`
-	VerificationURIComplete string         `json:"verification_uri_complete,omitempty"`
+	DeviceCode              string         `json:"deviceCode"`
+	UserCode                string         `json:"userCode"`
+	VerificationURI         string         `json:"verificationUri"`
+	VerificationURIComplete string         `json:"verificationUriComplete,omitempty"`
 	CodeVerifier            string         `json:"codeVerifier,omitempty"`
-	ExpiresIn               int            `json:"expires_in"`
+	ExpiresIn               int            `json:"expiresIn"`
 	Interval                int            `json:"interval"`
 }
-
 // RequestDeviceCode initiates a device code flow for a provider.
 func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeResponse, error) {
 	info, ok := Registry[providerID]
