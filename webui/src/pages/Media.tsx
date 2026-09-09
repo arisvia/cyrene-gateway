@@ -147,13 +147,13 @@ const Media: Component = () => {
         }
       />
       {/* 顶部能力分类 Tab */}
-      <div class="flex flex-wrap gap-1.5 p-1 rounded-card bg-black/[0.04] dark:bg-white/[0.06] backdrop-blur-sm w-fit">
+      <div class="flex flex-wrap items-center gap-1.5 p-1 rounded-card bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04] w-fit">
         <For each={CAPS}>
           {c => (
             <button
               class={`px-3 py-1.5 rounded-control text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 active() === c.id
-                  ? 'bg-card text-foreground shadow-sm font-semibold'
+                  ? 'bg-bg-elevated text-foreground shadow-xs font-semibold'
                   : 'text-faint hover:text-foreground'
               }`}
               onClick={() => handleTabChange(c.id)}

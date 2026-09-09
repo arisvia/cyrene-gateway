@@ -65,7 +65,7 @@
   --glass-hover: rgba(255, 255, 255, 0.92);
   --glass-border: transparent;
   --glass-border-hover: transparent;
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.40) 0%, rgba(255, 255, 255, 0.10) 50%, transparent 100%);
   --glass-depth: 0 10px 30px -4px rgba(15, 23, 42, 0.07);
   --glass-depth-hover: 0 18px 40px -6px rgba(15, 23, 42, 0.12);
   --code-bg: rgba(15, 23, 42, 0.04);
@@ -110,7 +110,7 @@
   --glass-blur: var(--app-glass-blur);
   --glass-border: transparent;
   --glass-border-hover: transparent;
-  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.4) 45%, transparent 100%);
+  --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0.08) 45%, transparent 100%);
   --glass-depth: 0 10px 30px -4px rgba(15, 23, 42, 0.07);
   --glass-depth-hover: 0 18px 40px -6px rgba(15, 23, 42, 0.12);
   --subtle: rgba(15, 23, 42, 0.06);

@@ -110,12 +110,12 @@ const Usage: Component = () => {
         subtitle={`累计 ${fmtNum(store.usageStats.totalRequestsLifetime ?? 0)} 次请求 · 实时监控流量路由分发`}
         actions={
           <>
-            <div class="inline-flex p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] backdrop-blur-sm">
+            <div class="inline-flex items-center p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04]">
               <button
                 type="button"
                 class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                   subTab() === 'overview'
-                    ? 'bg-card text-foreground shadow-sm'
+                    ? 'bg-bg-elevated text-foreground shadow-xs'
                     : 'text-muted hover:text-foreground'
                 }`}
                 onClick={() => setSubTab('overview')}
@@ -126,7 +126,7 @@ const Usage: Component = () => {
                 type="button"
                 class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                   subTab() === 'details'
-                    ? 'bg-card text-foreground shadow-sm'
+                    ? 'bg-bg-elevated text-foreground shadow-xs'
                     : 'text-muted hover:text-foreground'
                 }`}
                 onClick={() => setSubTab('details')}

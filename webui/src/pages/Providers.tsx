@@ -615,12 +615,12 @@ const Providers: Component = () => {
         title="模型提供商接入"
         subtitle="统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池"
         actions={
-          <div class="inline-flex p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] backdrop-blur-sm">
+          <div class="inline-flex items-center p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04]">
             <button
               type="button"
               class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab() === 'connections'
-                  ? 'bg-card text-foreground shadow-sm'
+                  ? 'bg-bg-elevated text-foreground shadow-xs'
                   : 'text-muted hover:text-foreground'
               }`}
               onClick={() => { setActiveTab('connections'); setCatFilter(''); }}
@@ -631,7 +631,7 @@ const Providers: Component = () => {
               type="button"
               class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab() === 'catalog'
-                  ? 'bg-card text-foreground shadow-sm'
+                  ? 'bg-bg-elevated text-foreground shadow-xs'
                   : 'text-muted hover:text-foreground'
               }`}
               onClick={() => { setActiveTab('catalog'); setCatFilter(''); }}
