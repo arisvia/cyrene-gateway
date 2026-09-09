@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, ProviderAvatar, Alert, PageHeader, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -31,9 +31,10 @@ const ProviderDetail: Component = () => {
   createEffect(() => {
     chatHistory()
     if (chatBoxRef) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (chatBoxRef) chatBoxRef.scrollTop = chatBoxRef.scrollHeight
       }, 50)
+      onCleanup(() => clearTimeout(timer))
     }
   })
   async function sendChat() {
@@ -196,7 +197,6 @@ const ProviderDetail: Component = () => {
     interval?: number
   } | null>(null)
   const [devicePolling, setDevicePolling] = createSignal(false)
-  const [deviceSuccess, setDeviceSuccess] = createSignal(false)
   const [deviceError, setDeviceError] = createSignal('')
   const [copiedCode, setCopiedCode] = createSignal(false)
   const [isImportFlow, setIsImportFlow] = createSignal(false)
@@ -212,7 +212,6 @@ const ProviderDetail: Component = () => {
     const p = conn()?.provider
     if (!p) return
     setDeviceError('')
-    setDeviceSuccess(false)
     setDevicePolling(true)
 
     try {
@@ -259,7 +258,6 @@ const ProviderDetail: Component = () => {
               clearInterval(pollTimer)
               pollTimer = undefined
               setDevicePolling(false)
-              setDeviceSuccess(true)
               toast.success('OAuth 网页授权成功！已绑定并刷新账号凭据。')
               await store.loadProvidersOnly()
               await load()
@@ -307,7 +305,6 @@ const ProviderDetail: Component = () => {
             clearInterval(pollTimer)
             pollTimer = undefined
             setDevicePolling(false)
-            setDeviceSuccess(true)
             setDeviceFlow(null)
             toast.success('OAuth 授权成功！已绑定并刷新账号凭据。')
             await store.loadProvidersOnly()
@@ -480,7 +477,7 @@ const ProviderDetail: Component = () => {
       refetchModels()
     }
   }
-  const [oauthStatus, { refetch: refetchOAuth }] = createResource(
+  const [, { refetch: refetchOAuth }] = createResource(
     () => conn()?.provider,
     async p => {
       if (!p) return null
@@ -731,7 +728,20 @@ const ProviderDetail: Component = () => {
 
                           return (
                             <div
-                              onClick={() => switchAccount(acc.id)}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`选择账号 ${acc.name || acc.provider}`}
+                              onClick={e => {
+                                if ((e.target as HTMLElement).closest('button, [role="switch"], a, input')) return
+                                switchAccount(acc.id)
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  if ((e.target as HTMLElement).closest('button, [role="switch"], a, input')) return
+                                  e.preventDefault()
+                                  switchAccount(acc.id)
+                                }
+                              }}
                               class={`p-3 rounded-control border transition-all cursor-pointer ${
                                 isCurrent()
                                   ? 'border-accent/80 bg-accent/10 shadow-xs ring-1 ring-accent/40'
@@ -757,7 +767,7 @@ const ProviderDetail: Component = () => {
                                   </Show>
                                 </div>
 
-                                <div class="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                                <div class="flex items-center gap-1.5 shrink-0">
                                   <Toggle
                                     checked={acc.isActive}
                                     onChange={async () => {
@@ -771,7 +781,8 @@ const ProviderDetail: Component = () => {
                                       type="button"
                                       class="text-muted hover:text-danger text-xs p-1 rounded hover:bg-hover transition-colors"
                                       title="删除此账号"
-                                      onClick={async () => {
+                                      onClick={async (e) => {
+                                        e.stopPropagation()
                                         const ok = await confirm({
                                           title: '删除账号',
                                           message: `确定要删除账号「${acc.name || acc.provider}」吗？`,
@@ -897,7 +908,6 @@ const ProviderDetail: Component = () => {
                                 class="text-accent hover:border-accent"
                                 onClick={() => {
                                   setDeviceFlow(null)
-                                  setDeviceSuccess(false)
                                   setDeviceError('')
                                   startDeviceFlow()
                                 }}

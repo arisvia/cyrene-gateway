@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +18,7 @@ const defaultProxyTimeout = 2 * time.Minute
 
 // ProxyManager handles outbound proxy rotation for upstream requests.
 type ProxyManager struct {
+	mu      sync.RWMutex
 	pools   []model.ProxyPool
 	counter atomic.Int64
 }
@@ -40,17 +42,23 @@ func (pm *ProxyManager) UpdatePools(pools []model.ProxyPool) {
 			active = append(active, p)
 		}
 	}
+	pm.mu.Lock()
 	pm.pools = active
+	pm.mu.Unlock()
 }
 
 // HasProxies returns true if any active proxy pools are configured.
 func (pm *ProxyManager) HasProxies() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
 	return len(pm.pools) > 0
 }
 
 // NextProxy returns the next proxy URL using round-robin rotation.
 // Returns empty string if no proxies are available.
 func (pm *ProxyManager) NextProxy() string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
 	if len(pm.pools) == 0 {
 		return ""
 	}

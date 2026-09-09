@@ -385,3 +385,44 @@ func containsSubstr(s, substr string) bool {
 	}
 	return false
 }
+
+func TestMapTokenResponse_MalformedIDToken(t *testing.T) {
+	for _, pid := range []string{"codex", "grok-cli", "gemini", "antigravity"} {
+		raw := map[string]any{
+			"access_token": "at_123",
+			"id_token":     "not-a-valid-jwt-without-dots",
+		}
+		res := mapTokenResponse(pid, raw)
+		if res == nil || res.AccessToken != "at_123" {
+			t.Errorf("expected at_123 for %s, got %+v", pid, res)
+		}
+	}
+}
+
+func TestSessionStore_ReaperAndExpiry(t *testing.T) {
+	stateActive := "state_active"
+	stateExpired := "state_expired"
+
+	StoreSession(stateActive, &OAuthSession{
+		CreatedAt: time.Now(),
+		Provider:  "codex",
+	})
+	StoreSession(stateExpired, &OAuthSession{
+		CreatedAt: time.Now().Add(-15 * time.Minute),
+		Provider:  "codex",
+	})
+
+	if _, ok := GetSession(stateExpired); ok {
+		t.Error("expected expired session to return false")
+	}
+
+	sess, ok := GetSession(stateActive)
+	if !ok || sess == nil || sess.Provider != "codex" {
+		t.Errorf("expected active session, got %+v", sess)
+	}
+
+	ClearSession(stateActive)
+	if _, ok := GetSession(stateActive); ok {
+		t.Error("expected cleared session to be gone")
+	}
+}

@@ -167,7 +167,7 @@ export function ToastHost() {
           const style = () => kindStyles[t.kind] || kindStyles.info
           return (
             <div
-              class={`pointer-events-auto relative w-full p-3 rounded-xl shadow-glass-hover backdrop-blur-2xl transition-all duration-200 animate-slide-up flex items-start gap-3 select-none ${style().card}`}
+              class={`pointer-events-auto relative w-full p-3 rounded-xl shadow-glass-hover backdrop-blur-lg transition-all duration-200 animate-slide-up flex items-start gap-3 select-none ${style().card}`}
             >
               <div class={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${style().iconWrap}`}>
                 <Show when={t.kind === 'success'}>
@@ -558,7 +558,7 @@ export const Select: Component<{
             ref={popoverRef}
             role="listbox"
             style={popoverStyle()}
-            class="rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-xl shadow-glass-hover p-1.5 flex flex-col gap-1 animate-scale-in"
+            class="rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-lg shadow-glass-hover p-1.5 flex flex-col gap-1 animate-scale-in"
           >
             <Show when={props.options.length > 8}>
               <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
@@ -634,7 +634,10 @@ export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange
     role="switch"
     aria-checked={props.checked ?? false}
     disabled={props.disabled}
-    onClick={() => props.onChange?.(!props.checked)}
+    onClick={e => {
+      e.stopPropagation()
+      props.onChange?.(!props.checked)
+    }}
     class={`relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-inner ${
       props.checked
         ? 'bg-accent shadow-accent/20'
@@ -683,7 +686,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
             role="dialog"
             aria-modal="true"
             aria-label={props.title}
-            class="relative w-full max-w-lg rounded-2xl bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover animate-scale-in"
+            class="relative w-full max-w-lg rounded-2xl bg-bg-elevated/95 backdrop-blur-lg shadow-glass-hover animate-scale-in"
           >
             <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle/50 bg-black/[0.02] dark:bg-white/[0.02] rounded-t-2xl">
               <h3 class="text-sm font-semibold">{props.title}</h3>

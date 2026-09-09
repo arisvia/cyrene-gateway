@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"log/slog"
 	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
@@ -38,7 +39,9 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 
 	// 2. Try model alias from KV store (scope="aliases")
 	aliases, err := database.KVList(model.KVScopeAliases)
-	if err == nil {
+	if err != nil {
+		slog.Warn("Failed to list model aliases from DB", slog.String("error", err.Error()))
+	} else {
 		if target, ok := aliases[parsed.Model]; ok {
 			resolved := ParseModel(target)
 			if resolved.Provider != "" {
@@ -48,7 +51,10 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	}
 
 	// 3. Dynamic lookup across cached models of active providers
-	if caches, err := database.KVList(model.KVScopeProviderModelCache); err == nil && len(caches) > 0 {
+	caches, err := database.KVList(model.KVScopeProviderModelCache)
+	if err != nil {
+		slog.Warn("Failed to list provider model cache from DB", slog.String("error", err.Error()))
+	} else if len(caches) > 0 {
 		lowerTarget := strings.ToLower(parsed.Model)
 		for providerID, raw := range caches {
 			var cached model.CachedModels

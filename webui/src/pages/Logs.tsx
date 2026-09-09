@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, onMount, onCleanup, createMemo } from 'solid-js'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Input, Select, PageHeader } from '@/components/ui'
+import { Card, Button, Input, Select, PageHeader } from '@/components/ui'
 
 interface LogItem {
   time: string
@@ -25,22 +25,25 @@ const LogsPage: Component = () => {
     }
   }
 
+  let disposed = false
   onMount(async () => {
     // 1. 先载入最近的历史内存日志
     try {
       const res = await api('/api/system/logs') as { logs?: LogItem[] } | null
+      if (disposed) return
       if (res?.logs) {
         setLogs(res.logs)
         scrollToBottom()
       }
     } catch (e: unknown) {
+      if (disposed) return
       console.warn('[logs] failed to load initial logs:', e)
     }
 
+    if (disposed) return
     // 2. 建立 SSE 实时流
     const streamUrl = '/api/system/logs/stream'
     es = new EventSource(streamUrl)
-
     es.addEventListener('connected', () => {
       setConnected(true)
     })
@@ -65,6 +68,7 @@ const LogsPage: Component = () => {
   })
 
   onCleanup(() => {
+    disposed = true
     if (es) {
       es.close()
       es = null

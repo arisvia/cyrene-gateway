@@ -64,33 +64,62 @@ type OAuthSession struct {
 	RedirectURI string
 }
 
-// sessionStore holds in-flight OAuth sessions keyed by state.
-var sessionStore sync.Map
+type oauthSessionStore struct {
+	mu       sync.RWMutex
+	sessions map[string]*OAuthSession
+}
+
+var sessionStore = &oauthSessionStore{
+	sessions: make(map[string]*OAuthSession),
+}
 
 const sessionTTL = 10 * time.Minute
 
-// StoreSession saves an OAuth session for later callback validation.
-func StoreSession(state string, session *OAuthSession) {
-	sessionStore.Store(state, session)
+func (s *oauthSessionStore) store(state string, session *OAuthSession) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for k, v := range s.sessions {
+		if now.Sub(v.CreatedAt) > sessionTTL {
+			delete(s.sessions, k)
+		}
+	}
+	s.sessions[state] = session
 }
 
-// GetSession retrieves and validates an OAuth session by state.
-func GetSession(state string) (*OAuthSession, bool) {
-	v, ok := sessionStore.Load(state)
+func (s *oauthSessionStore) get(state string) (*OAuthSession, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessions[state]
 	if !ok {
 		return nil, false
 	}
-	session := v.(*OAuthSession)
 	if time.Since(session.CreatedAt) > sessionTTL {
-		sessionStore.Delete(state)
+		delete(s.sessions, state)
 		return nil, false
 	}
 	return session, true
 }
 
+func (s *oauthSessionStore) delete(state string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessions, state)
+}
+
+// StoreSession saves an OAuth session for later callback validation.
+func StoreSession(state string, session *OAuthSession) {
+	sessionStore.store(state, session)
+}
+
+// GetSession retrieves and validates an OAuth session by state.
+func GetSession(state string) (*OAuthSession, bool) {
+	return sessionStore.get(state)
+}
+
 // ClearSession removes an OAuth session after use.
 func ClearSession(state string) {
-	sessionStore.Delete(state)
+	sessionStore.delete(state)
 }
 
 // GetProviderFlowType determines the OAuth flow type for a provider.
@@ -334,7 +363,9 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 			return nil, fmt.Errorf("device code request failed: %s", string(body))
 		}
 		var data map[string]any
-		json.NewDecoder(resp.Body).Decode(&data)
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return nil, fmt.Errorf("failed to decode device code response: %w", err)
+		}
 		interval := 5
 		if v, ok := data["interval"].(float64); ok {
 			interval = int(v)
@@ -650,9 +681,15 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 	if errCode == "authorization_pending" || errCode == "slow_down" {
 		return &PollDeviceCodeResult{Success: false, Pending: true, Error: errCode}, nil
 	}
-	if errCode != "" && resp.StatusCode != http.StatusOK {
+	if errCode != "" {
 		errDesc := getString(data, "error_description")
-		return &PollDeviceCodeResult{Success: false, Pending: false, Error: errCode + ": " + errDesc}, nil
+		if errDesc != "" {
+			return &PollDeviceCodeResult{Success: false, Pending: false, Error: errCode + ": " + errDesc}, nil
+		}
+		return &PollDeviceCodeResult{Success: false, Pending: false, Error: errCode}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return &PollDeviceCodeResult{Success: false, Pending: false, Error: fmt.Sprintf("poll returned status %d", resp.StatusCode)}, nil
 	}
 
 	// Check for access token
@@ -746,18 +783,21 @@ func mapTokenResponse(providerID string, raw map[string]any) *TokenExchangeResul
 	switch providerID {
 	case "codex":
 		if idToken := getString(raw, "id_token"); idToken != "" {
-			if payload, err := decodeJWTPayload(strings.Split(idToken, ".")[1]); err == nil {
-				if auth, ok := payload["https://api.openai.com/auth"].(map[string]any); ok {
-					if accountID, ok := auth["chatgpt_account_id"].(string); ok {
-						if result.ProviderSpecificData == nil {
-							result.ProviderSpecificData = make(map[string]any)
+			parts := strings.Split(idToken, ".")
+			if len(parts) >= 2 {
+				if payload, err := decodeJWTPayload(parts[1]); err == nil {
+					if auth, ok := payload["https://api.openai.com/auth"].(map[string]any); ok {
+						if accountID, ok := auth["chatgpt_account_id"].(string); ok {
+							if result.ProviderSpecificData == nil {
+								result.ProviderSpecificData = make(map[string]any)
+							}
+							result.ProviderSpecificData["chatgptAccountId"] = accountID
 						}
-						result.ProviderSpecificData["chatgptAccountId"] = accountID
 					}
-				}
-				if profile, ok := payload["https://api.openai.com/profile"].(map[string]any); ok {
-					if email, ok := profile["email"].(string); ok {
-						result.Email = email
+					if profile, ok := payload["https://api.openai.com/profile"].(map[string]any); ok {
+						if email, ok := profile["email"].(string); ok {
+							result.Email = email
+						}
 					}
 				}
 			}
@@ -768,18 +808,24 @@ func mapTokenResponse(providerID string, raw map[string]any) *TokenExchangeResul
 	case "grok-cli":
 		result.ProviderSpecificData = map[string]any{"authMethod": "device_code"}
 		if idToken := getString(raw, "id_token"); idToken != "" {
-			if payload, err := decodeJWTPayload(strings.Split(idToken, ".")[1]); err == nil {
-				if email, ok := payload["email"].(string); ok {
-					result.Email = email
+			parts := strings.Split(idToken, ".")
+			if len(parts) >= 2 {
+				if payload, err := decodeJWTPayload(parts[1]); err == nil {
+					if email, ok := payload["email"].(string); ok {
+						result.Email = email
+					}
 				}
 			}
 		}
 	case "gemini", "antigravity":
 		result.ProviderSpecificData = map[string]any{"authMethod": "oauth"}
 		if idToken := getString(raw, "id_token"); idToken != "" {
-			if payload, err := decodeJWTPayload(strings.Split(idToken, ".")[1]); err == nil {
-				if email, ok := payload["email"].(string); ok {
-					result.Email = email
+			parts := strings.Split(idToken, ".")
+			if len(parts) >= 2 {
+				if payload, err := decodeJWTPayload(parts[1]); err == nil {
+					if email, ok := payload["email"].(string); ok {
+						result.Email = email
+					}
 				}
 			}
 		}

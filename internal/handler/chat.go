@@ -910,9 +910,17 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			// Mid-stream read error (network dropped or corrupted event)
+			// Mid-stream read error (network dropped or corrupted event): emit in-band error chunk so client fails fast
 			slog.Warn("Upstream SSE read error", slog.String("model", model), slog.String("error", err.Error()))
-			// Do NOT synthesize clean [DONE] on real upstream error
+			errChunk, _ := json.Marshal(map[string]any{
+				"error": map[string]any{
+					"message": fmt.Sprintf("upstream stream error: %s", err.Error()),
+					"type":    "upstream_error",
+					"code":    "upstream_error",
+				},
+			})
+			fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", errChunk)
+			flusher.Flush()
 			return
 		}
 
@@ -954,9 +962,7 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			w.Write([]byte("\n\n"))
 		} else {
 			// OpenAI format passthrough
-			w.Write([]byte("data: "))
-			w.Write(event.Data)
-			w.Write([]byte("\n\n"))
+			w.Write(provider.FormatSSEEvent(*event))
 		}
 		flusher.Flush()
 	}

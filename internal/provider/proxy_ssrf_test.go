@@ -147,3 +147,36 @@ func TestActivePoolE2EBlocksMetadataRedirect(t *testing.T) {
 		t.Fatalf("guard must fire on the redirect TARGET, not the proxy dial; got: %v", err)
 	}
 }
+
+func TestProxyManager_ConcurrentUpdateAndNext(t *testing.T) {
+	pm := NewProxyManager([]model.ProxyPool{{
+		ID:       "pool-1",
+		IsActive: true,
+		Data:     model.ProxyPoolData{ProxyURL: "http://proxy1:8080"},
+	}})
+
+	done := make(chan struct{})
+	go func() {
+		for range 100 {
+			pm.UpdatePools([]model.ProxyPool{
+				{ID: "pool-a", IsActive: true, Data: model.ProxyPoolData{ProxyURL: "http://proxy-a:8080"}},
+				{ID: "pool-b", IsActive: true, Data: model.ProxyPoolData{ProxyURL: "http://proxy-b:8080"}},
+			})
+		}
+		done <- struct{}{}
+	}()
+
+	for range 4 {
+		go func() {
+			for range 100 {
+				_ = pm.HasProxies()
+				_ = pm.NextProxy()
+			}
+			done <- struct{}{}
+		}()
+	}
+
+	for range 5 {
+		<-done
+	}
+}

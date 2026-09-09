@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -57,27 +58,33 @@ func main() {
 	srv.StartBackgroundModelSync(bgCtx, 6*time.Hour)
 
 	httpServer := &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-		Handler:      srv.Handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute,
-		IdleTimeout:  120 * time.Second,
+		Addr:              net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Handler:           srv.Handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Graceful shutdown
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+	serverErr := make(chan error, 1)
 
 	go func() {
 		slog.Info("Gateway listening", slog.String("addr", httpServer.Addr))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Server terminated with critical error", "error", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
-	<-done
-	slog.Info("Shutting down gracefully...")
+	select {
+	case err := <-serverErr:
+		slog.Error("Server terminated with critical error", "error", err)
+		return
+	case <-done:
+		slog.Info("Shutting down gracefully...")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

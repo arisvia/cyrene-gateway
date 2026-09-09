@@ -129,7 +129,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
   })
 
   return (
-    <Card class="h-[460px] sm:h-[480px] overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-xl animate-fade-in select-none">
+    <Card class="h-[460px] sm:h-[480px] overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-lg animate-fade-in select-none">
       {/* 顶部标题栏与状态指示 */}
       <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
         <div class="flex items-center gap-3 bg-bg/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
@@ -231,7 +231,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
 
           {/* 1. 中心枢纽：Cyrene Gateway (尺寸与周围供应商节点严格统一为 w-44 h-12) */}
           <div
-            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-44 h-12 px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/50 shadow-xl shadow-accent/20 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
+            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-44 h-12 px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-lg border border-accent/50 shadow-xl shadow-accent/20 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
           >
             <img src="/icon.png" alt="Cyrene" class="w-5 h-5 rounded-lg object-contain shadow-accent shadow-sm shrink-0" />
             <div class="min-w-0 flex-1">

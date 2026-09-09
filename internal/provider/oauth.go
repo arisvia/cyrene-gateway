@@ -605,6 +605,24 @@ func DedupRefresh(providerID string, oldToken string, fn func() (*RefreshResult,
 	}
 	refreshDedupMap[key] = newEntry
 	refreshMapLock.Unlock()
+	defer func() {
+		panicked := false
+		newEntry.mu.Lock()
+		if !newEntry.done {
+			newEntry.done = true
+			close(newEntry.doneChan)
+			panicked = true
+		}
+		newEntry.mu.Unlock()
+
+		if panicked {
+			refreshMapLock.Lock()
+			if refreshDedupMap[key] == newEntry {
+				delete(refreshDedupMap, key)
+			}
+			refreshMapLock.Unlock()
+		}
+	}()
 
 	result, err := fn()
 

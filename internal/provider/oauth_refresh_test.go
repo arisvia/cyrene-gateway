@@ -319,3 +319,31 @@ func TestDedupRefresh_ConcurrentDedup(t *testing.T) {
 		t.Errorf("expected at most 2 calls due to dedup, got %d", callCount)
 	}
 }
+
+func TestDedupRefresh_PanicSafety(t *testing.T) {
+	panickingFn := func() (*RefreshResult, error) {
+		panic("simulated refresh panic")
+	}
+
+	// First call panics
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic")
+			}
+		}()
+		DedupRefresh("panic-provider", "panic_token", panickingFn)
+	}()
+
+	// Second call should NOT deadlock and should run cleanly
+	normalFn := func() (*RefreshResult, error) {
+		return &RefreshResult{AccessToken: "recovered_token"}, nil
+	}
+	res, err := DedupRefresh("panic-provider", "panic_token", normalFn)
+	if err != nil {
+		t.Fatalf("subsequent refresh failed: %v", err)
+	}
+	if res == nil || res.AccessToken != "recovered_token" {
+		t.Errorf("expected recovered_token, got %+v", res)
+	}
+}

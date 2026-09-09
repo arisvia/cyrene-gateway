@@ -62,7 +62,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
             aria-hidden="true"
           />
         {/* 弹窗主体卡片 */}
-        <div class="relative w-full max-w-2xl max-h-[85vh] bg-bg-elevated border border-subtle rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-slide-up z-10">
+        <div class="relative w-full max-w-2xl max-h-[85vh] bg-bg-elevated border border-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden animate-slide-up z-10">
           {/* 顶栏：标题、模型与关闭按钮 */}
           <div class="h-16 px-6 border-b border-subtle flex items-center justify-between gap-4 shrink-0 bg-card/40">
             <div class="flex items-center gap-3 min-w-0">

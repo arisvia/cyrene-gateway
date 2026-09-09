@@ -48,9 +48,8 @@ func DiscoverAntigravityProject(ctx context.Context, client *http.Client, access
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
-
 		respBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("loadCodeAssist HTTP %d: %s", resp.StatusCode, string(respBytes))
 			continue
@@ -153,9 +152,8 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		if err != nil {
 			continue
 		}
-		defer resp.Body.Close()
-
 		respBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil || resp.StatusCode != http.StatusOK {
 			slog.Warn("fetchAvailableModels failed", slog.String("endpoint", endpoint), slog.Int("status", resp.StatusCode), slog.String("body", string(respBytes)))
 			continue

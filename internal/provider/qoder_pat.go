@@ -99,9 +99,9 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 	// Fast path: cached and not near expiry.
 	qoderPATMu.Lock()
 	if entry, ok := qoderPATCache[token]; ok && time.Until(entry.expires) > qoderPATRefreshBuffer {
-		cred := entry.cred
+		copy := *entry.cred
 		qoderPATMu.Unlock()
-		return cred, nil
+		return &copy, nil
 	}
 	// Serialize concurrent exchanges for the same PAT.
 	entry, ok := qoderPATCache[token]
@@ -118,9 +118,9 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 	// Double-check after acquiring the per-PAT lock.
 	qoderPATMu.Lock()
 	if cached, ok := qoderPATCache[token]; ok && cached.cred != nil && time.Until(cached.expires) > qoderPATRefreshBuffer {
-		cred := cached.cred
+		copy := *cached.cred
 		qoderPATMu.Unlock()
-		return cred, nil
+		return &copy, nil
 	}
 	qoderPATMu.Unlock()
 
@@ -140,7 +140,8 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 	qoderPATCache[token] = &qoderPATCacheEntry{cred: cred, expires: expiresAt, sharedMu: mu}
 	qoderPATMu.Unlock()
 
-	return cred, nil
+	copy := *cred
+	return &copy, nil
 }
 
 // qoderExchangeJobToken exchanges a PAT for a short-lived job token. This

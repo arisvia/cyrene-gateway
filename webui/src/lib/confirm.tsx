@@ -123,7 +123,7 @@ export const ConfirmDialogHost: Component = () => {
         <div
           role="alertdialog"
           aria-modal="true"
-          class="relative w-full max-w-md rounded-2xl bg-bg-elevated/95 backdrop-blur-2xl shadow-glass-hover p-6 animate-scale-in select-none"
+          class="relative w-full max-w-md rounded-2xl bg-bg-elevated/95 backdrop-blur-lg shadow-glass-hover p-6 animate-scale-in select-none"
         >
           <div class="flex items-start gap-4">
             <div
