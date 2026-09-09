@@ -129,7 +129,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
   })
 
   return (
-    <Card class="h-115 sm:h-120 overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-lg animate-fade-in select-none">
+    <Card class="h-[460px] sm:h-[480px] overflow-hidden relative border border-subtle/80 bg-card/60 backdrop-blur-lg animate-fade-in select-none">
       {/* 顶部标题栏与状态指示 */}
       <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
         <div class="flex items-center gap-3 bg-bg/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
