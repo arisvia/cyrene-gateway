@@ -310,6 +310,7 @@ type DeviceCodeResponse struct {
 	ExpiresIn               int            `json:"expiresIn"`
 	Interval                int            `json:"interval"`
 }
+
 // RequestDeviceCode initiates a device code flow for a provider.
 func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeResponse, error) {
 	info, ok := Registry[providerID]
