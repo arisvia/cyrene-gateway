@@ -89,7 +89,6 @@
   --glass: color-mix(in oklab, var(--bg-elevated) calc(var(--app-surface-alpha) * 100%), transparent);
   --glass-hover: color-mix(in oklab, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.08, 0.95) * 100%), transparent);
   --glass-blur: var(--app-glass-blur);
-  --blur-sm: var(--glass-blur);
   --blur-md: var(--glass-blur);
   --blur-lg: var(--glass-blur);
   --blur-xl: var(--glass-blur);
