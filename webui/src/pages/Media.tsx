@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
@@ -147,22 +147,12 @@ const Media: Component = () => {
         }
       />
       {/* 顶部能力分类 Tab */}
-      <div class="flex flex-wrap items-center gap-1.5 p-1 rounded-card bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04] w-fit">
-        <For each={CAPS}>
-          {c => (
-            <button
-              class={`px-3 py-1.5 rounded-control text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
-                active() === c.id
-                  ? 'bg-bg-elevated text-foreground shadow-xs font-semibold'
-                  : 'text-faint hover:text-foreground'
-              }`}
-              onClick={() => handleTabChange(c.id)}
-            >
-              {c.label}
-            </button>
-          )}
-        </For>
-      </div>
+      <SegmentedControl
+        value={active()}
+        onChange={handleTabChange}
+        options={CAPS.map(c => ({ value: c.id, label: c.label }))}
+        class="w-fit"
+      />
 
       <div class="text-xs text-faint flex items-center gap-2">
         <span class="flex items-center gap-1.5"><IconBulb size={14} class="text-accent" /> {CAPS.find(c => c.id === active())?.hint}</span>

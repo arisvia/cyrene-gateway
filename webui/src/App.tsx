@@ -159,7 +159,12 @@ const App: Component = () => {
       {/* 移动端抽屉 */}
       <Show when={open()}>
         <div class="md:hidden fixed inset-0 z-50">
-          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setOpen(false)} aria-hidden="true" />
+          <button
+            type="button"
+            aria-label="关闭菜单遮罩"
+            class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-sm animate-fade-in border-none cursor-default"
+            onClick={() => setOpen(false)}
+          />
           <aside class="absolute inset-y-0 left-0 w-65 glass-panel border-r border-glass-border flex flex-col animate-slide-up shadow-xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
               <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />

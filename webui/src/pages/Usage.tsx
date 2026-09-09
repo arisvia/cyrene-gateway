@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
-import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader } from '@/components/ui'
+import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, SegmentedControl } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -110,30 +110,14 @@ const Usage: Component = () => {
         subtitle={`累计 ${fmtNum(store.usageStats.totalRequestsLifetime ?? 0)} 次请求 · 实时监控流量路由分发`}
         actions={
           <>
-            <div class="inline-flex items-center p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04]">
-              <button
-                type="button"
-                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  subTab() === 'overview'
-                    ? 'bg-bg-elevated text-foreground shadow-xs'
-                    : 'text-muted hover:text-foreground'
-                }`}
-                onClick={() => setSubTab('overview')}
-              >
-                概览
-              </button>
-              <button
-                type="button"
-                class={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                  subTab() === 'details'
-                    ? 'bg-bg-elevated text-foreground shadow-xs'
-                    : 'text-muted hover:text-foreground'
-                }`}
-                onClick={() => setSubTab('details')}
-              >
-                请求明细 ({store.requestDetailsPagination().totalItems || 0})
-              </button>
-            </div>
+            <SegmentedControl
+              value={subTab()}
+              onChange={setSubTab}
+              options={[
+                { value: 'overview', label: '概览' },
+                { value: 'details', label: `请求明细 (${store.requestDetailsPagination().totalItems || 0})` },
+              ]}
+            />
 
             <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
               <StatusPulse

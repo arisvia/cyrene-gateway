@@ -11,6 +11,7 @@ import {
   Modal,
   PageHeader,
   ProviderAvatar,
+  SegmentedControl,
   Select,
   IconChat,
   IconPalette,
@@ -615,30 +616,17 @@ const Providers: Component = () => {
         title="模型提供商接入"
         subtitle="统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池"
         actions={
-          <div class="inline-flex items-center p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04]">
-            <button
-              type="button"
-              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab() === 'connections'
-                  ? 'bg-bg-elevated text-foreground shadow-xs'
-                  : 'text-muted hover:text-foreground'
-              }`}
-              onClick={() => { setActiveTab('connections'); setCatFilter(''); }}
-            >
-              我的连接 ({store.providers().length})
-            </button>
-            <button
-              type="button"
-              class={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab() === 'catalog'
-                  ? 'bg-bg-elevated text-foreground shadow-xs'
-                  : 'text-muted hover:text-foreground'
-              }`}
-              onClick={() => { setActiveTab('catalog'); setCatFilter(''); }}
-            >
-              提供商市场 ({store.registryList().length})
-            </button>
-          </div>
+          <SegmentedControl
+            value={activeTab()}
+            onChange={tab => {
+              setActiveTab(tab)
+              setCatFilter('')
+            }}
+            options={[
+              { value: 'connections', label: `我的连接 (${store.providers().length})` },
+              { value: 'catalog', label: `提供商市场 (${store.registryList().length})` },
+            ]}
+          />
         }
       >
         {/* 搜索与过滤工具栏：轻量透明容器，杜绝在 PageHeader 内嵌套实心 Card 导致纯白/纯黑 */}

@@ -1,6 +1,6 @@
 import { type Component, Show, createSignal, createResource } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { Badge, Button, ProviderAvatar, Spinner } from '@/components/ui'
+import { Badge, Button, ProviderAvatar, Spinner, SegmentedControl } from '@/components/ui'
 import { api } from '@/lib/api'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
 import type { RequestDetail } from '@/types/domain'
@@ -56,10 +56,11 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
       <Portal>
         <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
           {/* 背景遮罩 */}
-          <div
-            class="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          <button
+            type="button"
+            aria-label="关闭详情遮罩"
+            class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-sm border-none cursor-default"
             onClick={props.onClose}
-            aria-hidden="true"
           />
         {/* 弹窗主体卡片 */}
         <div class="relative w-full max-w-2xl max-h-[85vh] bg-bg-elevated border border-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden animate-slide-up z-10">
@@ -96,41 +97,15 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
 
           {/* 分段 Tab 切换器 */}
           <div class="px-6 pt-3 pb-2 border-b border-subtle/60 flex items-center justify-between gap-3 bg-bg/50 shrink-0">
-            <div class="inline-flex p-1 rounded-xl bg-card border border-subtle shadow-sm text-xs">
-              <button
-                type="button"
-                class={`px-3 py-1 font-semibold rounded-lg transition-all ${
-                  activeTab() === 'overview'
-                    ? 'bg-accent text-on-accent shadow-sm'
-                    : 'text-muted hover:text-foreground'
-                }`}
-                onClick={() => setActiveTab('overview')}
-              >
-                调度概览与指标
-              </button>
-              <button
-                type="button"
-                class={`px-3 py-1 font-semibold rounded-lg transition-all ${
-                  activeTab() === 'payload'
-                    ? 'bg-accent text-on-accent shadow-sm'
-                    : 'text-muted hover:text-foreground'
-                }`}
-                onClick={() => setActiveTab('payload')}
-              >
-                输入输出摘要
-              </button>
-              <button
-                type="button"
-                class={`px-3 py-1 font-semibold rounded-lg transition-all ${
-                  activeTab() === 'raw'
-                    ? 'bg-accent text-on-accent shadow-sm'
-                    : 'text-muted hover:text-foreground'
-                }`}
-                onClick={() => setActiveTab('raw')}
-              >
-                元数据 JSON
-              </button>
-            </div>
+            <SegmentedControl
+              value={activeTab()}
+              onChange={setActiveTab}
+              options={[
+                { value: 'overview', label: '调度概览与指标' },
+                { value: 'payload', label: '输入输出摘要' },
+                { value: 'raw', label: '元数据 JSON' },
+              ]}
+            />
 
             <Show when={fullDetail.loading}>
               <div class="flex items-center gap-1.5 text-xs text-faint">

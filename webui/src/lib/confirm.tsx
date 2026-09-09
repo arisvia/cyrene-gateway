@@ -113,10 +113,11 @@ export const ConfirmDialogHost: Component = () => {
     <Show when={s().isOpen}>
       <Portal>
         <div class="fixed inset-0 z-120 flex items-center justify-center p-4">
-        <div
-          class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in"
+        <button
+          type="button"
+          aria-label="关闭确认框遮罩"
+          class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
           onClick={() => handleClose(false)}
-          aria-hidden="true"
         />
 
         {/* 现代 Liquid Glass 对话框卡片 */}

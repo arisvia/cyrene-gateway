@@ -651,6 +651,61 @@ export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange
     />
   </button>
 )
+export interface SegmentedControlOption<T extends string = string> {
+  value: T
+  label: JSX.Element
+  icon?: JSX.Element
+  disabled?: boolean
+}
+
+export interface SegmentedControlProps<T extends string = string> {
+  value: T
+  onChange: (value: T) => void
+  options: Array<SegmentedControlOption<T>>
+  size?: 'sm' | 'md'
+  class?: string
+}
+
+export function SegmentedControl<T extends string = string>(props: SegmentedControlProps<T>): JSX.Element {
+  const size = () => props.size ?? 'sm'
+  return (
+    <div
+      role="tablist"
+      class={`inline-flex items-center p-1 rounded-xl bg-black/[0.05] dark:bg-white/[0.08] border border-black/[0.03] dark:border-white/[0.04] select-none ${props.class ?? ''}`}
+    >
+      <For each={props.options}>
+        {opt => {
+          const isActive = () => props.value === opt.value
+          return (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isActive()}
+              disabled={opt.disabled}
+              onClick={() => {
+                if (!opt.disabled && props.value !== opt.value) {
+                  props.onChange(opt.value)
+                }
+              }}
+              class={`transition-all font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                size() === 'md' ? 'px-4 py-2 text-sm' : 'px-3.5 py-1.5 text-xs'
+              } ${
+                isActive()
+                  ? 'bg-bg-elevated text-foreground shadow-xs'
+                  : 'text-muted hover:text-foreground hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'
+              }`}
+            >
+              <Show when={opt.icon}>
+                <span class="shrink-0">{opt.icon}</span>
+              </Show>
+              <span>{opt.label}</span>
+            </button>
+          )
+        }}
+      </For>
+    </div>
+  )
+}
 
 export const Modal: Component<{ open: boolean; title: string; onClose: () => void; children?: JSX.Element }> = props => {
   const [panel, setPanel] = createSignal<HTMLDivElement>()
@@ -680,7 +735,12 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
     <Show when={props.open}>
       <Portal>
         <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div class="absolute inset-0 bg-black/60 backdrop-blur-md animate-fade-in" onClick={props.onClose} aria-hidden="true" />
+          <button
+            type="button"
+            aria-label="关闭对话框遮罩"
+            class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
+            onClick={props.onClose}
+          />
           <div
             ref={setPanel}
             role="dialog"
