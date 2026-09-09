@@ -33,7 +33,7 @@ export interface PageHeaderProps {
 }
 
 export const PageHeader: Component<PageHeaderProps> = props => (
-  <header class={`sticky top-[4.75rem] z-20 rounded-2xl glass-card px-5 py-4 shadow-glass transition-all space-y-3 ${props.class ?? ''}`}>
+  <header class={`sticky top-19 z-20 rounded-2xl glass-card px-5 py-4 shadow-glass transition-all space-y-3 ${props.class ?? ''}`}>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2.5 flex-wrap">
@@ -161,7 +161,7 @@ export function ToastHost() {
   }
 
   return (
-    <div class="fixed top-4 right-4 z-[130] w-full max-w-sm pointer-events-none flex flex-col gap-2.5 px-3 sm:px-0" role="status" aria-live="polite">
+    <div class="fixed top-4 right-4 z-130 w-full max-w-sm pointer-events-none flex flex-col gap-2.5 px-3 sm:px-0" role="status" aria-live="polite">
       <For each={toasts()}>
         {t => {
           const style = () => kindStyles[t.kind] || kindStyles.info
@@ -190,7 +190,7 @@ export function ToastHost() {
                     {t.title}
                   </div>
                 </Show>
-                <div class="text-xs text-muted leading-relaxed break-words whitespace-pre-wrap">
+                <div class="text-xs text-muted leading-relaxed wrap-break-word whitespace-pre-wrap">
                   {t.message}
                 </div>
               </div>
@@ -270,7 +270,7 @@ export const Alert: Component<{
               {props.title}
             </div>
           </Show>
-          <div class="text-muted leading-relaxed break-words">
+          <div class="text-muted leading-relaxed wrap-break-word">
             {props.children}
           </div>
         </div>
@@ -734,7 +734,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
   return (
     <Show when={props.open}>
       <Portal>
-        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div class="fixed inset-0 z-100 flex items-center justify-center p-4">
           <button
             type="button"
             aria-label="关闭对话框遮罩"
