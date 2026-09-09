@@ -82,8 +82,6 @@ const Providers: Component = () => {
   })
   const [saving, setSaving] = createSignal(false)
   const [refreshing, setRefreshing] = createSignal(false)
-  const [testing, setTesting] = createSignal<string | null>(null)
-  const [testResult, setTestResult] = createSignal<{ id: string; ok: boolean; msg: string } | null>(null)
 
   // 挂载时刷新一次，确保 Registry 完整
   onMount(() => {
@@ -596,34 +594,6 @@ const Providers: Component = () => {
       setSaving(false)
     }
   }
-  // 测试连接健康度
-  async function handleTest(p: Provider) {
-    setTesting(p.id)
-    setTestResult(null)
-    try {
-      const res = await store.testProvider(p.id)
-      setTestResult({
-        id: p.id,
-        ok: res.ok,
-        msg: res.ok ? `连通正常 (${res.latencyMs ?? 0}ms)` : (res.error || '连通失败'),
-      })
-      if (res.ok) {
-        toast.success(`${p.name || p.provider} 测试通过 (${res.latencyMs ?? 0}ms)`)
-      } else {
-        toast.error(`${p.name || p.provider} 测试失败: ${res.error || '未知错误'}`)
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '连接异常'
-      setTestResult({
-        id: p.id,
-        ok: false,
-        msg,
-      })
-      toast.error(`${p.name || p.provider} 测试失败: ${msg}`)
-    } finally {
-      setTesting(null)
-    }
-  }
 
   // 刷新所有模型与连接
   async function handleRefreshAll() {
@@ -683,6 +653,7 @@ const Providers: Component = () => {
 
             <Select
               value={capFilter()}
+              onChange={setCapFilter}
               options={[
                 { value: '', label: '全部支持能力' },
                 { value: 'llm', label: 'LLM 对话' },
