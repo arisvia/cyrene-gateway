@@ -1377,6 +1377,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
+		Provider       string          `json:"provider,omitempty"`
 		Model          string          `json:"model"`
 		Input          json.RawMessage `json:"input"`
 		Dimensions     int             `json:"dimensions,omitempty"`
@@ -1403,6 +1404,14 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
 		return
+	}
+
+	if req.Provider != "" {
+		modelInfo.Provider = req.Provider
+		modelInfo.Model = req.Model
+		if strings.HasPrefix(modelInfo.Model, req.Provider+"/") {
+			modelInfo.Model = strings.TrimPrefix(modelInfo.Model, req.Provider+"/")
+		}
 	}
 
 	// Phase: Response Cache check
@@ -1474,11 +1483,16 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	var bodyMap map[string]any
 	if err := json.Unmarshal(rawBody, &bodyMap); err == nil {
 		bodyMap["model"] = modelInfo.Model
+		delete(bodyMap, "provider")
+		delete(bodyMap, "prompt")
+		delete(bodyMap, "query")
 		bodyBytes, _ = json.Marshal(bodyMap)
 	} else {
 		req.Model = modelInfo.Model
 		bodyBytes, _ = json.Marshal(req)
 	}
+	baseURL = strings.TrimSuffix(baseURL, "/chat/completions")
+	baseURL = strings.TrimSuffix(baseURL, "/completions")
 	targetURL := strings.TrimRight(baseURL, "/") + "/embeddings"
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -1491,6 +1505,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 
+	startTime := time.Now()
 	client := s.getHTTPClient(2 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
@@ -1498,6 +1513,29 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	latencyMs := int(time.Since(startTime).Milliseconds())
+	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+	rdData := map[string]any{
+		"id":           rdID,
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+		"model":        modelInfo.Model,
+		"provider":     modelInfo.Provider,
+		"connectionId": conn.ID,
+		"status":       fmt.Sprintf("%d", resp.StatusCode),
+		"latencyMs":    latencyMs,
+		"endpoint":     "/v1/embeddings",
+	}
+	rdBytes, _ := json.Marshal(rdData)
+	_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+		ID:           rdID,
+		Timestamp:    rdData["timestamp"].(string),
+		Provider:     modelInfo.Provider,
+		Model:        modelInfo.Model,
+		ConnectionID: conn.ID,
+		Status:       rdData["status"].(string),
+		Data:         string(rdBytes),
+	})
 
 	for key, values := range resp.Header {
 		for _, v := range values {

@@ -1,4 +1,4 @@
-import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { A } from '@solidjs/router'
 import { Card, Badge, ProviderAvatar } from '@/components/ui'
 import type { Provider, LiveUsageEvent } from '@/types/domain'
@@ -18,6 +18,37 @@ export const GatewayTopology: Component<TopologyProps> = props => {
   const [isDragging, setIsDragging] = createSignal(false)
   const [dragStart, setDragStart] = createSignal({ x: 0, y: 0 })
   const [hoveredNode, setHoveredNode] = createSignal<string | null>(null)
+  const [activeHit, setActiveHit] = createSignal<{ provider: string; latencyMs?: number; time: number } | null>(null)
+  let hitTimer: ReturnType<typeof setTimeout> | undefined
+
+  // 仅在真实到达新请求时触发 3 秒激光脉冲，随后平滑恢复常态
+  createEffect(() => {
+    const events = props.liveEvents || []
+    if (events.length === 0) return
+    const latest = events[0]
+    if (!latest || !latest.provider) return
+
+    // 仅针对 5 秒内生成的实时事件触发脉冲
+    if (latest.timestamp) {
+      const age = Date.now() - new Date(latest.timestamp).getTime()
+      if (age > 5000) return
+    }
+
+    setActiveHit({
+      provider: latest.provider,
+      latencyMs: latest.latencyMs,
+      time: Date.now(),
+    })
+
+    clearTimeout(hitTimer)
+    hitTimer = setTimeout(() => {
+      setActiveHit(null)
+    }, 3000)
+  })
+
+  onCleanup(() => {
+    clearTimeout(hitTimer)
+  })
 
   const providers = createMemo(() => props.providers || [])
   const activeCount = createMemo(() => providers().filter(p => p.isActive).length)
@@ -79,18 +110,19 @@ export const GatewayTopology: Component<TopologyProps> = props => {
       const angle = (i / count) * 2 * Math.PI - Math.PI / 2
       const x = Math.round(Math.cos(angle) * rx)
       const y = Math.round(Math.sin(angle) * ry)
-      const recentHit = (props.liveEvents || []).find(e =>
-        e.provider === g.provider ||
-        g.accounts.some(a => a.id === e.provider) ||
-        (e.model && g.name && e.model.toLowerCase().includes(g.name.toLowerCase()))
-      )
+      const hit = activeHit()
+      const isHitting = hit ? (
+        hit.provider === g.provider ||
+        g.accounts.some(a => a.id === hit.provider) ||
+        (g.name && hit.provider.toLowerCase().includes(g.name.toLowerCase()))
+      ) : false
 
       return {
         ...g,
         x,
         y,
-        isHitting: !!recentHit,
-        recentLatency: recentHit?.latencyMs,
+        isHitting,
+        recentLatency: isHitting ? hit?.latencyMs : undefined,
       }
     })
   })
@@ -197,16 +229,16 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             viewBox="-600 -600 1200 1200"
           >
             <defs>
-              <linearGradient id="activeLineGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.8" />
-                <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0.8" />
+              <linearGradient id="activeLineGrad" gradientUnits="userSpaceOnUse" x1="-300" y1="-300" x2="300" y2="300">
+                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0.9" />
               </linearGradient>
             </defs>
 
             <For each={nodePositions()}>
               {node => {
                 const isHovered = () => hoveredNode() === node.id
-                const cpx = Math.round(node.x * 0.48)
+                const cpx = Math.round(node.x * 0.48) + (node.x === 0 ? 20 : 0)
                 const cpy = Math.round(node.y * 0.48)
                 const d = `M 0 0 Q ${cpx} ${cpy} ${node.x} ${node.y}`
 
@@ -216,8 +248,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                     <path
                       d={d}
                       fill="none"
-                      stroke={node.isHitting ? 'url(#activeLineGrad)' : (node.isActive ? 'rgba(45, 212, 191, 0.3)' : 'rgba(150, 150, 150, 0.15)')}
-                      stroke-width={node.isHitting ? 3 : (node.isActive ? 2 : 1.2)}
+                      stroke={node.isHitting ? 'url(#activeLineGrad)' : (node.isActive ? 'rgba(45, 212, 191, 0.45)' : 'rgba(150, 150, 150, 0.2)')}
+                      stroke-width={node.isHitting ? 3 : (node.isActive ? 2 : 1.5)}
                       stroke-dasharray={node.isActive ? 'none' : '4 4'}
                     />
 

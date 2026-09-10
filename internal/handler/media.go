@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
-
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -60,13 +60,17 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	bodyMap["model"] = modelInfo.Model
 	bodyBytes, _ = json.Marshal(bodyMap)
 
+	startTime := time.Now()
 	resp, err := s.MediaClient.HandleImageGeneration(r.Context(), modelInfo.Provider, bodyBytes, creds)
+	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
+		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/images/generations", "502", latencyMs)
 		slog.Error("Image generation failed", "provider", modelInfo.Provider, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
+	s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/images/generations", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	if modelInfo.Provider == "antigravity" {
 		// Antigravity streamGenerateContent returns SSE event stream with inlineData
@@ -300,6 +304,7 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Provider string `json:"provider"`
 		Query    string `json:"query"`
+		Model    string `json:"model"`
 	}
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -321,13 +326,17 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	startTime := time.Now()
 	resp, err := s.MediaClient.HandleWebSearch(r.Context(), req.Provider, bodyBytes, creds)
+	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
+		s.recordMediaDetail(req.Provider, req.Model, conn.ID, "/v1/search", "502", latencyMs)
 		slog.Error("Web search failed", "provider", req.Provider, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
+	s.recordMediaDetail(req.Provider, req.Model, conn.ID, "/v1/search", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	if req.Provider == "antigravity" {
 		s.aggregateAntigravitySearchResponse(w, resp, req.Query)
@@ -408,10 +417,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 								strings.Contains(lowerID, "gte")
 						case media.KindWebSearch:
 							if e.Provider == "antigravity" {
-								match = strings.HasPrefix(lowerID, "gemini-") &&
-									!strings.Contains(lowerID, "-image") &&
-									!strings.Contains(lowerID, "-tts") &&
-									(slices.Contains(cm.Capabilities, "chat") || slices.Contains(cm.Capabilities, "code"))
+								match = (cm.ID == "gemini-2.5-flash" || cm.ID == "gemini-2.5-pro")
 							}
 						}
 						if match && !seenModel[cm.ID] {
@@ -722,5 +728,35 @@ func (s *Server) aggregateAntigravitySearchResponse(w http.ResponseWriter, resp 
 		"count":    len(results),
 		"summary":  summary,
 		"results":  results,
+	})
+}
+
+func (s *Server) recordMediaDetail(provider, modelName, connID, endpoint, status string, latencyMs int) {
+	if s.DB == nil {
+		return
+	}
+	if modelName == "" {
+		modelName = provider
+	}
+	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelName)
+	rdData := map[string]any{
+		"id":           rdID,
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+		"model":        modelName,
+		"provider":     provider,
+		"connectionId": connID,
+		"status":       status,
+		"latencyMs":    latencyMs,
+		"endpoint":     endpoint,
+	}
+	rdBytes, _ := json.Marshal(rdData)
+	_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+		ID:           rdID,
+		Timestamp:    rdData["timestamp"].(string),
+		Provider:     provider,
+		Model:        modelName,
+		ConnectionID: connID,
+		Status:       status,
+		Data:         string(rdBytes),
 	})
 }

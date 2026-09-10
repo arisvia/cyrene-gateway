@@ -28,7 +28,7 @@ const Usage: Component = () => {
   }
   onMount(() => {
     load()
-    store.loadRequestDetails(1, 20)
+    store.loadRequestDetails(1, 10)
   })
 
   onCleanup(() => { es?.close(); es = null })
@@ -42,18 +42,6 @@ const Usage: Component = () => {
     }
 
     try {
-      // 如果当前无实时事件，预填已有请求详情作为初始视图，避免空屏
-      if (liveEvents().length === 0 && store.requestDetails().length > 0) {
-        const initial = store.requestDetails().slice(0, 15).map(r => ({
-          timestamp: r.timestamp || '',
-          model: r.model || '',
-          endpoint: r.endpoint || '',
-          status: r.status || 'ok',
-          latencyMs: r.latencyMs || 0,
-          provider: r.provider || '',
-        }))
-        setLiveEvents(initial)
-      }
 
       es = new EventSource('/api/usage/stream')
       const handleData = (ev: MessageEvent) => {
@@ -346,13 +334,13 @@ const Usage: Component = () => {
                   <For each={store.requestDetails()}>
                     {d => (
                       <tr class="border-b border-subtle/40 last:border-0 hover:bg-hover/30 transition-colors">
-                        <td class="py-2 text-faint font-mono">{fmtTime(d.timestamp)}</td>
-                        <td class="py-2 truncate max-w-[200px] font-medium">{d.model || '-'}</td>
-                        <td class="py-2"><Badge tone={d.status === 'ok' ? 'green' : 'red'}>{d.status || '-'}</Badge></td>
-                        <td class="py-2 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
-                        <td class="py-2 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
-                        <td class="py-2 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
-                        <td class="py-2 text-right">
+                        <td class="py-1.5 text-faint font-mono">{fmtTime(d.timestamp)}</td>
+                        <td class="py-1.5 truncate max-w-[200px] font-medium">{d.model || '-'}</td>
+                        <td class="py-1.5"><Badge tone={d.status === 'ok' ? 'green' : 'red'}>{d.status || '-'}</Badge></td>
+                        <td class="py-1.5 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
+                        <td class="py-1.5 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
+                        <td class="py-1.5 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
+                        <td class="py-1.5 text-right">
                           <button
                             type="button"
                             class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors"
@@ -377,7 +365,7 @@ const Usage: Component = () => {
               <Button
                 size="sm" variant="ghost"
                 disabled={!store.requestDetailsPagination().hasPrev}
-                onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 20)}
+                onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 10)}
               >上一页</Button>
               <span class="text-xs text-faint">
                 {store.requestDetailsPagination().page} / {Math.max(1, store.requestDetailsPagination().totalPages)}
@@ -385,7 +373,7 @@ const Usage: Component = () => {
               <Button
                 size="sm" variant="ghost"
                 disabled={!store.requestDetailsPagination().hasNext}
-                onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 20)}
+                onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 10)}
               >下一页</Button>
             </div>
           </Show>
