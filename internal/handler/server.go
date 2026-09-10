@@ -920,6 +920,13 @@ func (s *Server) syncAllActiveConnections() {
 		var models []model.ModelMetadata
 		if target.providerID == "qoder" && target.conn != nil {
 			models = s.fetchQoderCatalog(target.conn, client)
+		} else if target.providerID == "antigravity" && target.conn != nil {
+			s.tryRefreshToken(target.conn)
+			projectID := ""
+			if target.conn.Data.ProviderSpecificData != nil {
+				projectID, _ = target.conn.Data.ProviderSpecificData["projectId"].(string)
+			}
+			models = s.fetchAntigravityCatalog(context.Background(), client, target.conn.Data.AccessToken, projectID)
 		} else {
 			cfg := provider.ModelsFetchFor(pInfo)
 			fetched, err := model.FetchModels(client, target.providerID, target.baseURL, target.apiKey, target.accessToken, cfg)
@@ -931,6 +938,10 @@ func (s *Server) syncAllActiveConnections() {
 		}
 		if len(models) == 0 {
 			continue
+		}
+
+		if catalog, catErr := model.LoadModelsDevCatalog(client); catErr == nil {
+			model.BackfillFromModelsDev(models, catalog)
 		}
 
 		cached := model.CachedModels{
@@ -960,6 +971,13 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 	var models []model.ModelMetadata
 	if conn.Provider == "qoder" {
 		models = s.fetchQoderCatalog(conn, client)
+	} else if conn.Provider == "antigravity" {
+		s.tryRefreshToken(conn)
+		projectID := ""
+		if conn.Data.ProviderSpecificData != nil {
+			projectID, _ = conn.Data.ProviderSpecificData["projectId"].(string)
+		}
+		models = s.fetchAntigravityCatalog(context.Background(), client, conn.Data.AccessToken, projectID)
 	} else {
 		cfg := provider.ModelsFetchFor(pInfo)
 		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
@@ -970,6 +988,9 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 		}
 	}
 	if len(models) > 0 {
+		if catalog, catErr := model.LoadModelsDevCatalog(client); catErr == nil {
+			model.BackfillFromModelsDev(models, catalog)
+		}
 		cached := model.CachedModels{
 			FetchedAt: time.Now().UTC(),
 			Models:    models,
