@@ -536,8 +536,19 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	// Select best available connection (priority-ordered, cooldown-aware, model-lock-aware)
-	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
+	// Select best available connection (or respect specific connection if requested)
+	var conn *model.ProviderConnection
+	if targetConnID := r.Header.Get("X-Cyrene-Connection-ID"); targetConnID != "" {
+		for i := range conns {
+			if conns[i].ID == targetConnID && conns[i].IsActive {
+				conn = &conns[i]
+				break
+			}
+		}
+	}
+	if conn == nil {
+		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil)
+	}
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),

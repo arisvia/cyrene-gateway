@@ -41,6 +41,7 @@ interface Metrics {
 }
 
 interface AssistantResponse {
+  targetModel: string
   content: string
   busy: boolean
   error?: string
@@ -53,6 +54,7 @@ interface AssistantResponse {
 interface Turn {
   id: string
   user: string
+  mode: 'single' | 'compare'
   a: AssistantResponse
   b?: AssistantResponse
 }
@@ -378,8 +380,9 @@ const Playground: Component = () => {
     const newTurn: Turn = {
       id: turnId,
       user: text,
-      a: { content: '', busy: true },
-      b: isCompare ? { content: '', busy: true } : undefined,
+      mode: isCompare ? 'compare' : 'single',
+      a: { targetModel: modelA(), content: '', busy: true },
+      b: isCompare ? { targetModel: modelB(), content: '', busy: true } : undefined,
     }
 
     setTurns(prev => [...prev, newTurn])
@@ -413,6 +416,7 @@ const Playground: Component = () => {
               ? {
                   ...t,
                   a: {
+                    ...t.a,
                     content: res.fullContent,
                     busy: false,
                     servedModel: res.servedModel,
@@ -474,6 +478,7 @@ const Playground: Component = () => {
                 ? {
                     ...t,
                     b: {
+                      ...t.b,
                       content: res.fullContent,
                       busy: false,
                       servedModel: res.servedModel,
@@ -725,15 +730,15 @@ main();
 
                     {/* 回答区域 */}
                     <Show
-                      when={mode() === 'compare'}
+                      when={Boolean(turn.b && turn.mode === 'compare')}
                       fallback={
                         /* 单模型回答卡片 */
                         <Card class="p-4 space-y-3 bg-card/70 backdrop-blur-sm">
                           <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2">
                             <div class="flex items-center gap-2">
-                              <ProviderAvatar provider={turn.a.servedModel?.split('/')[0] || modelA().split('/')[0]} size="sm" />
+                              <ProviderAvatar provider={(turn.a.servedModel || turn.a.targetModel).split('/')[0]} size="sm" />
                               <span class="text-xs font-mono font-medium text-foreground">
-                                {turn.a.servedModel || modelA()}
+                                {turn.a.servedModel || turn.a.targetModel}
                               </span>
                               <Show when={turn.a.busy}>
                                 <span class="text-[11px] text-accent animate-pulse flex items-center gap-1">
@@ -766,7 +771,7 @@ main();
                                   title="查看原始请求与响应报文"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: turn.a.servedModel || modelA(),
+                                      title: turn.a.servedModel || turn.a.targetModel,
                                       request: turn.a.rawRequest,
                                       response: turn.a.rawResponse,
                                     })
@@ -814,8 +819,8 @@ main();
                               <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 shrink-0">
                                 A
                               </span>
-                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.a.servedModel || modelA()}>
-                                {turn.a.servedModel || modelA()}
+                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.a.servedModel || turn.a.targetModel}>
+                                {turn.a.servedModel || turn.a.targetModel}
                               </span>
                               <Show when={turn.a.busy}>
                                 <span class="text-[10px] text-accent animate-pulse">生成中</span>
@@ -834,7 +839,7 @@ main();
                                   class="hover:text-accent p-1 cursor-pointer"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: `模型 A (${turn.a.servedModel || modelA()})`,
+                                      title: `模型 A (${turn.a.servedModel || turn.a.targetModel})`,
                                       request: turn.a.rawRequest,
                                       response: turn.a.rawResponse,
                                     })
@@ -874,8 +879,8 @@ main();
                               <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 shrink-0">
                                 B
                               </span>
-                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.b?.servedModel || modelB()}>
-                                {turn.b?.servedModel || modelB()}
+                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.b?.servedModel || turn.b?.targetModel}>
+                                {turn.b?.servedModel || turn.b?.targetModel}
                               </span>
                               <Show when={turn.b?.busy}>
                                 <span class="text-[10px] text-accent animate-pulse">生成中</span>
@@ -894,7 +899,7 @@ main();
                                   class="hover:text-accent p-1 cursor-pointer"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: `模型 B (${turn.b?.servedModel || modelB()})`,
+                                      title: `模型 B (${turn.b?.servedModel || turn.b?.targetModel})`,
                                       request: turn.b?.rawRequest,
                                       response: turn.b?.rawResponse,
                                     })

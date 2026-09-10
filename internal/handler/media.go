@@ -122,14 +122,17 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(bodyBytes, &bodyMap)
 	bodyMap["model"] = modelInfo.Model
 	bodyBytes, _ = json.Marshal(bodyMap)
-
+	startTime := time.Now()
 	resp, err := s.MediaClient.HandleTTS(r.Context(), modelInfo.Provider, bodyBytes, creds)
+	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
+		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/speech", "502", latencyMs)
 		slog.Error("TTS failed", "provider", modelInfo.Provider, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
+	s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/speech", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -163,14 +166,17 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
 	}
-
+	startTime := time.Now()
 	resp, err := s.MediaClient.HandleSTT(r.Context(), modelInfo.Provider, r, creds)
+	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
+		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/transcriptions", "502", latencyMs)
 		slog.Error("STT failed", "provider", modelInfo.Provider, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
+	s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/transcriptions", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -215,13 +221,17 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	startTime := time.Now()
 	resp, err := s.MediaClient.HandleVideo(r.Context(), providerID, "generations", bodyBytes, creds)
+	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
+		s.recordMediaDetail(providerID, req.Model, conn.ID, "/v1/videos/generations", "502", latencyMs)
 		slog.Error("Video generation failed", "provider", providerID, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
+	s.recordMediaDetail(providerID, req.Model, conn.ID, "/v1/videos/generations", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	s.proxyMediaResponse(w, resp)
 }

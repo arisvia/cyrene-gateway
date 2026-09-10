@@ -131,11 +131,12 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer resp.Body.Close()
-		io.ReadAll(resp.Body)
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "latency": latency.String(), "code": resp.StatusCode})
 		} else {
-			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": fmt.Sprintf("HTTP %d", resp.StatusCode), "latency": latency.String(), "code": resp.StatusCode})
+			errMsg := parseUpstreamErrorMessage(resp.StatusCode, errBody)
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": errMsg, "latency": latency.String(), "code": resp.StatusCode})
 		}
 		return
 	}
@@ -211,11 +212,34 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	io.ReadAll(resp.Body)
-
+	errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "latency": latency.String(), "code": resp.StatusCode})
 	} else {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": fmt.Sprintf("HTTP %d", resp.StatusCode), "latency": latency.String(), "code": resp.StatusCode})
+		errMsg := parseUpstreamErrorMessage(resp.StatusCode, errBody)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": errMsg, "latency": latency.String(), "code": resp.StatusCode})
 	}
+}
+
+func parseUpstreamErrorMessage(statusCode int, body []byte) string {
+	defaultMsg := fmt.Sprintf("HTTP %d", statusCode)
+	if len(body) == 0 {
+		return defaultMsg
+	}
+	var errObj struct {
+		Error   any    `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &errObj); err == nil {
+		if msg, ok := errObj.Error.(string); ok && msg != "" {
+			return fmt.Sprintf("HTTP %d: %s", statusCode, msg)
+		} else if errMap, ok := errObj.Error.(map[string]any); ok {
+			if m, ok := errMap["message"].(string); ok && m != "" {
+				return fmt.Sprintf("HTTP %d: %s", statusCode, m)
+			}
+		} else if errObj.Message != "" {
+			return fmt.Sprintf("HTTP %d: %s", statusCode, errObj.Message)
+		}
+	}
+	return defaultMsg
 }
