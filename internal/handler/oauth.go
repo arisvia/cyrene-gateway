@@ -365,6 +365,7 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 				return
 			}
+			go s.syncConnectionModels(conn)
 			writeJSON(w, http.StatusOK, map[string]any{
 				"success": true,
 				"connection": map[string]any{
@@ -621,6 +622,7 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 				}
 				if err := s.DB.UpdateConnection(&existing); err == nil {
 					slog.Info("OAuth updated existing connection credentials", slog.String("provider", providerID), slog.String("id", existing.ID), slog.String("email", existing.Email))
+					go s.syncConnectionModels(&existing)
 					return &existing
 				}
 			}
@@ -655,5 +657,6 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 	if err := s.DB.CreateConnection(conn); err != nil {
 		return nil
 	}
+	go s.syncConnectionModels(conn)
 	return conn
 }

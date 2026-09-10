@@ -170,6 +170,7 @@ func (s *Server) handleEnableFreeProviders(w http.ResponseWriter, r *http.Reques
 			slog.Error("failed to enable free provider", "provider", id, "error", err)
 			continue
 		}
+		go s.syncConnectionModels(pc)
 		enabled = append(enabled, id)
 	}
 	sort.Strings(enabled)
