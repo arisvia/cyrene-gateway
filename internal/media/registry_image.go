@@ -21,6 +21,23 @@ func registerImageProviders() {
 		})
 	}
 
+	// OpenRouter image generation
+	mergeProvider("openrouter", "OpenRouter", KindImage,
+		[]ModelEntry{
+			{ID: "google/gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},
+			{ID: "google/gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image", Kind: KindImage},
+			{ID: "google/gemini-3-pro-image", Name: "Gemini 3 Pro Image", Kind: KindImage},
+		},
+		ProviderConfig{
+			Provider:   "openrouter",
+			Kind:       KindImage,
+			BaseURL:    "https://openrouter.ai/api/v1/images/generations",
+			AuthType:   "apikey",
+			AuthHeader: "bearer",
+			Format:     "openai",
+		},
+	)
+
 	// Gemini image generation
 	mergeProvider("gemini", "Gemini", KindImage,
 		[]ModelEntry{

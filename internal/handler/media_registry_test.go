@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -206,5 +208,84 @@ func TestHandleMediaProvidersConnectedFiltering(t *testing.T) {
 	}
 	if allResp.Count <= 1 {
 		t.Errorf("expected multiple image providers in all listing, got %d", allResp.Count)
+	}
+}
+
+func TestAggregateAntigravitySearchResponse(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// 1. Test success response with Google response.candidates envelope
+	mockRespJSON := `{
+		"response": {
+			"candidates": [
+				{
+					"content": {
+						"parts": [
+							{"text": "Noah Lyles won the 2024 Olympic 100m gold."}
+						]
+					},
+					"groundingMetadata": {
+						"webSearchQueries": ["2024 olympics 100m gold winner"],
+						"groundingChunks": [
+							{
+								"web": {
+									"uri": "https://en.wikipedia.org/wiki/Athletics_at_the_2024_Summer_Olympics",
+									"title": "Wikipedia"
+								}
+							}
+						]
+					}
+				}
+			]
+		}
+	}`
+
+	httpResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader([]byte(mockRespJSON))),
+	}
+
+	w := httptest.NewRecorder()
+	srv.aggregateAntigravitySearchResponse(w, httpResp, "who won 100m")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var out struct {
+		Provider string `json:"provider"`
+		Query    string `json:"query"`
+		Count    int    `json:"count"`
+		Summary  string `json:"summary"`
+		Results  []struct {
+			Title string `json:"title"`
+			URL   string `json:"url"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+	if out.Provider != "antigravity" || out.Query != "who won 100m" || out.Count != 1 {
+		t.Errorf("unexpected output: %+v", out)
+	}
+	if out.Summary != "Noah Lyles won the 2024 Olympic 100m gold." {
+		t.Errorf("unexpected summary: %q", out.Summary)
+	}
+	if len(out.Results) != 1 || out.Results[0].Title != "Wikipedia" {
+		t.Errorf("unexpected results: %+v", out.Results)
+	}
+
+	// 2. Test error response propagation (e.g. 503 capacity exhausted)
+	mockErrJSON := `{"error": {"code": 503, "message": "No capacity available for model gemini-2.5-flash", "status": "UNAVAILABLE"}}`
+	errHttpResp := &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader([]byte(mockErrJSON))),
+	}
+	wErr := httptest.NewRecorder()
+	srv.aggregateAntigravitySearchResponse(wErr, errHttpResp, "test query")
+	if wErr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", wErr.Code)
 	}
 }

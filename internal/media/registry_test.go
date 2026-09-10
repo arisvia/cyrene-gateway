@@ -29,6 +29,11 @@ func TestEmbeddingProviders(t *testing.T) {
 	if cfg.BaseURL != "https://api.openai.com/v1/embeddings" {
 		t.Errorf("unexpected base URL: %s", cfg.BaseURL)
 	}
+
+	// OpenRouter should support embeddings
+	if !SupportsKind("openrouter", KindEmbedding) {
+		t.Error("openrouter should support embeddings")
+	}
 }
 
 func TestImageProviders(t *testing.T) {
@@ -42,6 +47,9 @@ func TestImageProviders(t *testing.T) {
 	}
 	if !SupportsKind("gemini", KindImage) {
 		t.Error("gemini should support image generation")
+	}
+	if !SupportsKind("openrouter", KindImage) {
+		t.Error("openrouter should support image generation")
 	}
 }
 

@@ -5,6 +5,7 @@ func registerEmbeddingProviders() {
 		id, name, baseURL string
 	}{
 		{"openai", "OpenAI", "https://api.openai.com/v1/embeddings"},
+		{"openrouter", "OpenRouter", "https://openrouter.ai/api/v1/embeddings"},
 	}
 
 	for _, p := range embeddingProviders {

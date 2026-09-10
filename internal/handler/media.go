@@ -298,6 +298,7 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Provider string `json:"provider"`
+		Query    string `json:"query"`
 	}
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -328,7 +329,7 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	if req.Provider == "antigravity" {
-		s.aggregateAntigravitySearchResponse(w, resp)
+		s.aggregateAntigravitySearchResponse(w, resp, req.Query)
 		return
 	}
 
@@ -596,53 +597,83 @@ func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *
 }
 
 // aggregateAntigravitySearchResponse unpacks Google GroundingMetadata into unified search results
-func (s *Server) aggregateAntigravitySearchResponse(w http.ResponseWriter, resp *http.Response) {
+func (s *Server) aggregateAntigravitySearchResponse(w http.ResponseWriter, resp *http.Response, query string) {
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read antigravity search response"})
 		return
 	}
 
-	var data struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-			GroundingMetadata struct {
-				GroundingChunks []struct {
-					Web struct {
-						URI   string `json:"uri"`
-						Title string `json:"title"`
-					} `json:"web"`
-				} `json:"groundingChunks"`
-			} `json:"groundingMetadata"`
-		} `json:"candidates"`
+	if resp.StatusCode >= 400 {
+		var errData struct {
+			Error struct {
+				Message string `json:"message"`
+				Code    int    `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(respBytes, &errData) == nil && errData.Error.Message != "" {
+			writeJSON(w, resp.StatusCode, map[string]string{"error": errData.Error.Message})
+			return
+		}
+		writeJSON(w, resp.StatusCode, map[string]string{"error": string(respBytes)})
+		return
 	}
 
-	var results []map[string]any
+	type antigravityCandidate struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+		GroundingMetadata struct {
+			WebSearchQueries []string `json:"webSearchQueries"`
+			GroundingChunks  []struct {
+				Web struct {
+					URI   string `json:"uri"`
+					Title string `json:"title"`
+				} `json:"web"`
+			} `json:"groundingChunks"`
+		} `json:"groundingMetadata"`
+	}
+
+	var envelope struct {
+		Response struct {
+			Candidates []antigravityCandidate `json:"candidates"`
+		} `json:"response"`
+		Candidates []antigravityCandidate `json:"candidates"`
+	}
+
+	results := []map[string]any{}
 	summary := ""
-	if err := json.Unmarshal(respBytes, &data); err == nil && len(data.Candidates) > 0 {
-		cand := data.Candidates[0]
-		for _, p := range cand.Content.Parts {
-			summary += p.Text
+	if err := json.Unmarshal(respBytes, &envelope); err == nil {
+		candidates := envelope.Response.Candidates
+		if len(candidates) == 0 {
+			candidates = envelope.Candidates
 		}
-		for i, chunk := range cand.GroundingMetadata.GroundingChunks {
-			if chunk.Web.URI != "" {
-				results = append(results, map[string]any{
-					"position": i + 1,
-					"title":    chunk.Web.Title,
-					"url":      chunk.Web.URI,
-					"snippet":  summary,
-				})
+		if len(candidates) > 0 {
+			cand := candidates[0]
+			for _, p := range cand.Content.Parts {
+				summary += p.Text
+			}
+			if query == "" && len(cand.GroundingMetadata.WebSearchQueries) > 0 {
+				query = cand.GroundingMetadata.WebSearchQueries[0]
+			}
+			for i, chunk := range cand.GroundingMetadata.GroundingChunks {
+				if chunk.Web.URI != "" {
+					results = append(results, map[string]any{
+						"position": i + 1,
+						"title":    chunk.Web.Title,
+						"url":      chunk.Web.URI,
+						"snippet":  summary,
+					})
+				}
 			}
 		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider": "antigravity",
-		"query":    "",
+		"query":    query,
 		"count":    len(results),
 		"summary":  summary,
 		"results":  results,
