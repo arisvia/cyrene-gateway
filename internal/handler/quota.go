@@ -101,6 +101,17 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 			projectID = pid
 		}
 	}
+	// Lazy Antigravity project discovery if missing
+	if projectID == "" && conn.Provider == "antigravity" && conn.Data.AccessToken != "" {
+		if discovered, err := DiscoverAntigravityProject(r.Context(), s.getHTTPClient(15*time.Second), conn.Data.AccessToken); err == nil && discovered != "" {
+			projectID = discovered
+			if conn.Data.ProviderSpecificData == nil {
+				conn.Data.ProviderSpecificData = make(map[string]any)
+			}
+			conn.Data.ProviderSpecificData["projectId"] = projectID
+			s.DB.UpdateConnection(conn)
+		}
+	}
 
 	res := usage.FetchQuota(r.Context(), s.getHTTPClient(15*time.Second), usage.QuotaCredentials{
 		Provider:    conn.Provider,

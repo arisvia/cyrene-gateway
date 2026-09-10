@@ -77,26 +77,35 @@ func (s *Server) handleAntigravityChat(
 			"parts": systemInstruction,
 		}
 	}
-	if len(genConfig) > 0 {
-		innerRequest["generationConfig"] = genConfig
-	}
+	availableModels := s.getAntigravityAvailableModels()
+	targetModel, tier, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
 
-	targetModel, tier := resolveAntigravityModelTier(modelInfo.Model, req.ReasoningEffort)
-
-	// Set thinkingConfig in generationConfig if tier is known
-	if genConfig != nil && (tier == "high" || tier == "medium" || tier == "low") {
+	if isImage {
+		genConfig["maxOutputTokens"] = 8192
+		genConfig["imageConfig"] = map[string]any{"aspectRatio": "1:1"}
+	} else if shouldInjectThinking && genConfig != nil && (tier == "high" || tier == "medium" || tier == "low") {
 		genConfig["thinkingConfig"] = map[string]any{
 			"thinkingLevel":   tier,
 			"includeThoughts": true,
 		}
+	}
+	if len(genConfig) > 0 {
 		innerRequest["generationConfig"] = genConfig
 	}
+
+	reqType := "agent"
+	upstreamAction := "streamGenerateContent?alt=sse"
+	if isImage {
+		reqType = "image_gen"
+		upstreamAction = "generateContent"
+	}
+
 	reqID := fmt.Sprintf("agent-%d-%s", time.Now().UnixMilli(), randomHex(4))
 	envelope := map[string]any{
 		"project":     projectID,
 		"model":       targetModel,
 		"request":     innerRequest,
-		"requestType": "agent",
+		"requestType": reqType,
 		"userAgent":   "antigravity",
 		"requestId":   reqID,
 	}
@@ -107,7 +116,7 @@ func (s *Server) handleAntigravityChat(
 		return
 	}
 
-	upstreamURL := fmt.Sprintf("%s/v1internal:streamGenerateContent?alt=sse", provider.AntigravityBaseURL)
+	upstreamURL := fmt.Sprintf("%s/v1internal:%s", provider.AntigravityBaseURL, upstreamAction)
 	upReq, err := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
@@ -144,30 +153,95 @@ func (s *Server) handleAntigravityChat(
 		Status:       http.StatusOK,
 	}
 
-	if req.Stream {
-		s.proxyAntigravityStreaming(w, r, resp, modelInfo.Model, uc)
-	} else {
+	if isImage || !req.Stream {
 		s.proxyAntigravityNonStreaming(w, resp, modelInfo.Model, uc)
+	} else {
+		s.proxyAntigravityStreaming(w, r, resp, modelInfo.Model, uc)
 	}
 }
+
+const defaultThinkingAgSignature = "context_engineering_thought_signature"
+
+func parseMessageContent(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		return str
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &parts); err == nil {
+		var b strings.Builder
+		for _, p := range parts {
+			if p.Type == "text" || p.Text != "" {
+				b.WriteString(p.Text)
+			}
+		}
+		return b.String()
+	}
+	return string(raw)
+}
+
 func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[string]any) {
 	var contents []map[string]any
 	var systemParts []map[string]any
 
 	for _, msg := range messages {
 		role := strings.ToLower(msg.Role)
+		text := parseMessageContent(msg.Content)
+
 		if role == "system" {
-			systemParts = append(systemParts, map[string]any{"text": msg.Content})
+			systemParts = append(systemParts, map[string]any{"text": text})
 			continue
 		}
 		if role == "assistant" {
 			role = "model"
+		} else if role == "tool" {
+			role = "user"
 		}
+
+		parts := []map[string]any{
+			{"text": text},
+		}
+
+		// Backfill thoughtSignature for tool calling history on Gemini 3+
+		if len(msg.ToolCalls) > 0 {
+			var toolCalls []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			}
+			if err := json.Unmarshal(msg.ToolCalls, &toolCalls); err == nil && len(toolCalls) > 0 {
+				for i, tc := range toolCalls {
+					var args map[string]any
+					_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+					if args == nil {
+						args = map[string]any{}
+					}
+					fcPart := map[string]any{
+						"functionCall": map[string]any{
+							"name": tc.Function.Name,
+							"args": args,
+						},
+					}
+					if i == 0 {
+						fcPart["thoughtSignature"] = defaultThinkingAgSignature
+					}
+					parts = append(parts, fcPart)
+				}
+			}
+		}
+
 		contents = append(contents, map[string]any{
-			"role": role,
-			"parts": []map[string]any{
-				{"text": msg.Content},
-			},
+			"role":  role,
+			"parts": parts,
 		})
 	}
 
@@ -357,54 +431,156 @@ func randomHex(n int) string {
 	return fmt.Sprintf("%x", b)
 }
 
-// resolveAntigravityModelTier maps requested model and reasoning_effort to upstream tiered model
-func resolveAntigravityModelTier(rawModel, reasoningEffort string) (targetModel string, tier string) {
-	targetModel = rawModel
-	targetModel = strings.TrimPrefix(targetModel, "antigravity/")
-	targetModel = strings.TrimPrefix(targetModel, "ag/")
+func (s *Server) getAntigravityAvailableModels() []model.ModelMetadata {
+	if raw, err := s.DB.KVGet("providerModelCache", "antigravity"); err == nil && raw != "" {
+		var cached model.CachedModels
+		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
+			return cached.Models
+		}
+	}
+	if pInfo, ok := provider.GetProvider("antigravity"); ok && len(pInfo.Models) > 0 {
+		return populateStaticModels(pInfo)
+	}
+	return nil
+}
 
-	lowerReqEffort := strings.ToLower(strings.TrimSpace(reasoningEffort))
-	switch lowerReqEffort {
-	case "high":
-		tier = "high"
-	case "low":
-		tier = "low"
-	case "medium":
-		tier = "medium"
+// resolveAntigravityModel dynamically resolves the target upstream model ID and tier from available models.
+func resolveAntigravityModel(
+	rawModel string,
+	reasoningEffort string,
+	availableModels []model.ModelMetadata,
+) (targetModel string, tier string, shouldInjectThinking bool, isImage bool) {
+	cleanModel := rawModel
+	cleanModel = strings.TrimPrefix(cleanModel, "antigravity/")
+	cleanModel = strings.TrimPrefix(cleanModel, "ag/")
+	cleanModel = strings.TrimSpace(cleanModel)
+
+	if strings.Contains(strings.ToLower(cleanModel), "image") {
+		return cleanModel, "", false, true
 	}
 
-	// If model explicitly specifies tier suffix, extract it
+	lowerEffort := strings.ToLower(strings.TrimSpace(reasoningEffort))
+	switch lowerEffort {
+	case "high", "medium", "low", "extra-low":
+		tier = lowerEffort
+	}
+
 	for _, t := range []string{"high", "medium", "low", "extra-low"} {
-		if strings.HasSuffix(targetModel, "-"+t) {
+		if strings.HasSuffix(cleanModel, "-"+t) {
 			tier = t
-			return targetModel, tier
+			break
+		}
+	}
+	if tier == "" {
+		tier = "medium"
+	}
+	availMap := make(map[string]model.ModelMetadata, len(availableModels))
+	for _, m := range availableModels {
+		availMap[m.ID] = m
+	}
+
+	// 1. Exact match
+	if _, ok := availMap[cleanModel]; ok {
+		targetModel = cleanModel
+	}
+
+	// 2. Effort suffix probing if not resolved yet
+	if targetModel == "" {
+		effectiveTier := tier
+		if effectiveTier == "" {
+			effectiveTier = "medium"
+		}
+
+		if cleanModel == "gemini-3.5-flash" {
+			if effectiveTier == "high" {
+				targetModel = "gemini-3.5-flash-high"
+			} else if effectiveTier == "low" {
+				targetModel = "gemini-3.5-flash-extra-low"
+			} else {
+				targetModel = "gemini-3.5-flash-low"
+			}
+		} else if cleanModel == "gemini-3.1-pro" {
+			if effectiveTier == "low" {
+				targetModel = "gemini-3.1-pro-low"
+			} else {
+				targetModel = "gemini-3.1-pro-high"
+			}
+		} else {
+			probe := cleanModel + "-" + effectiveTier
+			if _, ok := availMap[probe]; ok {
+				targetModel = probe
+			} else {
+				for _, alt := range []string{"medium", "high", "low"} {
+					probeAlt := cleanModel + "-" + alt
+					if _, ok := availMap[probeAlt]; ok {
+						targetModel = probeAlt
+						if tier == "" {
+							tier = alt
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Prefix matching in available models
+	if targetModel == "" {
+		for id := range availMap {
+			if strings.HasPrefix(id, cleanModel+"-") {
+				targetModel = id
+				break
+			}
+		}
+	}
+
+	// 4. Default / Passthrough fallback
+	if targetModel == "" {
+		if tier != "" && !strings.HasSuffix(cleanModel, "-"+tier) && strings.HasPrefix(cleanModel, "gemini-") {
+			targetModel = cleanModel + "-" + tier
+		} else {
+			targetModel = cleanModel
+		}
+	}
+
+	if tier == "" {
+		for _, t := range []string{"high", "medium", "low", "extra-low"} {
+			if strings.HasSuffix(targetModel, "-"+t) {
+				tier = t
+				break
+			}
 		}
 	}
 	if tier == "" {
 		tier = "medium"
 	}
 
-	if targetModel == "gemini-3.8-flash" {
-		targetModel = "gemini-3.8-flash-" + tier
-	} else if targetModel == "gemini-3.7-flash" {
-		targetModel = "gemini-3.7-flash-" + tier
-	} else if targetModel == "gemini-3.6-flash" {
-		targetModel = "gemini-3.6-flash-" + tier
-	} else if targetModel == "gemini-3.5-flash" {
-		if tier == "high" {
-			targetModel = "gemini-3.5-flash-high"
-		} else if tier == "low" {
-			targetModel = "gemini-3.5-flash-extra-low"
-		} else {
-			targetModel = "gemini-3.5-flash-low"
+	// Determine if thinkingConfig should be injected:
+	// Only Gemini family models with thinking capability should receive thinkingConfig.
+	// Claude, GPT-OSS, and non-thinking models must NEVER receive thinkingConfig.
+	isGemini := strings.HasPrefix(targetModel, "gemini-")
+	if meta, ok := availMap[targetModel]; ok {
+		if meta.Family != "" && meta.Family != "gemini" {
+			isGemini = false
 		}
-	} else if targetModel == "gemini-3.1-pro" {
-		if tier == "low" {
-			targetModel = "gemini-3.1-pro-low"
-		} else {
-			targetModel = "gemini-3.1-pro-high"
+		hasReasoning := false
+		for _, cap := range meta.Capabilities {
+			if cap == "reasoning" {
+				hasReasoning = true
+				break
+			}
 		}
+		shouldInjectThinking = isGemini && hasReasoning && (tier == "high" || tier == "medium" || tier == "low")
+	} else {
+		// Non-cached fallback heuristic: only gemini- models get thinkingConfig
+		shouldInjectThinking = isGemini && (tier == "high" || tier == "medium" || tier == "low")
 	}
 
+	return targetModel, tier, shouldInjectThinking, false
+}
+
+// resolveAntigravityModelTier maps requested model and reasoning_effort to upstream tiered model (compat).
+func resolveAntigravityModelTier(rawModel, reasoningEffort string) (targetModel string, tier string) {
+	targetModel, tier, _, _ = resolveAntigravityModel(rawModel, reasoningEffort, nil)
 	return targetModel, tier
 }
