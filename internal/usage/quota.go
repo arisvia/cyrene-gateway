@@ -70,6 +70,7 @@ var quotaFetchers = map[string]QuotaFetcher{
 	"codebuddy-cn":   fetchCodebuddy,
 	"codebuddy-intl": fetchCodebuddy,
 	"opencode":       fetchOpenCode,
+	"opencode-go":    fetchOpenCode,
 }
 
 // QuotaSupported reports whether a provider has a real usage fetcher.

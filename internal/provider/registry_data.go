@@ -379,7 +379,7 @@ func init() {
 	}
 	Registry["opencode"] = ProviderInfo{
 		ID: "opencode", Name: "OpenCode",
-		Alias: "oc", Aliases: []string{"oc", "opencode-go", "ocg"},
+		Alias: "oc", Aliases: []string{"oc"},
 		BaseURL: "https://opencode.ai/zen/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 40,
@@ -401,10 +401,11 @@ func init() {
 			{ID: "ling-3.0-flash-fin-free", Name: "Ling 3.0 Flash (Free)"},
 			{ID: "nemotron-3-ultra-free", Name: "Nemotron 3 Ultra (Free)"},
 			{ID: "nemotron-3.5-lightning-free", Name: "Nemotron 3.5 Lightning (Free)"},
-			{ID: "claude-sonnet-5", Name: "Claude Sonnet 5"},
-			{ID: "claude-opus-5", Name: "Claude Opus 5"},
-			{ID: "gemini-3.8-flash", Name: "Gemini 3.8 Flash"},
-			{ID: "gpt-6-astra", Name: "GPT-6 Astra"},
+			{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash"},
+			{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro"},
+			{ID: "glm-5.3-flash", Name: "GLM 5.3 Flash (Vision)"},
+			{ID: "minimax-m3", Name: "MiniMax M3"},
+			{ID: "kimi-k2.7-code", Name: "Kimi K2.7 Code"},
 		},
 	}
 	Registry["openrouter"] = ProviderInfo{
