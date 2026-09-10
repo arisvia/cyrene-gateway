@@ -635,20 +635,26 @@ const ProviderDetail: Component = () => {
               </div>
             }
             actions={
-              <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2.5 flex-wrap">
                 <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
+                <Show when={testResult()}>
+                  <span
+                    class={`text-xs px-2.5 py-1 rounded-control font-mono inline-flex items-center gap-1.5 max-w-[220px] sm:max-w-xs truncate cursor-pointer transition-all ${
+                      testResult()!.ok
+                        ? 'bg-success/10 text-success border border-success/20 hover:bg-success/20'
+                        : 'bg-danger/10 text-danger border border-danger/20 hover:bg-danger/20'
+                    }`}
+                    title={`${testResult()!.msg}（点击关闭）`}
+                    onClick={() => setTestResult(null)}
+                  >
+                    <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${testResult()!.ok ? 'bg-success' : 'bg-danger'}`} />
+                    <span class="truncate">{testResult()!.msg}</span>
+                  </span>
+                </Show>
                 <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
             }
-          >
-            <Show when={testResult()}>
-              <div class={`text-xs px-3 py-1.5 rounded-control inline-block ${testResult()!.ok
-                ? 'bg-success/10 text-success'
-                : 'bg-danger/10 text-danger'}`}>
-                {testResult()!.msg}
-              </div>
-            </Show>
-          </PageHeader>
+          />
         )}
       </Show>
 
