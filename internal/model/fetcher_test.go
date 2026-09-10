@@ -37,10 +37,11 @@ func TestFetchModels_BearerAuth(t *testing.T) {
 
 func TestFetchModels_AuthSchemes(t *testing.T) {
 	cases := []struct {
-		name  string
-		cfg   ModelsFetchConfig
-		token string
-		check func(*testing.T, *http.Request)
+		name        string
+		cfg         ModelsFetchConfig
+		token       string
+		accessToken string
+		check       func(*testing.T, *http.Request)
 	}{
 		{
 			name: "none (public)",
@@ -81,6 +82,20 @@ func TestFetchModels_AuthSchemes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "raw with accessToken falls back to Bearer",
+			cfg:         ModelsFetchConfig{Auth: "raw", AuthHeader: "x-api-key"},
+			token:       "",
+			accessToken: "ya29-oauth-token",
+			check: func(t *testing.T, r *http.Request) {
+				if got := r.Header.Get("Authorization"); got != "Bearer ya29-oauth-token" {
+					t.Errorf("expected Bearer ya29-oauth-token, got %q", got)
+				}
+				if got := r.Header.Get("x-api-key"); got != "" {
+					t.Errorf("expected no x-api-key header, got %q", got)
+				}
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -96,7 +111,7 @@ func TestFetchModels_AuthSchemes(t *testing.T) {
 			if cfg.URL == "" {
 				cfg.URL = srv.URL + "/models"
 			}
-			_, err := FetchModels(srv.Client(), "openai", "", tc.token, "", cfg)
+			_, err := FetchModels(srv.Client(), "openai", "", tc.token, tc.accessToken, cfg)
 			if err != nil {
 				t.Fatalf("FetchModels failed: %v", err)
 			}

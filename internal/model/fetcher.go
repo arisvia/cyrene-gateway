@@ -75,12 +75,14 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 			req.URL.RawQuery = q.Encode()
 		}
 	case "raw":
-		if token != "" {
+		if apiKey != "" {
 			header := cfg.AuthHeader
 			if header == "" {
 				header = "x-api-key"
 			}
-			req.Header.Set(header, token)
+			req.Header.Set(header, apiKey)
+		} else if accessToken != "" {
+			req.Header.Set("Authorization", "Bearer "+accessToken)
 		}
 	default: // "bearer" / ""
 		if token != "" {

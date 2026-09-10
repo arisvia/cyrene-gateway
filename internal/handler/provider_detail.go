@@ -155,8 +155,16 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 				if ov.DisplayName != "" {
 					item.Name = ov.DisplayName
 				}
-				item.ContextLength = ov.ContextLength
-				item.MaxOutput = ov.MaxOutput
+				if ov.ContextLength > 0 {
+					item.ContextLength = ov.ContextLength
+				} else if cachedMeta, ok := cacheIndex[fullID]; ok && cachedMeta != nil && cachedMeta.ContextLength > 0 {
+					item.ContextLength = cachedMeta.ContextLength
+				}
+				if ov.MaxOutput > 0 {
+					item.MaxOutput = ov.MaxOutput
+				} else if cachedMeta, ok := cacheIndex[fullID]; ok && cachedMeta != nil && cachedMeta.MaxOutput > 0 {
+					item.MaxOutput = cachedMeta.MaxOutput
+				}
 				item.CanEdit = true
 				item.HasOverride = true
 				return item

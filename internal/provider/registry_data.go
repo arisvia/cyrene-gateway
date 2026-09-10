@@ -285,12 +285,15 @@ func init() {
 		Headers:    claudeCodeHeaders,
 		AuthHeader: "x-api-key",
 		AuthScheme: "raw",
+		ModelsURL:  "https://api.z.ai/api/paas/v4/models",
+		ModelsAuth: "bearer",
 	}
 	Registry["grok-cli"] = ProviderInfo{
 		ID: "grok-cli", Name: "Grok Build",
 		Alias: "gcli", Aliases: []string{"gcli", "grok-build", "gb"},
-		BaseURL: "",
-		APIType: "openai", AuthType: "oauth",
+		BaseURL:   "",
+		ModelsURL: "https://api.x.ai/v1/models",
+		APIType:   "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 275,
 		Color:         "#1DA1F2",
 		Website:       "https://x.ai",
