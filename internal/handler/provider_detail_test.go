@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestGetProviderModels(t *testing.T) {
@@ -263,6 +264,22 @@ func TestModelMetadataOverride(t *testing.T) {
 func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
 	srv, database := setupTestServer(t)
 
+	// Mock upstream server: return 404 to guarantee offline test
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+	origDevURL := model.ModelsDevURL
+	model.ModelsDevURL = ts.URL + "/models.dev"
+	defer func() { model.ModelsDevURL = origDevURL }()
+
+	orig := provider.Registry["codebuddy-cn"]
+	defer func() { provider.Registry["codebuddy-cn"] = orig }()
+
+	mockInfo := orig
+	mockInfo.BaseURL = ts.URL + "/v2/chat/completions"
+	provider.Registry["codebuddy-cn"] = mockInfo
+
 	conn := &model.ProviderConnection{
 		ID:       "cb-conn-1",
 		Provider: "codebuddy-cn",
@@ -273,7 +290,6 @@ func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
 		},
 	}
 	database.CreateConnection(conn)
-
 	// POST /api/providers/codebuddy-cn/refresh-models
 	// Live fetch will fail with 404 (mock server or unreachable upstream),
 	// so it must degrade to the 13 static catalog models and return 200 OK.

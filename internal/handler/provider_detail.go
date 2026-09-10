@@ -122,7 +122,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-
 	// 稳定排序：按模型 ID 进行确定性字母排序，避免 Go Map 乱序造成每次点击刷新顺序跳变
 	sort.Slice(unifiedModels, func(i, j int) bool {
 		return unifiedModels[i].ID < unifiedModels[j].ID
