@@ -349,7 +349,6 @@ const Quota: Component = () => {
                 const hasRealQuotas = () => quotaKeys().length > 0
                 const reg = () => store.registryList().find(r => r.id === conn.provider)
                 const providerName = () => reg()?.name || conn.provider
-                const hasCustomName = () => !!(conn.name && conn.name !== reg()?.name && conn.name.toLowerCase() !== conn.provider.toLowerCase())
                 const aggRow = () => rows().find(r => r.provider === conn.provider)
                 return (
                   <Card hover class="p-4 flex flex-col justify-between shadow-sm transition-all">
@@ -369,9 +368,6 @@ const Quota: Component = () => {
                               >
                                 {providerName()}
                               </A>
-                              <Show when={hasCustomName()}>
-                                <span class="text-xs text-faint truncate font-mono">({conn.name})</span>
-                              </Show>
                               <Badge tone="gray" class="text-[10px] uppercase font-mono px-1.5 py-0">
                                 {conn.provider}
                               </Badge>
@@ -382,7 +378,11 @@ const Quota: Component = () => {
                               </Show>
                             </div>
                             <div class="text-xs text-faint font-mono truncate mt-0.5">
-                              {conn.email || (conn.data?.credentialHint ? String(conn.data.credentialHint) : `${conn.id.slice(0, 8)}...`)}
+                              {(() => {
+                                const custom = conn.name && conn.name !== reg()?.name && conn.name.toLowerCase() !== conn.provider.toLowerCase() && conn.name !== conn.email ? conn.name : ''
+                                const idHint = conn.email || (conn.data?.credentialHint ? String(conn.data.credentialHint) : `${conn.id.slice(0, 8)}...`)
+                                return custom ? `${custom} · ${idHint}` : idHint
+                              })()}
                             </div>
                           </div>
                         </div>

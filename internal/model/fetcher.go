@@ -228,11 +228,26 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
+			Agents []struct {
+				Models []string `json:"models"`
+			} `json:"agents"`
 			Models []json.RawMessage `json:"models"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse codebuddy models: %w", err)
+	}
+
+	var allowedModels map[string]bool
+	for _, a := range resp.Data.Agents {
+		if len(a.Models) > 0 {
+			if allowedModels == nil {
+				allowedModels = make(map[string]bool)
+			}
+			for _, mID := range a.Models {
+				allowedModels[mID] = true
+			}
+		}
 	}
 
 	models := make([]ModelMetadata, 0, len(resp.Data.Models))
@@ -258,6 +273,9 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 			continue
 		}
 		if m.ID == "" || m.ID == "default" {
+			continue
+		}
+		if len(allowedModels) > 0 && !allowedModels[m.ID] {
 			continue
 		}
 		meta := ModelMetadata{

@@ -389,3 +389,36 @@ func TestNormalizeCodebuddy(t *testing.T) {
 		t.Errorf("unexpected m2 ID/DisplayName: %+v", m2)
 	}
 }
+
+func TestNormalizeCodebuddy_AgentFilter(t *testing.T) {
+	payload := []byte(`{
+		"code": 0,
+		"msg": "OK",
+		"data": {
+			"agents": [
+				{
+					"name": "cli",
+					"models": ["deepseek-v4.1-flash", "kimi-k3-1"]
+				}
+			],
+			"models": [
+				{ "id": "default", "name": "Default" },
+				{ "id": "deepseek-v4.1-flash", "name": "Deepseek-V4.1-Flash", "supportsImages": true },
+				{ "id": "kimi-k3-1", "name": "Kimi-K3-1", "supportsImages": true },
+				{ "id": "glm-5.0", "name": "GLM-5.0", "disabledMultimodal": true },
+				{ "id": "legacy-model", "name": "Legacy", "supportsImages": false }
+			]
+		}
+	}`)
+
+	models, err := normalizeCodebuddy(payload)
+	if err != nil {
+		t.Fatalf("normalizeCodebuddy failed: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models from agent whitelist, got %d", len(models))
+	}
+	if models[0].ID != "deepseek-v4.1-flash" || models[1].ID != "kimi-k3-1" {
+		t.Errorf("unexpected models: %+v", models)
+	}
+}
