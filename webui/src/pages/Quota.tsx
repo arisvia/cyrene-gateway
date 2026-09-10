@@ -13,6 +13,7 @@ interface QuotaBucket {
   remainingPercentage: number
   resetAt: string
   unit: string
+  displayName?: string
 }
 
 interface ConnQuota {
@@ -151,11 +152,14 @@ const Quota: Component = () => {
     return (
       <div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-hover/60 transition-colors text-xs">
         <span class={`w-2 h-2 rounded-full shrink-0 ${colorClass().dot}`} />
-        <span class="w-32 sm:w-36 font-medium text-foreground truncate shrink-0" title={props.name}>
+        <span class="w-32 sm:w-44 font-medium text-foreground truncate shrink-0" title={props.name}>
           {props.name}
         </span>
-        <span class="w-20 text-right tabular-nums text-faint text-[11px] shrink-0 font-mono">
-          {formatNumber(props.quota.used)} / {formatNumber(props.quota.total)}
+        <span
+          class="w-20 text-right tabular-nums text-faint text-[11px] shrink-0 font-mono"
+          title={`余量: ${formatNumber(props.quota.remaining)} / 总量: ${formatNumber(props.quota.total)}${props.quota.used != null ? ` (已用: ${formatNumber(props.quota.used)})` : ''}`}
+        >
+          {formatNumber(props.quota.remaining)} / {formatNumber(props.quota.total)}
         </span>
         <div class="flex-1 min-w-[70px] h-1.5 rounded-full bg-hover overflow-hidden mx-1.5">
           <div
@@ -235,7 +239,7 @@ const Quota: Component = () => {
           <For each={currentKeys()}>
             {k => {
               const b = props.quotasObj[k]
-              const label = k === 'user' ? '用户个人额度' : k === 'organization' ? '组织共享包' : k
+              const label = b.displayName || (k === 'user' ? '用户个人额度' : k === 'organization' ? '组织共享包' : k)
               return <QuotaItem name={label} quota={b} />
             }}
           </For>
@@ -416,9 +420,13 @@ const Quota: Component = () => {
                                 </div>
                               }
                             >
-                              <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex items-center justify-between">
-                                <span>{qData()!.message?.startsWith('Usage API not implemented') ? '官方暂未开放标准在线余量查询接口' : qData()!.message}</span>
-                                <span class="text-[10px] text-faint font-mono">网内自适应限流调度</span>
+                              <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                <span class="min-w-0 flex-1 leading-relaxed">
+                                  {qData()!.message?.startsWith('Usage API not implemented') ? '官方暂未开放标准在线余量查询接口' : qData()!.message}
+                                </span>
+                                <span class="text-[10px] text-faint font-mono shrink-0 whitespace-nowrap self-end sm:self-center px-1.5 py-0.5 rounded bg-hover/50">
+                                  网内自适应限流调度
+                                </span>
                               </div>
                             </Show>
                           }

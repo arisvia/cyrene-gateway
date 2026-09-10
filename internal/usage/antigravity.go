@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -160,7 +161,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 				rep = m
 			}
 		}
-		rem := rep.remFrac * total
+		rem := math.Round(rep.remFrac * total)
 		quotas["gemini"] = Quota{
 			DisplayName:         "Gemini (Flash / Pro / Image)",
 			Total:               total,
@@ -180,7 +181,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 				rep = m
 			}
 		}
-		rem := rep.remFrac * total
+		rem := math.Round(rep.remFrac * total)
 		quotas["claude"] = Quota{
 			DisplayName:         "Claude (Sonnet / Opus)",
 			Total:               total,
@@ -194,7 +195,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 
 	// 3. Image generation models
 	for _, m := range imageModels {
-		rem := m.remFrac * total
+		rem := math.Round(m.remFrac * total)
 		quotas[m.id] = Quota{
 			DisplayName:         m.displayName,
 			Total:               total,
@@ -208,7 +209,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 
 	// 4. Other standalone models (e.g. gpt-oss-120b-medium)
 	for _, m := range otherModels {
-		rem := m.remFrac * total
+		rem := math.Round(m.remFrac * total)
 		quotas[m.id] = Quota{
 			DisplayName:         m.displayName,
 			Total:               total,
