@@ -5,7 +5,6 @@ func registerEmbeddingProviders() {
 		id, name, baseURL string
 	}{
 		{"openai", "OpenAI", "https://api.openai.com/v1/embeddings"},
-		{"openrouter", "OpenRouter", "https://openrouter.ai/api/v1/embeddings"},
 	}
 
 	for _, p := range embeddingProviders {
@@ -18,6 +17,22 @@ func registerEmbeddingProviders() {
 			Format:     "openai",
 		})
 	}
+
+	// OpenRouter embeddings
+	mergeProvider("openrouter", "OpenRouter", KindEmbedding,
+		[]ModelEntry{
+			{ID: "openai/text-embedding-3-small", Name: "Text Embedding 3 Small", Kind: KindEmbedding},
+			{ID: "openai/text-embedding-3-large", Name: "Text Embedding 3 Large", Kind: KindEmbedding},
+		},
+		ProviderConfig{
+			Provider:   "openrouter",
+			Kind:       KindEmbedding,
+			BaseURL:    "https://openrouter.ai/api/v1/embeddings",
+			AuthType:   "apikey",
+			AuthHeader: "bearer",
+			Format:     "openai",
+		},
+	)
 
 	// Gemini uses a different format
 	mergeProvider("gemini", "Gemini", KindEmbedding,
