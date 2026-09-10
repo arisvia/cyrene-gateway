@@ -111,6 +111,9 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 
 	plan := "Qoder"
 	if pct := num(data["totalUsagePercentage"]); pct > 0 {
+		if pct <= 1.0 {
+			pct *= 100
+		}
 		plan = fmt.Sprintf("Qoder (%.0f%% used)", pct)
 	}
 	if exceeded, _ := data["isQuotaExceeded"].(bool); exceeded {

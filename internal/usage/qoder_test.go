@@ -48,6 +48,26 @@ func TestFetchQoder(t *testing.T) {
 		t.Error("zero-value org quota should be omitted")
 	}
 }
+func TestFetchQoder_FractionUsagePercentage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"userQuota": {"total": 3000, "used": 952, "remaining": 2048, "unit": "credits"},
+			"orgResourcePackage": {"total": 2000, "used": 0, "remaining": 2000, "unit": "credits"},
+			"totalUsagePercentage": 0.32,
+			"isQuotaExceeded": false,
+			"expiresAt": 1781594470000
+		}`))
+	}))
+	defer srv.Close()
+
+	res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+		Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
+	})
+	if !strings.Contains(res.Plan, "32%") {
+		t.Errorf("expected plan with 32%% usage, got %q", res.Plan)
+	}
+}
 
 func TestFetchQoderNoToken(t *testing.T) {
 	res := FetchQuota(context.Background(), nil, QuotaCredentials{Provider: "qoder"})
