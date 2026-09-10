@@ -32,30 +32,13 @@ func (s *Server) handleAntigravityChat(
 		return
 	}
 
-	projectID := ""
-	if conn.Data.ProviderSpecificData != nil {
-		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
-			projectID = pid
-		}
-	}
-
 	client := s.getHTTPClient(3 * time.Minute)
-
-	// Lazy project discovery if not cached
-	if projectID == "" {
-		discovered, err := DiscoverAntigravityProject(r.Context(), client, token)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("antigravity project not configured and discovery failed: %v", err),
-			})
-			return
-		}
-		projectID = discovered
-		if conn.Data.ProviderSpecificData == nil {
-			conn.Data.ProviderSpecificData = make(map[string]any)
-		}
-		conn.Data.ProviderSpecificData["projectId"] = projectID
-		s.DB.UpdateConnection(conn)
+	projectID, err := s.EnsureAntigravityProject(r.Context(), conn, client)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("antigravity project not configured and discovery failed: %v", err),
+		})
+		return
 	}
 
 	// Transform OpenAI messages into Gemini contents format

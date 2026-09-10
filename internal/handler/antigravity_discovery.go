@@ -83,6 +83,36 @@ func DiscoverAntigravityProject(ctx context.Context, client *http.Client, access
 	return "", fmt.Errorf("no project ID found in loadCodeAssist or onboardUser response")
 }
 
+// EnsureAntigravityProject retrieves or lazy-discovers and persists the projectId for an Antigravity connection.
+func (s *Server) EnsureAntigravityProject(ctx context.Context, conn *model.ProviderConnection, client *http.Client) (string, error) {
+	if conn == nil {
+		return "", fmt.Errorf("nil connection")
+	}
+	if conn.Data.ProviderSpecificData != nil {
+		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && pid != "" {
+			return pid, nil
+		}
+	}
+	if conn.Data.AccessToken == "" {
+		return "", fmt.Errorf("missing access token")
+	}
+	if client == nil {
+		client = s.getHTTPClient(15 * time.Second)
+	}
+	discovered, err := DiscoverAntigravityProject(ctx, client, conn.Data.AccessToken)
+	if err != nil {
+		return "", err
+	}
+	if conn.Data.ProviderSpecificData == nil {
+		conn.Data.ProviderSpecificData = make(map[string]any)
+	}
+	conn.Data.ProviderSpecificData["projectId"] = discovered
+	if s.DB != nil {
+		_ = s.DB.UpdateConnection(conn)
+	}
+	return discovered, nil
+}
+
 // fetchAntigravityCatalog fetches the available models list from Cloud Code Assist.
 func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Client, token, projectID string) []model.ModelMetadata {
 	if token == "" {

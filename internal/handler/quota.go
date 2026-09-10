@@ -96,20 +96,11 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 
 	s.tryRefreshToken(conn)
 	projectID := ""
-	if conn.Data.ProviderSpecificData != nil {
+	if conn.Provider == "antigravity" {
+		projectID, _ = s.EnsureAntigravityProject(r.Context(), conn, s.getHTTPClient(15*time.Second))
+	} else if conn.Data.ProviderSpecificData != nil {
 		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
 			projectID = pid
-		}
-	}
-	// Lazy Antigravity project discovery if missing
-	if projectID == "" && conn.Provider == "antigravity" && conn.Data.AccessToken != "" {
-		if discovered, err := DiscoverAntigravityProject(r.Context(), s.getHTTPClient(15*time.Second), conn.Data.AccessToken); err == nil && discovered != "" {
-			projectID = discovered
-			if conn.Data.ProviderSpecificData == nil {
-				conn.Data.ProviderSpecificData = make(map[string]any)
-			}
-			conn.Data.ProviderSpecificData["projectId"] = projectID
-			s.DB.UpdateConnection(conn)
 		}
 	}
 
