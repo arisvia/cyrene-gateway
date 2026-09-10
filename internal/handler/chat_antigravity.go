@@ -438,9 +438,6 @@ func (s *Server) getAntigravityAvailableModels() []model.ModelMetadata {
 			return cached.Models
 		}
 	}
-	if pInfo, ok := provider.GetProvider("antigravity"); ok && len(pInfo.Models) > 0 {
-		return populateStaticModels(pInfo)
-	}
 	return nil
 }
 

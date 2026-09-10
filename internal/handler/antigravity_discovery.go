@@ -220,42 +220,10 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				})
 			}
 			if len(out) > 0 {
-				// 确保 9router 体系的 Gemini 3.8 Flash 旗舰与思考梯度模型在列表中呈现（若上游暂未下发）
-				seen38 := false
-				for _, m := range out {
-					if strings.Contains(m.ID, "gemini-3.8-flash") {
-						seen38 = true
-						break
-					}
-				}
-				if !seen38 {
-					t38 := []struct {
-						id   string
-						name string
-					}{
-						{"gemini-3.8-flash", "Gemini 3.8 Flash"},
-						{"gemini-3.8-flash-high", "Gemini 3.8 Flash (High)"},
-						{"gemini-3.8-flash-medium", "Gemini 3.8 Flash (Medium)"},
-						{"gemini-3.8-flash-low", "Gemini 3.8 Flash (Low)"},
-					}
-					for _, item := range t38 {
-						out = append(out, model.ModelMetadata{
-							ID:            item.id,
-							DisplayName:   item.name,
-							ContextLength: 1048576,
-							MaxOutput:     65536,
-							Capabilities:  []string{"chat", "code", "reasoning", "vision"},
-							Modalities:    []string{"text", "image"},
-							Family:        "gemini",
-						})
-					}
-				}
-
 				// 确定性排序（按 ID 升序），防止每次同步顺序跳变
 				sort.Slice(out, func(i, j int) bool {
 					return out[i].ID < out[j].ID
 				})
-
 				return out
 			}
 		}
