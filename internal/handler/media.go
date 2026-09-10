@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -378,10 +379,54 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			// 按当前 Tab 的能力过滤 models，避免多能力提供商把 image/tts/stt 等所有 model 混在一起返回
+			seenModel := make(map[string]bool)
 			var matchedModels []media.ModelEntry
 			for _, m := range e.Models {
 				if filterKind == "" || m.Kind == filterKind {
+					seenModel[m.ID] = true
 					matchedModels = append(matchedModels, m)
+				}
+			}
+
+			// 动态提取：从 providerModelCache 融合上游实时同步出的多媒体能力模型
+			if raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, e.Provider); err == nil && raw != "" {
+				var cached model.CachedModels
+				if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
+					for _, cm := range cached.Models {
+						lowerID := strings.ToLower(cm.ID)
+						match := false
+						switch filterKind {
+						case media.KindImage:
+							match = slices.Contains(cm.Capabilities, "image-generation") ||
+								strings.Contains(lowerID, "-image") ||
+								strings.Contains(lowerID, "dall-e") ||
+								strings.Contains(lowerID, "flux")
+						case media.KindEmbedding:
+							match = slices.Contains(cm.Capabilities, "embeddings") ||
+								strings.Contains(lowerID, "embed") ||
+								strings.Contains(lowerID, "bge") ||
+								strings.Contains(lowerID, "gte")
+						case media.KindWebSearch:
+							if e.Provider == "antigravity" {
+								match = strings.HasPrefix(lowerID, "gemini-") &&
+									!strings.Contains(lowerID, "-image") &&
+									!strings.Contains(lowerID, "-tts") &&
+									(slices.Contains(cm.Capabilities, "chat") || slices.Contains(cm.Capabilities, "code"))
+							}
+						}
+						if match && !seenModel[cm.ID] {
+							seenModel[cm.ID] = true
+							displayName := cm.DisplayName
+							if displayName == "" {
+								displayName = cm.ID
+							}
+							matchedModels = append(matchedModels, media.ModelEntry{
+								ID:   cm.ID,
+								Name: displayName,
+								Kind: filterKind,
+							})
+						}
+					}
 				}
 			}
 			out = append(out, EnrichedProvider{
