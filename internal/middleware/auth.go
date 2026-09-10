@@ -35,6 +35,11 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 
 			if keyStr == "" {
 				if requireKey {
+					// Allow authenticated dashboard sessions from WebUI / Playground
+					if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" && auth.VerifySessionToken(cookie.Value) {
+						next.ServeHTTP(w, r)
+						return
+					}
 					writeAuthError(w, http.StatusUnauthorized, "API key required")
 					return
 				}

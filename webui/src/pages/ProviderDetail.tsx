@@ -594,7 +594,13 @@ const ProviderDetail: Component = () => {
   async function handleTestAll() {
     if (!conn() || testingAll()) return
     const p = conn()!.provider
-    const targetList = allDisplayModels().filter(m => Boolean(m.id || m.name))
+    const seen = new Set<string>()
+    const targetList = allDisplayModels().filter(m => {
+      const k = m.id || m.name
+      if (!k || seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
     if (targetList.length === 0) {
       toast.info('没有可测试的模型')
       return
@@ -646,9 +652,12 @@ const ProviderDetail: Component = () => {
 
   const failedModelsList = () => {
     const results = modelTestResults()
+    const seen = new Set<string>()
     return allDisplayModels().filter(m => {
       const mid = m.id || m.name
-      return mid && results[mid] && !results[mid].ok && m.enabled !== false
+      if (!mid || seen.has(mid)) return false
+      seen.add(mid)
+      return results[mid] && !results[mid].ok && m.enabled !== false
     })
   }
 

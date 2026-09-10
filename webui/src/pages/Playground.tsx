@@ -503,7 +503,7 @@ const Playground: Component = () => {
         })
     }
 
-    await Promise.all([promiseA, promiseB])
+    await Promise.allSettled([promiseA, promiseB])
   }
 
   function copyText(text: string, label = '内容') {
