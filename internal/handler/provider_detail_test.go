@@ -278,6 +278,7 @@ func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
 
 	mockInfo := orig
 	mockInfo.BaseURL = ts.URL + "/v2/chat/completions"
+	mockInfo.ModelsURL = ts.URL + "/v3/config"
 	provider.Registry["codebuddy-cn"] = mockInfo
 
 	conn := &model.ProviderConnection{
@@ -326,6 +327,79 @@ func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
 	}
 
 	// Verify providerModelCache was populated in DB
+	cachedRaw, err := database.KVGet("providerModelCache", "codebuddy-cn")
+	if err != nil || cachedRaw == "" {
+		t.Fatalf("expected providerModelCache to be written in DB")
+	}
+}
+
+func TestRefreshModels_CodeBuddy_LiveConfig(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v3/config" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{
+				"code": 0,
+				"msg": "OK",
+				"data": {
+					"models": [
+						{"id": "default", "name": "Default"},
+						{"id": "deepseek-v4.1-flash", "name": "Deepseek-V4.1-Flash", "maxInputTokens": 1000000, "maxOutputTokens": 128000, "supportsImages": true, "supportsToolCall": true, "supportsReasoning": true},
+						{"id": "minimax-m3", "name": "MiniMax-M3", "maxInputTokens": 512000, "maxOutputTokens": 128000, "supportsImages": true, "supportsToolCall": true, "supportsReasoning": true}
+					]
+				}
+			}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	orig := provider.Registry["codebuddy-cn"]
+	defer func() { provider.Registry["codebuddy-cn"] = orig }()
+
+	mockInfo := orig
+	mockInfo.BaseURL = ts.URL + "/v2/chat/completions"
+	mockInfo.ModelsURL = ts.URL + "/v3/config"
+	provider.Registry["codebuddy-cn"] = mockInfo
+
+	conn := &model.ProviderConnection{
+		ID:       "cb-live-conn",
+		Provider: "codebuddy-cn",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "cb-live-token",
+		},
+	}
+	database.CreateConnection(conn)
+
+	req := httptest.NewRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on live config fetch, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		OK       bool                  `json:"ok"`
+		Provider string                `json:"provider"`
+		Count    int                   `json:"count"`
+		Models   []model.ModelMetadata `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Count != 2 || len(resp.Models) != 2 {
+		t.Fatalf("expected 2 live models (skipping default), got count=%d, len=%d", resp.Count, len(resp.Models))
+	}
+	m0 := resp.Models[0]
+	if m0.ID != "deepseek-v4.1-flash" || m0.ContextLength != 1000000 || m0.MaxOutput != 128000 {
+		t.Errorf("unexpected m0 specs: %+v", m0)
+	}
+
 	cachedRaw, err := database.KVGet("providerModelCache", "codebuddy-cn")
 	if err != nil || cachedRaw == "" {
 		t.Fatalf("expected providerModelCache to be written in DB")

@@ -299,3 +299,72 @@ func TestNormalizeOpenAICompat_RichMetadata(t *testing.T) {
 		t.Errorf("expected 200000/32768/GPT-5 Preview, got %+v", copilotModels[0])
 	}
 }
+
+func TestNormalizeCodebuddy(t *testing.T) {
+	payload := []byte(`{
+		"code": 0,
+		"msg": "OK",
+		"data": {
+			"models": [
+				{
+					"id": "default",
+					"name": "Default"
+				},
+				{
+					"id": "deepseek-v4.1-flash",
+					"name": "Deepseek-V4.1-Flash",
+					"maxInputTokens": 1000000,
+					"maxOutputTokens": 128000,
+					"supportsImages": true,
+					"supportsToolCall": true,
+					"supportsReasoning": true
+				},
+				{
+					"id": "minimax-m2.5",
+					"name": "MiniMax-M2.5",
+					"maxInputTokens": 200000,
+					"maxOutputTokens": 48000,
+					"supportsImages": false,
+					"supportsToolCall": true,
+					"supportsReasoning": false
+				}
+			]
+		}
+	}`)
+
+	models, err := normalizeCodebuddy(payload)
+	if err != nil {
+		t.Fatalf("normalizeCodebuddy failed: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models (skipping default), got %d", len(models))
+	}
+
+	m0 := models[0]
+	if m0.ID != "deepseek-v4.1-flash" || m0.DisplayName != "Deepseek-V4.1-Flash" {
+		t.Errorf("unexpected m0 ID/DisplayName: %+v", m0)
+	}
+	if m0.ContextLength != 1000000 || m0.MaxOutput != 128000 {
+		t.Errorf("unexpected tokens: input=%d, output=%d", m0.ContextLength, m0.MaxOutput)
+	}
+	if len(m0.Modalities) != 2 || m0.Modalities[0] != "text" || m0.Modalities[1] != "image" {
+		t.Errorf("expected [text image], got %v", m0.Modalities)
+	}
+	hasTools, hasReasoning := false, false
+	for _, c := range m0.Capabilities {
+		if c == "tools" {
+			hasTools = true
+		}
+		if c == "reasoning" {
+			hasReasoning = true
+		}
+	}
+	if !hasTools || !hasReasoning {
+		t.Errorf("expected tools,reasoning capabilities, got %v", m0.Capabilities)
+	}
+
+	m1 := models[1]
+	if m1.ID != "minimax-m2.5" || len(m1.Modalities) != 1 || m1.Modalities[0] != "text" {
+		t.Errorf("unexpected m1: %+v", m1)
+	}
+}

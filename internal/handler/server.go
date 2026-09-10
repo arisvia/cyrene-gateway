@@ -709,7 +709,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		baseURL = conn.Data.BaseURL
 	}
 	client := s.getHTTPClient(30 * time.Second)
-
+	s.tryRefreshToken(&conn)
 	// Qoder: COSY-signed catalog (resolve PATs first) — its inference
 	// protocol has no standard /models endpoint.
 	var models []model.ModelMetadata
@@ -720,7 +720,6 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if providerID == "antigravity" {
-		s.tryRefreshToken(&conn)
 		token := conn.Data.AccessToken
 		projectID, discErr := s.EnsureAntigravityProject(r.Context(), &conn, client)
 		models = s.fetchAntigravityCatalog(r.Context(), client, token, projectID)
@@ -740,11 +739,11 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			cfg.URL = "" // user base URL override → derive from it
 		}
 		fetched, fetchErr := model.FetchModels(client, providerID, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
-		if fetchErr != nil {
+		if fetchErr != nil || len(fetched) == 0 {
 			if static := populateStaticModels(providerInfo); len(static) > 0 {
-				slog.Info("Live model fetch failed, falling back to static registry models", slog.String("provider", providerID), "error", fetchErr)
+				slog.Info("Live model fetch failed or empty, falling back to static registry models", slog.String("provider", providerID), "error", fetchErr)
 				models = static
-			} else {
+			} else if fetchErr != nil {
 				slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
 				writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
 				return
@@ -902,12 +901,16 @@ func (s *Server) syncAllActiveConnections() {
 	}
 
 	for _, target := range targets {
+		if target.conn != nil {
+			s.tryRefreshToken(target.conn)
+			target.accessToken = target.conn.Data.AccessToken
+		}
 		pInfo, _ := provider.GetProvider(target.providerID)
 		var models []model.ModelMetadata
 		if target.providerID == "qoder" && target.conn != nil {
 			models = s.fetchQoderCatalog(target.conn, client)
 		} else if target.providerID == "antigravity" && target.conn != nil {
-			s.tryRefreshToken(target.conn)
+
 			projectID, _ := s.EnsureAntigravityProject(context.Background(), target.conn, client)
 			models = s.fetchAntigravityCatalog(context.Background(), client, target.conn.Data.AccessToken, projectID)
 		} else {
@@ -951,11 +954,12 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 		baseURL = conn.Data.BaseURL
 	}
 	client := s.getHTTPClient(30 * time.Second)
+	s.tryRefreshToken(conn)
 	var models []model.ModelMetadata
 	if conn.Provider == "qoder" {
 		models = s.fetchQoderCatalog(conn, client)
 	} else if conn.Provider == "antigravity" {
-		s.tryRefreshToken(conn)
+
 		projectID, _ := s.EnsureAntigravityProject(context.Background(), conn, client)
 		models = s.fetchAntigravityCatalog(context.Background(), client, conn.Data.AccessToken, projectID)
 	} else {

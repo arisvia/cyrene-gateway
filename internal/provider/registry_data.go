@@ -117,6 +117,7 @@ func init() {
 		},
 		ForceStream:    true,
 		ThinkingFormat: "openai",
+		ModelsURL:      "https://copilot.tencent.com/v3/config",
 		Models: []ModelRef{
 			{ID: "glm-5.3", Name: "GLM-5.3"},
 			{ID: "glm-5.3-flash", Name: "GLM-5.3-Flash"},
@@ -156,6 +157,7 @@ func init() {
 		},
 		ForceStream:    true,
 		ThinkingFormat: "openai",
+		ModelsURL:      "https://www.codebuddy.ai/v3/config",
 		Models: []ModelRef{
 			{ID: "glm-5.2", Name: "GLM-5.2"},
 			{ID: "glm-5.1", Name: "GLM-5.1"},

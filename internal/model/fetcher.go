@@ -125,6 +125,8 @@ func normalizeModels(providerID string, body []byte) ([]ModelMetadata, error) {
 		return normalizeGoogle(body)
 	case providerID == "mistral":
 		return normalizeMistral(body)
+	case strings.HasPrefix(providerID, "codebuddy"):
+		return normalizeCodebuddy(body)
 	default:
 		return normalizeOpenAICompat(body)
 	}
@@ -217,6 +219,58 @@ func normalizeOpenAICompat(body []byte) ([]ModelMetadata, error) {
 			}
 		}
 		models = append(models, meta)
+	}
+	return models, nil
+}
+
+// normalizeCodebuddy handles the Tencent CodeBuddy /v3/config response format.
+func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Models []struct {
+				ID                string `json:"id"`
+				Name              string `json:"name"`
+				MaxInputTokens    int    `json:"maxInputTokens"`
+				MaxOutputTokens   int    `json:"maxOutputTokens"`
+				SupportsImages    bool   `json:"supportsImages"`
+				SupportsToolCall  bool   `json:"supportsToolCall"`
+				SupportsReasoning bool   `json:"supportsReasoning"`
+			} `json:"models"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("parse codebuddy models: %w", err)
+	}
+
+	models := make([]ModelMetadata, 0, len(resp.Data.Models))
+	for _, m := range resp.Data.Models {
+		if m.ID == "" || m.ID == "default" {
+			continue
+		}
+		meta := ModelMetadata{
+			ID:            m.ID,
+			DisplayName:   m.Name,
+			ContextLength: m.MaxInputTokens,
+			MaxOutput:     m.MaxOutputTokens,
+		}
+		if m.SupportsImages {
+			meta.Modalities = []string{"text", "image"}
+		} else {
+			meta.Modalities = []string{"text"}
+		}
+		var caps []string
+		if m.SupportsToolCall {
+			caps = append(caps, "tools")
+		}
+		if m.SupportsReasoning {
+			caps = append(caps, "reasoning")
+		}
+		meta.Capabilities = caps
+		models = append(models, meta)
+	}
+	if len(models) == 0 {
+		return nil, fmt.Errorf("codebuddy returned 0 models (token may be invalid or expired)")
 	}
 	return models, nil
 }
