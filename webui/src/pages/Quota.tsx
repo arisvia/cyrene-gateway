@@ -347,8 +347,10 @@ const Quota: Component = () => {
                 const quotasObj = () => qData()?.quotas || {}
                 const quotaKeys = () => Object.keys(quotasObj())
                 const hasRealQuotas = () => quotaKeys().length > 0
+                const reg = () => store.registryList().find(r => r.id === conn.provider)
+                const providerName = () => reg()?.name || conn.provider
+                const hasCustomName = () => !!(conn.name && conn.name !== reg()?.name && conn.name.toLowerCase() !== conn.provider.toLowerCase())
                 const aggRow = () => rows().find(r => r.provider === conn.provider)
-
                 return (
                   <Card hover class="p-4 flex flex-col justify-between shadow-sm transition-all">
                     <div>
@@ -356,7 +358,7 @@ const Quota: Component = () => {
                         <div class="flex items-center gap-3 min-w-0">
                           <ProviderAvatar
                             provider={conn.provider}
-                            name={conn.name || conn.provider}
+                            name={providerName()}
                             size="md"
                           />
                           <div class="min-w-0">
@@ -365,8 +367,11 @@ const Quota: Component = () => {
                                 href={`/providers/${conn.id}`}
                                 class="font-semibold text-sm text-foreground hover:text-accent transition-colors truncate"
                               >
-                                {conn.name || conn.provider}
+                                {providerName()}
                               </A>
+                              <Show when={hasCustomName()}>
+                                <span class="text-xs text-faint truncate font-mono">({conn.name})</span>
+                              </Show>
                               <Badge tone="gray" class="text-[10px] uppercase font-mono px-1.5 py-0">
                                 {conn.provider}
                               </Badge>

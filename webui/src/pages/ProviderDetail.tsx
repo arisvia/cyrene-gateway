@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -118,7 +118,31 @@ const ProviderDetail: Component = () => {
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
 
   const regInfo = () => store.registryList().find(r => r.id === conn()?.provider)
+  const providerDisplayName = () => regInfo()?.name || conn()?.provider || '供应商详情'
 
+  function getAccountDisplayName(acc?: Provider | null, idx?: number): string {
+    if (!acc) return ''
+    const rawName = acc.name?.trim()
+    const pName = regInfo()?.name?.trim()
+    const pId = (acc.provider || conn()?.provider)?.trim()
+
+    // 排除与供应商名称或 ID 完全相同的自动默认命名
+    const isGeneric = !rawName || rawName === pName || rawName.toLowerCase() === pId?.toLowerCase()
+    if (!isGeneric) {
+      return rawName
+    }
+
+    // 若存在 OAuth 返回的用户邮箱/身份标识，优先展示
+    if (acc.email?.trim()) {
+      return acc.email.trim()
+    }
+
+    // 否则按账号在当前提供商凭据池中的序号兜底（如 账号 1、账号 2）
+    const indexNum = (idx !== undefined && idx >= 0)
+      ? idx + 1
+      : Math.max(1, accounts().findIndex(a => a.id === acc.id) + 1)
+    return `账号 ${indexNum}`
+  }
   function switchAccount(targetId: string) {
     if (!targetId || targetId === conn()?.id) return
     navigate(`/providers/${targetId}`)
@@ -155,7 +179,7 @@ const ProviderDetail: Component = () => {
       const added = await store.addProvider({
         provider: p,
         authType: aType,
-        name: newAccountName().trim() || `${p} 备用账号`,
+        name: newAccountName().trim() || `账号 ${accounts().length + 1}`,
         priority: Number(newAccountPriority()) || 20,
         data: {
           apiKey: newAccountApiKey().trim() || undefined,
@@ -230,7 +254,7 @@ const ProviderDetail: Component = () => {
         }
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
-          toast.info(`已在新窗口打开 ${conn()?.name || p} 授权页面，完成授权后网关将自动绑定。`)
+          toast.info(`已在新窗口打开 ${providerDisplayName()} 授权页面，完成授权后网关将自动绑定。`)
         }
 
         clearInterval(pollTimer)
@@ -374,7 +398,9 @@ const ProviderDetail: Component = () => {
         return
       }
       setConn(r)
-      setName(r.name || '')
+      const pName = store.registryList().find(item => item.id === r.provider)?.name?.trim()
+      const isAuto = !r.name || (pName && r.name.trim() === pName) || r.name.trim().toLowerCase() === r.provider?.trim().toLowerCase()
+      setName(isAuto ? '' : (r.name || ''))
       setPriority(String(r.priority ?? 0))
       setApiKey('')
       const d = r.data as { baseUrl?: string; providerSpecificData?: Record<string, unknown> } | undefined
@@ -396,6 +422,15 @@ const ProviderDetail: Component = () => {
     const currentId = params.id
     if (currentId) {
       load(currentId)
+    }
+  })
+
+  // 当 registryList 异步就绪后，如当前账号命名为默认供应商名，自动置空输入框以展示占位提示
+  createEffect(() => {
+    const c = conn()
+    const reg = regInfo()
+    if (c && reg && c.name && c.name.trim() === reg.name.trim() && name() === c.name) {
+      setName('')
     }
   })
 
@@ -623,17 +658,27 @@ const ProviderDetail: Component = () => {
           <PageHeader
             title={
               <div class="flex items-center gap-2.5">
-                <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 font-normal">
+                <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 font-normal mr-1">
                   ← 返回
                 </A>
-                <span>{c().name || c().provider}</span>
+                <ProviderAvatar
+                  provider={c().provider}
+                  name={providerDisplayName()}
+                  color={regInfo()?.color}
+                  size="sm"
+                  class="shrink-0"
+                />
+                <span>{providerDisplayName()}</span>
               </div>
             }
             badge={
               <div class="flex items-center gap-2 flex-wrap">
                 <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? '启用' : '停用'}</Badge>
-                <Badge tone="blue">{c().authType}</Badge>
-                <span class="text-xs text-faint font-mono">{c().id.slice(0, 12)}…</span>
+                <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
+                <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-subtle">
+                  {c().provider}
+                </span>
+                <span class="text-xs text-faint">共 {accounts().length} 个账号凭据</span>
               </div>
             }
             actions={
@@ -698,7 +743,8 @@ const ProviderDetail: Component = () => {
                         size="sm"
                         variant="primary"
                         onClick={() => {
-                          setNewAccountName(`${conn()?.name || conn()?.provider} 备用账号`)
+                          const nextNum = accounts().length + 1
+                          setNewAccountName(`账号 ${nextNum}`)
                           setNewAccountAuthType('api-key')
                           setNewAccountApiKey('')
                           setNewAccountPriority(String((Number(priority()) || 0) + 10))
@@ -720,7 +766,7 @@ const ProviderDetail: Component = () => {
                             <div
                               role="button"
                               tabIndex={0}
-                              aria-label={`选择账号 ${acc.name || acc.provider}`}
+                              aria-label={`选择账号 ${getAccountDisplayName(acc, idx())}`}
                               onClick={e => {
                                 if ((e.target as HTMLElement).closest('button, [role="switch"], a, input')) return
                                 switchAccount(acc.id)
@@ -748,8 +794,13 @@ const ProviderDetail: Component = () => {
                                     #{idx() + 1}
                                   </span>
                                   <span class="text-xs font-semibold text-foreground truncate">
-                                    {acc.name || acc.provider}
+                                    {getAccountDisplayName(acc, idx())}
                                   </span>
+                                  <Show when={acc.email && acc.email !== getAccountDisplayName(acc, idx())}>
+                                    <span class="text-[10px] text-faint truncate font-mono">
+                                      ({acc.email})
+                                    </span>
+                                  </Show>
                                   <Show when={isCurrent()}>
                                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">
                                       编辑中
@@ -775,7 +826,7 @@ const ProviderDetail: Component = () => {
                                         e.stopPropagation()
                                         const ok = await confirm({
                                           title: '删除账号',
-                                          message: `确定要删除账号「${acc.name || acc.provider}」吗？`,
+                                          message: `确定要删除账号「${getAccountDisplayName(acc, idx())}」吗？`,
                                           variant: 'danger',
                                         })
                                         if (ok) {
@@ -840,10 +891,15 @@ const ProviderDetail: Component = () => {
                     <div class="flex items-center justify-between pb-3 border-b border-subtle shrink-0">
                       <div>
                         <div class="text-sm font-semibold flex items-center gap-2">
-                          <span>编辑账号：{c().name || c().provider}</span>
+                          <span>编辑账号：{getAccountDisplayName(c())}</span>
                           <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
                         </div>
-                        <div class="text-xs text-faint mt-0.5 font-mono">节点 ID: {c().id}</div>
+                        <div class="text-xs text-faint mt-0.5 font-mono flex items-center gap-2">
+                          <span>节点 ID: {c().id}</span>
+                          <Show when={c().email && c().email !== getAccountDisplayName(c())}>
+                            <span>· 授权邮箱: {c().email}</span>
+                          </Show>
+                        </div>
                       </div>
                       <Show when={regInfo()?.apiKeyUrl}>
                         <a
@@ -859,8 +915,12 @@ const ProviderDetail: Component = () => {
 
                     {/* 表单内容滚动区 */}
                     <div class="flex-1 overflow-y-auto pr-1 py-3 space-y-4">
-                      <Field label="账号显示名称" hint="自定义名称，便于在调度日志和控制台中辨识">
-                        <Input value={name()} onInput={setName} placeholder="例如：主账号、备用 PAT、Team B" />
+                      <Field label="账号显示名称" hint="自定义名称，便于在调度日志和控制台中辨识（留空默认按序号编号）">
+                        <Input
+                          value={name()}
+                          onInput={setName}
+                          placeholder={`例如：主账号、备用 PAT（当前默认：${getAccountDisplayName(c())}）`}
+                        />
                       </Field>
 
                       <Field label="调度优先级" hint="数值越小越优先调度。例如：主账号设为 10，备用账号设为 20">
@@ -999,7 +1059,7 @@ const ProviderDetail: Component = () => {
                         onClick={async () => {
                           const ok = await confirm({
                             title: '删除账号',
-                            message: `确定要删除此账号「${c().name || c().provider}」吗？`,
+                            message: `确定要删除此账号「${getAccountDisplayName(c())}」吗？`,
                             variant: 'danger',
                           })
                           if (ok) {
@@ -1252,7 +1312,7 @@ const ProviderDetail: Component = () => {
                   >
                   <Show
                     when={chatHistory().length > 0}
-                    fallback={<Empty message={`向 ${c().name || c().provider} 发送一条消息，验证该连接的连通性与模型输出。`} />}
+                    fallback={<Empty message={`向 ${providerDisplayName()} 发送一条消息，验证该连接的连通性与模型输出。`} />}
                   >
                     <For each={chatHistory()}>
                       {t => (
@@ -1372,7 +1432,7 @@ const ProviderDetail: Component = () => {
       {/* 添加新账号 / 凭证弹窗 */}
       <Modal
         open={addAccountOpen()}
-        title={`为此供应商添加新账号 - ${conn()?.name || conn()?.provider}`}
+        title={`为此供应商添加新账号 - ${providerDisplayName()}`}
         onClose={() => setAddAccountOpen(false)}
       >
         <div class="space-y-4">
@@ -1383,7 +1443,7 @@ const ProviderDetail: Component = () => {
             <Input
               value={newAccountName()}
               onInput={setNewAccountName}
-              placeholder={`我的 ${conn()?.provider} 备用账号`}
+              placeholder={`例如：账号 ${accounts().length + 1}、备用 Key`}
             />
           </Field>
           <Field label="认证方式" hint="选择凭证模式">
@@ -1453,7 +1513,7 @@ const ProviderDetail: Component = () => {
       {/* 统一设备码 OAuth 授权弹窗 (9router 同款弹窗体验) */}
       <Modal
         open={!!deviceFlow() || devicePolling() || isImportFlow() || !!deviceError()}
-        title={isImportFlow() ? `导入 ${conn()?.name || conn()?.provider || '供应商'} 访问令牌` : `连接 ${conn()?.name || conn()?.provider || '供应商'}`}
+        title={isImportFlow() ? `导入 ${providerDisplayName()} 访问令牌` : `连接 ${providerDisplayName()}`}
         onClose={cancelDeviceFlow}
       >
         <div class="space-y-4 py-2">
