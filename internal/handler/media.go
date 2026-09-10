@@ -4,6 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/media"
+	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,10 +15,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"github.com/arisvia/cyrene-gateway/internal/db"
-	"github.com/arisvia/cyrene-gateway/internal/media"
-	"github.com/arisvia/cyrene-gateway/internal/model"
-	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // handleImageGeneration handles POST /v1/images/generations

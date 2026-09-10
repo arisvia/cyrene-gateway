@@ -289,3 +289,49 @@ func TestAggregateAntigravitySearchResponse(t *testing.T) {
 		t.Fatalf("expected 503, got %d", wErr.Code)
 	}
 }
+
+func TestHandleEmbeddingsProviderHintRouting(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	var receivedPath string
+	var receivedBody map[string]any
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"embedding":[0.1,0.2]}]}`))
+	}))
+	defer mockUpstream.Close()
+
+	// Setup an active openrouter connection pointing to mockUpstream with trailing /chat/completions
+	conn := model.ProviderConnection{
+		ID:       "test-openrouter-conn",
+		Provider: "openrouter",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-test-key",
+			BaseURL: mockUpstream.URL + "/chat/completions",
+		},
+	}
+	database.CreateConnection(&conn)
+
+	// Call handleEmbeddings with model="openai/text-embedding-3-small" and provider hint "openrouter"
+	reqBody := `{"provider":"openrouter","model":"openai/text-embedding-3-small","input":"hello"}`
+	req := httptest.NewRequest("POST", "/v1/embeddings", bytes.NewReader([]byte(reqBody)))
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if receivedPath != "/embeddings" {
+		t.Errorf("expected trimmed path '/embeddings', got %q", receivedPath)
+	}
+	if receivedBody["model"] != "openai/text-embedding-3-small" {
+		t.Errorf("expected preserved model 'openai/text-embedding-3-small', got %v", receivedBody["model"])
+	}
+	if _, leaked := receivedBody["provider"]; leaked {
+		t.Errorf("provider hint leaked into upstream body")
+	}
+}

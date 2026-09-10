@@ -92,11 +92,11 @@ func (d *DB) BackfillRequestDetails() {
 	}
 
 	type item struct {
-		id                 int
+		id                  int
 		ts, provider, model string
-		connID, status, ep string
-		prompt, completion int
-		cost               float64
+		connID, status, ep  string
+		prompt, completion  int
+		cost                float64
 	}
 
 	rows, err := d.conn.Query(`SELECT id, timestamp, COALESCE(provider, ''), COALESCE(model, ''), COALESCE(connectionId, ''), COALESCE(status, 'ok'), promptTokens, completionTokens, cost, COALESCE(endpoint, '') FROM usageHistory ORDER BY id DESC LIMIT 200`)
