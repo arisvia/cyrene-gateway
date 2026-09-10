@@ -1,6 +1,8 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
+import { A } from '@solidjs/router'
 import { Card, Badge, ProviderAvatar } from '@/components/ui'
 import type { Provider, LiveUsageEvent } from '@/types/domain'
+import { useGatewayStore } from '@/stores/gateway'
 
 interface TopologyProps {
   providers: Provider[]
@@ -9,6 +11,7 @@ interface TopologyProps {
 }
 
 export const GatewayTopology: Component<TopologyProps> = props => {
+  const store = useGatewayStore()
   let containerRef: HTMLDivElement | undefined
   const [zoom, setZoom] = createSignal(1)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
@@ -66,15 +69,16 @@ export const GatewayTopology: Component<TopologyProps> = props => {
     const count = grouped.length
     if (count === 0) return []
 
-    // 基础半径自适应
-    const radius = Math.min(230, Math.max(150, 130 + count * 12))
+    // 宽屏椭圆自适应布局：彻底消除“横向卡片间距过窄（仅14px）、纵向过长（142px）”的几何失真
+    // 卡片为横向长方形 (约 204px 宽 × 54px 高)，水平方向补偿半宽之和以保持等距视觉留白
+    const rx = Math.min(340, Math.max(280, 260 + count * 10))
+    const ry = Math.min(185, Math.max(160, 145 + count * 5))
 
     return grouped.map((g, i) => {
       // 角度均匀分布（从 -90 度/正上方开始顺时针分布）
       const angle = (i / count) * 2 * Math.PI - Math.PI / 2
-      const x = Math.round(Math.cos(angle) * radius)
-      const y = Math.round(Math.sin(angle) * radius)
-
+      const x = Math.round(Math.cos(angle) * rx)
+      const y = Math.round(Math.sin(angle) * ry)
       const recentHit = (props.liveEvents || []).find(e =>
         e.provider === g.provider ||
         g.accounts.some(a => a.id === e.provider) ||
@@ -202,8 +206,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             <For each={nodePositions()}>
               {node => {
                 const isHovered = () => hoveredNode() === node.id
-                const cpx = node.x * 0.45
-                const cpy = node.y * 0.45
+                const cpx = Math.round(node.x * 0.48)
+                const cpy = Math.round(node.y * 0.48)
                 const d = `M 0 0 Q ${cpx} ${cpy} ${node.x} ${node.y}`
 
                 return (
@@ -229,18 +233,21 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             </For>
           </svg>
 
-          {/* 1. 中心枢纽：Cyrene Gateway (尺寸与周围供应商节点严格统一为 w-44 h-12) */}
+          {/* 1. 中心枢纽：Cyrene Gateway */}
           <div
-            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-44 h-12 px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-lg border border-accent/50 shadow-xl shadow-accent/20 flex items-center gap-2.5 justify-center hover:scale-105 transition-transform duration-200 cursor-default"
+            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[208px] h-[58px] px-3.5 py-2.5 rounded-2xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-xl shadow-accent/15 flex items-center gap-3 hover:scale-105 transition-all duration-300 cursor-default ring-1 ring-accent/20"
           >
-            <img src="/icon.png" alt="Cyrene" class="w-5 h-5 rounded-lg object-contain shadow-accent shrink-0" />
+            <div class="relative shrink-0">
+              <img src="/icon.png" alt="Cyrene" class="w-7 h-7 rounded-xl object-contain shadow-md shadow-accent/20" />
+              <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-bg-elevated animate-pulse" />
+            </div>
             <div class="min-w-0 flex-1">
               <div class="font-bold text-xs tracking-tight text-foreground truncate flex items-center gap-1.5">
                 <span>Cyrene Gateway</span>
-                <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
               </div>
-              <div class="text-[10px] text-faint font-mono truncate">
-                核心调度枢纽
+              <div class="text-[11px] text-accent/90 font-medium truncate flex items-center gap-1 mt-0.5">
+                <span>核心调度枢纽</span>
+                <span class="text-[10px] text-faint">· {activeCount()} 活跃通道</span>
               </div>
             </div>
           </div>
@@ -248,13 +255,23 @@ export const GatewayTopology: Component<TopologyProps> = props => {
           {/* 2. 周围辐射排布的模型上游卡片 (同品牌合并，右侧动态显示激活账号) */}
           <For each={nodePositions()}>
             {node => {
+              const reg = () => store.registryList().find(r => r.id === node.provider)
+              const providerDisplayName = () => reg()?.name || node.provider
               const activeAcc = () => node.activeAccount || node.accounts[0]
-              const accountLabel = () => {
+              const accountSubtitle = () => {
+                if (node.accounts.length > 1) {
+                  const activeN = node.accounts.filter(a => a.isActive).length
+                  return `${activeN}/${node.accounts.length} 账号活跃`
+                }
                 const acc = activeAcc()
                 if (!acc) return '未配置'
+                if (!acc.isActive) return '已停用'
                 if (acc.email) return acc.email
-                if (acc.name && acc.name !== node.provider) return acc.name
-                return acc.authType || 'API Key'
+                if (acc.name && acc.name.trim() !== providerDisplayName() && acc.name.trim().toLowerCase() !== node.provider.toLowerCase()) {
+                  return acc.name
+                }
+                if (acc.data?.credentialHint) return String(acc.data.credentialHint)
+                return acc.authType === 'api-key' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth 授权' : (acc.authType || '活跃中')
               }
 
               return (
@@ -267,38 +284,47 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                   onMouseEnter={() => setHoveredNode(node.id)}
                   onMouseLeave={() => setHoveredNode(null)}
                 >
-                  <div
-                    class={`w-44 h-12 px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-md flex items-center gap-2.5 transition-all duration-200 cursor-pointer ${
+                  <A
+                    href={`/providers/${node.id}`}
+                    class={`w-[204px] h-[54px] px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-md flex items-center gap-2.5 transition-all duration-200 cursor-pointer block no-underline ${
                       node.isActive
                         ? node.isHitting
-                          ? 'border-accent ring-2 ring-accent/40 shadow-accent/20 scale-105'
-                          : 'border-subtle hover:border-accent/50 hover:scale-105'
+                          ? 'border-accent ring-2 ring-accent/40 shadow-accent/25 scale-105'
+                          : 'border-subtle hover:border-accent/50 hover:shadow-lg hover:-translate-y-0.5'
                         : 'border-subtle/50 opacity-60 hover:opacity-100'
                     }`}
                   >
-                    <ProviderAvatar provider={node.provider} name={node.name} size="sm" class="shrink-0" />
+                    <ProviderAvatar
+                      provider={node.provider}
+                      name={providerDisplayName()}
+                      color={reg()?.color}
+                      size="sm"
+                      class="shrink-0"
+                    />
                     <div class="min-w-0 flex-1">
                       <div class="text-xs font-semibold text-foreground flex items-center justify-between gap-1">
-                        <span class="truncate">{node.name || node.provider}</span>
-                        <div class="flex items-center gap-1 shrink-0">
+                        <span class="truncate">{providerDisplayName()}</span>
+                        <div class="flex items-center gap-1.5 shrink-0">
                           <Show when={node.accounts.length > 1}>
-                            <span class="text-[9px] text-muted bg-hover px-1 py-0.5 rounded font-mono" title={`${node.accounts.length} 个账号`}>
+                            <Badge tone="blue" class="text-[9px] px-1 py-0 font-mono">
                               {node.accounts.length}
-                            </span>
+                            </Badge>
                           </Show>
-                          <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${node.isActive ? 'bg-success' : 'bg-zinc-600'}`} />
+                          <span class={`w-2 h-2 rounded-full shrink-0 ${
+                            node.isActive
+                              ? (node.isHitting ? 'bg-accent animate-pulse shadow-accent' : 'bg-success')
+                              : 'bg-zinc-600'
+                          }`} />
                         </div>
                       </div>
-                      <div class="text-[10px] text-faint font-mono truncate flex items-center gap-1">
-                        <span class="truncate">{accountLabel()}</span>
+                      <div class="text-[10px] text-faint font-mono truncate mt-0.5 flex items-center justify-between gap-1">
+                        <span class="truncate">{accountSubtitle()}</span>
+                        <Show when={node.isHitting && node.recentLatency}>
+                          <span class="text-accent shrink-0 font-semibold">{node.recentLatency}ms</span>
+                        </Show>
                       </div>
                     </div>
-                    <Show when={node.isHitting}>
-                      <Badge tone="green" class="text-[9px] px-1 py-0 ml-0.5 shrink-0 animate-pulse">
-                        {node.recentLatency ? `${node.recentLatency}ms` : '响应'}
-                      </Badge>
-                    </Show>
-                  </div>
+                  </A>
                 </div>
               )
             }}
