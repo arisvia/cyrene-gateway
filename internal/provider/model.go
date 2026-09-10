@@ -32,9 +32,14 @@ func ParseModel(modelStr string) model.ModelInfo {
 func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	parsed := ParseModel(modelStr)
 
-	// 1. Explicit provider already present
+	// 1. Explicit provider already present (only if it is a known provider or has configured connections)
 	if parsed.Provider != "" {
-		return parsed, nil
+		if _, ok := GetProvider(parsed.Provider); ok {
+			return parsed, nil
+		}
+		if conns, err := database.ListConnectionsByProvider(parsed.Provider); err == nil && len(conns) > 0 {
+			return parsed, nil
+		}
 	}
 
 	// 2. Try model alias from KV store (scope="aliases")
@@ -42,6 +47,12 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	if err != nil {
 		slog.Warn("Failed to list model aliases from DB", slog.String("error", err.Error()))
 	} else {
+		if target, ok := aliases[modelStr]; ok {
+			resolved := ParseModel(target)
+			if resolved.Provider != "" {
+				return resolved, nil
+			}
+		}
 		if target, ok := aliases[parsed.Model]; ok {
 			resolved := ParseModel(target)
 			if resolved.Provider != "" {
@@ -55,14 +66,16 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	if err != nil {
 		slog.Warn("Failed to list provider model cache from DB", slog.String("error", err.Error()))
 	} else if len(caches) > 0 {
-		lowerTarget := strings.ToLower(parsed.Model)
+		lowerFull := strings.ToLower(modelStr)
+		lowerModel := strings.ToLower(parsed.Model)
 		for providerID, raw := range caches {
 			var cached model.CachedModels
 			if err := json.Unmarshal([]byte(raw), &cached); err != nil {
 				continue
 			}
 			for _, m := range cached.Models {
-				if strings.EqualFold(m.ID, lowerTarget) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerTarget)) {
+				if strings.EqualFold(m.ID, lowerFull) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerFull)) ||
+					strings.EqualFold(m.ID, lowerModel) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerModel)) {
 					return model.ModelInfo{
 						Provider: providerID,
 						Model:    m.ID,
@@ -70,6 +83,11 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 				}
 			}
 		}
+	}
+
+	// 4. If an explicit prefix was provided, keep it even if not currently known
+	if parsed.Provider != "" {
+		return parsed, nil
 	}
 
 	// 5. Fallback: infer provider from model name

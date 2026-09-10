@@ -48,3 +48,51 @@ func TestResolveModelDynamicCache(t *testing.T) {
 		t.Errorf("expected provider=deepseek, got %s", info.Provider)
 	}
 }
+
+func TestResolveModel_NamespacedVendorModel(t *testing.T) {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	defer database.Close()
+
+	// Simulate OpenRouter cache containing namespaced models like liquid/lfm-2.5-2.6b:free
+	cached := model.CachedModels{
+		Models: []model.ModelMetadata{
+			{
+				ID:          "liquid/lfm-2.5-2.6b:free",
+				DisplayName: "Liquid LFM 2.5 2.6B (free)",
+			},
+			{
+				ID:          "meta-llama/llama-3.3-70b-instruct:free",
+				DisplayName: "Meta Llama 3.3 70B Instruct (free)",
+			},
+		},
+	}
+	rawBytes, _ := json.Marshal(cached)
+	database.KVSet("providerModelCache", "openrouter", string(rawBytes))
+
+	// 1. Resolve without openrouter/ prefix
+	info, err := ResolveModel("liquid/lfm-2.5-2.6b:free", database)
+	if err != nil {
+		t.Fatalf("failed to resolve namespaced model: %v", err)
+	}
+	if info.Provider != "openrouter" {
+		t.Errorf("expected provider=openrouter, got %s", info.Provider)
+	}
+	if info.Model != "liquid/lfm-2.5-2.6b:free" {
+		t.Errorf("expected model=liquid/lfm-2.5-2.6b:free, got %s", info.Model)
+	}
+
+	// 2. Resolve with explicit openrouter/ prefix
+	infoExplicit, err := ResolveModel("openrouter/liquid/lfm-2.5-2.6b:free", database)
+	if err != nil {
+		t.Fatalf("failed to resolve explicit namespaced model: %v", err)
+	}
+	if infoExplicit.Provider != "openrouter" {
+		t.Errorf("expected provider=openrouter, got %s", infoExplicit.Provider)
+	}
+	if infoExplicit.Model != "liquid/lfm-2.5-2.6b:free" {
+		t.Errorf("expected model=liquid/lfm-2.5-2.6b:free, got %s", infoExplicit.Model)
+	}
+}
