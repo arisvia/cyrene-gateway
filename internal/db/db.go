@@ -28,6 +28,7 @@ func Open(path string) (*DB, error) {
 	if err := d.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate database: %w", err)
 	}
+	d.BackfillRequestDetails()
 
 	slog.Info("Database initialized", slog.String("path", path))
 	return d, nil

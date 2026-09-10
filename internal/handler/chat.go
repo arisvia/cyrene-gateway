@@ -393,10 +393,18 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
+		upstreamStream := req.Stream
+		if providerInfo.ForceStream {
+			upstreamStream = true
+		}
+
 		// Build and execute upstream request — use raw body to preserve unknown fields
 		var comboBody map[string]any
 		json.Unmarshal(rawBody, &comboBody)
 		comboBody["model"] = modelInfo.Model
+		if providerInfo.ForceStream {
+			comboBody["stream"] = true
+		}
 		bodyBytes, err := json.Marshal(comboBody)
 		if err != nil {
 			lastError = "failed to marshal request"
@@ -405,7 +413,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 
 		comboTransport := provider.ResolveTransport(providerInfo, baseURL, comboAPIType, conn)
-		targetURL := provider.BuildTransportURL(comboTransport, modelInfo.Model, req.Stream)
+		targetURL := provider.BuildTransportURL(comboTransport, modelInfo.Model, upstreamStream)
 		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			lastError = "failed to create upstream request"
@@ -423,7 +431,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 		provider.ApplyAuth(upstreamReq, comboTransport, comboCreds)
 		upstreamReq.Header.Set("Content-Type", "application/json")
-		if req.Stream {
+		if upstreamStream {
 			upstreamReq.Header.Set("Accept", "text/event-stream")
 		}
 
@@ -456,7 +464,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				StartedAt:    start,
 				Status:       resp.StatusCode,
 			}
-			s.proxyResponse(w, r, resp, req.Stream, translator.FormatOpenAI, modelInfo.Model, uc)
+			s.proxyResponse(w, r, resp, req.Stream, upstreamStream, translator.FormatOpenAI, modelInfo.Model, uc)
 			resp.Body.Close()
 			return
 		}
@@ -576,6 +584,11 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// hooks) once and use it for both URL building and auth injection.
 	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
 
+	upstreamStream := req.Stream
+	if providerInfo.ForceStream {
+		upstreamStream = true
+	}
+
 	var bodyBytes []byte
 	var targetURL string
 
@@ -585,6 +598,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		var bodyMap map[string]any
 		json.Unmarshal(rawBody, &bodyMap)
 		bodyMap["model"] = modelInfo.Model
+		if providerInfo.ForceStream {
+			bodyMap["stream"] = true
+		}
 
 		// Loop guard detection
 		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
@@ -606,7 +622,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
 			return
 		}
-		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, req.Stream)
+		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, upstreamStream)
 	} else {
 		// Translate request to provider format — use raw body to preserve unknown fields
 		var bodyMap map[string]any
@@ -626,7 +642,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			loopguard.InjectTerminationPrompt(bodyMap, string(targetFormat))
 		}
 
-		translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, req.Stream)
+		translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, upstreamStream)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("translation failed: %v", err)})
 			return
@@ -643,7 +659,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			return
 		}
 
-		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, req.Stream)
+		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, upstreamStream)
 	}
 
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
@@ -665,7 +681,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	}
 	provider.ApplyAuth(upstreamReq, transport, creds)
 	upstreamReq.Header.Set("Content-Type", "application/json")
-	if req.Stream {
+	if upstreamStream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")
 	}
 
@@ -713,7 +729,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 				}
 				provider.ApplyAuth(retryReq, transport, retryCreds)
 				retryReq.Header.Set("Content-Type", "application/json")
-				if req.Stream {
+				if upstreamStream {
 					retryReq.Header.Set("Accept", "text/event-stream")
 				}
 
@@ -739,6 +755,34 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
+		// Record failed request detail for observability in "请求明细"
+		latencyMs := int(time.Since(start).Milliseconds())
+		if latencyMs < 0 {
+			latencyMs = 0
+		}
+		statusStr := fmt.Sprintf("%d", resp.StatusCode)
+		rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+		rdData := map[string]any{
+			"id":           rdID,
+			"timestamp":    time.Now().UTC().Format(time.RFC3339),
+			"provider":     modelInfo.Provider,
+			"model":        modelInfo.Model,
+			"connectionId": conn.ID,
+			"status":       statusStr,
+			"latencyMs":    latencyMs,
+			"endpoint":     "/v1/chat/completions",
+			"error":        string(errBody),
+		}
+		rdBytes, _ := json.Marshal(rdData)
+		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+			ID:           rdID,
+			Timestamp:    rdData["timestamp"].(string),
+			Provider:     modelInfo.Provider,
+			Model:        modelInfo.Model,
+			ConnectionID: conn.ID,
+			Status:       statusStr,
+			Data:         string(rdBytes),
+		})
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, "/v1/chat/completions", resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
@@ -764,16 +808,151 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		StartedAt:    start,
 		Status:       resp.StatusCode,
 	}
-	s.proxyResponse(w, r, resp, req.Stream, targetFormat, modelInfo.Model, uc)
+	s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
 }
 
 // proxyResponse handles streaming and non-streaming response proxying with format translation.
-func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *http.Response, stream bool, format translator.Format, model string, uc *usageContext) {
-	if !stream {
+func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *http.Response, clientStream, upstreamStream bool, format translator.Format, model string, uc *usageContext) {
+	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+	if isSSE && !clientStream {
+		s.aggregateSSEToNonStreaming(w, r, resp, format, model, uc)
+		return
+	}
+	if !clientStream {
 		s.proxyNonStreaming(w, resp, format, model, uc)
 		return
 	}
 	s.proxyStreaming(w, r, resp, format, model, uc)
+}
+
+// aggregateSSEToNonStreaming collects server-sent events from an upstream that requires streaming
+// and returns a standard non-streaming ChatCompletionResponse JSON to clients that requested non-stream.
+func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
+	reader := provider.NewSSEReader(resp.Body)
+	var contentBuilder strings.Builder
+	var reasoningBuilder strings.Builder
+	var lastUsage usage.Usage
+	var chunkID string
+	var created int64 = time.Now().Unix()
+	ctx := r.Context()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		event, err := reader.ReadEvent(ctx)
+		if err != nil {
+			break
+		}
+		if len(event.Data) == 0 {
+			continue
+		}
+
+		dataStr := strings.TrimSpace(string(event.Data))
+		if dataStr == "[DONE]" {
+			break
+		}
+
+		// Extract usage if present in chunk
+		if u := usage.ExtractFromSSELine(event.Data); u.TotalTokens > 0 {
+			lastUsage = u
+		}
+
+		// Translate chunk if non-OpenAI format
+		chunkData := event.Data
+		if format != translator.FormatOpenAI {
+			translated, isDone, err := translator.TranslateSSEChunk(format, event.Data, model)
+			if isDone {
+				break
+			}
+			if err != nil || translated == nil {
+				continue
+			}
+			chunkData = translated
+		}
+
+		var chunk struct {
+			ID      string `json:"id"`
+			Model   string `json:"model"`
+			Created int64  `json:"created"`
+			Choices []struct {
+				Delta struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal(chunkData, &chunk); err == nil {
+			if chunk.ID != "" {
+				chunkID = chunk.ID
+			}
+			if chunk.Created != 0 {
+				created = chunk.Created
+			}
+			if len(chunk.Choices) > 0 {
+				contentBuilder.WriteString(chunk.Choices[0].Delta.Content)
+				reasoningBuilder.WriteString(chunk.Choices[0].Delta.ReasoningContent)
+			}
+		}
+	}
+
+	if chunkID == "" {
+		chunkID = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+	}
+
+	msgMap := map[string]any{
+		"role":    "assistant",
+		"content": contentBuilder.String(),
+	}
+	if reasoningBuilder.Len() > 0 {
+		msgMap["reasoning_content"] = reasoningBuilder.String()
+	}
+
+	respObj := map[string]any{
+		"id":      chunkID,
+		"object":  "chat.completion",
+		"created": created,
+		"model":   model,
+		"choices": []any{
+			map[string]any{
+				"index":         0,
+				"message":       msgMap,
+				"finish_reason": "stop",
+			},
+		},
+	}
+	if lastUsage.TotalTokens > 0 {
+		respObj["usage"] = map[string]any{
+			"prompt_tokens":     lastUsage.PromptTokens,
+			"completion_tokens": lastUsage.CompletionTokens,
+			"total_tokens":      lastUsage.TotalTokens,
+		}
+		s.recordUsage(uc, lastUsage)
+	} else {
+		estimatedPrompt := len(contentBuilder.String()) / 4
+		if estimatedPrompt < 1 {
+			estimatedPrompt = 1
+		}
+		fallbackUsage := usage.Usage{
+			PromptTokens:     10,
+			CompletionTokens: estimatedPrompt,
+			TotalTokens:      10 + estimatedPrompt,
+		}
+		respObj["usage"] = map[string]any{
+			"prompt_tokens":     fallbackUsage.PromptTokens,
+			"completion_tokens": fallbackUsage.CompletionTokens,
+			"total_tokens":      fallbackUsage.TotalTokens,
+		}
+		s.recordUsage(uc, fallbackUsage)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Cyrene-Served-Model", model)
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(respObj)
 }
 
 // proxyNonStreaming reads the full response, translates if needed, and writes it.
@@ -802,6 +981,8 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 			slog.Int("completion_tokens", u.CompletionTokens),
 		)
 		s.recordUsage(uc, u)
+	} else {
+		s.recordUsage(uc, usage.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2})
 	}
 
 	// Translate response to OpenAI format if needed
@@ -1422,6 +1603,43 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if err := s.DB.SaveUsageEntry(entry); err != nil {
 		slog.Warn("Failed to record usage", "error", err, "model", uc.Model)
 	}
+	// Persist to requestDetails table for web UI "请求明细"
+	latencyMs := int(time.Since(uc.StartedAt).Milliseconds())
+	if latencyMs < 0 {
+		latencyMs = 0
+	}
+	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), uc.Model)
+	rdData := map[string]any{
+		"id":               rdID,
+		"timestamp":        time.Now().UTC().Format(time.RFC3339),
+		"provider":         uc.Provider,
+		"model":            uc.Model,
+		"connectionId":     uc.ConnectionID,
+		"status":           "ok",
+		"promptTokens":     u.PromptTokens,
+		"completionTokens": u.CompletionTokens,
+		"cost":             entry.Cost,
+		"latencyMs":        latencyMs,
+		"endpoint":         uc.Endpoint,
+	}
+	if u.CachedTokens > 0 {
+		rdData["cachedTokens"] = u.CachedTokens
+	}
+	if u.ReasoningTokens > 0 {
+		rdData["reasoningTokens"] = u.ReasoningTokens
+	}
+	rdBytes, _ := json.Marshal(rdData)
+	if err := s.DB.SaveRequestDetail(&db.RequestDetail{
+		ID:           rdID,
+		Timestamp:    rdData["timestamp"].(string),
+		Provider:     uc.Provider,
+		Model:        uc.Model,
+		ConnectionID: uc.ConnectionID,
+		Status:       "ok",
+		Data:         string(rdBytes),
+	}); err != nil {
+		slog.Warn("Failed to record request detail", "error", err, "model", uc.Model)
+	}
 
 	// Publish real-time event for SSE stream
 	if s.Events != nil {
@@ -1434,6 +1652,7 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 			Prompt:    u.PromptTokens,
 			Compl:     u.CompletionTokens,
 			Endpoint:  uc.Endpoint,
+			LatencyMs: int64(latencyMs),
 		})
 	}
 }

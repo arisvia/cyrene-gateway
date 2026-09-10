@@ -83,6 +83,50 @@ func (d *DB) SaveRequestDetail(rd *RequestDetail) error {
 	return nil
 }
 
+// BackfillRequestDetails copies historical entries from usageHistory into requestDetails
+// if requestDetails is currently empty.
+func (d *DB) BackfillRequestDetails() {
+	var count int
+	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM requestDetails`).Scan(&count); err == nil && count == 0 {
+		rows, err := d.conn.Query(`SELECT id, timestamp, provider, model, connectionId, status, promptTokens, completionTokens, cost, endpoint FROM usageHistory ORDER BY id DESC LIMIT 200`)
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int
+			var ts, provider, model, connID, status, endpoint string
+			var prompt, completion int
+			var cost float64
+			if err := rows.Scan(&id, &ts, &provider, &model, &connID, &status, &prompt, &completion, &cost, &endpoint); err == nil {
+				rdID := fmt.Sprintf("%d-%s", id, model)
+				dataMap := map[string]any{
+					"id":               rdID,
+					"timestamp":        ts,
+					"provider":         provider,
+					"model":            model,
+					"connectionId":     connID,
+					"status":           status,
+					"promptTokens":     prompt,
+					"completionTokens": completion,
+					"cost":             cost,
+					"endpoint":         endpoint,
+				}
+				b, _ := json.Marshal(dataMap)
+				_ = d.SaveRequestDetail(&RequestDetail{
+					ID:           rdID,
+					Timestamp:    ts,
+					Provider:     provider,
+					Model:        model,
+					ConnectionID: connID,
+					Status:       status,
+					Data:         string(b),
+				})
+			}
+		}
+	}
+}
+
 // GetRequestDetails returns paginated request details with optional filters.
 func (d *DB) GetRequestDetails(f RequestDetailFilter) (*RequestDetailResult, error) {
 	var conds []string

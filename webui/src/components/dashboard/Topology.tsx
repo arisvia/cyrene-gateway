@@ -71,8 +71,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
 
     // 宽屏椭圆自适应布局：彻底消除“横向卡片间距过窄（仅14px）、纵向过长（142px）”的几何失真
     // 卡片为横向长方形 (约 204px 宽 × 54px 高)，水平方向补偿半宽之和以保持等距视觉留白
-    const rx = Math.min(340, Math.max(280, 260 + count * 10))
-    const ry = Math.min(185, Math.max(160, 145 + count * 5))
+    const rx = Math.min(290, Math.max(240, 225 + count * 8))
+    const ry = Math.min(165, Math.max(140, 130 + count * 4))
 
     return grouped.map((g, i) => {
       // 角度均匀分布（从 -90 度/正上方开始顺时针分布）
@@ -235,19 +235,19 @@ export const GatewayTopology: Component<TopologyProps> = props => {
 
           {/* 1. 中心枢纽：Cyrene Gateway */}
           <div
-            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[208px] h-[58px] px-3.5 py-2.5 rounded-2xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-xl shadow-accent/15 flex items-center gap-3 hover:scale-105 transition-all duration-300 cursor-default ring-1 ring-accent/20"
+            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-lg shadow-accent/15 flex items-center gap-2 hover:scale-105 transition-all duration-200 cursor-default ring-1 ring-accent/20"
           >
             <div class="relative shrink-0">
-              <img src="/icon.png" alt="Cyrene" class="w-7 h-7 rounded-xl object-contain shadow-md shadow-accent/20" />
-              <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-accent ring-2 ring-bg-elevated animate-pulse" />
+              <img src="/icon.png" alt="Cyrene" class="w-6 h-6 rounded-lg object-contain shadow-sm shadow-accent/20" />
+              <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent ring-2 ring-bg-elevated animate-pulse" />
             </div>
             <div class="min-w-0 flex-1">
-              <div class="font-bold text-xs tracking-tight text-foreground truncate flex items-center gap-1.5">
+              <div class="font-bold text-xs tracking-tight text-foreground truncate flex items-center gap-1">
                 <span>Cyrene Gateway</span>
               </div>
-              <div class="text-[11px] text-accent/90 font-medium truncate flex items-center gap-1 mt-0.5">
-                <span>核心调度枢纽</span>
-                <span class="text-[10px] text-faint">· {activeCount()} 活跃通道</span>
+              <div class="text-[10px] text-accent/90 font-medium truncate flex items-center gap-1">
+                <span>核心调度</span>
+                <span class="text-[9px] text-faint">· {activeCount()} 活跃</span>
               </div>
             </div>
           </div>
@@ -286,11 +286,11 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                 >
                   <A
                     href={`/providers/${node.id}`}
-                    class={`w-[204px] h-[54px] px-3 py-2 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-md flex items-center gap-2.5 transition-all duration-200 cursor-pointer block no-underline ${
+                    class={`w-[164px] h-[46px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-sm flex items-center gap-2 transition-all duration-200 cursor-pointer block no-underline ${
                       node.isActive
                         ? node.isHitting
                           ? 'border-accent ring-2 ring-accent/40 shadow-accent/25 scale-105'
-                          : 'border-subtle hover:border-accent/50 hover:shadow-lg hover:-translate-y-0.5'
+                          : 'border-subtle hover:border-accent/50 hover:shadow-md hover:-translate-y-0.5'
                         : 'border-subtle/50 opacity-60 hover:opacity-100'
                     }`}
                   >
