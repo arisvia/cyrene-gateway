@@ -87,43 +87,49 @@ func (d *DB) SaveRequestDetail(rd *RequestDetail) error {
 // if requestDetails is currently empty.
 func (d *DB) BackfillRequestDetails() {
 	var count int
-	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM requestDetails`).Scan(&count); err == nil && count == 0 {
-		rows, err := d.conn.Query(`SELECT id, timestamp, COALESCE(provider, ''), COALESCE(model, ''), COALESCE(connectionId, ''), COALESCE(status, 'ok'), promptTokens, completionTokens, cost, COALESCE(endpoint, '') FROM usageHistory ORDER BY id DESC LIMIT 200`)
-		if err != nil {
-			return
+	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM requestDetails`).Scan(&count); err != nil || count > 0 {
+		return
+	}
+
+	type item struct {
+		id                 int
+		ts, provider, model string
+		connID, status, ep string
+		prompt, completion int
+		cost               float64
+	}
+
+	rows, err := d.conn.Query(`SELECT id, timestamp, COALESCE(provider, ''), COALESCE(model, ''), COALESCE(connectionId, ''), COALESCE(status, 'ok'), promptTokens, completionTokens, cost, COALESCE(endpoint, '') FROM usageHistory ORDER BY id DESC LIMIT 200`)
+	if err != nil {
+		return
+	}
+
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.id, &it.ts, &it.provider, &it.model, &it.connID, &it.status, &it.prompt, &it.completion, &it.cost, &it.ep); err == nil {
+			items = append(items, it)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int
-			var ts, provider, model, connID, status, endpoint string
-			var prompt, completion int
-			var cost float64
-			if err := rows.Scan(&id, &ts, &provider, &model, &connID, &status, &prompt, &completion, &cost, &endpoint); err == nil {
-				rdID := fmt.Sprintf("%d-%s", id, model)
-				dataMap := map[string]any{
-					"id":               rdID,
-					"timestamp":        ts,
-					"provider":         provider,
-					"model":            model,
-					"connectionId":     connID,
-					"status":           status,
-					"promptTokens":     prompt,
-					"completionTokens": completion,
-					"cost":             cost,
-					"endpoint":         endpoint,
-				}
-				b, _ := json.Marshal(dataMap)
-				_ = d.SaveRequestDetail(&RequestDetail{
-					ID:           rdID,
-					Timestamp:    ts,
-					Provider:     provider,
-					Model:        model,
-					ConnectionID: connID,
-					Status:       status,
-					Data:         string(b),
-				})
-			}
+	}
+	_ = rows.Close() // Release connection back to the pool before executing writes!
+
+	for _, it := range items {
+		rdID := fmt.Sprintf("%d-%s", it.id, it.model)
+		dataMap := map[string]any{
+			"id":               rdID,
+			"timestamp":        it.ts,
+			"provider":         it.provider,
+			"model":            it.model,
+			"connectionId":     it.connID,
+			"status":           it.status,
+			"promptTokens":     it.prompt,
+			"completionTokens": it.completion,
+			"cost":             it.cost,
+			"endpoint":         it.ep,
 		}
+		b, _ := json.Marshal(dataMap)
+		_, _ = d.conn.Exec(`INSERT OR IGNORE INTO requestDetails (id, timestamp, provider, model, connectionId, status, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			rdID, it.ts, it.provider, it.model, it.connID, it.status, string(b))
 	}
 }
 
