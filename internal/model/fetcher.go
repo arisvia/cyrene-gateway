@@ -228,15 +228,7 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			Models []struct {
-				ID                string `json:"id"`
-				Name              string `json:"name"`
-				MaxInputTokens    int    `json:"maxInputTokens"`
-				MaxOutputTokens   int    `json:"maxOutputTokens"`
-				SupportsImages    bool   `json:"supportsImages"`
-				SupportsToolCall  bool   `json:"supportsToolCall"`
-				SupportsReasoning bool   `json:"supportsReasoning"`
-			} `json:"models"`
+			Models []json.RawMessage `json:"models"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -244,7 +236,27 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 	}
 
 	models := make([]ModelMetadata, 0, len(resp.Data.Models))
-	for _, m := range resp.Data.Models {
+	for _, rawItem := range resp.Data.Models {
+		var rawMap map[string]any
+		if err := json.Unmarshal(rawItem, &rawMap); err != nil {
+			continue
+		}
+		if hasTruthyDisabledFlag(rawMap) {
+			continue
+		}
+
+		var m struct {
+			ID                string `json:"id"`
+			Name              string `json:"name"`
+			MaxInputTokens    int    `json:"maxInputTokens"`
+			MaxOutputTokens   int    `json:"maxOutputTokens"`
+			SupportsImages    bool   `json:"supportsImages"`
+			SupportsToolCall  bool   `json:"supportsToolCall"`
+			SupportsReasoning bool   `json:"supportsReasoning"`
+		}
+		if err := json.Unmarshal(rawItem, &m); err != nil {
+			continue
+		}
 		if m.ID == "" || m.ID == "default" {
 			continue
 		}
@@ -273,6 +285,17 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 		return nil, fmt.Errorf("codebuddy returned 0 models (token may be invalid or expired)")
 	}
 	return models, nil
+}
+
+func hasTruthyDisabledFlag(raw map[string]any) bool {
+	for k, v := range raw {
+		if strings.HasPrefix(strings.ToLower(k), "disabled") {
+			if b, ok := v.(bool); ok && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // normalizeOpenRouter handles OpenRouter's /api/v1/models with rich metadata.

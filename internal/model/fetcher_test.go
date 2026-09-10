@@ -327,6 +327,14 @@ func TestNormalizeCodebuddy(t *testing.T) {
 					"supportsImages": false,
 					"supportsToolCall": true,
 					"supportsReasoning": false
+				},
+				{
+					"id": "glm-5.0",
+					"name": "GLM-5.0",
+					"disabledMultimodal": true,
+					"supportsImages": false,
+					"supportsToolCall": true,
+					"supportsReasoning": true
 				}
 			]
 		}
