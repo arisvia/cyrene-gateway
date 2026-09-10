@@ -33,8 +33,8 @@ type ErrorRule struct {
 var ErrorRules = []ErrorRule{
 	// Non-fallback deterministic errors
 	{Status: 400, CooldownMs: 0},
+	{Status: 404, CooldownMs: 0},
 	{Status: 422, CooldownMs: 0},
-
 	// Text-based rules
 	{Text: "no credentials", CooldownMs: CooldownLong},
 	{Text: "request not allowed", CooldownMs: CooldownShort},
@@ -49,7 +49,6 @@ var ErrorRules = []ErrorRule{
 	{Status: 401, CooldownMs: CooldownLong},
 	{Status: 402, CooldownMs: CooldownLong},
 	{Status: 403, CooldownMs: CooldownLong},
-	{Status: 404, CooldownMs: CooldownLong},
 	{Status: 429, Backoff: true},
 }
 

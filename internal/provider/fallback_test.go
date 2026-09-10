@@ -56,6 +56,14 @@ func TestCheckFallbackError(t *testing.T) {
 		t.Errorf("expected CooldownLong for 403, got %v", result.Cooldown)
 	}
 
+	// Status-based: 404 → deterministic non-fallback (does not bench connection)
+	result = CheckFallbackError(404, "model unavailable", 0)
+	if result.ShouldFallback {
+		t.Error("expected ShouldFallback=false for 404")
+	}
+	if result.Cooldown != 0 {
+		t.Errorf("expected 0 cooldown for 404, got %v", result.Cooldown)
+	}
 	// Unknown error → transient cooldown
 	result = CheckFallbackError(500, "something weird happened", 0)
 	if result.Cooldown != TransientCooldown {

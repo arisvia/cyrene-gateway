@@ -33,7 +33,7 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 		apiKey = strings.TrimSpace(creds.AccessToken)
 	}
 	if apiKey == "" {
-		return QuotaResult{Message: "OpenCode Go API key not available. Add a key to view usage."}
+		return QuotaResult{Message: "未配置 OpenCode API Key，请先添加凭据。"}
 	}
 
 	url := opencodeUsageURL
@@ -72,8 +72,8 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	}
 	if resp.StatusCode != http.StatusOK {
 		return QuotaResult{
-			Plan:    "OpenCode Go",
-			Message: fmt.Sprintf("OpenCode Go usage API error (%d).", resp.StatusCode),
+			Plan:    "OpenCode",
+			Message: fmt.Sprintf("OpenCode 用量接口响应异常 (%d)。", resp.StatusCode),
 		}
 	}
 
@@ -89,8 +89,8 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 
 	if len(data.Usage) == 0 {
 		return QuotaResult{
-			Plan:    "OpenCode Go",
-			Message: "OpenCode Go usage response did not contain quota data.",
+			Plan:    "OpenCode",
+			Message: "OpenCode 用量响应未包含有效配额数据。",
 		}
 	}
 
@@ -128,8 +128,8 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 
 	if len(quotas) == 0 {
 		return QuotaResult{
-			Plan:    "OpenCode Go",
-			Message: "OpenCode Go usage response did not contain valid quota data.",
+			Plan:    "OpenCode",
+			Message: "OpenCode 用量响应未包含可解析配额指标。",
 		}
 	}
 
