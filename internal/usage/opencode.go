@@ -60,7 +60,7 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return QuotaResult{
-			Plan:    "OpenCode Zen",
+			Plan:    "OpenCode",
 			Message: "OpenCode API Key 鉴权失败，请检查凭据。",
 		}
 	}
