@@ -350,6 +350,9 @@ function createGatewayStore() {
     if (disabled) return apiPost('/api/models/disabled', { model })
     return apiDelete('/api/models/disabled', { model })
   }
+  async function testModel(model: string, connectionId?: string): Promise<{ ok: boolean; latency?: string; code?: number; error?: string }> {
+    return apiPost('/api/models/test', { model, connectionId })
+  }
   return {
     version, health, providers, setProviders, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings, aliases,
@@ -368,7 +371,7 @@ function createGatewayStore() {
     saveProviderModelMeta, resetProviderModelMeta,
     oauthStart, oauthPoll, oauthImport, oauthStatus, oauthRefresh,
     loadNodes, saveNode, deleteNode,
-    loadDisabledModels, setModelDisabled,
+    loadDisabledModels, setModelDisabled, testModel,
   }
 }
 

@@ -530,6 +530,7 @@ func (c *Client) HandleWebFetch(ctx context.Context, providerID string, body []b
 type SearchRequest struct {
 	Query      string `json:"query"`
 	MaxResults int    `json:"max_results,omitempty"`
+	Model      string `json:"model,omitempty"`
 }
 
 // HandleWebSearch proxies a web search request.
@@ -582,8 +583,12 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 		// Google Code Assist Search Grounding via gemini-2.5-flash
 		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/v1internal:generateContent"
 		method = "POST"
+		searchModel := "gemini-2.5-flash"
+		if req.Model != "" {
+			searchModel = req.Model
+		}
 		envelope := map[string]any{
-			"model":       "gemini-2.5-flash",
+			"model":       searchModel,
 			"userAgent":   "antigravity",
 			"requestType": "search",
 			"request": map[string]any{

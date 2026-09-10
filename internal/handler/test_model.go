@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
@@ -16,7 +17,8 @@ import (
 // Body: { "model": "provider/model-id" }
 func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model string `json:"model"`
+		Model        string `json:"model"`
+		ConnectionID string `json:"connectionId,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model is required"})
@@ -41,7 +43,16 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
+	var conn *model.ProviderConnection
+	if req.ConnectionID != "" {
+		c, err := s.DB.GetConnection(req.ConnectionID)
+		if err == nil && c != nil && c.IsActive {
+			conn = c
+		}
+	}
+	if conn == nil {
+		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil)
+	}
 	if conn == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "all connections rate-limited"})
 		return
@@ -52,18 +63,80 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	if conn.Provider == "antigravity" {
 		start := time.Now()
 		client := s.getHTTPClient(15 * time.Second)
-		projID, err := DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
+		projID := ""
+		if conn.Data.ProviderSpecificData != nil {
+			if p, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && p != "" {
+				projID = p
+			}
+		}
+		if projID == "" {
+			var err error
+			projID, err = DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
+			if err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "latency": time.Since(start).String()})
+				return
+			}
+			if conn.Data.ProviderSpecificData == nil {
+				conn.Data.ProviderSpecificData = make(map[string]any)
+			}
+			conn.Data.ProviderSpecificData["projectId"] = projID
+			s.DB.UpdateConnection(conn)
+		}
+
+		availableModels := s.getAntigravityAvailableModels()
+		targetModel, _, _, isImage := resolveAntigravityModel(modelInfo.Model, "", availableModels)
+		reqType := "agent"
+		upstreamAction := "streamGenerateContent?alt=sse"
+		if isImage {
+			reqType = "image_gen"
+			upstreamAction = "generateContent"
+		}
+		innerReq := map[string]any{
+			"contents": []map[string]any{
+				{
+					"role":  "user",
+					"parts": []map[string]any{{"text": "Hi"}},
+				},
+			},
+			"generationConfig": map[string]any{
+				"maxOutputTokens": 5,
+			},
+		}
+		envelope := map[string]any{
+			"project":     projID,
+			"model":       targetModel,
+			"request":     innerReq,
+			"requestType": reqType,
+			"userAgent":   "antigravity",
+			"requestId":   fmt.Sprintf("test-%d", time.Now().UnixMilli()),
+		}
+		envelopeBytes, _ := json.Marshal(envelope)
+		upstreamURL := fmt.Sprintf("%s/v1internal:%s", provider.AntigravityBaseURL, upstreamAction)
+		upReq, err := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "latency": time.Since(start).String()})
+			return
+		}
+		upReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+		upReq.Header.Set("Content-Type", "application/json")
+		upReq.Header.Set("Accept", "text/event-stream")
+		upReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		upReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
+		upReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
+
+		resp, err := client.Do(upReq)
 		latency := time.Since(start)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "latency": latency.String()})
 			return
 		}
-		if conn.Data.ProviderSpecificData == nil {
-			conn.Data.ProviderSpecificData = make(map[string]any)
+		defer resp.Body.Close()
+		io.ReadAll(resp.Body)
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "latency": latency.String(), "code": resp.StatusCode})
+		} else {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": fmt.Sprintf("HTTP %d", resp.StatusCode), "latency": latency.String(), "code": resp.StatusCode})
 		}
-		conn.Data.ProviderSpecificData["projectId"] = projID
-		s.DB.UpdateConnection(conn)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "latency": latency.String(), "code": 200})
 		return
 	}
 

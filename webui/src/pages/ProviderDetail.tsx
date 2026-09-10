@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -504,6 +504,174 @@ const ProviderDetail: Component = () => {
     try {
       await store.setModelDisabled(fullModel, !nextState)
     } catch {
+      refetchModels()
+    }
+  }
+  // ── 模型连通性单测与批量运维 ──
+  const [testingModels, setTestingModels] = createSignal<Record<string, boolean>>({})
+  const [modelTestResults, setModelTestResults] = createSignal<Record<string, { ok: boolean; latency?: string; error?: string }>>({})
+  const [testingAll, setTestingAll] = createSignal(false)
+  const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
+
+  const allDisplayModels = () =>
+    (modelsData().registryModels ?? models()?.registryModels ?? [])
+      .concat(modelsData().customModels ?? models()?.customModels ?? [])
+
+  async function testSingleModel(modelId: string) {
+    if (!conn() || testingModels()[modelId]) return
+    const p = conn()!.provider
+    const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
+    setTestingModels(prev => ({ ...prev, [modelId]: true }))
+    try {
+      const res = await store.testModel(fullModel, params.id)
+      setModelTestResults(prev => ({
+        ...prev,
+        [modelId]: {
+          ok: res.ok,
+          latency: res.latency,
+          error: res.error,
+        },
+      }))
+      if (res.ok) {
+        toast.success(`模型「${modelId}」测试通过 · ${res.latency || '连通'}`)
+      } else {
+        toast.error(`模型「${modelId}」测试失败: ${res.error || '不可用'}`)
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '测试请求异常'
+      setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
+      toast.error(`模型「${modelId}」测试失败: ${msg}`)
+    } finally {
+      setTestingModels(prev => ({ ...prev, [modelId]: false }))
+    }
+  }
+
+  async function handleEnableAll() {
+    if (!conn()) return
+    const p = conn()!.provider
+    const toEnable = allDisplayModels().filter(m => m.enabled === false)
+    if (toEnable.length === 0) {
+      toast.info('所有模型已处于启用状态')
+      return
+    }
+    setModelsData(prev => ({
+      ...prev,
+      registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: true })),
+      customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: true })),
+    }))
+    try {
+      await Promise.all(toEnable.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, false)))
+      toast.success(`已批量启用 ${toEnable.length} 个模型`)
+    } catch {
+      toast.error('批量启用失败，正在刷新状态')
+      refetchModels()
+    }
+  }
+
+  async function handleDisableAll() {
+    if (!conn()) return
+    const p = conn()!.provider
+    const toDisable = allDisplayModels().filter(m => m.enabled !== false)
+    if (toDisable.length === 0) {
+      toast.info('所有模型已处于禁用状态')
+      return
+    }
+    if (!await confirm(`确定要禁用该提供商旗下的全部 ${toDisable.length} 个模型吗？`)) return
+    setModelsData(prev => ({
+      ...prev,
+      registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: false })),
+      customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: false })),
+    }))
+    try {
+      await Promise.all(toDisable.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, true)))
+      toast.success(`已批量禁用 ${toDisable.length} 个模型`)
+    } catch {
+      toast.error('批量禁用失败，正在刷新状态')
+      refetchModels()
+    }
+  }
+
+  async function handleTestAll() {
+    if (!conn() || testingAll()) return
+    const p = conn()!.provider
+    const targetList = allDisplayModels().filter(m => Boolean(m.id || m.name))
+    if (targetList.length === 0) {
+      toast.info('没有可测试的模型')
+      return
+    }
+    setTestingAll(true)
+    setTestAllProgress({ current: 0, total: targetList.length })
+
+    let completed = 0
+    let passed = 0
+    let failed = 0
+
+    const concurrency = 3
+    let index = 0
+
+    async function worker() {
+      while (index < targetList.length) {
+        const cur = targetList[index++]
+        const modelId = cur.id || cur.name || ''
+        if (!modelId) continue
+        setTestingModels(prev => ({ ...prev, [modelId]: true }))
+        try {
+          const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
+          const res = await store.testModel(fullModel, params.id)
+          setModelTestResults(prev => ({
+            ...prev,
+            [modelId]: { ok: res.ok, latency: res.latency, error: res.error },
+          }))
+          if (res.ok) passed++
+          else failed++
+        } catch (e: unknown) {
+          failed++
+          const msg = e instanceof Error ? e.message : '异常'
+          setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
+        } finally {
+          completed++
+          setTestingModels(prev => ({ ...prev, [modelId]: false }))
+          setTestAllProgress({ current: completed, total: targetList.length })
+        }
+      }
+    }
+
+    const workers = Array.from({ length: Math.min(concurrency, targetList.length) }, () => worker())
+    await Promise.all(workers)
+
+    setTestingAll(false)
+    setTestAllProgress(null)
+    toast.success(`全部测试完成: ${passed} 个可用，${failed} 个失败`)
+  }
+
+  const failedModelsList = () => {
+    const results = modelTestResults()
+    return allDisplayModels().filter(m => {
+      const mid = m.id || m.name
+      return mid && results[mid] && !results[mid].ok && m.enabled !== false
+    })
+  }
+
+  async function handleDisableFailed() {
+    if (!conn()) return
+    const p = conn()!.provider
+    const failedList = failedModelsList()
+    if (failedList.length === 0) {
+      toast.info('当前没有需要禁用的失败模型')
+      return
+    }
+    if (!await confirm(`检测到 ${failedList.length} 个模型测试失败，是否一键全部禁用？`)) return
+    const failedIds = new Set(failedList.map(m => m.id || m.name).filter((id): id is string => Boolean(id)))
+    setModelsData(prev => ({
+      ...prev,
+      registryModels: (prev.registryModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
+      customModels: (prev.customModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
+    }))
+    try {
+      await Promise.all(failedList.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, true)))
+      toast.success(`已一键禁用 ${failedList.length} 个失效模型`)
+    } catch {
+      toast.error('禁用失败，正在刷新状态')
       refetchModels()
     }
   }
@@ -1177,6 +1345,55 @@ const ProviderDetail: Component = () => {
                       </Button>
                     </div>
                   </div>
+                  {/* 批量运维工具栏 */}
+                  <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-subtle/40 mb-3 text-xs">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-faint">批量运维:</span>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleEnableAll}
+                        title="一键全部开放该提供商模型"
+                      >
+                        全部启用
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleDisableAll}
+                        title="一键全部关闭该提供商模型"
+                      >
+                        全部禁用
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={testingAll()}
+                        onClick={handleTestAll}
+                        title="对所有模型逐个发送简短打招呼请求验证连通性"
+                      >
+                        <IconZap size={12} class="mr-1 inline" />
+                        测试全部
+                      </Button>
+                      <Show when={testAllProgress()}>
+                        {prog => (
+                          <span class="text-[11px] text-faint font-mono">
+                            进度: {prog().current} / {prog().total}
+                          </span>
+                        )}
+                      </Show>
+                    </div>
+                    <Show when={failedModelsList().length > 0}>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={handleDisableFailed}
+                        title="将本次测试失败的模型一键全部关闭对外提供"
+                      >
+                        一键禁用失败模型 ({failedModelsList().length})
+                      </Button>
+                    </Show>
+                  </div>
 
                   <Show
                     when={(modelsData().registryModels ?? models()?.registryModels ?? []).length > 0}
@@ -1223,6 +1440,15 @@ const ProviderDetail: Component = () => {
                                   <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
                                 </div>
                                 <div class="shrink-0 flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    class={`p-1 text-xs rounded transition-colors ${testingModels()[m.id || m.name || ''] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
+                                    title="打招呼快速测试该模型连通性"
+                                    disabled={testingModels()[m.id || m.name || '']}
+                                    onClick={() => testSingleModel(m.id || m.name || '')}
+                                  >
+                                    <IconZap size={12} />
+                                  </button>
                                   <Show
                                     when={m.canEdit !== false}
                                     fallback={
@@ -1254,6 +1480,28 @@ const ProviderDetail: Component = () => {
 
                               {/* 元数据 Badge 栏 */}
                               <div class="mt-2 pt-2 border-t border-subtle/40 flex items-center gap-1.5 flex-wrap text-[10px] text-faint">
+                                <Show when={modelTestResults()[m.id || m.name || '']}>
+                                  {res => (
+                                    <Show
+                                      when={res().ok}
+                                      fallback={
+                                        <span
+                                          class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30 cursor-help"
+                                          title={res().error || '测试未通过'}
+                                        >
+                                          ✗ {res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : '失败'}
+                                        </span>
+                                      }
+                                    >
+                                      <span
+                                        class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono"
+                                        title={`测试通过 · 耗时 ${res().latency || '正常'}`}
+                                      >
+                                        ✓ {res().latency || '连通'}
+                                      </span>
+                                    </Show>
+                                  )}
+                                </Show>
                                 <Show when={m.contextLength && m.contextLength > 0}>
                                   <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
                                     {m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength} 上下文
