@@ -551,10 +551,8 @@ const Providers: Component = () => {
           baseUrl: f.baseUrl.trim() || undefined,
         },
       })
-      toast.success(`成功接入提供商：${f.name || reg.name}`)
       setWizardOpen(false)
       setActiveTab('connections')
-      await store.loadProvidersOnly()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       toast.error(`接入失败: ${msg}`)
@@ -708,7 +706,6 @@ const Providers: Component = () => {
                     setSaving(true)
                     try {
                       await store.enableFree()
-                      toast.success('已一键接入所有免费上游')
                     } finally {
                       setSaving(false)
                     }

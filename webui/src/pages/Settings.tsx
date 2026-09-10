@@ -159,7 +159,6 @@ const Settings: Component = () => {
       await store.saveSettings(payload)
       setLocal({ ...store.settings() })
       setHasPw(!!store.settings().hasPassword)
-      toast.success('设置已保存')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '保存设置失败')
     } finally {
@@ -176,7 +175,6 @@ const Settings: Component = () => {
       await store.setPassword(pw())
       setPw('')
       setHasPw(true)
-      toast.success('密码已更新')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : '密码更新失败')
     }

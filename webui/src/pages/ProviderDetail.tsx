@@ -16,7 +16,6 @@ const ProviderDetail: Component = () => {
   const [notFound, setNotFound] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
   const [testing, setTesting] = createSignal(false)
-  const [testResult, setTestResult] = createSignal<{ ok: boolean; msg: string } | null>(null)
   const [tab, setTab] = createSignal<'overview' | 'models' | 'chat'>('overview')
   // Chat 测试状态
   const [selectedModel, setSelectedModel] = createSignal('')
@@ -576,12 +575,15 @@ const ProviderDetail: Component = () => {
 
   async function runTest() {
     setTesting(true)
-    setTestResult(null)
     try {
       const r = await store.testProvider(params.id)
-      setTestResult({ ok: !!r?.ok, msg: r?.ok ? `连通 · ${r.latencyMs}ms` : `${r?.error || '失败'}${r?.code ? `（HTTP ${r.code}）` : ''}` })
+      if (r?.ok) {
+        toast.success(`提供商连通正常 · 响应延迟 ${r.latencyMs}ms`)
+      } else {
+        toast.error(`连通失败: ${r?.error || '上游无响应'}${r?.code ? `（HTTP ${r.code}）` : ''}`)
+      }
     } catch (e: unknown) {
-      setTestResult({ ok: false, msg: e instanceof Error ? e.message : '请求失败' })
+      toast.error(e instanceof Error ? e.message : '连通测试请求失败')
     } finally {
       setTesting(false)
     }
@@ -635,22 +637,8 @@ const ProviderDetail: Component = () => {
               </div>
             }
             actions={
-              <div class="flex items-center gap-2.5 flex-wrap">
+              <div class="flex items-center gap-3">
                 <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
-                <Show when={testResult()}>
-                  <span
-                    class={`text-xs px-2.5 py-1 rounded-control font-mono inline-flex items-center gap-1.5 max-w-[220px] sm:max-w-xs truncate cursor-pointer transition-all ${
-                      testResult()!.ok
-                        ? 'bg-success/10 text-success border border-success/20 hover:bg-success/20'
-                        : 'bg-danger/10 text-danger border border-danger/20 hover:bg-danger/20'
-                    }`}
-                    title={`${testResult()!.msg}（点击关闭）`}
-                    onClick={() => setTestResult(null)}
-                  >
-                    <span class={`w-1.5 h-1.5 rounded-full shrink-0 ${testResult()!.ok ? 'bg-success' : 'bg-danger'}`} />
-                    <span class="truncate">{testResult()!.msg}</span>
-                  </span>
-                </Show>
                 <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
             }
