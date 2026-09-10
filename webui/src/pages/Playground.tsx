@@ -289,7 +289,7 @@ const Playground: Component = () => {
     let accumulated = ''
     let buffer = ''
     let servedModel = servedHeader
-    const rawChunks: string[] = []
+    const rawChunks: unknown[] = []
 
     try {
       while (true) {
@@ -430,6 +430,12 @@ const Playground: Component = () => {
         )
       })
       .catch(err => {
+        if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
+          setTurns(prev =>
+            prev.map(t => (t.id === turnId ? { ...t, a: { ...t.a, busy: false } } : t))
+          )
+          return
+        }
         const msg = err instanceof Error ? err.message : String(err)
         setTurns(prev =>
           prev.map(t =>
@@ -491,16 +497,22 @@ const Playground: Component = () => {
             )
           )
         })
-        .catch(err => {
-          const msg = err instanceof Error ? err.message : String(err)
+      .catch(err => {
+        if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
           setTurns(prev =>
-            prev.map(t =>
-              t.id === turnId && t.b
-                ? { ...t, b: { ...t.b, busy: false, error: msg } }
-                : t
-            )
+            prev.map(t => (t.id === turnId && t.b ? { ...t, b: { ...t.b, busy: false } } : t))
           )
-        })
+          return
+        }
+        const msg = err instanceof Error ? err.message : String(err)
+        setTurns(prev =>
+          prev.map(t =>
+            t.id === turnId && t.b
+              ? { ...t, b: { ...t.b, busy: false, error: msg } }
+              : t
+          )
+        )
+      })
     }
 
     await Promise.allSettled([promiseA, promiseB])
@@ -524,6 +536,8 @@ const Playground: Component = () => {
         model,
         messages,
         temperature: temperature(),
+        top_p: topP(),
+        max_tokens: maxTokens(),
         stream: stream(),
       }
       return `curl -X POST "${origin}/v1/chat/completions" \\
@@ -543,6 +557,8 @@ response = client.chat.completions.create(
     model="${model}",
     messages=${JSON.stringify(messages, null, 4)},
     temperature=${temperature()},
+    top_p=${topP()},
+    max_tokens=${maxTokens()},
     stream=${stream() ? 'True' : 'False'}
 )
 
@@ -562,6 +578,8 @@ async function main() {
     model: "${model}",
     messages: ${JSON.stringify(messages, null, 4)},
     temperature: ${temperature()},
+    top_p: ${topP()},
+    max_tokens: ${maxTokens()},
     stream: ${stream() ? 'true' : 'false'},
   });
 
@@ -1023,7 +1041,7 @@ main();
                   </Show>
                 </div>
                 <textarea
-                  class="w-full bg-input border border-subtle rounded-control p-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:border-accent min-h-[90px] resize-y"
+                  class="w-full bg-black/4 dark:bg-white/6 border border-subtle rounded-control p-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-accent/40 min-h-[90px] resize-y"
                   placeholder="设定模型的角色、输出格式或行为准则..."
                   value={systemPrompt()}
                   onInput={e => setSystemPrompt(e.currentTarget.value)}
@@ -1056,7 +1074,7 @@ main();
                   step="0.05"
                   value={temperature()}
                   onInput={e => setTemperature(parseFloat(e.currentTarget.value))}
-                  class="w-full accent-accent cursor-pointer"
+                  class="w-full accent-(--accent) cursor-pointer"
                 />
                 <div class="flex justify-between text-[10px] text-faint">
                   <span>精确 / 严谨 (0.0)</span>
@@ -1077,7 +1095,7 @@ main();
                   step="0.05"
                   value={topP()}
                   onInput={e => setTopP(parseFloat(e.currentTarget.value))}
-                  class="w-full accent-accent cursor-pointer"
+                  class="w-full accent-(--accent) cursor-pointer"
                 />
               </div>
 
@@ -1094,7 +1112,7 @@ main();
                   step="256"
                   value={maxTokens()}
                   onInput={e => setMaxTokens(parseInt(e.currentTarget.value) || 2048)}
-                  class="w-full bg-input border border-subtle rounded-control px-2.5 py-1 text-xs font-mono text-foreground focus:outline-none focus:border-accent"
+                  class="w-full bg-black/4 dark:bg-white/6 border border-subtle rounded-control px-2.5 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-accent/40"
                 />
               </div>
 
