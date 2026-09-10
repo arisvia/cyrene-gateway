@@ -126,13 +126,6 @@ const ProviderDetail: Component = () => {
   }
 
   const accountAuthOptions = () => {
-    const p = conn()?.provider
-    if (p === 'opencode') {
-      return [
-        { value: 'none', label: '免密模式（激活 Zen / Big-Pickle 等免密模型）' },
-        { value: 'api-key', label: '商业授权模式（输入 Go / Zen 套餐 API Key）' },
-      ]
-    }
     const modes = regInfo()?.authModes || [regInfo()?.authType || 'api-key']
     const opts: Array<{ value: string; label: string }> = [
       { value: 'api-key', label: 'API Key / 访问凭据 (PAT)' },
@@ -154,7 +147,7 @@ const ProviderDetail: Component = () => {
     const p = conn()?.provider
     if (!p) return
     const aType = newAccountAuthType()
-    if (aType === 'api-key' && !newAccountApiKey().trim() && p !== 'opencode') {
+    if (aType === 'api-key' && !newAccountApiKey().trim()) {
       toast.error('请填写 API Key')
       return
     }
@@ -712,7 +705,7 @@ const ProviderDetail: Component = () => {
                         variant="primary"
                         onClick={() => {
                           setNewAccountName(`${conn()?.name || conn()?.provider} 备用账号`)
-                          setNewAccountAuthType(conn()?.provider === 'opencode' ? 'none' : 'api-key')
+                          setNewAccountAuthType('api-key')
                           setNewAccountApiKey('')
                           setNewAccountPriority(String((Number(priority()) || 0) + 10))
                           setAddAccountOpen(true)
@@ -872,18 +865,6 @@ const ProviderDetail: Component = () => {
 
                     {/* 表单内容滚动区 */}
                     <div class="flex-1 overflow-y-auto pr-1 py-3 space-y-4">
-                      {/* OpenCode 专用模式提示 */}
-                      <Show when={c().provider === 'opencode'}>
-                        <div class="p-3 rounded-control bg-accent/10 border border-accent/25 text-xs text-text space-y-1">
-                          <div class="font-medium text-accent">OpenCode 免密与商业授权说明</div>
-                          <p class="text-faint leading-relaxed">
-                            {c().authType === 'none'
-                              ? '当前处于免密模式，可免鉴权直接调用 Zen 系列与 Big-Pickle 等官方免密模型；填入 Go/Zen 套餐 API Key 后保存即可解锁全量进阶商业模型。'
-                              : '当前已配置 API Key 商业凭据，网关将使用该凭据鉴权并请求全量商业模型。'}
-                          </p>
-                        </div>
-                      </Show>
-
                       <Field label="账号显示名称" hint="自定义名称，便于在调度日志和控制台中辨识">
                         <Input value={name()} onInput={setName} placeholder="例如：主账号、备用 PAT、Team B" />
                       </Field>
@@ -892,11 +873,10 @@ const ProviderDetail: Component = () => {
                         <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
                       </Field>
 
-                      {/* API Key / 凭据输入 (仅非纯 OAuth 模式，或为 OpenCode 时显示) */}
+                      {/* API Key / 凭据输入 (仅非纯 OAuth 模式显示) */}
                       <Show
                         when={
                           c().authType !== 'oauth' ||
-                          (c().provider === 'opencode' && c().authType !== 'none') ||
                           (modelsData().authModes?.includes('api-key') && c().authType !== 'oauth')
                         }
                         fallback={
@@ -942,7 +922,7 @@ const ProviderDetail: Component = () => {
                               c().provider === 'qoder'
                                 ? 'pt-... (Personal Access Token)'
                                 : c().provider === 'opencode'
-                                ? '输入 OpenCode Go/Zen 套餐 API Key'
+                                ? '输入 OpenCode API Key'
                                 : 'sk-...'
                             }
                           />
@@ -1054,42 +1034,6 @@ const ProviderDetail: Component = () => {
             {/* 模型 */}
             <Show when={tab() === 'models'}>
               <div class="space-y-4">
-                {/* OpenCode 专用套餐与免密提示横幅 */}
-                <Show when={c().provider === 'opencode'}>
-                  <div class="p-4 rounded-control border border-subtle bg-bg-elevated/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-glass">
-                    <div class="flex items-start sm:items-center gap-2.5 text-text">
-                      <Show
-                        when={modelsData().isFreeMode}
-                        fallback={
-                          <>
-                            <span class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shrink-0 mt-0.5 sm:mt-0" />
-                            <div>
-                              <span class="font-medium text-foreground">商业授权模式：</span>
-                              <span class="text-muted">已配置 API Key，网关已解锁 OpenCode Go 套餐与 Zen 充值额度的全量商业模型。</span>
-                            </div>
-                          </>
-                        }
-                      >
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
-                        <div>
-                          <span class="font-medium text-emerald-400">免密体验模式（Zen Free）：</span>
-                          <span class="text-muted">当前未填写 API Key，网关严格锁定并仅激活官方免费模型（Big Pickle、Mimo Free、Ling Free 等）。填入 API Key 即可解锁全量商业模型。</span>
-                        </div>
-                      </Show>
-                    </div>
-                    <Show when={modelsData().isFreeMode}>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        class="shrink-0 self-start sm:self-auto text-accent hover:border-accent"
-                        onClick={() => setTab('overview')}
-                      >
-                        配置 API Key →
-                      </Button>
-                    </Show>
-                  </div>
-                </Show>
-
                 <Card class="p-5">
                   <div class="flex items-center justify-between mb-3">
                     <div>
@@ -1469,7 +1413,7 @@ const ProviderDetail: Component = () => {
                     conn()?.provider === 'qoder'
                       ? 'pt-... (Personal Access Token)'
                       : conn()?.provider === 'opencode'
-                      ? '输入 OpenCode Go/Zen 套餐 API Key'
+                      ? '输入 OpenCode API Key'
                       : 'sk-...'
                   }
                 />

@@ -299,8 +299,7 @@ const Providers: Component = () => {
     setSelectedReg(reg)
     setTestedCreds(null)
     setTestingCreds(false)
-    const isOpencode = reg.id === 'opencode'
-    const defaultAuth = isOpencode ? 'none' : (reg.authType === 'oauth' ? 'oauth' : 'api-key')
+    const defaultAuth = reg.authType === 'oauth' ? 'oauth' : 'api-key'
     setForm({
       name: reg.name,
       authType: defaultAuth,
@@ -311,34 +310,6 @@ const Providers: Component = () => {
     setWizardOpen(true)
   }
 
-  // 一键接入免密提供商（仅 OpenCode 原生支持完全免密免鉴权调用公共模型）
-  async function quickEnableFree(reg: RegistryProvider) {
-    if (reg.id !== 'opencode') {
-      openWizard(reg)
-      return
-    }
-    if (store.providers().some(p => p.provider === reg.id)) {
-      toast.info(`${reg.name} 已经接入`)
-      return
-    }
-    setSaving(true)
-    try {
-      await store.addProvider({
-        provider: reg.id,
-        authType: 'none',
-        name: reg.name,
-        data: { baseUrl: reg.baseUrl || undefined },
-      })
-      toast.success(`已启用免密提供商：${reg.name}`)
-      await store.loadProvidersOnly()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error(`启用失败: ${msg}`)
-      console.error('[providers] quick enable failed:', e)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   // 向导中测试 API Key / 凭据有效性
   async function handleTestWizardCreds() {
@@ -551,13 +522,7 @@ const Providers: Component = () => {
       return
     }
 
-    const isOpencode = reg.id === 'opencode'
-    if (normAuth === 'none') {
-      if (!isOpencode) {
-        toast.error('该提供商不支持免密模式')
-        return
-      }
-    } else if (normAuth === 'api-key') {
+    if (normAuth === 'api-key') {
       const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
       if (isCustom && !f.baseUrl.trim()) {
         toast.error('通用自定义接口必须填写有效的 Base URL 端点')
@@ -932,7 +897,6 @@ const Providers: Component = () => {
                 return group.items[0]
               }
               const connected = () => store.providers().some(p => p.provider === reg().id)
-              const isFree = () => reg().id === 'opencode' && reg().noAuth
               const hasVariants = () => group.items.length > 1
 
               return (
@@ -955,7 +919,7 @@ const Providers: Component = () => {
                         </div>
                       </div>
 
-                      <Badge tone={isFree() ? 'green' : 'blue' as BadgeTone} class="shrink-0">
+                      <Badge tone={reg().category === 'free' ? 'green' : 'blue' as BadgeTone} class="shrink-0">
                         {CATEGORY_LABEL[reg().category] || reg().category}
                       </Badge>
                     </div>
@@ -1045,16 +1009,6 @@ const Providers: Component = () => {
                         <Show when={connected()}>
                           <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">已接入</span>
                         </Show>
-                        <Show when={isFree() && !connected()}>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            loading={saving()}
-                            onClick={() => quickEnableFree(reg())}
-                          >
-                            一键启用
-                          </Button>
-                        </Show>
                         <Button
                           size="sm"
                           variant={connected() ? 'secondary' : 'primary'}
@@ -1085,13 +1039,9 @@ const Providers: Component = () => {
             const authModes = () => {
               const r = reg()
               if (!r) return []
-              if (r.id === 'opencode') {
-                return ['none', 'api-key']
-              }
               const raw = r.authModes || [r.authType || 'api-key']
               return raw.map(m => m === 'apikey' ? 'api-key' : m).filter(m => m !== 'none')
             }
-            const isFree = () => reg().id === 'opencode' && form().authType === 'none'
 
             return (
               <div class="space-y-4">
@@ -1352,7 +1302,7 @@ const Providers: Component = () => {
                     }
                     onClick={handleWizardSubmit}
                   >
-                    {isFree() ? '立即接入' : form().authType === 'oauth' ? (wizardOAuthPolling() ? '正在授权中...' : '发起 OAuth 授权 ↗') : '验证并通过后保存'}
+                    {form().authType === 'oauth' ? (wizardOAuthPolling() ? '正在授权中...' : '发起 OAuth 授权 ↗') : '验证并通过后保存'}
                   </Button>
                 </div>
               </div>

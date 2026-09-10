@@ -124,9 +124,21 @@ func ResolveTransport(p ProviderInfo, baseURL, apiType string, conn *model.Provi
 				Scheme: p.AuthScheme,
 				Hooks:  p.AuthHooks,
 			}
-		} else if len(p.AuthHooks) > 0 {
-			// Hooks-only transport (e.g. kimi apikey path still wants X-Msh-*).
-			t.Auth.Hooks = append(t.Auth.Hooks, p.AuthHooks...)
+		}
+	}
+
+	// Always inherit registry AuthHooks (e.g. opencodeHeaders, kimiHeaders) even if
+	// BaseURL is overridden by the connection.
+	for _, h := range p.AuthHooks {
+		found := false
+		for _, existing := range t.Auth.Hooks {
+			if existing == h {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Auth.Hooks = append(t.Auth.Hooks, h)
 		}
 	}
 

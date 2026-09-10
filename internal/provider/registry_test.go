@@ -36,10 +36,9 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":   12,
+		"apikey":   13,
 		"oauth":    11,
 		"freeTier": 4,
-		"free":     1,
 		"custom":   2,
 	}
 

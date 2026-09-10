@@ -1,24 +1,59 @@
 package provider
 
-import "strings"
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"fmt"
+	"net/http"
+	"strings"
+)
 
-// IsOpenCodeFreeModel checks whether an OpenCode model is available on the free tier (no API key required).
-func IsOpenCodeFreeModel(id string) bool {
-	idLower := strings.ToLower(id)
-	return strings.HasSuffix(idLower, "-free") || idLower == "big-pickle"
+func init() {
+	authHooks["opencodeHeaders"] = opencodeHeadersHook
 }
 
-// GetOpenCodeFreeModels returns standard fallback free models for OpenCode.
-func GetOpenCodeFreeModels() []ModelRef {
-	return []ModelRef{
-		{ID: "big-pickle", Name: "Big Pickle (Free)"},
-		{ID: "mimo-v2.5-free", Name: "Mimo v2.5 (Free)"},
-		{ID: "ling-3.0-flash-fin-free", Name: "Ling 3.0 Flash (Free)"},
-		{ID: "deepseek-v4-flash-free", Name: "DeepSeek V4 Flash (Free)"},
-		{ID: "nemotron-3-ultra-free", Name: "Nemotron 3 Ultra (Free)"},
-		{ID: "nemotron-3.5-lightning-free", Name: "Nemotron 3.5 Lightning (Free)"},
-		{ID: "laguna-s-2.1-free", Name: "Laguna S 2.1 (Free)"},
-		{ID: "muse-spark-1.3-contributor-free", Name: "Muse Spark 1.3 (Free)"},
-		{ID: "muse-spark-1.2-contributor-free", Name: "Muse Spark 1.2 (Free)"},
+func deriveOpencodeSessionID(seed string) string {
+	if seed == "" {
+		b := make([]byte, 16)
+		_, _ = rand.Read(b)
+		return fmt.Sprintf("ses_%x", b)
+	}
+	h := sha256.Sum256([]byte("opencode:session:" + seed))
+	return fmt.Sprintf("ses_%x", h[:16])
+}
+
+func generateOpencodeRequestID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("msg_%x", b)
+}
+
+// opencodeHeadersHook injects the client tracking and routing headers required by OpenCode.
+// It preserves downstream client session IDs when present, and otherwise derives a stable
+// session ID per account credential to ensure optimal upstream worker routing and KV-cache hits.
+func opencodeHeadersHook(h http.Header, c Credentials) {
+	if h.Get("User-Agent") == "" {
+		h.Set("User-Agent", "opencode")
+	}
+	if h.Get("x-opencode-client") == "" {
+		h.Set("x-opencode-client", "desktop")
+	}
+	if h.Get("x-opencode-session") == "" {
+		sessionID := ""
+		if c.ProviderSpecificData != nil {
+			if s, ok := c.ProviderSpecificData["sessionId"].(string); ok {
+				sessionID = strings.TrimSpace(s)
+			}
+		}
+		if sessionID == "" {
+			sessionID = deriveOpencodeSessionID(c.token())
+		}
+		h.Set("x-opencode-session", sessionID)
+	}
+	if h.Get("x-opencode-request") == "" {
+		h.Set("x-opencode-request", generateOpencodeRequestID())
+	}
+	if h.Get("x-opencode-project") == "" {
+		h.Set("x-opencode-project", "global")
 	}
 }

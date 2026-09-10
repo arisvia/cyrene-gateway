@@ -429,7 +429,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	seenFullIDs := make(map[string]bool)
 
 	// Helper to extract and append models for a provider
-	appendProviderModels := func(providerID string, isUnauthOpenCode bool, pConns []model.ProviderConnection) {
+	appendProviderModels := func(providerID string, pConns []model.ProviderConnection) {
 		var unifiedModels []provider.ModelRef
 		seenModel := make(map[string]bool)
 
@@ -438,9 +438,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			var cached model.CachedModels
 			if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
 				for _, m := range cached.Models {
-					if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(m.ID) {
-						continue
-					}
 					seenModel[m.ID] = true
 					name := m.DisplayName
 					if name == "" {
@@ -450,22 +447,10 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		// 3. Fallback for unauthenticated OpenCode if no models found
-		if isUnauthOpenCode && len(unifiedModels) == 0 {
-			for _, fm := range provider.GetOpenCodeFreeModels() {
-				if !seenModel[fm.ID] {
-					seenModel[fm.ID] = true
-					unifiedModels = append(unifiedModels, fm)
-				}
-			}
-		}
 
-		// 4. Custom models from connections of this provider
+		// 2. Custom models from connections of this provider
 		for _, conn := range pConns {
 			for _, cm := range s.loadCustomModels(conn.ID) {
-				if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(cm.ID) {
-					continue
-				}
 				if !seenModel[cm.ID] {
 					seenModel[cm.ID] = true
 					name := cm.Name
@@ -561,15 +546,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	// Add models for all providers in stable priority order
 	for _, providerID := range sortedProviders {
 		pConns := activeConnsByProvider[providerID]
-		hasApiKey := false
-		for _, c := range pConns {
-			if c.Data.APIKey != "" {
-				hasApiKey = true
-				break
-			}
-		}
-		isUnauthOpenCode := providerID == "opencode" && !hasApiKey
-		appendProviderModels(providerID, isUnauthOpenCode, pConns)
+		appendProviderModels(providerID, pConns)
 	}
 
 	// Capability filtering: if targetKind == "image", only return image-generation models.

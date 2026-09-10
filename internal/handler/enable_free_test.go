@@ -21,15 +21,32 @@ func countNoAuth() int {
 	}
 	return n
 }
+func withMockNoAuthProvider(t *testing.T) {
+	orig := provider.Registry["mock-free-test"]
+	provider.Registry["mock-free-test"] = provider.ProviderInfo{
+		ID:       "mock-free-test",
+		Name:     "Mock Free Provider",
+		Category: "free",
+		AuthType: "none",
+		NoAuth:   true,
+	}
+	t.Cleanup(func() {
+		if orig.ID != "" {
+			provider.Registry["mock-free-test"] = orig
+		} else {
+			delete(provider.Registry, "mock-free-test")
+		}
+	})
+}
 
 func TestEnableFreeProviders(t *testing.T) {
+	withMockNoAuthProvider(t)
 	srv, database := setupTestServer(t)
 
 	total := countNoAuth()
 	if total == 0 {
 		t.Fatal("expected at least one NoAuth provider in the registry")
 	}
-
 	// Enable all free providers (empty body).
 	req := httptest.NewRequest("POST", "/api/providers/enable-free", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
@@ -88,8 +105,8 @@ func TestEnableFreeProviders(t *testing.T) {
 }
 
 func TestEnableFreeProvidersSelective(t *testing.T) {
+	withMockNoAuthProvider(t)
 	srv, database := setupTestServer(t)
-
 	// Find a NoAuth provider to target.
 	var target string
 	for id, info := range provider.Registry {
@@ -127,8 +144,8 @@ func TestEnableFreeProvidersSelective(t *testing.T) {
 }
 
 func TestEnableFreeProvidersSkipsExisting(t *testing.T) {
+	withMockNoAuthProvider(t)
 	srv, database := setupTestServer(t)
-
 	// Pre-create a connection for a NoAuth provider with a custom name.
 	var target string
 	for id, info := range provider.Registry {

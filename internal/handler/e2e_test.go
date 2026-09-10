@@ -129,13 +129,16 @@ func TestE2EChatCompletion(t *testing.T) {
 		// --- free category (NoAuth, zero-config) ---
 		{
 			Provider: "opencode", Model: "opencode/big-pickle",
-			AuthType: "none",
+			AuthType: "api-key", APIKey: "oc-test-key",
 			WantAuth: func(r *http.Request) error {
-				if got := r.Header.Get("Authorization"); got != "Bearer public" {
-					return fmt.Errorf("opencode: want Bearer public, got %q", got)
+				if got := r.Header.Get("Authorization"); got != "Bearer oc-test-key" {
+					return fmt.Errorf("opencode: want Bearer oc-test-key, got %q", got)
 				}
 				if got := r.Header.Get("x-opencode-client"); got != "desktop" {
 					return fmt.Errorf("opencode: want x-opencode-client=desktop, got %q", got)
+				}
+				if got := r.Header.Get("x-opencode-session"); !strings.HasPrefix(got, "ses_") {
+					return fmt.Errorf("opencode: want x-opencode-session ses_..., got %q", got)
 				}
 				return nil
 			},
@@ -205,7 +208,7 @@ func TestE2EChatCompletion(t *testing.T) {
 	}
 }
 
-// TestE2ENoAuth verifies that NoAuth providers (e.g. OpenCode) work with "none" auth
+// TestE2ENoAuth verifies that NoAuth providers work with "none" auth
 // and send "Bearer public".
 func TestE2ENoAuth(t *testing.T) {
 	upstream := mockOpenAIUpstream(t, func(r *http.Request) error {
@@ -218,21 +221,21 @@ func TestE2ENoAuth(t *testing.T) {
 
 	srv, database := setupTestServer(t)
 
-	// Override opencode's base URL by patching the registry temporarily.
-	orig := provider.Registry["opencode"]
-	patched := orig
-	patched.BaseURL = upstream.URL
-	provider.Registry["opencode"] = patched
-	t.Cleanup(func() { provider.Registry["opencode"] = orig })
-	// Explicitly create an unauthenticated connection (as user now controls in Market)
+	provider.Registry["mock-noauth"] = provider.ProviderInfo{
+		ID: "mock-noauth", Name: "Mock NoAuth",
+		BaseURL: upstream.URL, APIType: "openai",
+		AuthType: "none", Category: "free", NoAuth: true,
+	}
+	t.Cleanup(func() { delete(provider.Registry, "mock-noauth") })
+
 	_ = database.CreateConnection(&model.ProviderConnection{
-		ID:       "test-opencode-none",
-		Provider: "opencode",
+		ID:       "test-mock-noauth",
+		Provider: "mock-noauth",
 		AuthType: "none",
 		IsActive: true,
 	})
 
-	body := `{"model":"opencode/big-pickle","messages":[{"role":"user","content":"hello"}]}`
+	body := `{"model":"mock-noauth/test-model","messages":[{"role":"user","content":"hello"}]}`
 	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -242,9 +245,9 @@ func TestE2ENoAuth(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	conns, _ := database.ListConnectionsByProvider("opencode")
+	conns, _ := database.ListConnectionsByProvider("mock-noauth")
 	if len(conns) == 0 {
-		t.Fatal("expected connection for opencode")
+		t.Fatal("expected connection for mock-noauth")
 	}
 	if conns[0].AuthType != "none" {
 		t.Fatalf("expected authType=none, got %s", conns[0].AuthType)

@@ -12,7 +12,6 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
-	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func setupTestServer(t *testing.T) (*Server, *db.DB) {
@@ -386,53 +385,54 @@ func TestDisabledModelExcludedFromV1Models(t *testing.T) {
 	}
 }
 
-func TestOpenCodeUnauthenticatedGatesModels(t *testing.T) {
+func TestOpenCodeHeadersInjection(t *testing.T) {
+	var capturedHeaders http.Header
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeaders = r.Header.Clone()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-test","choices":[{"message":{"role":"assistant","content":"hello"}}]}`))
+	}))
+	defer mockUpstream.Close()
+
 	srv, database := setupTestServer(t)
 
 	conn := &model.ProviderConnection{
 		ID:       "test-opencode-conn",
 		Provider: "opencode",
-		AuthType: "none",
+		AuthType: "api-key",
 		IsActive: true,
-		Data:     model.ConnectionData{},
+		Data: model.ConnectionData{
+			APIKey:  "oc-secret-key",
+			BaseURL: mockUpstream.URL,
+		},
 	}
 	database.CreateConnection(conn)
 
-	req := httptest.NewRequest("GET", "/v1/models", nil)
-	w := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var resp struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("invalid json: %v", err)
-	}
-
-	for _, m := range resp.Data {
-		if strings.HasPrefix(m.ID, "opencode/") {
-			modelName := strings.TrimPrefix(m.ID, "opencode/")
-			if !provider.IsOpenCodeFreeModel(modelName) {
-				t.Fatalf("unauthenticated opencode connection exposed non-free model: %s", m.ID)
-			}
-		}
-	}
-
-	// Test chat completions: paid model should be rejected with 403
-	body := `{"model":"opencode/claude-sonnet-4","messages":[{"role":"user","content":"hi"}]}`
+	body := `{"model":"opencode/big-pickle","messages":[{"role":"user","content":"hi"}]}`
 	reqChat := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	reqChat.Header.Set("Content-Type", "application/json")
 	wChat := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(wChat, reqChat)
 
-	if wChat.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 Forbidden for paid model on unauth OpenCode, got %d: %s", wChat.Code, wChat.Body.String())
+	if wChat.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", wChat.Code, wChat.Body.String())
+	}
+
+	if got := capturedHeaders.Get("Authorization"); got != "Bearer oc-secret-key" {
+		t.Errorf("expected Bearer oc-secret-key, got %q", got)
+	}
+	if got := capturedHeaders.Get("x-opencode-client"); got != "desktop" {
+		t.Errorf("expected x-opencode-client desktop, got %q", got)
+	}
+	if got := capturedHeaders.Get("x-opencode-session"); !strings.HasPrefix(got, "ses_") {
+		t.Errorf("expected x-opencode-session to start with ses_, got %q", got)
+	}
+	if got := capturedHeaders.Get("x-opencode-request"); !strings.HasPrefix(got, "msg_") {
+		t.Errorf("expected x-opencode-request to start with msg_, got %q", got)
+	}
+	if got := capturedHeaders.Get("x-opencode-project"); got != "global" {
+		t.Errorf("expected x-opencode-project global, got %q", got)
 	}
 }
 

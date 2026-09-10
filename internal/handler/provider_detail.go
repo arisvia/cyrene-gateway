@@ -68,10 +68,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "connection not found"})
 		return
 	}
-
-	// 判断是否为免密未授权的 OpenCode 连接（仅允许免费模型）
-	isUnauthOpenCode := conn.Provider == "opencode" && (conn.AuthType == "none" || conn.Data.APIKey == "")
-
 	// 2. 获取实时同步抓取的 Live 缓存模型并合并
 	seen := make(map[string]bool)
 	var unifiedModels []provider.ModelRef
@@ -80,10 +76,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		var cached model.CachedModels
 		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
 			for _, m := range cached.Models {
-				// 若 OpenCode 未填 API Key，过滤只留下免费模型
-				if isUnauthOpenCode && !provider.IsOpenCodeFreeModel(m.ID) {
-					continue
-				}
 				// 过滤生图专用模型（避免在文本会话中展示）
 				if strings.Contains(strings.ToLower(m.ID), "-image") {
 					continue
@@ -101,15 +93,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// 如果处于 OpenCode 免密模式且尚未抓取或未命中任何免费模型，使用 OpenCode 标准免费兜底模型
-	if isUnauthOpenCode && len(unifiedModels) == 0 {
-		for _, fm := range provider.GetOpenCodeFreeModels() {
-			if !seen[fm.ID] {
-				seen[fm.ID] = true
-				unifiedModels = append(unifiedModels, fm)
-			}
-		}
-	}
 	// 如果缓存为空，但 ProviderInfo 中有预置静态模型，以此兜底
 	if len(unifiedModels) == 0 {
 		if pInfo, ok := provider.GetProvider(conn.Provider); ok && len(pInfo.Models) > 0 {
@@ -145,7 +128,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			ID:      id,
 			Name:    name,
 			Enabled: !isModelDisabled(id),
-			IsFree:  conn.Provider == "opencode" && provider.IsOpenCodeFreeModel(id),
+			IsFree:  false,
 		}
 
 		// 优先使用用户自定义设置的元数据覆盖
@@ -205,7 +188,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		"authModes":      regInfo.AuthModes,
 		"defaultHeaders": regInfo.Headers,
 		"hasApiKey":      conn.Data.APIKey != "" || conn.Data.AccessToken != "" || conn.Data.RefreshToken != "",
-		"isFreeMode":     isUnauthOpenCode,
+		"isFreeMode":     false,
 		"registryModels": registryItems,
 		"customModels":   customItems,
 	})
