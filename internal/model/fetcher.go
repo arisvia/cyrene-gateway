@@ -22,6 +22,8 @@ type ModelsFetchConfig struct {
 	Auth string
 	// AuthHeader carries the token when Auth == "raw" (e.g. x-goog-api-key).
 	AuthHeader string
+	// Headers carries optional custom headers (e.g. Copilot headers, API version headers).
+	Headers map[string]string
 }
 
 // CachedModels is the JSON structure stored in KV (scope="providerModelCache", key=providerID).
@@ -86,7 +88,11 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 		}
 	}
 	req.Header.Set("Accept", "application/json")
-
+	for k, v := range cfg.Headers {
+		if req.Header.Get(k) == "" {
+			req.Header.Set(k, v)
+		}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch models: %w", err)
@@ -126,9 +132,24 @@ func normalizeModels(providerID string, body []byte) ([]ModelMetadata, error) {
 func normalizeOpenAICompat(body []byte) ([]ModelMetadata, error) {
 	var resp struct {
 		Data []struct {
-			ID      string `json:"id"`
-			Object  string `json:"object"`
-			OwnedBy string `json:"owned_by"`
+			ID                  string `json:"id"`
+			Object              string `json:"object"`
+			OwnedBy             string `json:"owned_by"`
+			Name                string `json:"name"`
+			DisplayName         string `json:"display_name"`
+			ContextWindow       int    `json:"context_window"`
+			ContextLength       int    `json:"context_length"`
+			MaxContextLength    int    `json:"max_context_length"`
+			MaxModelLen         int    `json:"max_model_len"`
+			MaxOutputTokens     int    `json:"max_output_tokens"`
+			MaxCompletionTokens int    `json:"max_completion_tokens"`
+			Capabilities        struct {
+				Limits struct {
+					MaxPromptTokens int `json:"max_prompt_tokens"`
+					MaxOutputTokens int `json:"max_output_tokens"`
+				} `json:"limits"`
+				Family string `json:"family"`
+			} `json:"capabilities"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -138,14 +159,60 @@ func normalizeOpenAICompat(body []byte) ([]ModelMetadata, error) {
 	models := make([]ModelMetadata, 0, len(resp.Data))
 	for _, m := range resp.Data {
 		meta := ModelMetadata{ID: m.ID}
-		// Enrich from static catalog
+
+		// 1. Extract rich metadata from live payload if provided
+		if m.DisplayName != "" {
+			meta.DisplayName = m.DisplayName
+		} else if m.Name != "" {
+			meta.DisplayName = m.Name
+		}
+
+		// Context length detection (Groq, Together, DeepInfra, GitHub Copilot, Ollama, vLLM)
+		if m.ContextWindow > 0 {
+			meta.ContextLength = m.ContextWindow
+		} else if m.ContextLength > 0 {
+			meta.ContextLength = m.ContextLength
+		} else if m.MaxContextLength > 0 {
+			meta.ContextLength = m.MaxContextLength
+		} else if m.MaxModelLen > 0 {
+			meta.ContextLength = m.MaxModelLen
+		} else if m.Capabilities.Limits.MaxPromptTokens > 0 {
+			meta.ContextLength = m.Capabilities.Limits.MaxPromptTokens
+		}
+
+		// Max output tokens detection
+		if m.MaxCompletionTokens > 0 {
+			meta.MaxOutput = m.MaxCompletionTokens
+		} else if m.MaxOutputTokens > 0 {
+			meta.MaxOutput = m.MaxOutputTokens
+		} else if m.Capabilities.Limits.MaxOutputTokens > 0 {
+			meta.MaxOutput = m.Capabilities.Limits.MaxOutputTokens
+		}
+
+		if m.Capabilities.Family != "" {
+			meta.Family = m.Capabilities.Family
+		}
+
+		// 2. Enrich missing fields from static catalog
 		if cat := LookupCatalog(m.ID); cat != nil {
-			meta.DisplayName = cat.DisplayName
-			meta.ContextLength = cat.ContextLength
-			meta.MaxOutput = cat.MaxOutput
-			meta.Capabilities = cat.Capabilities
-			meta.Modalities = cat.Modalities
-			meta.Family = cat.Family
+			if meta.DisplayName == "" {
+				meta.DisplayName = cat.DisplayName
+			}
+			if meta.ContextLength == 0 {
+				meta.ContextLength = cat.ContextLength
+			}
+			if meta.MaxOutput == 0 {
+				meta.MaxOutput = cat.MaxOutput
+			}
+			if len(meta.Capabilities) == 0 {
+				meta.Capabilities = cat.Capabilities
+			}
+			if len(meta.Modalities) == 0 {
+				meta.Modalities = cat.Modalities
+			}
+			if meta.Family == "" {
+				meta.Family = cat.Family
+			}
 		}
 		models = append(models, meta)
 	}

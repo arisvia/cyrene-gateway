@@ -12,8 +12,9 @@ import (
 // wire format (anthropic → x-api-key raw, gemini → ?key= query, else bearer).
 func ModelsFetchFor(p ProviderInfo) model.ModelsFetchConfig {
 	cfg := model.ModelsFetchConfig{
-		URL:  p.ModelsURL,
-		Auth: p.ModelsAuth,
+		URL:     p.ModelsURL,
+		Auth:    p.ModelsAuth,
+		Headers: p.Headers,
 	}
 	if cfg.Auth == "" {
 		switch p.APIType {

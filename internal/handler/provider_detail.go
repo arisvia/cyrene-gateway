@@ -300,7 +300,8 @@ func (s *Server) handleSaveProviderModelMeta(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fullID := conn.Provider + "/" + req.ID
+	modelID := strings.TrimPrefix(req.ID, conn.Provider+"/")
+	fullID := conn.Provider + "/" + modelID
 	ov := ModelMetaOverride{
 		DisplayName:   req.DisplayName,
 		ContextLength: req.ContextLength,
@@ -333,7 +334,8 @@ func (s *Server) handleResetProviderModelMeta(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	fullID := conn.Provider + "/" + req.ID
+	modelID := strings.TrimPrefix(req.ID, conn.Provider+"/")
+	fullID := conn.Provider + "/" + modelID
 	s.DB.KVDelete("modelMetaOverrides", fullID)
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

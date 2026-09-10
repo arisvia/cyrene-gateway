@@ -497,17 +497,23 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			if displayName == "" {
 				displayName = m.ID
 			}
-			if overrides != nil && overrides[fullID] != "" {
-				var ov ModelMetaOverride
-				if err := json.Unmarshal([]byte(overrides[fullID]), &ov); err == nil {
-					if ov.DisplayName != "" {
-						displayName = ov.DisplayName
-					}
-					if ov.ContextLength > 0 {
-						meta.ContextLength = ov.ContextLength
-					}
-					if ov.MaxOutput > 0 {
-						meta.MaxOutput = ov.MaxOutput
+			if overrides != nil {
+				ovRaw := overrides[fullID]
+				if ovRaw == "" {
+					ovRaw = overrides[m.ID]
+				}
+				if ovRaw != "" {
+					var ov ModelMetaOverride
+					if err := json.Unmarshal([]byte(ovRaw), &ov); err == nil {
+						if ov.DisplayName != "" {
+							displayName = ov.DisplayName
+						}
+						if ov.ContextLength > 0 {
+							meta.ContextLength = ov.ContextLength
+						}
+						if ov.MaxOutput > 0 {
+							meta.MaxOutput = ov.MaxOutput
+						}
 					}
 				}
 			}

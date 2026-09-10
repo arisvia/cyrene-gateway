@@ -217,3 +217,70 @@ func TestLoadModelsDevCatalog_Mock(t *testing.T) {
 		t.Errorf("unexpected limits: %+v", e)
 	}
 }
+
+func TestFetchModels_CustomHeaders(t *testing.T) {
+	var gotHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Custom-Client")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"custom-m"}]}`))
+	}))
+	defer srv.Close()
+
+	cfg := ModelsFetchConfig{
+		Headers: map[string]string{
+			"X-Custom-Client": "copilot-test-client",
+		},
+	}
+	_, err := FetchModels(srv.Client(), "custom", srv.URL+"/chat/completions", "tok", "", cfg)
+	if err != nil {
+		t.Fatalf("FetchModels failed: %v", err)
+	}
+	if gotHeader != "copilot-test-client" {
+		t.Errorf("expected header copilot-test-client, got %q", gotHeader)
+	}
+}
+
+func TestNormalizeOpenAICompat_RichMetadata(t *testing.T) {
+	// Case 1: Groq / Together style with context_window & max_output_tokens
+	groqPayload := []byte(`{
+		"data": [
+			{
+				"id": "llama-3.3-70b-versatile",
+				"context_window": 131072,
+				"max_output_tokens": 8192
+			}
+		]
+	}`)
+	groqModels, err := normalizeOpenAICompat(groqPayload)
+	if err != nil {
+		t.Fatalf("normalizeOpenAICompat failed: %v", err)
+	}
+	if len(groqModels) != 1 || groqModels[0].ContextLength != 131072 || groqModels[0].MaxOutput != 8192 {
+		t.Errorf("expected 131072/8192, got %+v", groqModels[0])
+	}
+
+	// Case 2: GitHub Copilot format with capabilities.limits
+	copilotPayload := []byte(`{
+		"data": [
+			{
+				"id": "gpt-5-preview",
+				"display_name": "GPT-5 Preview",
+				"capabilities": {
+					"family": "gpt-5",
+					"limits": {
+						"max_prompt_tokens": 200000,
+						"max_output_tokens": 32768
+					}
+				}
+			}
+		]
+	}`)
+	copilotModels, err := normalizeOpenAICompat(copilotPayload)
+	if err != nil {
+		t.Fatalf("normalizeOpenAICompat failed: %v", err)
+	}
+	if len(copilotModels) != 1 || copilotModels[0].ContextLength != 200000 || copilotModels[0].MaxOutput != 32768 || copilotModels[0].DisplayName != "GPT-5 Preview" {
+		t.Errorf("expected 200000/32768/GPT-5 Preview, got %+v", copilotModels[0])
+	}
+}
