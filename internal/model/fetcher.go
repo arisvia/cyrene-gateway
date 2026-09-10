@@ -50,7 +50,7 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 
 	url := cfg.URL
 	if url == "" {
-		url = strings.TrimRight(baseURL, "/") + "/models"
+		url = DeriveModelsURL(baseURL)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)

@@ -66,6 +66,8 @@ type ProviderInfo struct {
 	NoAuth  bool `json:"noAuth,omitempty"`
 	// ForceStream forces streaming even when the client requests non-stream (9router transport.forceStream).
 	ForceStream bool `json:"forceStream,omitempty"`
+	// Models lists static/curated model entries for providers without a dynamic /models endpoint.
+	Models []ModelRef `json:"models,omitempty"`
 }
 
 // EffectiveBaseURL returns the base URL to use for a connection, considering

@@ -1,16 +1,13 @@
 package provider
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/arisvia/cyrene-gateway/internal/model"
+)
 
 // Known endpoint suffixes that indicate a BaseURL is already a full endpoint.
-var chatEndpointSuffixes = []string{
-	"/chat/completions",
-	"/v1/messages",
-	"/messages",
-	"/responses",
-	"/generate",
-	"/agent_chat_generation",
-}
+var chatEndpointSuffixes = model.ChatEndpointSuffixes
 
 // IsFullEndpointURL returns true if the URL already points to a specific
 // API endpoint (rather than a base URL that needs a path appended).
@@ -60,23 +57,9 @@ func BuildResponsesURL(baseURL string) string {
 }
 
 // BuildModelsURL constructs the models list endpoint URL from a base URL.
-// Strips known endpoint paths and appends /models.
+// Delegates to model.DeriveModelsURL.
 func BuildModelsURL(baseURL string) string {
-	base := strings.TrimRight(baseURL, "/")
-	if base == "" {
-		return ""
-	}
-	lower := strings.ToLower(base)
-	// Strip endpoint suffixes to get the API base
-	for _, suffix := range chatEndpointSuffixes {
-		if strings.HasSuffix(lower, suffix) {
-			base = base[:len(base)-len(suffix)]
-			break
-		}
-	}
-	base = strings.TrimRight(base, "/")
-	// Strip trailing /v1 for providers that store it (e.g. .../v1 -> .../v1/models)
-	return base + "/models"
+	return model.DeriveModelsURL(baseURL)
 }
 
 // StripEndpointPath removes known endpoint suffixes from a URL, returning

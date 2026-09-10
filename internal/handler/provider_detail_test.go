@@ -259,3 +259,95 @@ func TestModelMetadataOverride(t *testing.T) {
 		t.Fatalf("expected 200 resetting meta, got %d", w.Code)
 	}
 }
+
+func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "cb-conn-1",
+		Provider: "codebuddy-cn",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "cb-mock-token",
+		},
+	}
+	database.CreateConnection(conn)
+
+	// POST /api/providers/codebuddy-cn/refresh-models
+	// Live fetch will fail with 404 (mock server or unreachable upstream),
+	// so it must degrade to the 13 static catalog models and return 200 OK.
+	req := httptest.NewRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on static fallback, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		OK       bool                  `json:"ok"`
+		Provider string                `json:"provider"`
+		Count    int                   `json:"count"`
+		Models   []model.ModelMetadata `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Count != 13 || len(resp.Models) != 13 {
+		t.Fatalf("expected 13 models for codebuddy-cn, got count=%d, len=%d", resp.Count, len(resp.Models))
+	}
+
+	foundGLM := false
+	for _, m := range resp.Models {
+		if m.ID == "glm-5.3" {
+			foundGLM = true
+			break
+		}
+	}
+	if !foundGLM {
+		t.Errorf("expected glm-5.3 in codebuddy-cn models, got %+v", resp.Models)
+	}
+
+	// Verify providerModelCache was populated in DB
+	cachedRaw, err := database.KVGet("providerModelCache", "codebuddy-cn")
+	if err != nil || cachedRaw == "" {
+		t.Fatalf("expected providerModelCache to be written in DB")
+	}
+}
+
+func TestGetProviderModels_CodeBuddy_EmptyCacheFallback(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "cb-conn-empty-cache",
+		Provider: "codebuddy-cn",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "cb-mock-token",
+		},
+	}
+	database.CreateConnection(conn)
+
+	// GET /api/providers/cb-conn-empty-cache/models
+	// When cache is empty, must fall back to the 13 static registry models.
+	req := httptest.NewRequest("GET", "/api/providers/cb-conn-empty-cache/models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Provider       string              `json:"provider"`
+		RegistryModels []ProviderModelItem `json:"registryModels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.RegistryModels) != 13 {
+		t.Fatalf("expected 13 fallback registry models for codebuddy-cn, got %d", len(resp.RegistryModels))
+	}
+}

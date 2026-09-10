@@ -628,6 +628,28 @@ func (s *Server) loadModelCacheIndex() map[string]*model.ModelMetadata {
 	return index
 }
 
+func populateStaticModels(pInfo provider.ProviderInfo) []model.ModelMetadata {
+	if len(pInfo.Models) == 0 {
+		return nil
+	}
+	out := make([]model.ModelMetadata, 0, len(pInfo.Models))
+	for _, m := range pInfo.Models {
+		meta := model.ModelMetadata{ID: m.ID, DisplayName: m.Name}
+		if cat := model.LookupCatalog(m.ID); cat != nil {
+			if meta.DisplayName == "" || meta.DisplayName == m.ID {
+				meta.DisplayName = cat.DisplayName
+			}
+			meta.ContextLength = cat.ContextLength
+			meta.MaxOutput = cat.MaxOutput
+			meta.Capabilities = cat.Capabilities
+			meta.Modalities = cat.Modalities
+			meta.Family = cat.Family
+		}
+		out = append(out, meta)
+	}
+	return out
+}
+
 // handleRefreshModels triggers a live model fetch for a provider and caches the result.
 func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 	targetID := r.PathValue("id")
@@ -718,6 +740,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": errMsg})
 			return
 		}
+
 	} else {
 		// Phase 36 T6: registry ModelsURL + format-derived auth scheme.
 		cfg := provider.ModelsFetchFor(providerInfo)
@@ -726,11 +749,17 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		}
 		fetched, fetchErr := model.FetchModels(client, providerID, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
 		if fetchErr != nil {
-			slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
-			return
+			if static := populateStaticModels(providerInfo); len(static) > 0 {
+				slog.Info("Live model fetch failed, falling back to static registry models", slog.String("provider", providerID), "error", fetchErr)
+				models = static
+			} else {
+				slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
+				return
+			}
+		} else {
+			models = fetched
 		}
-		models = fetched
 
 		// models.dev backfill for context/output metadata when the provider
 		// API omits it (best-effort, never overwrites live values).
@@ -890,6 +919,8 @@ func (s *Server) syncAllActiveConnections() {
 			fetched, err := model.FetchModels(client, target.providerID, target.baseURL, target.apiKey, target.accessToken, cfg)
 			if err == nil && len(fetched) > 0 {
 				models = fetched
+			} else if static := populateStaticModels(pInfo); len(static) > 0 {
+				models = static
 			}
 		}
 		if len(models) == 0 {
@@ -928,6 +959,8 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
 		if err == nil && len(fetched) > 0 {
 			models = fetched
+		} else if static := populateStaticModels(pInfo); len(static) > 0 {
+			models = static
 		}
 	}
 	if len(models) > 0 {

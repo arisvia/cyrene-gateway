@@ -122,6 +122,32 @@ func TestFetchModels_ExplicitURL(t *testing.T) {
 		t.Fatalf("unexpected models: %+v", models)
 	}
 }
+func TestFetchModels_DeriveModelsURL_StrictPath(t *testing.T) {
+	var receivedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"gpt-4o","object":"model"}]}`))
+	}))
+	defer srv.Close()
+
+	// Provide full inference endpoint as baseURL: must derive /v1/models, not /v1/chat/completions/models
+	fullBaseURL := srv.URL + "/v1/chat/completions"
+	models, err := FetchModels(srv.Client(), "openai", fullBaseURL, "sk-test", "", ModelsFetchConfig{Auth: "bearer"})
+	if err != nil {
+		t.Fatalf("FetchModels failed: %v (path received: %s)", err, receivedPath)
+	}
+	if receivedPath != "/v1/models" {
+		t.Errorf("expected server to receive /v1/models, got %q", receivedPath)
+	}
+	if len(models) != 1 || models[0].ID != "gpt-4o" {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+}
 
 func TestModelsDevBackfill(t *testing.T) {
 	catalog := map[string]modelsDevEntry{

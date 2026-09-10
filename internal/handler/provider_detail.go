@@ -92,6 +92,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 				if name == "" {
 					name = m.ID
 				}
+				seen[m.ID] = true
 				unifiedModels = append(unifiedModels, provider.ModelRef{
 					ID:   m.ID,
 					Name: name,
@@ -109,6 +110,18 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
+	// 如果缓存为空，但 ProviderInfo 中有预置静态模型，以此兜底
+	if len(unifiedModels) == 0 {
+		if pInfo, ok := provider.GetProvider(conn.Provider); ok && len(pInfo.Models) > 0 {
+			for _, sm := range pInfo.Models {
+				if !seen[sm.ID] {
+					seen[sm.ID] = true
+					unifiedModels = append(unifiedModels, sm)
+				}
+			}
+		}
+	}
+
 
 	// 稳定排序：按模型 ID 进行确定性字母排序，避免 Go Map 乱序造成每次点击刷新顺序跳变
 	sort.Slice(unifiedModels, func(i, j int) bool {
