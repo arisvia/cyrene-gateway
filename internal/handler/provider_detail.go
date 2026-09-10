@@ -128,7 +128,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			ID:      id,
 			Name:    name,
 			Enabled: !isModelDisabled(id),
-			IsFree:  false,
+			IsFree:  strings.HasSuffix(strings.ToLower(id), "-free") || strings.ToLower(id) == "big-pickle",
 		}
 
 		// 优先使用用户自定义设置的元数据覆盖

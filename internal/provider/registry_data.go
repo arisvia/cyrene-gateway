@@ -394,19 +394,6 @@ func init() {
 		},
 		ModelsURL:  "https://opencode.ai/zen/v1/models",
 		ModelsAuth: "none",
-		Models: []ModelRef{
-			{ID: "big-pickle", Name: "Big Pickle (Free / Reasoning)"},
-			{ID: "mimo-v2.5-free", Name: "MiMo V2.5 (Free)"},
-			{ID: "deepseek-v4-flash-free", Name: "DeepSeek V4 Flash (Free)"},
-			{ID: "ling-3.0-flash-fin-free", Name: "Ling 3.0 Flash (Free)"},
-			{ID: "nemotron-3-ultra-free", Name: "Nemotron 3 Ultra (Free)"},
-			{ID: "nemotron-3.5-lightning-free", Name: "Nemotron 3.5 Lightning (Free)"},
-			{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash"},
-			{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro"},
-			{ID: "glm-5.3-flash", Name: "GLM 5.3 Flash (Vision)"},
-			{ID: "minimax-m3", Name: "MiniMax M3"},
-			{ID: "kimi-k2.7-code", Name: "Kimi K2.7 Code"},
-		},
 	}
 	Registry["openrouter"] = ProviderInfo{
 		ID: "openrouter", Name: "OpenRouter",

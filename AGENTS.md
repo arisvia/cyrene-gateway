@@ -43,6 +43,7 @@ npm run build
 2. **样式层纪律**：Tailwind CSS v4 基础元素重置与样式必须放入 `@layer base` 中，避免未分层样式击穿 `@layer utilities`。
 3. **出站安全**：所有出站 HTTP 客户端必须通过 `SafeHTTPClient` 实施 SSRF 校验，严防私网与云元数据地址逃逸。
 4. **提交规约**：遵循 `docs/git-commits.md`（Conventional Commits），保持提交粒度单一、原子化。
+5. **动态模型同步纪律**：所有提供商（Provider）严禁在 `internal/provider/registry_data.go` 中硬编码静态 `Models` 列表（除纯离线/专有无 catalog 协议端点外）。所有模型必须保持与上游动态拉取与缓存机制同步（统一配置 `ModelsURL` 或专属动态抓取器），杜绝由于本地写死模型列表导致与上游最新目录漂移。
 
 - 严禁在代码与测试用例中提交真实的 API Key、OAuth Client Secret 等敏感凭证。
 - 未经明确指示，不得破坏 CI 门禁（`build.yml`）与多架构发布流程（`release.yml`）。

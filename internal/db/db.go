@@ -152,6 +152,9 @@ func (d *DB) migrate() error {
 	if err := d.ensureAPIKeyColumns(); err != nil {
 		return fmt.Errorf("ensure apiKeys columns: %w", err)
 	}
+	// Migrate legacy opencode connections from none auth to api-key.
+	// Inactive by default if API key is missing so it prompts for credentials.
+	_, _ = d.conn.Exec(`UPDATE providerConnections SET authType = 'api-key', isActive = 0 WHERE provider = 'opencode' AND authType = 'none'`)
 
 	// Set schema version
 	_, err := d.conn.Exec(
