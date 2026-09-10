@@ -88,7 +88,7 @@ func (d *DB) SaveRequestDetail(rd *RequestDetail) error {
 func (d *DB) BackfillRequestDetails() {
 	var count int
 	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM requestDetails`).Scan(&count); err == nil && count == 0 {
-		rows, err := d.conn.Query(`SELECT id, timestamp, provider, model, connectionId, status, promptTokens, completionTokens, cost, endpoint FROM usageHistory ORDER BY id DESC LIMIT 200`)
+		rows, err := d.conn.Query(`SELECT id, timestamp, COALESCE(provider, ''), COALESCE(model, ''), COALESCE(connectionId, ''), COALESCE(status, 'ok'), promptTokens, completionTokens, cost, COALESCE(endpoint, '') FROM usageHistory ORDER BY id DESC LIMIT 200`)
 		if err != nil {
 			return
 		}
