@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import ProxyPools from '@/pages/ProxyPools'
 import Media from '@/pages/Media'
 import Quota from '@/pages/Quota'
+import Playground from '@/pages/Playground'
 
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(),
@@ -82,5 +83,27 @@ describe('运维与工具页渲染', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('配额')
     expect(text).toContain('anthropic')
+  })
+
+  it('Playground 渲染演练场页面与模式切换', async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/v1/models') {
+        return Promise.resolve({
+          data: [
+            { id: 'antigravity/gemini-2.5-flash', object: 'model', owned_by: 'antigravity', display_name: 'Gemini 2.5 Flash' },
+            { id: 'opencode/big-pickle', object: 'model', owned_by: 'opencode', display_name: 'Big Pickle' },
+          ]
+        })
+      }
+      return Promise.resolve(null)
+    })
+    mount(Playground)
+    await tick()
+    const text = document.body.textContent || ''
+    expect(text).toContain('演练场')
+    expect(text).toContain('单模型测试')
+    expect(text).toContain('双模型对比')
+    expect(text).toContain('导出代码')
+    expect(text).toContain('参数面板')
   })
 })

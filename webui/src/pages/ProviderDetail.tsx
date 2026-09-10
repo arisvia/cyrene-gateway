@@ -1544,10 +1544,17 @@ const ProviderDetail: Component = () => {
                       ]}
                     />
                   </div>
-                  <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-3">
                     <Show when={selectedModel()}>
                       <Badge tone="blue">{selectedModel()}</Badge>
                     </Show>
+                    <A
+                      href="/playground"
+                      class="text-xs text-accent hover:underline flex items-center gap-1"
+                      title="前往具有 Side-by-Side 竞技和全参数调优的演练场"
+                    >
+                      前往演练场 (Playground) ↗
+                    </A>
                     <Button size="sm" variant="ghost" onClick={() => setChatHistory([])}>清空对话</Button>
                   </div>
                 </Card>

@@ -15,6 +15,7 @@ const Media = lazy(() => import('./pages/Media'))
 const LogsPage = lazy(() => import('./pages/Logs'))
 const ProxyPools = lazy(() => import('./pages/ProxyPools'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Playground = lazy(() => import('./pages/Playground'))
 
 // 现代 SVG 矢量侧边栏图标
 const NavIcons = {
@@ -30,6 +31,16 @@ const NavIcons = {
       <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
       <line x1="6" y1="6" x2="6.01" y2="6" />
       <line x1="6" y1="18" x2="6.01" y2="18" />
+    </svg>
+  ),
+  playground: () => (
+    <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m18 8-8 8" />
+      <path d="m14 4 4 4" />
+      <path d="m6 16-2 4 4-2" />
+      <path d="M12 2v4" />
+      <path d="m4.93 4.93 2.83 2.83" />
+      <path d="M2 12h4" />
     </svg>
   ),
   combos: () => (
@@ -82,6 +93,7 @@ const NAV = [
     items: [
       { href: '/', label: '首页', end: true, icon: NavIcons.home },
       { href: '/providers', label: '提供商', icon: NavIcons.providers },
+      { href: '/playground', label: '演练场', icon: NavIcons.playground },
       { href: '/combos', label: '组合', icon: NavIcons.combos },
       { href: '/usage', label: '用量', icon: NavIcons.usage },
       { href: '/quota', label: '配额', icon: NavIcons.quota },
@@ -246,6 +258,7 @@ const App: Component = () => {
       <Route path="/" component={Home} />
       <Route path="/providers" component={Providers} />
       <Route path="/providers/:id" component={ProviderDetail} />
+      <Route path="/playground" component={Playground} />
       <Route path="/combos" component={Combos} />
       <Route path="/usage" component={Usage} />
       <Route path="/quota" component={Quota} />
