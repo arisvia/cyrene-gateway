@@ -208,52 +208,6 @@ func TestE2EChatCompletion(t *testing.T) {
 	}
 }
 
-// TestE2ENoAuth verifies that NoAuth providers work with "none" auth
-// and send "Bearer public".
-func TestE2ENoAuth(t *testing.T) {
-	upstream := mockOpenAIUpstream(t, func(r *http.Request) error {
-		if got := r.Header.Get("Authorization"); got != "Bearer public" {
-			return fmt.Errorf("want Bearer public, got %q", got)
-		}
-		return nil
-	})
-	defer upstream.Close()
-
-	srv, database := setupTestServer(t)
-
-	provider.Registry["mock-noauth"] = provider.ProviderInfo{
-		ID: "mock-noauth", Name: "Mock NoAuth",
-		BaseURL: upstream.URL, APIType: "openai",
-		AuthType: "none", Category: "free", NoAuth: true,
-	}
-	t.Cleanup(func() { delete(provider.Registry, "mock-noauth") })
-
-	_ = database.CreateConnection(&model.ProviderConnection{
-		ID:       "test-mock-noauth",
-		Provider: "mock-noauth",
-		AuthType: "none",
-		IsActive: true,
-	})
-
-	body := `{"model":"mock-noauth/test-model","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	conns, _ := database.ListConnectionsByProvider("mock-noauth")
-	if len(conns) == 0 {
-		t.Fatal("expected connection for mock-noauth")
-	}
-	if conns[0].AuthType != "none" {
-		t.Fatalf("expected authType=none, got %s", conns[0].AuthType)
-	}
-}
-
 // TestE2EStreaming verifies SSE streaming works end-to-end.
 func TestE2EStreaming(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -429,22 +383,6 @@ func TestE2ERegistryCompleteness(t *testing.T) {
 		}
 		if len(info.AuthModes) == 0 {
 			t.Errorf("provider %s: missing AuthModes", id)
-		}
-	}
-}
-
-// TestE2ENoAuthProvidersHaveCorrectCategory verifies all visible NoAuth
-// providers are in the "free" or "freeTier" category and have AuthType "none".
-func TestE2ENoAuthProvidersHaveCorrectCategory(t *testing.T) {
-	for id, info := range provider.Registry {
-		if !info.NoAuth || info.Hidden {
-			continue
-		}
-		if info.Category != "free" && info.Category != "freeTier" {
-			t.Errorf("NoAuth provider %s: expected category free/freeTier, got %q", id, info.Category)
-		}
-		if info.AuthType != "none" {
-			t.Errorf("NoAuth provider %s: expected authType=none, got %q", id, info.AuthType)
 		}
 	}
 }

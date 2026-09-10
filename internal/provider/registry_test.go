@@ -72,7 +72,7 @@ func TestRegistryProviderFields(t *testing.T) {
 		if p.Category == "" {
 			t.Errorf("Provider %q has empty Category", id)
 		}
-		validCats := map[string]bool{"apikey": true, "oauth": true, "freeTier": true, "free": true, "webCookie": true, "custom": true}
+		validCats := map[string]bool{"apikey": true, "oauth": true, "freeTier": true, "custom": true}
 		if !validCats[p.Category] {
 			t.Errorf("Provider %q has invalid Category %q", id, p.Category)
 		}

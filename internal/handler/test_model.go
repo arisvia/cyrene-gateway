@@ -122,8 +122,6 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if conn.Data.AccessToken != "" {
 		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
-	} else if providerInfo.NoAuth {
-		upstreamReq.Header.Set("Authorization", "Bearer public")
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	for k, v := range providerInfo.Headers {

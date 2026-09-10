@@ -422,9 +422,6 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			ProviderSpecificData: conn.Data.ProviderSpecificData,
 		}
 		provider.ApplyAuth(upstreamReq, comboTransport, comboCreds)
-		if providerInfo.NoAuth && comboCreds.APIKey == "" && comboCreds.AccessToken == "" {
-			upstreamReq.Header.Set("Authorization", "Bearer public")
-		}
 		upstreamReq.Header.Set("Content-Type", "application/json")
 		if req.Stream {
 			upstreamReq.Header.Set("Accept", "text/event-stream")
@@ -667,10 +664,6 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		ProviderSpecificData: conn.Data.ProviderSpecificData,
 	}
 	provider.ApplyAuth(upstreamReq, transport, creds)
-	if providerInfo.NoAuth && creds.APIKey == "" && creds.AccessToken == "" {
-		// NoAuth providers (e.g. OpenCode Free) use a public bearer token
-		upstreamReq.Header.Set("Authorization", "Bearer public")
-	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	if req.Stream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")

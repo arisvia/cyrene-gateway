@@ -35,8 +35,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   apikey: 'API Key',
   oauth: 'OAuth 授权',
   freeTier: '免费额度',
-  free: '免密免费',
-  webCookie: '网页 Cookie',
   custom: '自定义通用',
   media: '多模态与媒体',
 }
@@ -45,8 +43,6 @@ const AUTHTYPE_LABEL: Record<string, string> = {
   'api-key': 'API Key',
   apikey: 'API Key',
   oauth: 'OAuth 授权',
-  none: '免认证',
-  cookie: 'Cookie',
 }
 
 export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
@@ -580,7 +576,7 @@ const Providers: Component = () => {
     <div class="space-y-5 stagger">
       <PageHeader
         title="模型提供商接入"
-        subtitle="统一管理各大模型商用上游、OAuth 动态凭证与免认证公共代理池"
+        subtitle="统一管理各大模型商用上游、OAuth 动态凭证与自定义接入端点"
         actions={
           <SegmentedControl
             value={activeTab()}
@@ -628,8 +624,6 @@ const Providers: Component = () => {
                   { value: '', label: '全部认证类型' },
                   { value: 'api-key', label: 'API Key' },
                   { value: 'oauth', label: 'OAuth 授权' },
-                  { value: 'none', label: '免密免费' },
-                  { value: 'cookie', label: 'Cookie' },
                 ]}
                 onChange={setCatFilter}
               />
@@ -640,12 +634,11 @@ const Providers: Component = () => {
                 value={catFilter()}
                 options={[
                   { value: '', label: '全部分类' },
-                  { value: 'custom', label: '自定义通用 API' },
-                  { value: 'free', label: '免密免费' },
-                  { value: 'freeTier', label: '免费额度' },
                   { value: 'apikey', label: 'API Key' },
-                  { value: 'media', label: '多模态与媒体 (Media)' },
                   { value: 'oauth', label: 'OAuth 渠道' },
+                  { value: 'freeTier', label: '免费额度' },
+                  { value: 'custom', label: '自定义通用 API' },
+                  { value: 'media', label: '多模态与媒体 (Media)' },
                 ]}
                 onChange={setCatFilter}
               />
@@ -693,25 +686,11 @@ const Providers: Component = () => {
             <Card class="p-12 text-center space-y-4">
               <Empty message="还没有接入任何提供商连接" />
               <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-                你可以前往「提供商市场」挑选主流商用大模型（OpenAI, Claude, Gemini, DeepSeek），或一键开启免认证公共上游。
+                你可以前往「提供商市场」挑选主流商用大模型（OpenAI, Claude, Gemini, DeepSeek）或配置自定义通用 API。
               </p>
               <div class="flex justify-center gap-3 pt-2">
                 <Button variant="primary" onClick={() => setActiveTab('catalog')}>
-                  去市场选购提供商
-                </Button>
-                <Button
-                  variant="secondary"
-                  loading={saving()}
-                  onClick={async () => {
-                    setSaving(true)
-                    try {
-                      await store.enableFree()
-                    } finally {
-                      setSaving(false)
-                    }
-                  }}
-                >
-                  一键启用全部免费渠道
+                  前往市场选购提供商
                 </Button>
               </div>
             </Card>
@@ -1250,13 +1229,6 @@ const Providers: Component = () => {
                   </div>
                 </Show>
 
-                {/* 免密模式说明 */}
-                <Show when={form().authType === 'none'}>
-                  <div class="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-foreground space-y-1 shadow-sm">
-                    <div class="font-medium text-emerald-400 flex items-center gap-1.5"><IconCheck size={14} /> 免密体验模式</div>
-                    <p class="text-faint">该上游无需任何密钥凭证，保存后即可开箱即用体验免费公共模型。</p>
-                  </div>
-                </Show>
 
                 <Show when={reg().category === 'custom' || reg().id.startsWith('custom-')} fallback={
                   <Field label="调度优先级" hint="数值越小越优先调度">

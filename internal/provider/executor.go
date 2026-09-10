@@ -143,9 +143,6 @@ func PrepareUpstreamRequest(
 		ProviderSpecificData: conn.Data.ProviderSpecificData,
 	}
 	ApplyAuth(upstreamReq, transport, creds)
-	if providerInfo.NoAuth && creds.APIKey == "" && creds.AccessToken == "" {
-		upstreamReq.Header.Set("Authorization", "Bearer public")
-	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	if req.Stream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")

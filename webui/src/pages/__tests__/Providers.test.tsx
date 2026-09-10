@@ -44,7 +44,7 @@ describe('store 单例（根因 #1 回归测试）', () => {
 describe('Providers 页面渲染', () => {
   afterEach(() => cleanup())
 
-  it('空状态显示引导与一键启用', async () => {
+  it('空状态显示引导与去市场选购', async () => {
     vi.mocked(api).mockResolvedValue(null)
     await useGatewayStore().loadCore()
 
@@ -58,7 +58,7 @@ describe('Providers 页面渲染', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('提供商')
     expect(text).toContain('还没有接入任何提供商连接')
-    expect(text).toContain('一键启用全部免费渠道')
+    expect(text).toContain('前往市场选购提供商')
   })
 
   it('有数据时渲染卡片、凭证状态与能力标签', async () => {

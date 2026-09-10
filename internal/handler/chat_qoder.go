@@ -354,23 +354,3 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 }
-
-// autoProvisionNoAuthConnection creates a persistent connection for NoAuth
-// providers so they work out of the box (like 9router's free providers).
-func (s *Server) autoProvisionNoAuthConnection(providerInfo provider.ProviderInfo) *model.ProviderConnection {
-	conn := &model.ProviderConnection{
-		ID:       generateID(),
-		Provider: providerInfo.ID,
-		AuthType: "none",
-		Name:     providerInfo.Name + " (auto)",
-		Priority: providerInfo.Priority,
-		IsActive: true,
-	}
-	if err := s.DB.CreateConnection(conn); err != nil {
-		slog.Warn("Failed to auto-provision NoAuth connection",
-			slog.String("provider", providerInfo.ID), "error", err)
-		return nil
-	}
-	slog.Info("Auto-provisioned NoAuth connection", slog.String("provider", providerInfo.ID))
-	return conn
-}

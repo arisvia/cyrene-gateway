@@ -158,7 +158,6 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
 	s.Router.HandleFunc("POST /api/providers/test-credentials", s.handleTestCredentials)
 	s.Router.HandleFunc("POST /api/providers/test-batch", s.handleTestBatch)
-	s.Router.HandleFunc("POST /api/providers/enable-free", s.handleEnableFreeProviders)
 	s.Router.HandleFunc("POST /api/providers/{id}/refresh-models", s.handleRefreshModels)
 
 	// Provider detail: models (registry + custom)
@@ -672,7 +671,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			if !found {
 				conn = conns[0]
 			}
-		} else if !providerInfo.NoAuth && providerInfo.Category != "free" {
+		} else {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 				"error": "no active connection for provider: " + providerID,
 			})
@@ -868,17 +867,6 @@ func (s *Server) syncAllActiveConnections() {
 			accessToken: conn.Data.AccessToken,
 			conn:        conn,
 		})
-	}
-
-	// Also sync public free providers (like opencode) to keep real-time available models updated
-	for id, p := range provider.Registry {
-		if (p.NoAuth || p.Category == "free") && !seen[id] && !p.Hidden {
-			seen[id] = true
-			targets = append(targets, syncTarget{
-				providerID: id,
-				baseURL:    p.BaseURL,
-			})
-		}
 	}
 
 	for _, target := range targets {

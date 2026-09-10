@@ -166,13 +166,6 @@ function createGatewayStore() {
     toast.success(`已删除提供商 "${p.name || p.provider}"`)
     setProviders(list => list.filter(item => item.id !== p.id))
   }
-  async function enableFree(ids?: string[]): Promise<number> {
-    const res = await apiPost<{ count?: number }>('/api/providers/enable-free', ids?.length ? { providers: ids } : {})
-    const count = res?.count || 0
-    toast.success(count > 0 ? `已启用 ${count} 个免密提供商` : '所有免密提供商均已处于启用状态')
-    await loadCore()
-    return count
-  }
 
   async function testProvider(id: string): Promise<{ ok: boolean; latencyMs?: number; error?: string; code?: number; latency?: string }> {
     return apiPost(`/api/providers/${id}/test`)
@@ -364,7 +357,7 @@ function createGatewayStore() {
     providerUsage, usageLogs, quotaEntries, activeConnections,
     loadCore, loadProvidersOnly, loadKeys, loadProxyPools, loadSettings, loadUsage,
     loadRequestDetails, loadProviderUsage, loadUsageLogs, loadQuota,
-    addProvider, toggleProvider, resetCooldown, deleteProvider, enableFree, testProvider,
+    addProvider, toggleProvider, resetCooldown, deleteProvider, testProvider,
     createKey, updateKey, deleteKey,
     saveCombo, deleteCombo,
     saveProxyPool, toggleProxyPool, deleteProxyPool,

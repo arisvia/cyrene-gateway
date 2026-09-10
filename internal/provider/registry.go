@@ -11,9 +11,9 @@ type ProviderInfo struct {
 	Alias    string            `json:"alias,omitempty"`
 	BaseURL  string            `json:"baseUrl"`
 	APIType  string            `json:"apiType"`  // "openai", "anthropic", "gemini"
-	AuthType string            `json:"authType"` // "api-key", "oauth", "cookie", "none"
+	AuthType string            `json:"authType"` // "api-key", "oauth"
 	// Category and auth metadata (Phase 10)
-	Category string `json:"category"` // "apikey", "oauth", "freeTier", "free", "webCookie"
+	Category string `json:"category"` // "apikey", "oauth", "freeTier", "custom"
 	// Brand/Region grouping (Phase 36): brand siblings (e.g. glm/glm-cn) are
 	// rendered as one panel card with a region switcher. IDs stay stable.
 	Brand  string `json:"brand,omitempty"`
@@ -60,10 +60,8 @@ type ProviderInfo struct {
 	AuthModes      []string `json:"authModes,omitempty"` // supported auth modes
 	AuthHooks      []string `json:"authHooks,omitempty"` // provider header overlays (e.g. "kimiHeaders")
 	Priority       int      `json:"priority,omitempty"`  // lower = higher priority
-	// Flags
-	Hidden  bool `json:"hidden,omitempty"`
-	HasFree bool `json:"hasFree,omitempty"`
-	NoAuth  bool `json:"noAuth,omitempty"`
+	Hidden         bool     `json:"hidden,omitempty"`
+	HasFree        bool     `json:"hasFree,omitempty"`
 	// ForceStream forces streaming even when the client requests non-stream (9router transport.forceStream).
 	ForceStream bool `json:"forceStream,omitempty"`
 	// Models lists static/curated model entries for providers without a dynamic /models endpoint.
@@ -151,7 +149,7 @@ func GetRegistryByCategory() []RegistryByCategory {
 	}
 
 	// Fixed category order
-	order := []string{"apikey", "oauth", "freeTier", "free", "webCookie", "custom"}
+	order := []string{"apikey", "oauth", "freeTier", "custom"}
 	result := make([]RegistryByCategory, 0, len(order))
 	for _, cat := range order {
 		if providers, ok := catMap[cat]; ok {

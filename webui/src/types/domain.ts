@@ -21,7 +21,6 @@ export interface RegistryProvider {
   priority?: number
   baseUrl?: string
   website?: string
-  noAuth?: boolean
   hasFree?: boolean
   deviceCodeUrl?: string
   loginUrl?: string
