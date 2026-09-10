@@ -335,6 +335,14 @@ func TestNormalizeCodebuddy(t *testing.T) {
 					"supportsImages": false,
 					"supportsToolCall": true,
 					"supportsReasoning": true
+				},
+				{
+					"id": "kimi-v3",
+					"name": "Kimi-V3",
+					"disabledMultimodal": false,
+					"supportsImages": false,
+					"supportsToolCall": true,
+					"supportsReasoning": true
 				}
 			]
 		}
@@ -344,8 +352,8 @@ func TestNormalizeCodebuddy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalizeCodebuddy failed: %v", err)
 	}
-	if len(models) != 2 {
-		t.Fatalf("expected 2 models (skipping default), got %d", len(models))
+	if len(models) != 3 {
+		t.Fatalf("expected 3 models (skipping default + disabled), got %d", len(models))
 	}
 
 	m0 := models[0]
@@ -374,5 +382,10 @@ func TestNormalizeCodebuddy(t *testing.T) {
 	m1 := models[1]
 	if m1.ID != "minimax-m2.5" || len(m1.Modalities) != 1 || m1.Modalities[0] != "text" {
 		t.Errorf("unexpected m1: %+v", m1)
+	}
+
+	m2 := models[2]
+	if m2.ID != "kimi-v3" || m2.DisplayName != "Kimi-V3" {
+		t.Errorf("unexpected m2 ID/DisplayName: %+v", m2)
 	}
 }
