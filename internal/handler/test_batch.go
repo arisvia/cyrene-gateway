@@ -268,9 +268,17 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 				targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
 			}
 			testBody = nil
+		} else if conn.Provider == "codebuddy-cn" {
+			// CodeBuddy CN only accepts streaming chat completions and has no /models endpoint.
+			targetURL = baseURL
+			testBody, _ = json.Marshal(map[string]any{
+				"model":      "glm-5.3-flash",
+				"max_tokens": 1,
+				"stream":     true,
+				"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
+			})
 		} else {
 			// For OpenAI-compatible providers, test via the models endpoint.
-			// Full endpoint URLs (e.g. .../v1/chat/completions) are stripped first.
 			targetURL = provider.BuildModelsURL(baseURL)
 			if transport.URLSuffix != "" {
 				targetURL = strings.TrimRight(baseURL, "/") + transport.URLSuffix
