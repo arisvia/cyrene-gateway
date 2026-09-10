@@ -261,10 +261,10 @@ func TestModelMetadataOverride(t *testing.T) {
 	}
 }
 
-func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
+func TestRefreshModels_CodeBuddy_LiveFailure(t *testing.T) {
 	srv, database := setupTestServer(t)
 
-	// Mock upstream server: return 404 to guarantee offline test
+	// Mock upstream server: return 404
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -291,45 +291,25 @@ func TestRefreshModels_CodeBuddy_StaticFallback(t *testing.T) {
 		},
 	}
 	database.CreateConnection(conn)
+
+	// Pre-seed a cache entry to verify failure doesn't overwrite it
+	initialCache := `{"fetchedAt":"2026-09-10T12:00:00Z","models":[{"id":"existing-m1","displayName":"Existing M1"}]}`
+	_ = database.KVSet("providerModelCache", "codebuddy-cn", initialCache)
+
 	// POST /api/providers/codebuddy-cn/refresh-models
-	// Live fetch will fail with 404 (mock server or unreachable upstream),
-	// so it must degrade to the 13 static catalog models and return 200 OK.
+	// Live fetch fails with 404, without static fallback models it must return 502 Bad Gateway
 	req := httptest.NewRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK on static fallback, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 Bad Gateway on live failure without static models, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp struct {
-		OK       bool                  `json:"ok"`
-		Provider string                `json:"provider"`
-		Count    int                   `json:"count"`
-		Models   []model.ModelMetadata `json:"models"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if resp.Count != 13 || len(resp.Models) != 13 {
-		t.Fatalf("expected 13 models for codebuddy-cn, got count=%d, len=%d", resp.Count, len(resp.Models))
-	}
-
-	foundGLM := false
-	for _, m := range resp.Models {
-		if m.ID == "glm-5.3" {
-			foundGLM = true
-			break
-		}
-	}
-	if !foundGLM {
-		t.Errorf("expected glm-5.3 in codebuddy-cn models, got %+v", resp.Models)
-	}
-
-	// Verify providerModelCache was populated in DB
+	// Verify providerModelCache was NOT cleared or overwritten
 	cachedRaw, err := database.KVGet("providerModelCache", "codebuddy-cn")
-	if err != nil || cachedRaw == "" {
-		t.Fatalf("expected providerModelCache to be written in DB")
+	if err != nil || cachedRaw != initialCache {
+		t.Fatalf("expected providerModelCache to retain stale cache on failure, got %s", cachedRaw)
 	}
 }
 
@@ -406,7 +386,7 @@ func TestRefreshModels_CodeBuddy_LiveConfig(t *testing.T) {
 	}
 }
 
-func TestGetProviderModels_CodeBuddy_EmptyCacheFallback(t *testing.T) {
+func TestGetProviderModels_CodeBuddy_EmptyCache(t *testing.T) {
 	srv, database := setupTestServer(t)
 
 	conn := &model.ProviderConnection{
@@ -421,7 +401,7 @@ func TestGetProviderModels_CodeBuddy_EmptyCacheFallback(t *testing.T) {
 	database.CreateConnection(conn)
 
 	// GET /api/providers/cb-conn-empty-cache/models
-	// When cache is empty, must fall back to the 13 static registry models.
+	// Dynamic provider has no hardcoded registry models; when cache is empty, returns empty list.
 	req := httptest.NewRequest("GET", "/api/providers/cb-conn-empty-cache/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -437,7 +417,7 @@ func TestGetProviderModels_CodeBuddy_EmptyCacheFallback(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if len(resp.RegistryModels) != 13 {
-		t.Fatalf("expected 13 fallback registry models for codebuddy-cn, got %d", len(resp.RegistryModels))
+	if len(resp.RegistryModels) != 0 {
+		t.Fatalf("expected 0 fallback registry models for dynamic codebuddy-cn, got %d", len(resp.RegistryModels))
 	}
 }

@@ -743,9 +743,13 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 			if static := populateStaticModels(providerInfo); len(static) > 0 {
 				slog.Info("Live model fetch failed or empty, falling back to static registry models", slog.String("provider", providerID), "error", fetchErr)
 				models = static
-			} else if fetchErr != nil {
-				slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
+			} else {
+				errMsg := "provider returned no models"
+				if fetchErr != nil {
+					errMsg = fetchErr.Error()
+				}
+				slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", errMsg)
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": errMsg})
 				return
 			}
 		} else {
