@@ -138,12 +138,12 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		}
 
 		lowerID := strings.ToLower(id)
-		if strings.Contains(lowerID, "image") {
-			imageModels = append(imageModels, raw)
-		} else if strings.HasPrefix(lowerID, "gemini-") {
+		if strings.HasPrefix(lowerID, "gemini-") {
 			geminiModels = append(geminiModels, raw)
 		} else if strings.HasPrefix(lowerID, "claude-") {
 			claudeModels = append(claudeModels, raw)
+		} else if strings.Contains(lowerID, "image") || strings.HasPrefix(lowerID, "imagen-") {
+			imageModels = append(imageModels, raw)
 		} else {
 			otherModels = append(otherModels, raw)
 		}
@@ -162,7 +162,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		}
 		rem := rep.remFrac * total
 		quotas["gemini"] = Quota{
-			DisplayName:         "Gemini (Flash / Pro)",
+			DisplayName:         "Gemini (Flash / Pro / Image)",
 			Total:               total,
 			Used:                total - rem,
 			Remaining:           rem,

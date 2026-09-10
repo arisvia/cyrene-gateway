@@ -89,9 +89,9 @@ func TestClusterAntigravityQuotas(t *testing.T) {
 					ResetTime:         "2026-09-10T15:00:00Z",
 				},
 			},
-			// Image model
-			"gemini-3.1-flash-image": {
-				DisplayName: "Gemini 3.1 Flash Image",
+			// Dedicated image model
+			"imagen-3.0-generate": {
+				DisplayName: "Imagen 3.0",
 				QuotaInfo: &struct {
 					RemainingFraction *float64 `json:"remainingFraction"`
 					ResetTime         string   `json:"resetTime"`
@@ -126,8 +126,8 @@ func TestClusterAntigravityQuotas(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing 'gemini' quota")
 	}
-	if geminiQ.DisplayName != "Gemini (Flash / Pro)" {
-		t.Errorf("expected 'Gemini (Flash / Pro)', got %q", geminiQ.DisplayName)
+	if geminiQ.DisplayName != "Gemini (Flash / Pro / Image)" {
+		t.Errorf("expected 'Gemini (Flash / Pro / Image)', got %q", geminiQ.DisplayName)
 	}
 	if geminiQ.Used != 50 || geminiQ.Remaining != 950 || geminiQ.RemainingPercentage != 95.0 {
 		t.Errorf("unexpected gemini quota math: %+v", geminiQ)
@@ -152,12 +152,12 @@ func TestClusterAntigravityQuotas(t *testing.T) {
 		t.Errorf("expected 'GPT-OSS 120B (Medium)', got %q", gptQ.DisplayName)
 	}
 
-	imgQ, ok := quotas["gemini-3.1-flash-image"]
+	imgQ, ok := quotas["imagen-3.0-generate"]
 	if !ok {
-		t.Fatalf("missing 'gemini-3.1-flash-image' quota")
+		t.Fatalf("missing 'imagen-3.0-generate' quota")
 	}
-	if imgQ.DisplayName != "Gemini 3.1 Flash Image" {
-		t.Errorf("expected 'Gemini 3.1 Flash Image', got %q", imgQ.DisplayName)
+	if imgQ.DisplayName != "Imagen 3.0" {
+		t.Errorf("expected 'Imagen 3.0', got %q", imgQ.DisplayName)
 	}
 }
 
@@ -198,7 +198,7 @@ func TestFetchAntigravity_MockServer(t *testing.T) {
 	if len(res.Quotas) != 2 {
 		t.Fatalf("expected 2 quotas, got %d: %+v", len(res.Quotas), res.Quotas)
 	}
-	if res.Quotas["gemini"].DisplayName != "Gemini (Flash / Pro)" {
+	if res.Quotas["gemini"].DisplayName != "Gemini (Flash / Pro / Image)" {
 		t.Errorf("unexpected gemini label: %s", res.Quotas["gemini"].DisplayName)
 	}
 	if res.Quotas["claude"].DisplayName != "Claude (Sonnet / Opus)" {

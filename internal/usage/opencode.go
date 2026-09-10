@@ -60,14 +60,14 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return QuotaResult{
-			Plan:    "OpenCode Go",
-			Message: "OpenCode Go authentication failed. Check the API key.",
+			Plan:    "OpenCode Zen",
+			Message: "OpenCode API Key 鉴权失败，请检查凭据。",
 		}
 	}
 	if resp.StatusCode == http.StatusForbidden {
 		return QuotaResult{
-			Plan:    "OpenCode Go",
-			Message: "OpenCode Go subscription required or access forbidden for this API key.",
+			Plan:    "OpenCode Zen",
+			Message: "当前凭据为 OpenCode Zen 免费/标准版，官方未开放用量追踪接口（仅 Go 订阅版支持配额监控）。",
 		}
 	}
 	if resp.StatusCode != http.StatusOK {
