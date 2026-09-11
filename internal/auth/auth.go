@@ -22,17 +22,20 @@ import (
 // Secret management: load from env, file, or generate and persist.
 
 var (
-	secretMu sync.RWMutex
-	secret   []byte
+	secretMu   sync.RWMutex
+	secret     []byte
+	isExplicit bool
 )
 
 // init keeps env-only secret resolution working even before explicit Init
 // (some tests rely on CYRENE_AUTH_SECRET). File persistence moves to
 // InitSecretFile so -data-dir can control where the secret lives.
 func init() {
-	secret = []byte(os.Getenv("CYRENE_AUTH_SECRET"))
+	if env := os.Getenv("CYRENE_AUTH_SECRET"); env != "" {
+		secret = []byte(env)
+		isExplicit = true
+	}
 }
-
 // InitSecretFile loads the HMAC secret from <dir>/auth-secret, generating and
 // persisting one when absent. Must be called after flag parsing with the
 // resolved data directory. A secret already set via env or SetSecret wins.
@@ -73,9 +76,47 @@ func SetSecret(s string) {
 	if s != "" {
 		secretMu.Lock()
 		secret = []byte(s)
+		isExplicit = true
 		secretMu.Unlock()
 	}
 }
+// GetSecret returns the current in-memory HMAC auth secret as string.
+func GetSecret() string {
+	return string(getSecret())
+}
+
+// IsExplicitSecret reports whether the secret was set via CLI flag or env var.
+func IsExplicitSecret() bool {
+	secretMu.RLock()
+	defer secretMu.RUnlock()
+	return isExplicit
+}
+
+// PersistSecret writes the secret to <dir>/auth-secret first, then updates memory.
+// It safely no-ops if the secret was explicitly configured via CLI flag or ENV.
+func PersistSecret(dir, secretStr string) error {
+	trimmed := strings.TrimSpace(secretStr)
+	if len(trimmed) < 32 {
+		return fmt.Errorf("secret too short: must be at least 32 bytes")
+	}
+	secretMu.Lock()
+	defer secretMu.Unlock()
+	if isExplicit {
+		return nil
+	}
+	if dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("create data dir for auth-secret: %w", err)
+		}
+		path := filepath.Join(dir, "auth-secret")
+		if err := os.WriteFile(path, []byte(trimmed), 0o600); err != nil {
+			return fmt.Errorf("write auth-secret: %w", err)
+		}
+	}
+	secret = []byte(trimmed)
+	return nil
+}
+
 
 func getSecret() []byte {
 	secretMu.RLock()

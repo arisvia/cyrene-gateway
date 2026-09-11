@@ -1,7 +1,11 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
-import { Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo } from '@/components/ui'
+import {
+  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl,
+  IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
+  IconDatabase, IconDownload, IconUpload, IconAlertTriangle,
+} from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 
@@ -54,6 +58,81 @@ const Settings: Component = () => {
   const [refreshingStats, setRefreshingStats] = createSignal(false)
 
   // TokenSaver 排除项状态
+  // 设置分类 Tab
+  const [activeTab, setActiveTab] = createSignal<'gateway' | 'appearance' | 'data'>('gateway')
+
+  // 数据备份与导出状态
+  const [includeSecrets, setIncludeSecrets] = createSignal(true)
+  const [includeUsage, setIncludeUsage] = createSignal(false)
+  const [downloading, setDownloading] = createSignal(false)
+
+  // 数据恢复状态
+  const [restoreMode, setRestoreMode] = createSignal<'replace' | 'merge'>('replace')
+  const [restoreFile, setRestoreFile] = createSignal<File | null>(null)
+  const [restoring, setRestoring] = createSignal(false)
+
+  async function handleDownloadBackup() {
+    setDownloading(true)
+    try {
+      const url = `/api/system/backup?include_secrets=${includeSecrets()}&include_usage=${includeUsage()}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      const dateStr = new Date().toISOString().slice(0, 10)
+      a.download = `cyrene-backup-${dateStr}${includeSecrets() ? '' : '-sanitized'}.cyrene.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
+      toast.success('备份快照已成功导出')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '导出失败'
+      toast.error(`备份导出失败: ${msg}`)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  async function handleRestoreSubmit() {
+    const file = restoreFile()
+    if (!file) {
+      toast.warning('请先选择要导入的备份文件')
+      return
+    }
+    const modeText = restoreMode() === 'replace'
+      ? '全量覆盖（清空现有用户配置并完整恢复快照）'
+      : '增量合并（保留现有配置，仅对快照包含条目进行覆盖/更新）'
+
+    const ok = await confirm({
+      title: '确认恢复网关数据？',
+      message: `即将使用备份文件「${file.name}」以【${modeText}】模式重载数据库。该操作不可撤销，确定要执行吗？`,
+      variant: 'danger',
+    })
+    if (!ok) return
+
+    setRestoring(true)
+    try {
+      const res = await fetch(`/api/system/restore?mode=${restoreMode()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: file,
+      })
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}))
+        throw new Error(errJson.error || `HTTP ${res.status}`)
+      }
+      toast.success('数据库已成功恢复并重新装载！')
+      setRestoreFile(null)
+      await store.loadCore()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '恢复失败'
+      toast.error(`数据恢复失败: ${msg}`)
+    } finally {
+      setRestoring(false)
+    }
+  }
   const [excludeInput, setExcludeInput] = createSignal('')
   const excludedProviders = () => {
     const list = local().tokenSaverExclude
@@ -186,11 +265,43 @@ const Settings: Component = () => {
         title="系统设置"
         subtitle="网关运行参数、访问控制与效能引擎"
         actions={
-          <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">
-            {dirty() ? '保存修改' : '全部已保存'}
-          </Button>
+          <Show when={activeTab() === 'gateway'}>
+            <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">
+              {dirty() ? '保存修改' : '全部已保存'}
+            </Button>
+          </Show>
         }
       />
+
+      {/* ── 设置分类 Tab 与存储宿主指示条 ── */}
+      <div class="space-y-2">
+        <SegmentedControl
+          options={[
+            { value: 'gateway', label: '网关核心 (Gateway)' },
+            { value: 'appearance', label: '界面与外观 (Appearance)' },
+            { value: 'data', label: '数据管理与备份 (Data & Backup)' },
+          ]}
+          value={activeTab()}
+          onChange={v => setActiveTab(v as 'gateway' | 'appearance' | 'data')}
+        />
+        <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5">
+          <Show when={activeTab() === 'gateway'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            <span>存储宿主：<span class="font-semibold text-foreground">SQLite 数据库 (data.sqlite)</span> · 修改后网关全局及所有下游 API 客户端实时生效</span>
+          </Show>
+          <Show when={activeTab() === 'appearance'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span>存储宿主：<span class="font-semibold text-foreground">浏览器本地存储 (LocalStorage / IndexedDB)</span> · 仅保存在当前设备浏览器中，不影响后端核心配置</span>
+          </Show>
+          <Show when={activeTab() === 'data'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span>存储宿主：<span class="font-semibold text-foreground">SQLite 核心库 (data.sqlite)</span> · 支持全库结构化快照导出、脱敏分享与单事务原子热恢复</span>
+          </Show>
+        </div>
+      </div>
+
+      {/* ── Tab 1：网关核心设置 ── */}
+      <Show when={activeTab() === 'gateway'}>
 
       {/* ── 分组 1：安全与访问控制 ── */}
       <div class="space-y-3.5">
@@ -547,6 +658,10 @@ const Settings: Component = () => {
           </div>
         </Card>
       </div>
+      </Show>
+
+      {/* ── Tab 2：界面与外观偏好 ── */}
+      <Show when={activeTab() === 'appearance'}>
 
       {/* ── 分组 3：外观与系统偏好 ── */}
       <div class="space-y-3.5">
@@ -772,16 +887,163 @@ const Settings: Component = () => {
             </div>
           </Show>
         </Card>
-
-        {/* 版本信息卡片 */}
-        <Card class="p-4 flex items-center justify-between text-xs text-faint">
-          <div class="flex items-center gap-2">
-            <IconInfo size={16} class="text-muted shrink-0" />
-            <span>Cyrene Gateway</span>
-          </div>
-          <Badge tone="gray">v{store.version()}</Badge>
-        </Card>
       </div>
+    </Show>
+
+      {/* ── Tab 3：数据管理与备份恢复 ── */}
+      <Show when={activeTab() === 'data'}>
+        <div class="space-y-3.5">
+          <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
+            <IconDatabase size={14} class="text-accent shrink-0" />
+            <span>数据导出与恢复</span>
+          </div>
+
+          {/* 数据备份导出卡片 */}
+          <Card class="p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+              <div class="flex items-center gap-2">
+                <IconDownload size={16} class="text-accent shrink-0" />
+                <div>
+                  <h3 class="text-sm font-semibold">生成数据备份快照</h3>
+                  <p class="text-xs text-faint mt-0.5">将网关全量或脱敏配置导出为版本化 JSON 文件 (.cyrene.json)</p>
+                </div>
+              </div>
+              <Badge tone="blue">快照导出</Badge>
+            </div>
+
+            <div class="space-y-3 text-xs">
+              <label class="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={includeSecrets()}
+                  onChange={e => setIncludeSecrets(e.currentTarget.checked)}
+                  class="mt-0.5 accent-accent"
+                />
+                <div>
+                  <span class="font-medium text-foreground">包含敏感凭据 (API Keys、OAuth Tokens、JWT 密钥)</span>
+                  <p class="text-faint text-[11px] mt-0.5">
+                    {includeSecrets()
+                      ? '⚠️ 导出的备份将包含完整上游及下游明文密钥，请妥善保管，切勿公开发布或提交至代码仓库！'
+                      : 'ℹ️ 已开启脱敏导出。恢复时将保留现有运行中连接的密钥，适合作为公开模板共享。'}
+                  </p>
+                </div>
+              </label>
+
+              <label class="flex items-start gap-2.5 cursor-pointer select-none pt-2 border-t border-subtle/40">
+                <input
+                  type="checkbox"
+                  checked={includeUsage()}
+                  onChange={e => setIncludeUsage(e.currentTarget.checked)}
+                  class="mt-0.5 accent-accent"
+                />
+                <div>
+                  <span class="font-medium text-foreground">包含历史调用日志与请求排障明细</span>
+                  <p class="text-faint text-[11px] mt-0.5">一并打包全部 API 历史日志与完整排障报文（若调用量大将增加导出文件体积）。</p>
+                </div>
+              </label>
+            </div>
+
+            <div class="pt-2 border-t border-subtle/50 flex justify-end">
+              <Button
+                variant="primary"
+                loading={downloading()}
+                onClick={handleDownloadBackup}
+                class="flex items-center gap-1.5"
+              >
+                <IconDownload size={14} />
+                <span>下载备份文件</span>
+              </Button>
+            </div>
+          </Card>
+
+          {/* 备份恢复与导入卡片 */}
+          <Card class="p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+              <div class="flex items-center gap-2">
+                <IconUpload size={16} class="text-amber-400 shrink-0" />
+                <div>
+                  <h3 class="text-sm font-semibold">从备份文件恢复</h3>
+                  <p class="text-xs text-faint mt-0.5">基于 SQLite 单事务原子重载网关配置，杜绝中间态故障</p>
+                </div>
+              </div>
+              <Badge tone="amber">数据恢复</Badge>
+            </div>
+
+            <div class="space-y-3.5 text-xs">
+              <Field label="备份文件 (.cyrene.json / .json)" hint="选择之前导出的网关备份文件">
+                <input
+                  type="file"
+                  accept=".json,.cyrene.json"
+                  class="block w-full text-xs text-faint file:mr-3 file:py-1.5 file:px-3 file:rounded-control file:border-0 file:text-xs file:font-semibold file:bg-hover file:text-foreground hover:file:bg-active cursor-pointer"
+                  onChange={e => {
+                    const f = e.currentTarget.files?.[0]
+                    setRestoreFile(f || null)
+                  }}
+                />
+              </Field>
+
+              <Field label="恢复策略" hint="选择导入数据与当前数据库的合并方式">
+                <Select
+                  value={restoreMode()}
+                  options={[
+                    { value: 'replace', label: '全量覆盖 (清空现有用户配置并完整恢复为快照)' },
+                    { value: 'merge', label: '增量合并 (保留未冲突项，仅对快照条目进行更新或追加)' },
+                  ]}
+                  onChange={v => setRestoreMode(v as 'replace' | 'merge')}
+                />
+              </Field>
+
+              <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-control text-[11px] text-amber-500 space-y-1">
+                <div class="font-semibold flex items-center gap-1">
+                  <IconAlertTriangle size={13} />
+                  <span>重要提示</span>
+                </div>
+                <p>
+                  恢复操作会在数据库事务中安全执行并即时重载服务。若导入的是脱敏备份，系统将自动保留现有连接的既有有效密钥。建议在操作前先下载一份当前备份作为底稿！
+                </p>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-subtle/50 flex items-center justify-between">
+              <span class="text-xs text-faint font-mono">
+                {restoreFile() ? `已就绪: ${restoreFile()!.name}` : '未选择文件'}
+              </span>
+              <Button
+                variant="danger"
+                disabled={!restoreFile()}
+                loading={restoring()}
+                onClick={handleRestoreSubmit}
+                class="flex items-center gap-1.5"
+              >
+                <IconUpload size={14} />
+                <span>开始恢复数据</span>
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </Show>
+
+      {/* ── 底部通用系统与存储信息 ── */}
+      <Card class="p-4 flex items-center justify-between text-xs text-faint">
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1.5">
+            <IconInfo size={15} class="text-muted shrink-0" />
+            <span class="font-medium text-foreground">Cyrene Gateway</span>
+            <Badge tone="gray">v{store.version()}</Badge>
+          </div>
+          <span class="hidden sm:inline text-faint">|</span>
+          <span class="hidden sm:inline text-faint">
+            数据库：{store.health().db === 'ok' ? '已就绪 (WAL 模式)' : '检测中'}
+          </span>
+          <span class="hidden sm:inline text-faint">|</span>
+          <span class="hidden sm:inline text-faint">
+            活动连接：{store.activeConnections()} / {store.providers().length}
+          </span>
+        </div>
+        <div class="text-[11px] font-mono text-faint">
+          运行时间：{Math.floor((Number(store.health().uptimeSeconds) || 0) / 60)} 分钟
+        </div>
+      </Card>
     </div>
   )
 }

@@ -6,6 +6,48 @@ import type {
   Provider, RegistryCategory, Combo, ApiKey, ApiKeyInput, ProxyPool, Endpoint,
   UsageStats, RequestDetail, Pagination, ProviderUsage,
 } from '@/types/domain'
+const REGISTRY_CACHE_KEY = 'cyrene_registry_cache_v1'
+const REGISTRY_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+interface RegistryCacheEnvelope {
+  v: number
+  ts: number
+  data: RegistryCategory[]
+}
+
+function getInitialRegistry(): RegistryCategory[] {
+  try {
+    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+      const cached = window.localStorage.getItem(REGISTRY_CACHE_KEY)
+      if (cached) {
+        const env = JSON.parse(cached) as RegistryCacheEnvelope
+        if (env && env.v === 1 && Array.isArray(env.data) && env.data.length > 0) {
+          if (Date.now() - env.ts < REGISTRY_CACHE_MAX_AGE_MS) {
+            return env.data
+          }
+        }
+      }
+    }
+  } catch {
+    // safe fallback for SSR / test environments
+  }
+  return []
+}
+
+function saveRegistryCache(cats: RegistryCategory[]) {
+  try {
+    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' && Array.isArray(cats) && cats.length > 0) {
+      const env: RegistryCacheEnvelope = {
+        v: 1,
+        ts: Date.now(),
+        data: cats,
+      }
+      window.localStorage.setItem(REGISTRY_CACHE_KEY, JSON.stringify(env))
+    }
+  } catch {
+    // safe fallback
+  }
+}
 
 function createGatewayStore() {
   const toast = useToast()
@@ -18,32 +60,6 @@ function createGatewayStore() {
   const [apiKeys, setApiKeys] = createSignal<ApiKey[]>([])
   const [proxyPools, setProxyPools] = createSignal<ProxyPool[]>([])
   const [endpoints, setEndpoints] = createSignal<Endpoint[]>([])
-const REGISTRY_CACHE_KEY = 'cyrene_registry_cache'
-
-function getInitialRegistry(): RegistryCategory[] {
-  try {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const cached = window.localStorage.getItem(REGISTRY_CACHE_KEY)
-      if (cached) {
-        const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
-      }
-    }
-  } catch {
-    // safe fallback for SSR / test environments
-  }
-  return []
-}
-
-function saveRegistryCache(cats: RegistryCategory[]) {
-  try {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' && Array.isArray(cats) && cats.length > 0) {
-      window.localStorage.setItem(REGISTRY_CACHE_KEY, JSON.stringify(cats))
-    }
-  } catch {
-    // safe fallback
-  }
-}
 
   const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>(getInitialRegistry())
   const [settings, setSettings] = createSignal<Record<string, unknown>>({})

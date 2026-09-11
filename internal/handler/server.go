@@ -153,6 +153,9 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/proxy-pools/{id}", s.handleGetProxyPool)
 	s.Router.HandleFunc("PUT /api/proxy-pools/{id}", s.handleUpdateProxyPool)
 	s.Router.HandleFunc("DELETE /api/proxy-pools/{id}", s.handleDeleteProxyPool)
+	// System Backup & Restore
+	s.Router.HandleFunc("GET /api/system/backup", s.handleExportBackup)
+	s.Router.HandleFunc("POST /api/system/restore", s.handleRestoreBackup)
 
 	// Provider connection testing
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)
@@ -1715,6 +1718,7 @@ func (s *Server) handleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create proxy pool"})
 		return
 	}
+	s.refreshProxies()
 	writeJSON(w, http.StatusCreated, map[string]any{"proxyPool": p})
 }
 
@@ -1774,6 +1778,7 @@ func (s *Server) handleUpdateProxyPool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update proxy pool"})
 		return
 	}
+	s.refreshProxies()
 	writeJSON(w, http.StatusOK, map[string]any{"proxyPool": existing})
 }
 
@@ -1809,6 +1814,7 @@ func (s *Server) handleDeleteProxyPool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete proxy pool"})
 		return
 	}
+	s.refreshProxies()
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
@@ -1816,4 +1822,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+// refreshProxies re-syncs the in-memory ProxyManager with current database proxy pools.
+func (s *Server) refreshProxies() {
+	if s.Proxies == nil || s.DB == nil {
+		return
+	}
+	if pools, err := s.DB.ListProxyPools(); err == nil {
+		s.Proxies.UpdatePools(pools)
+	}
 }
