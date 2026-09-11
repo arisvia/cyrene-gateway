@@ -735,6 +735,7 @@ export const zhCN = {
     noMatchingMetrics: "未找到匹配的配额指标",
     usageApiUnavailable: "官方暂未开放标准在线余量查询接口",
     adaptiveThrottle: "网内自适应限流调度",
+    opencodeZenNotice: "OpenCode Zen 计划未开放官方余量查询接口（需 Go 订阅），由网内自适应限流调度",
     title: '配额中心',
     subtitle: '按账号与节点双列实时呈现官方真实余量与自动轮换状态',
     refreshData: '刷新数据',

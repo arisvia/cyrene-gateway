@@ -280,12 +280,13 @@ const Quota: Component = () => {
 
             <Button
               size="sm"
-              variant={autoRefresh() ? 'secondary' : 'ghost'}
-              class={`text-xs gap-1.5 ${autoRefresh() ? 'border-amber-500/40 text-amber-400 font-medium' : ''}`}
+              variant="secondary"
+              class={`gap-1.5 transition-colors ${autoRefresh() ? 'border border-amber-500/40 text-amber-500 dark:text-amber-400 font-medium' : 'text-muted'}`}
               onClick={() => setAutoRefresh(!autoRefresh())}
             >
+              <span class={`w-1.5 h-1.5 rounded-full ${autoRefresh() ? 'bg-amber-400 animate-pulse' : 'bg-muted-foreground/40'}`} />
               <span>{t('quota.autoRefresh')}</span>
-              <span class="text-[10px] opacity-75">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
+              <span class="opacity-70">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
             </Button>
 
             <Button
@@ -431,7 +432,11 @@ const Quota: Component = () => {
                             >
                               <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                                 <span class="min-w-0 flex-1 leading-relaxed">
-                                  {qData()!.message?.startsWith('Usage API not implemented') ? t('quota.usageApiUnavailable') : qData()!.message}
+                                  {qData()!.message?.startsWith('Usage API not implemented')
+                                    ? t('quota.usageApiUnavailable')
+                                    : conn.provider === 'opencode' && (qData()!.plan === 'OpenCode Zen' || qData()!.message?.includes('OpenCode Zen'))
+                                      ? t('quota.opencodeZenNotice')
+                                      : qData()!.message}
                                 </span>
                                 <span class="text-[10px] text-faint font-mono shrink-0 whitespace-nowrap self-end sm:self-center px-1.5 py-0.5 rounded bg-hover/50">
                                   {t('quota.adaptiveThrottle')}

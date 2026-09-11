@@ -737,6 +737,7 @@ export const enUS: TranslationDict = {
     noMatchingMetrics: "No matching quota metrics",
     usageApiUnavailable: "The upstream does not expose a standard online quota API yet",
     adaptiveThrottle: "Adaptive in-network throttling",
+    opencodeZenNotice: "OpenCode Zen plan does not expose quota endpoint (Go subscription required), handled via in-network adaptive dispatch",
     title: 'Quota Center',
     subtitle: 'Real-time upstream balances, quotas, and rotation status by connection',
     refreshData: 'Refresh',
