@@ -65,7 +65,7 @@ export function LanguageToggle() {
       class="flex h-8 px-2 items-center justify-center gap-1 rounded-control text-xs font-medium text-muted hover:text-foreground hover:bg-hover transition-colors cursor-pointer"
       onClick={toggleLocale}
       aria-label={t('sidebar.languageToggle')}
-      title={locale() === 'zh-CN' ? 'Switch to English' : t('sidebar.switchToChinese')}
+      title={locale() === 'zh-CN' ? t('sidebar.switchToEnglish') : t('sidebar.switchToChinese')}
     >
       <svg
         class="w-3.5 h-3.5 shrink-0"

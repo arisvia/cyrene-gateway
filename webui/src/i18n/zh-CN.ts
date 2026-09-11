@@ -108,6 +108,7 @@ export const zhCN = {
     switchToDark: "切换到暗色主题",
     switchToLight: "切换到亮色主题",
     switchToChinese: "切换到简体中文",
+    switchToEnglish: "切换到 English",
   },
   home: {
     copiedKey: "密钥 {name}",

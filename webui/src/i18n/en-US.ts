@@ -109,7 +109,8 @@ export const enUS: TranslationDict = {
     themeToggle: "Toggle theme",
     switchToDark: "Switch to dark theme",
     switchToLight: "Switch to light theme",
-    switchToChinese: "切换到简体中文",
+    switchToChinese: "Switch to Simplified Chinese",
+    switchToEnglish: "Switch to English",
   },
   home: {
     copiedKey: "Key {name}",

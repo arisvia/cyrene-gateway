@@ -516,6 +516,11 @@ const ProviderDetail: Component = () => {
   const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
   const [showCustomModels, setShowCustomModels] = createSignal(false)
   const customCount = () => (modelsData().customModels ?? models()?.customModels ?? []).length
+  createEffect(() => {
+    if (customCount() > 0) {
+      setShowCustomModels(true)
+    }
+  })
 
   const allDisplayModels = () =>
     (modelsData().registryModels ?? models()?.registryModels ?? [])
@@ -1271,8 +1276,8 @@ const ProviderDetail: Component = () => {
 
             {/* 模型 */}
             <Show when={tab() === 'models'}>
-              <div class="space-y-4">
-                <Card class="p-3.5 sm:p-4">
+              <div class="flex flex-col gap-3.5 lg:h-[calc(100vh-285px)] min-h-[460px]">
+                <Card class="shrink-0 p-3.5 sm:p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 flex-wrap min-w-0">
                       <h3 class="text-sm font-semibold whitespace-nowrap">{t('providerDetail.customModelsTitle')}</h3>
@@ -1290,7 +1295,7 @@ const ProviderDetail: Component = () => {
                       {showCustomModels() ? t('common.collapse') : (customCount() > 0 ? t('common.expand') : `+ ${t('common.add')}`)}
                     </Button>
                   </div>
-                  <Show when={showCustomModels() || customCount() > 0}>
+                  <Show when={showCustomModels()}>
                     <div class="pt-3 border-t border-subtle/50 mt-2.5 space-y-2.5">
                       <div class="flex gap-2">
                         <Input
@@ -1350,8 +1355,8 @@ const ProviderDetail: Component = () => {
                   </Show>
                 </Card>
 
-                <Card class="p-4 sm:p-4.5 flex flex-col">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
+                <Card class="flex-1 min-h-0 p-4 sm:p-4.5 flex flex-col">
+                  <div class="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
                     <div class="flex items-center gap-2 flex-wrap">
                       <h3 class="text-sm font-semibold">{t('providerDetail.availableModels')}</h3>
                       <span class="text-xs text-faint">
@@ -1379,7 +1384,7 @@ const ProviderDetail: Component = () => {
                     </div>
                   </div>
                   {/* 批量运维工具栏 */}
-                  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-subtle/40 mb-2.5 text-xs">
+                  <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-subtle/40 mb-2.5 text-xs">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="text-faint">{t('providerDetail.batchOps')}</span>
                       <Button
@@ -1433,14 +1438,7 @@ const ProviderDetail: Component = () => {
                     fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
                     {/* 独立可滚动区域：带对外开放开关的 Liquid Glass 卡片网格 */}
-                    <div
-                      class="min-h-[200px] overflow-y-auto pr-1"
-                      style={{
-                        'max-height': showCustomModels() || customCount() > 0
-                          ? 'max(200px, calc(100vh - 580px))'
-                          : 'max(260px, calc(100vh - 460px))',
-                      }}
-                    >
+                    <div class="flex-1 min-h-0 overflow-y-auto pr-1">
                       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                         <For each={(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
                           const q = modelSearch().trim().toLowerCase()
