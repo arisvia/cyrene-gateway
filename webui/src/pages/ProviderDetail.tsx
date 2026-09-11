@@ -1495,18 +1495,20 @@ const ProviderDetail: Component = () => {
                                       when={res().ok}
                                       fallback={
                                         <span
-                                          class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30 cursor-help"
+                                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30 cursor-help"
                                           title={res().error || '测试未通过'}
                                         >
-                                          ✗ {res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : '失败'}
+                                          <IconClose size={10} class="shrink-0" />
+                                          <span>{res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : '失败'}</span>
                                         </span>
                                       }
                                     >
                                       <span
-                                        class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono"
+                                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono"
                                         title={`测试通过 · 耗时 ${res().latency || '正常'}`}
                                       >
-                                        ✓ {res().latency || '连通'}
+                                        <IconCheck size={10} class="shrink-0" />
+                                        <span>{res().latency || '连通'}</span>
                                       </span>
                                     </Show>
                                   )}
