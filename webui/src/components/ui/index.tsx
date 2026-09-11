@@ -436,60 +436,6 @@ export const Select: Component<{
     }
     setOpen(o => !o)
   }
-  onMount(() => {
-    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
-      const target = e.target as Node
-      if (rootRef?.contains(target) || popoverRef?.contains(target)) {
-        return
-      }
-      setOpen(false)
-    }
-
-    const handleScrollOrResize = () => {
-      if (open()) {
-        updatePosition()
-      }
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!open()) {
-        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') && rootRef?.contains(document.activeElement)) {
-          e.preventDefault()
-          toggleOpen()
-        }
-        return
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setOpen(false)
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        const idx = props.options.findIndex(o => o.value === (props.value ?? ''))
-        const next = idx < props.options.length - 1 ? idx + 1 : 0
-        if (props.options[next]) props.onChange?.(props.options[next].value)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        const idx = props.options.findIndex(o => o.value === (props.value ?? ''))
-        const prev = idx > 0 ? idx - 1 : props.options.length - 1
-        if (props.options[prev]) props.onChange?.(props.options[prev].value)
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        setOpen(false)
-      }
-    }
-
-    window.addEventListener('pointerdown', handleOutsideClick)
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('scroll', handleScrollOrResize, true)
-    window.addEventListener('resize', handleScrollOrResize)
-    onCleanup(() => {
-      window.removeEventListener('pointerdown', handleOutsideClick)
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
-      window.removeEventListener('resize', handleScrollOrResize)
-    })
-  })
 
   const selectedOption = () => (props.options as SelectOption[]).find(o => o.value === (props.value ?? ''))
   const isSelected = () => !!selectedOption()
@@ -529,6 +475,63 @@ export const Select: Component<{
       }
     }
   }
+
+  onMount(() => {
+    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as Node
+      if (rootRef?.contains(target) || popoverRef?.contains(target)) {
+        return
+      }
+      setOpen(false)
+    }
+
+    const handleScrollOrResize = () => {
+      if (open()) {
+        updatePosition()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!open()) {
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') && rootRef?.contains(document.activeElement)) {
+          e.preventDefault()
+          toggleOpen()
+        }
+        return
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const opts = visibleOptions()
+        const idx = opts.findIndex(o => o.value === (props.value ?? ''))
+        const next = idx < opts.length - 1 ? idx + 1 : 0
+        if (opts[next]) props.onChange?.(opts[next].value)
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        const opts = visibleOptions()
+        const idx = opts.findIndex(o => o.value === (props.value ?? ''))
+        const prev = idx > 0 ? idx - 1 : opts.length - 1
+        if (opts[prev]) props.onChange?.(opts[prev].value)
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        setOpen(false)
+      }
+    }
+
+    window.addEventListener('pointerdown', handleOutsideClick)
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', handleScrollOrResize)
+    onCleanup(() => {
+      window.removeEventListener('pointerdown', handleOutsideClick)
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('scroll', handleScrollOrResize, true)
+      window.removeEventListener('resize', handleScrollOrResize)
+    })
+  })
   const triggerSizes: Record<ControlSize, string> = {
     sm: `${controlSizes.sm} pl-3 pr-2.5 gap-2`,
     md: `${controlSizes.md} pl-3.5 pr-3 gap-2.5`,
@@ -601,7 +604,7 @@ export const Select: Component<{
             ref={popoverRef}
             role="listbox"
             style={popoverStyle()}
-            class="rounded-control glass-panel border border-subtle bg-bg-elevated/95 backdrop-blur-lg shadow-glass-hover p-1.5 flex flex-col gap-1 animate-scale-in"
+            class="rounded-control border border-subtle bg-bg-elevated/95 backdrop-blur-[12px] shadow-glass-hover p-1.5 flex flex-col gap-1 animate-fade-in"
           >
             <Show when={props.options.length > 8}>
               <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
