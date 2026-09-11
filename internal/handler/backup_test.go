@@ -81,11 +81,15 @@ func TestBackupRestoreEndpoints(t *testing.T) {
 		t.Fatalf("expected 400 for unknown restore mode 'upsert', got %d", wInvalidMode.Code)
 	}
 
+	// Verify database is completely intact and unaffected by the rejected request
 	cAfter, err := d.GetConnection("c-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cAfter.Name != "Restored Name" {
 		t.Fatalf("expected restored name 'Restored Name', got %s", cAfter.Name)
+	}
+	if cAfter.Data.APIKey != "sk-endpoint-secret" {
+		t.Fatalf("expected APIKey 'sk-endpoint-secret' intact after 400 rejection, got %s", cAfter.Data.APIKey)
 	}
 }
