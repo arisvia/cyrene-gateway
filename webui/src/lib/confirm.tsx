@@ -1,6 +1,7 @@
 import { createSignal, Show, type Component, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Button } from '@/components/ui'
+import { useI18n } from '@/i18n'
 import { IconAlertCircle, IconAlertTriangle, IconInfo } from '@/components/ui/icons'
 
 export interface ConfirmOptions {
@@ -51,6 +52,7 @@ export function alert(message: string, title?: string): Promise<boolean> {
 
 export const ConfirmDialogHost: Component = () => {
   const s = () => state()
+  const { t } = useI18n()
   let prevFocus: HTMLElement | null = null
   let confirmBtnRef: HTMLButtonElement | undefined
   let cancelBtnRef: HTMLButtonElement | undefined
@@ -165,7 +167,7 @@ export const ConfirmDialogHost: Component = () => {
                 size="sm"
                 onClick={() => handleClose(false)}
               >
-                {s().cancelText || '取消'}
+                {s().cancelText || t('common.cancel')}
               </Button>
             </Show>
             <Button
@@ -174,7 +176,7 @@ export const ConfirmDialogHost: Component = () => {
               size="sm"
               onClick={() => handleClose(true)}
             >
-              {s().confirmText || (s().variant === 'danger' ? '确认删除' : '确认')}
+              {s().confirmText || (s().variant === 'danger' ? t('common.confirmDelete') : t('common.confirm'))}
             </Button>
           </div>
         </div>

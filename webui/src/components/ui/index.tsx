@@ -141,6 +141,7 @@ export const StatusPulse: Component<{
 
 export function ToastHost() {
   const { toasts } = useToast()
+  const { t } = useI18n()
 
   const kindStyles = {
     success: {
@@ -164,42 +165,42 @@ export function ToastHost() {
   return (
     <div class="fixed top-4 right-4 z-130 w-full max-w-sm pointer-events-none flex flex-col gap-2.5 px-3 sm:px-0" role="status" aria-live="polite">
       <For each={toasts()}>
-        {t => {
-          const style = () => kindStyles[t.kind] || kindStyles.info
+        {toastItem => {
+          const style = () => kindStyles[toastItem.kind] || kindStyles.info
           return (
             <div
               class={`pointer-events-auto relative w-full p-3 rounded-xl shadow-glass-hover backdrop-blur-lg transition-all duration-200 animate-slide-up flex items-start gap-3 select-none ${style().card}`}
             >
               <div class={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${style().iconWrap}`}>
-                <Show when={t.kind === 'success'}>
+                <Show when={toastItem.kind === 'success'}>
                   <IconCheck size="sm" class="w-3.5 h-3.5" />
                 </Show>
-                <Show when={t.kind === 'error'}>
+                <Show when={toastItem.kind === 'error'}>
                   <IconAlertCircle size="sm" class="w-3.5 h-3.5" />
                 </Show>
-                <Show when={t.kind === 'warning'}>
+                <Show when={toastItem.kind === 'warning'}>
                   <IconAlertTriangle size="sm" class="w-3.5 h-3.5" />
                 </Show>
-                <Show when={t.kind === 'info'}>
+                <Show when={toastItem.kind === 'info'}>
                   <IconInfo size="sm" class="w-3.5 h-3.5" />
                 </Show>
               </div>
 
               <div class="flex-1 min-w-0 pt-0.5">
-                <Show when={t.title}>
+                <Show when={toastItem.title}>
                   <div class="text-xs font-semibold text-foreground mb-0.5 leading-snug">
-                    {t.title}
+                    {toastItem.title}
                   </div>
                 </Show>
                 <div class="text-xs text-muted leading-relaxed wrap-break-word whitespace-pre-wrap">
-                  {t.message}
+                  {toastItem.message}
                 </div>
               </div>
 
               <button
                 type="button"
-                aria-label={useI18n().t('common.close')}
-                onClick={() => dismiss(t.id)}
+                aria-label={t('common.close')}
+                onClick={() => dismiss(toastItem.id)}
                 class="text-faint hover:text-foreground p-1 rounded-md hover:bg-hover transition-colors shrink-0 -mr-1 -mt-1 cursor-pointer"
               >
                 <IconClose size="xs" class="w-3.5 h-3.5" />
@@ -827,6 +828,7 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
 
 export const Modal: Component<{ open: boolean; title: string; onClose: () => void; children?: JSX.Element }> = props => {
   const [panel, setPanel] = createSignal<HTMLDivElement>()
+  const { t } = useI18n()
 
   // 打开时锁定页面滚动 + Esc 关闭（参考 9router Modal，避免全局未打开时锁死页面滚动）
   createEffect(() => {
@@ -855,7 +857,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
         <div class="fixed inset-0 z-100 flex items-center justify-center p-4">
           <button
             type="button"
-            aria-label={useI18n().t('common.close')}
+            aria-label={t('common.close')}
             class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
             onClick={props.onClose}
           />

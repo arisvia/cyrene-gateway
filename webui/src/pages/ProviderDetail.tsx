@@ -96,11 +96,11 @@ const ProviderDetail: Component = () => {
     setSyncingModels(true)
     try {
       await apiPost(`/api/providers/${p}/refresh-models`)
-      toast.success('已成功从官方上游同步最新模型列表')
+      toast.success(t('toast.syncModelsSuccess'))
       await refetchModels()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      toast.error(`同步模型失败: ${msg}`)
+      toast.error(t('toast.syncModelsFailed', { error: msg }))
     } finally {
       setSyncingModels(false)
     }
@@ -173,7 +173,7 @@ const ProviderDetail: Component = () => {
     if (!p) return
     const aType = newAccountAuthType()
     if (aType === 'api-key' && !newAccountApiKey().trim()) {
-      toast.error('请填写 API Key')
+      toast.error(t('toast.requireApiKey'))
       return
     }
     setAddingAccount(true)
@@ -196,7 +196,7 @@ const ProviderDetail: Component = () => {
         navigate(`/providers/${added.id}`)
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '添加账号失败')
+      toast.error(t('toast.addAccountFailed', { error: e instanceof Error ? e.message : 'error' }))
     } finally {
       setAddingAccount(false)
     }
@@ -256,7 +256,7 @@ const ProviderDetail: Component = () => {
         }
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
-          toast.info(`已在新窗口打开 ${providerDisplayName()} 授权页面，完成授权后网关将自动绑定。`)
+          toast.info(t('toast.oauthWindowOpened', { name: providerDisplayName() }))
         }
 
         clearInterval(pollTimer)
@@ -276,7 +276,7 @@ const ProviderDetail: Component = () => {
               clearInterval(pollTimer)
               pollTimer = undefined
               setDevicePolling(false)
-              toast.success('OAuth 网页授权成功！已绑定并刷新账号凭据。')
+              toast.success(t('toast.oauthSuccess', { name: providerDisplayName() }))
               await store.loadProvidersOnly()
               await load()
               refetchOAuth()
@@ -327,7 +327,7 @@ const ProviderDetail: Component = () => {
             pollTimer = undefined
             setDevicePolling(false)
             setDeviceFlow(null)
-            toast.success('OAuth 授权成功！已绑定并刷新账号凭据。')
+            toast.success(t('toast.oauthSuccess', { name: providerDisplayName() }))
             await store.loadProvidersOnly()
             await load()
             refetchOAuth()
@@ -347,7 +347,7 @@ const ProviderDetail: Component = () => {
       setDevicePolling(false)
       const msg = e instanceof Error ? e.message : String(e)
       setDeviceError(msg)
-      toast.error(`发起授权失败: ${msg}`)
+      toast.error(t('toast.oauthFailed', { error: msg }))
     }
   }
 
@@ -356,7 +356,7 @@ const ProviderDetail: Component = () => {
     if (!p) return
     const token = importTokenText().trim()
     if (!token) {
-      toast.error('请输入访问令牌 (Access Token)')
+      toast.error(t('toast.tokenRequired'))
       return
     }
     setImportingToken(true)
@@ -365,7 +365,7 @@ const ProviderDetail: Component = () => {
         accessToken: token,
         name: name().trim() || undefined,
       })
-      toast.success('令牌导入成功！已更新连接凭据。')
+      toast.success(t('toast.tokenImportSuccess', { name: providerDisplayName() }))
       cancelDeviceFlow()
       await store.loadProvidersOnly()
       await load()
@@ -373,7 +373,7 @@ const ProviderDetail: Component = () => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setDeviceError(msg)
-      toast.error(`导入失败: ${msg}`)
+      toast.error(t('toast.tokenImportFailed', { error: msg }))
     } finally {
       setImportingToken(false)
     }
@@ -535,14 +535,14 @@ const ProviderDetail: Component = () => {
         },
       }))
       if (res.ok) {
-        toast.success(`模型「${modelId}」测试通过 · ${res.latency || '连通'}`)
+        toast.success(t('toast.modelTestPassed', { id: modelId, latency: res.latency || 'ok' }))
       } else {
-        toast.error(`模型「${modelId}」测试失败: ${res.error || '不可用'}`)
+        toast.error(t('toast.modelTestFailed', { id: modelId, error: res.error || 'unavailable' }))
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '测试请求异常'
       setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
-      toast.error(`模型「${modelId}」测试失败: ${msg}`)
+      toast.error(t('toast.modelTestFailed', { id: modelId, error: msg }))
     } finally {
       setTestingModels(prev => ({ ...prev, [modelId]: false }))
     }
@@ -553,7 +553,7 @@ const ProviderDetail: Component = () => {
     const p = conn()!.provider
     const toEnable = allDisplayModels().filter(m => m.enabled === false)
     if (toEnable.length === 0) {
-      toast.info('所有模型已处于启用状态')
+      toast.info(t('toast.allModelsEnabled'))
       return
     }
     setModelsData(prev => ({
@@ -563,9 +563,9 @@ const ProviderDetail: Component = () => {
     }))
     try {
       await Promise.all(toEnable.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, false)))
-      toast.success(`已批量启用 ${toEnable.length} 个模型`)
+      toast.success(t('toast.batchEnableSuccess', { count: toEnable.length }))
     } catch {
-      toast.error('批量启用失败，正在刷新状态')
+      toast.error(t('toast.batchEnableFailed'))
       refetchModels()
     }
   }
@@ -575,7 +575,7 @@ const ProviderDetail: Component = () => {
     const p = conn()!.provider
     const toDisable = allDisplayModels().filter(m => m.enabled !== false)
     if (toDisable.length === 0) {
-      toast.info('所有模型已处于禁用状态')
+      toast.info(t('toast.allModelsDisabled'))
       return
     }
     if (!await confirm(`确定要禁用该提供商旗下的全部 ${toDisable.length} 个模型吗？`)) return
@@ -586,9 +586,9 @@ const ProviderDetail: Component = () => {
     }))
     try {
       await Promise.all(toDisable.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, true)))
-      toast.success(`已批量禁用 ${toDisable.length} 个模型`)
+      toast.success(t('toast.batchDisableSuccess', { count: toDisable.length }))
     } catch {
-      toast.error('批量禁用失败，正在刷新状态')
+      toast.error(t('toast.batchDisableFailed'))
       refetchModels()
     }
   }

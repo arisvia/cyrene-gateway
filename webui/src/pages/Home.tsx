@@ -49,7 +49,7 @@ const Home: Component = () => {
       setEditingKey(null)
     } catch (err) {
       console.error(err)
-      toast.error('保存密钥规则失败')
+      toast.error(t('toast.saveKeyFailed'))
     } finally {
       setSavingEdit(false)
     }
@@ -60,7 +60,7 @@ const Home: Component = () => {
 
   const copyText = (text: string, label: string) => {
     navigator.clipboard?.writeText(text)
-    toast.success(`已复制 ${label}`)
+    toast.success(t('toast.copySuccess', { label }))
   }
 
   return (
@@ -184,13 +184,12 @@ const Home: Component = () => {
                   onKeyDown={async e => {
                     if (e.key === 'Enter' && keyName().trim() && !creatingKey()) {
                       const n = keyName().trim()
-                      setCreatingKey(true)
                       try {
                         await store.createKey(n)
                         setKeyName('')
                       } catch (err) {
                         console.error(err)
-                        toast.error('创建密钥失败')
+                        toast.error(t('toast.createKeyFailed'))
                       } finally {
                         setCreatingKey(false)
                       }
@@ -207,19 +206,18 @@ const Home: Component = () => {
                   onClick={async () => {
                     const n = keyName().trim()
                     if (!n) return
-                    setCreatingKey(true)
                     try {
                       await store.createKey(n)
                       setKeyName('')
                     } catch (err) {
                       console.error(err)
-                      toast.error('创建密钥失败')
+                      toast.error(t('toast.createKeyFailed'))
                     } finally {
                       setCreatingKey(false)
                     }
                   }}
               >
-                生成密钥
+                {t('home.createKeyBtn')}
               </Button>
             </div>
 
@@ -240,14 +238,14 @@ const Home: Component = () => {
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-subtle bg-card/40 hover:bg-card hover:border-accent/30 transition-all group">
                           <div class="min-w-0 flex-1 space-y-1">
                             <div class="flex items-center gap-2 flex-wrap">
-                              <span class="text-sm font-medium text-foreground truncate">{k.name || '(未命名)'}</span>
+                              <span class="text-sm font-medium text-foreground truncate">{k.name || t('home.unnamedKey')}</span>
                               <Badge tone="gray" class="text-[10px] scale-95">Bearer</Badge>
                               <Show
                                 when={k.allowedModels && k.allowedModels.length > 0}
-                                fallback={<Badge tone="gray" class="text-[10px]">全模型</Badge>}
+                                fallback={<Badge tone="gray" class="text-[10px]">{t('home.allModels')}</Badge>}
                               >
                                 <Badge tone="blue" class="text-[10px]">
-                                  {k.allowedModels?.length} 个模型
+                                  {t('home.modelsCount', { count: k.allowedModels?.length ?? 0 })}
                                 </Badge>
                               </Show>
                               <Show when={k.rpm && k.rpm > 0}>
@@ -255,7 +253,7 @@ const Home: Component = () => {
                               </Show>
                               <Show when={k.systemPrompt}>
                                 <span title={k.systemPrompt}>
-                                  <Badge tone="blue" class="text-[10px]">注入 Context</Badge>
+                                  <Badge tone="blue" class="text-[10px]">{t('home.injectedContext')}</Badge>
                                 </span>
                               </Show>
                             </div>
@@ -271,11 +269,11 @@ const Home: Component = () => {
                                 size="sm"
                                 variant="secondary"
                                 onClick={() => openEdit(k)}
-                                title="配置细粒度规则（白名单、RPM、Context）"
+                                title={t('home.editRulesTitle')}
                             >
                               <span class="flex items-center gap-1">
                                 <IconEdit size={12} class="text-muted" />
-                                <span>规则</span>
+                                <span>{t('home.rulesBtn')}</span>
                               </span>
                             </Button>
                             <Button
@@ -287,15 +285,15 @@ const Home: Component = () => {
                                   setTimeout(() => setCopiedKeyId(null), 2000)
                                 }}
                             >
-                              {isCopied() ? <span class="flex items-center gap-1"><span>已复制</span><IconCheck size={12} class="text-success" /></span> : '复制 Key'}
+                              {isCopied() ? <span class="flex items-center gap-1"><span>{t('common.copied')}</span><IconCheck size={12} class="text-success" /></span> : t('home.copyKey')}
                             </Button>
                             <Button
                                 size="sm"
                                 variant="danger"
                                 onClick={async () => {
                                   const ok = await confirm({
-                                    title: '删除 API Key',
-                                    message: `确定删除 API Key「${k.name || k.key}」吗？删除后调用将失效。`,
+                                    title: t('home.deleteKeyConfirmTitle'),
+                                    message: t('home.deleteKeyConfirmMessage', { name: k.name || k.key }),
                                     variant: 'danger',
                                   })
                                   if (ok) {

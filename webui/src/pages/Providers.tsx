@@ -31,37 +31,55 @@ import {api, apiPost} from '@/lib/api'
 import {useToast} from '@/lib/toast'
 import type {BadgeTone, Provider, RegistryProvider} from '@/types/domain'
 
-const CATEGORY_LABEL: Record<string, string> = {
-  all: '全部类别',
-  apikey: 'API Key',
-  oauth: 'OAuth 授权',
-  freeTier: '免费额度',
-  custom: '自定义通用',
-  media: '多模态与媒体',
-}
-
-const AUTHTYPE_LABEL: Record<string, string> = {
-  'api-key': 'API Key',
-  apikey: 'API Key',
-  oauth: 'OAuth 授权',
-}
-
-export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
-  llm: { label: 'LLM 对话', tone: 'blue', icon: IconChat },
-  image: { label: '图像生成', tone: 'blue', icon: IconPalette },
-  tts: { label: '语音合成', tone: 'green', icon: IconVolume },
-  stt: { label: '语音识别', tone: 'amber', icon: IconMic },
-  video: { label: '视频生成', tone: 'red', icon: IconVideo },
-  embedding: { label: '文本向量', tone: 'gray', icon: IconVector },
-  'web-search': { label: '网络搜索', tone: 'amber', icon: IconSearch },
-  'web-fetch': { label: '网页抓取', tone: 'gray', icon: IconGlobe },
-}
 
 const Providers: Component = () => {
   const store = useGatewayStore()
   const { t } = useI18n()
   const toast = useToast()
 
+  const categoryLabel = (): Record<string, string> => ({
+    all: t('providers.categories.all'),
+    apikey: t('providers.categories.apiKey'),
+    oauth: t('providers.categories.oauth'),
+    freeTier: t('providers.categories.freeTier'),
+    custom: t('providers.categories.custom'),
+    media: t('providers.categories.media'),
+  })
+
+  const authTypeLabel = (): Record<string, string> => ({
+    'api-key': t('providers.authTypes.apiKey'),
+    apikey: t('providers.authTypes.apiKey'),
+    oauth: t('providers.authTypes.oauth'),
+  })
+
+  const getCapConfig = (capKey: string) => {
+    const meta: Record<string, { tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
+      llm: { tone: 'blue', icon: IconChat },
+      image: { tone: 'blue', icon: IconPalette },
+      tts: { tone: 'green', icon: IconVolume },
+      stt: { tone: 'amber', icon: IconMic },
+      video: { tone: 'red', icon: IconVideo },
+      embedding: { tone: 'gray', icon: IconVector },
+      'web-search': { tone: 'amber', icon: IconSearch },
+      'web-fetch': { tone: 'gray', icon: IconGlobe },
+    }
+    const capLabels: Record<string, string> = {
+      llm: t('providers.capabilities.llm'),
+      image: t('providers.capabilities.image'),
+      tts: t('providers.capabilities.tts'),
+      stt: t('providers.capabilities.stt'),
+      video: t('providers.capabilities.video'),
+      embedding: t('providers.capabilities.embedding'),
+      'web-search': t('providers.capabilities.webSearch'),
+      'web-fetch': t('providers.capabilities.webFetch'),
+    }
+    const m = meta[capKey] || { tone: 'gray' as BadgeTone, icon: IconZap }
+    return {
+      label: capLabels[capKey] || capKey,
+      tone: m.tone,
+      icon: m.icon,
+    }
+  }
   // 顶层视图切换：'connections' | 'catalog'
   const [activeTab, setActiveTab] = createSignal<'connections' | 'catalog'>('connections')
 
@@ -316,11 +334,11 @@ const Providers: Component = () => {
     const f = form()
     const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
     if (isCustom && !f.baseUrl.trim()) {
-      toast.error('通用自定义接口必须填写有效的 Base URL 端点')
+      toast.error(t('toast.customBaseUrlRequired'))
       return
     }
     if (!f.apiKey.trim()) {
-      toast.error('请先输入要验证的 API Key / 访问凭证')
+      toast.error(t('toast.apiKeyRequired'))
       return
     }
 
@@ -335,15 +353,15 @@ const Providers: Component = () => {
 
       if (res.ok) {
         setTestedCreds({ ok: true, msg: `验证通过 (${res.latency || '正常'})` })
-        toast.success(`凭据测试成功！延时: ${res.latency || '正常'}`)
+        toast.success(t('toast.credTestSuccess', { latency: res.latency || 'ok' }))
       } else {
-        setTestedCreds({ ok: false, msg: res.error || '验证失败，请检查密钥或端点' })
-        toast.error(`验证失败: ${res.error || '上游响应错误'}`)
+        setTestedCreds({ ok: false, msg: res.error || 'error' })
+        toast.error(t('toast.credTestFailed', { error: res.error || 'error' }))
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setTestedCreds({ ok: false, msg })
-      toast.error(`测试连接异常: ${msg}`)
+      toast.error(t('toast.credTestFailed', { error: msg }))
     } finally {
       setTestingCreds(false)
     }
@@ -381,7 +399,7 @@ const Providers: Component = () => {
         }
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
-          toast.info(`已在新窗口打开 ${reg.name} 授权页面，完成授权后网关将自动绑定。`)
+          toast.info(t('toast.oauthWindowOpened', { name: reg.name }))
         }
 
         // 轮询检测是否产生新连接
@@ -402,7 +420,7 @@ const Providers: Component = () => {
               clearInterval(wizardPollTimer)
               wizardPollTimer = undefined
               setWizardOAuthPolling(false)
-              toast.success(`${reg.name} 网页授权成功！连接已自动建立。`)
+              toast.success(t('toast.oauthSuccess', { name: reg.name }))
               setWizardOpen(false)
               setActiveTab('connections')
               await store.loadProvidersOnly()
@@ -453,7 +471,7 @@ const Providers: Component = () => {
             wizardPollTimer = undefined
             setWizardOAuthPolling(false)
             setWizardOAuthFlow(null)
-            toast.success(`${reg.name} OAuth 授权成功！连接已自动建立。`)
+            toast.success(t('toast.oauthSuccess', { name: reg.name }))
             setWizardOpen(false)
             setActiveTab('connections')
             await store.loadProvidersOnly()
@@ -473,7 +491,7 @@ const Providers: Component = () => {
       setWizardOAuthPolling(false)
       const msg = e instanceof Error ? e.message : String(e)
       setWizardOAuthError(msg)
-      toast.error(`发起授权失败: ${msg}`)
+      toast.error(t('toast.oauthFailed', { error: msg }))
     }
   }
 
@@ -483,7 +501,7 @@ const Providers: Component = () => {
     if (!reg) return
     const token = wizardImportToken().trim()
     if (!token) {
-      toast.error('请输入访问令牌 (Access Token)')
+      toast.error(t('toast.tokenRequired'))
       return
     }
     setWizardImporting(true)
@@ -492,7 +510,7 @@ const Providers: Component = () => {
         accessToken: token,
         name: form().name || reg.name,
       })
-      toast.success(`${reg.name} 令牌导入成功！已保存连接。`)
+      toast.success(t('toast.tokenImportSuccess', { name: reg.name }))
       cancelWizardOAuth()
       setWizardOpen(false)
       setActiveTab('connections')
@@ -500,7 +518,7 @@ const Providers: Component = () => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setWizardOAuthError(msg)
-      toast.error(`导入失败: ${msg}`)
+      toast.error(t('toast.tokenImportFailed', { error: msg }))
     } finally {
       setWizardImporting(false)
     }
@@ -523,16 +541,16 @@ const Providers: Component = () => {
     if (normAuth === 'api-key') {
       const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
       if (isCustom && !f.baseUrl.trim()) {
-        toast.error('通用自定义接口必须填写有效的 Base URL 端点')
+        toast.error(t('toast.customBaseUrlRequired'))
         return
       }
       if (!f.apiKey.trim()) {
-        toast.error('请填写 API Key')
+        toast.error(t('toast.requireApiKey'))
         return
       }
       // 必须通过凭证测试才允许保存
       if (!testedCreds() || !testedCreds()!.ok) {
-        toast.error('请先点击右侧「测试连接」验证凭据可用性，验证通过后方可接入')
+        toast.error(t('toast.credTestBeforeSave'))
         return
       }
     }
@@ -553,7 +571,7 @@ const Providers: Component = () => {
       setActiveTab('connections')
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      toast.error(`接入失败: ${msg}`)
+      toast.error(t('toast.addProviderFailed', { error: msg }))
       console.error('[providers] add provider failed:', e)
     } finally {
       setSaving(false)
@@ -566,9 +584,9 @@ const Providers: Component = () => {
     try {
       await store.loadProvidersOnly()
       await store.loadCore()
-      toast.success('已刷新提供商列表与实时状态')
+      toast.success(t('toast.refreshSuccess'))
     } catch (e: unknown) {
-      toast.error('刷新失败')
+      toast.error(t('toast.refreshFailed'))
     } finally {
       setRefreshing(false)
     }
@@ -751,7 +769,7 @@ const Providers: Component = () => {
                             <div class="flex items-center gap-1 flex-wrap">
                               <For each={reg()?.capabilities || ['llm']}>
                                 {capKey => {
-                                  const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: IconZap }
+                                  const conf = getCapConfig(capKey)
                                   const IconComponent = conf.icon
                                   return (
                                     <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0 gap-1 shrink-0">
@@ -898,7 +916,7 @@ const Providers: Component = () => {
                       </div>
 
                       <Badge tone={reg().category === 'free' ? 'green' : 'blue' as BadgeTone} class="shrink-0">
-                        {CATEGORY_LABEL[reg().category] || reg().category}
+                        {categoryLabel()[reg().category] || reg().category}
                       </Badge>
                     </div>
 
@@ -942,7 +960,7 @@ const Providers: Component = () => {
                     <div class="mt-2.5 flex flex-wrap items-center gap-1 min-h-5.5">
                       <For each={reg().capabilities || ['llm']}>
                         {capKey => {
-                          const conf = CAPABILITY_CONFIG[capKey] || { label: capKey, tone: 'gray' as BadgeTone, icon: IconZap }
+                          const conf = getCapConfig(capKey)
                           const IconComponent = conf.icon
                           return (
                             <Badge tone={conf.tone} class="text-[10px] px-1.5 py-0.5 gap-1 shrink-0">
@@ -1026,7 +1044,7 @@ const Providers: Component = () => {
                 <div class="p-3.5 rounded-xl bg-hover text-xs space-y-1.5 text-faint border border-subtle">
                   <div class="flex items-center justify-between">
                     <span>接口协议：<strong class="font-mono text-foreground">{reg().apiType || 'openai'}</strong></span>
-                    <span>类别：<strong class="text-foreground">{CATEGORY_LABEL[reg().category] || reg().category}</strong></span>
+                    <span>类别：<strong class="text-foreground">{categoryLabel()[reg().category] || reg().category}</strong></span>
                   </div>
                   <Show when={reg().apiKeyUrl}>
                     <div>
@@ -1056,7 +1074,7 @@ const Providers: Component = () => {
                       value={form().authType === 'apikey' ? 'api-key' : form().authType}
                       options={authModes().map(m => {
                         const norm = m === 'apikey' ? 'api-key' : m
-                        return { value: norm, label: AUTHTYPE_LABEL[norm] || norm }
+                        return { value: norm, label: authTypeLabel()[norm] || norm }
                       })}
                       onChange={v => setForm(f => ({ ...f, authType: v }))}
                     />

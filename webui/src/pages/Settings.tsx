@@ -39,9 +39,9 @@ const Settings: Component = () => {
   ]
 
   const ponytailOptions = () => [
-    { value: 'lite', label: '精简建议 (lite)' },
-    { value: 'full', label: '阶梯原则 (full)' },
-    { value: 'ultra', label: '极致极简 (ultra)' },
+    { value: 'lite', label: t('settings.tokenSaver.ponytailLevels.lite') },
+    { value: 'full', label: t('settings.tokenSaver.ponytailLevels.full') },
+    { value: 'ultra', label: t('settings.tokenSaver.ponytailLevels.ultra') },
   ]
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
@@ -94,10 +94,10 @@ const Settings: Component = () => {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(a.href)
-      toast.success('备份快照已成功导出')
+      toast.success(t('toast.backupExportSuccess'))
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '导出失败'
-      toast.error(`备份导出失败: ${msg}`)
+      const msg = e instanceof Error ? e.message : 'error'
+      toast.error(t('toast.backupExportFailed', { error: msg }))
     } finally {
       setDownloading(false)
     }
@@ -106,7 +106,7 @@ const Settings: Component = () => {
   async function handleRestoreSubmit() {
     const file = restoreFile()
     if (!file) {
-      toast.warning('请先选择要导入的备份文件')
+      toast.warning(t('toast.selectBackupFileFirst'))
       return
     }
     const modeText = restoreMode() === 'replace'
@@ -131,12 +131,12 @@ const Settings: Component = () => {
         const errJson = await res.json().catch(() => ({}))
         throw new Error(errJson.error || `HTTP ${res.status}`)
       }
-      toast.success('数据库已成功恢复并重新装载！')
+      toast.success(t('toast.restoreSuccess'))
       setRestoreFile(null)
       await store.loadCore()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '恢复失败'
-      toast.error(`数据恢复失败: ${msg}`)
+      toast.error(t('toast.restoreFailed', { error: msg }))
     } finally {
       setRestoring(false)
     }
@@ -180,7 +180,7 @@ const Settings: Component = () => {
     setRefreshingStats(true)
     try {
       await fetchCacheStats()
-      toast.success('缓存统计已刷新')
+      toast.success(t('toast.cacheStatsRefreshed'))
     } finally {
       setRefreshingStats(false)
     }
@@ -196,10 +196,10 @@ const Settings: Component = () => {
     setClearingCache(true)
     try {
       await apiPost('/api/cache/clear')
-      toast.success('响应缓存已清空')
+      toast.success(t('toast.cacheCleared'))
       await fetchCacheStats()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '清空缓存失败')
+      toast.error(t('toast.cacheClearFailed'))
     } finally {
       setClearingCache(false)
     }
@@ -247,7 +247,7 @@ const Settings: Component = () => {
       setLocal({ ...store.settings() })
       setHasPw(!!store.settings().hasPassword)
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '保存设置失败')
+      toast.error(t('toast.saveFailed', { error: e instanceof Error ? e.message : 'error' }))
     } finally {
       setSaving(false)
     }
@@ -255,15 +255,16 @@ const Settings: Component = () => {
 
   async function changePassword() {
     if (pw().length < 8) {
-      toast.warning('新密码长度至少需要 8 位')
+      toast.warning(t('toast.passwordMinLength'))
       return
     }
     try {
       await store.setPassword(pw())
       setPw('')
       setHasPw(true)
+      toast.success(t('toast.passwordUpdateSuccess'))
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '密码更新失败')
+      toast.error(t('toast.passwordUpdateFailed'))
     }
   }
 
@@ -345,7 +346,7 @@ const Settings: Component = () => {
               disabled={!hasPw()}
               onChange={v => {
                 if (v && !hasPw()) {
-                  toast.warning('请先在下方设置管理员密码再开启要求登录')
+                  toast.warning(t('toast.setAdminPasswordFirst'))
                   return
                 }
                 set('requireLogin', v)
@@ -700,7 +701,7 @@ const Settings: Component = () => {
                   if (!ok) return
                   await bgStore.resetWallpaper()
                   setBgUrlInput('')
-                  toast.success('已恢复默认背景')
+                  toast.success(t('toast.resetWallpaperSuccess'))
                 }}
               >
                 清除壁纸
@@ -740,7 +741,7 @@ const Settings: Component = () => {
                       try {
                         await imgPromise
                       } catch {
-                        toast.error('远程图片加载失败：请检查链接有效性或防盗链设置')
+                        toast.error(t('toast.remoteImageLoadFailed'))
                         return
                       }
 
@@ -767,9 +768,9 @@ const Settings: Component = () => {
                       }
 
                       await bgStore.setWallpaper(dataUrl, { sourceType: 'remote', remoteUrl: url })
-                      toast.success('已保存远程壁纸至本地存储')
+                      toast.success(t('toast.saveRemoteWallpaperSuccess'))
                     } catch {
-                      toast.error('保存远程壁纸失败')
+                      toast.error(t('toast.saveRemoteWallpaperFailed'))
                     } finally {
                       setLoadingBgUrl(false)
                     }
@@ -801,7 +802,7 @@ const Settings: Component = () => {
                     reader.onload = async () => {
                       const dataUrl = reader.result as string
                       await bgStore.setWallpaper(dataUrl, { sourceType: 'upload' })
-                      toast.success(`已保存本地图片至数据库 (${file.name})`)
+                      toast.success(t('toast.saveUploadWallpaperSuccess', { name: file.name }))
                     }
                     reader.readAsDataURL(file)
                   }}

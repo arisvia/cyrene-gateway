@@ -79,7 +79,7 @@ const Combos: Component = () => {
       })
       setOpen(false)
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '保存组合失败')
+      toast.error(t('toast.saveComboFailed'))
     } finally { setSaving(false) }
   }
 

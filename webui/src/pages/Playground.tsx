@@ -171,7 +171,7 @@ const Playground: Component = () => {
         }
       }
     } catch (e: unknown) {
-      toast.error(`加载模型列表失败: ${e instanceof Error ? e.message : String(e)}`)
+      toast.error(t('toast.loadModelsFailed', { error: e instanceof Error ? e.message : String(e) }))
     } finally {
       setLoadingModels(false)
     }
@@ -247,7 +247,7 @@ const Playground: Component = () => {
     if (!await confirm('确定要清空当前的演练场对话历史吗？')) return
     stopAll()
     setTurns([])
-    toast.info('对话历史已清空')
+    toast.info(t('toast.clearHistorySuccess'))
   }
 
   // 执行单模型请求（支持 Stream 与非 Stream）
@@ -393,7 +393,7 @@ const Playground: Component = () => {
     if (!text || isBusy()) return
 
     if (!modelA()) {
-      toast.error('请选择有效的模型')
+      toast.error(t('toast.selectValidModel'))
       return
     }
 
@@ -552,7 +552,7 @@ const Playground: Component = () => {
 
   function copyText(text: string, label = '内容') {
     navigator.clipboard?.writeText(text)
-    toast.success(`已复制 ${label}`)
+    toast.success(t('toast.copySuccess', { label }))
   }
 
   // 生成代码片段

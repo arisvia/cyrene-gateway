@@ -39,7 +39,7 @@ const ProxyPools: Component = () => {
       await store.saveProxyPool({ id: editing()?.id, ...f })
       setOpen(false)
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '保存代理池失败')
+      toast.error(t('toast.saveProxyFailed'))
     } finally { setSaving(false) }
   }
 
