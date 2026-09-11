@@ -687,7 +687,7 @@ main();
         {/* 对话互动主体区 */}
         <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} min-w-0 space-y-4 transition-all duration-300`}>
           {/* 顶部模型选择栏 */}
-          <Card class="p-3 bg-card/60 backdrop-blur-md">
+          <Card class="p-3">
             <Show
               when={mode() === 'compare'}
               fallback={
@@ -787,7 +787,7 @@ main();
                       when={Boolean(turn.b && turn.mode === 'compare')}
                       fallback={
                         /* 单模型回答卡片 */
-                        <Card class="p-4 space-y-3 bg-card/70 backdrop-blur-sm">
+                        <Card class="p-4 space-y-3">
                           <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2">
                             <div class="flex items-center gap-2 min-w-0">
                               <ProviderAvatar provider={(turn.a.servedModel || turn.a.targetModel).split('/')[0]} size="sm" />
@@ -867,7 +867,7 @@ main();
                       {/* 双模型并排横评展示 (Side-by-Side) */}
                       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {/* 左侧：模型 A */}
-                        <Card class="p-3.5 space-y-2.5 bg-card/70 backdrop-blur-sm border-t-2 border-t-blue-500/50">
+                        <Card class="p-3.5 space-y-2.5 border-t-2 border-t-blue-500/50">
                           <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5">
                             <div class="flex items-center gap-1.5 min-w-0">
                               <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 shrink-0">
@@ -927,7 +927,7 @@ main();
                         </Card>
 
                         {/* 右侧：模型 B */}
-                        <Card class="p-3.5 space-y-2.5 bg-card/70 backdrop-blur-sm border-t-2 border-t-purple-500/50">
+                        <Card class="p-3.5 space-y-2.5 border-t-2 border-t-purple-500/50">
                           <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5">
                             <div class="flex items-center gap-1.5 min-w-0">
                               <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 shrink-0">
@@ -994,7 +994,7 @@ main();
           </div>
 
           {/* 底部输入框区 */}
-          <Card class="p-3 bg-card/80 backdrop-blur-md sticky bottom-4 z-10 shadow-glass">
+          <Card class="p-3 sticky bottom-4 z-10 shadow-glass">
             <div class="space-y-2">
               <textarea
                 class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[70px] max-h-[220px]"
@@ -1051,7 +1051,7 @@ main();
         {/* 右侧高级参数面板 (Inspector) */}
         <Show when={showParams()}>
           <div class="lg:col-span-4 xl:col-span-3 space-y-4">
-            <Card class="p-4 space-y-4 bg-card/60 backdrop-blur-md">
+            <Card class="p-4 space-y-4">
               <div class="flex items-center justify-between border-b border-subtle/50 pb-2">
                 <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <IconSliders size={14} />
