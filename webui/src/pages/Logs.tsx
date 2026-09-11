@@ -187,10 +187,10 @@ const LogsPage: Component = () => {
             value={filterLevel()}
             options={[
               { value: '', label: t('logs.levelAll') },
-              { value: 'INFO', label: 'INFO (正常)' },
-              { value: 'WARN', label: 'WARN (告警/重试)' },
-              { value: 'ERROR', label: 'ERROR (错误)' },
-              { value: 'DEBUG', label: 'DEBUG (调试)' },
+              { value: 'INFO', label: t('logs.levelInfo') },
+              { value: 'WARN', label: t('logs.levelWarn') },
+              { value: 'ERROR', label: t('logs.levelError') },
+              { value: 'DEBUG', label: t('logs.levelDebug') },
             ]}
             onChange={setFilterLevel}
           />

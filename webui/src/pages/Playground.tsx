@@ -244,7 +244,7 @@ const Playground: Component = () => {
 
   async function handleClear() {
     if (turns().length === 0) return
-    if (!await confirm('确定要清空当前的演练场对话历史吗？')) return
+    if (!await confirm(t('playground.clearConfirm'))) return
     stopAll()
     setTurns([])
     toast.info(t('toast.clearHistorySuccess'))
@@ -550,7 +550,7 @@ const Playground: Component = () => {
     await Promise.allSettled([promiseA, promiseB])
   }
 
-  function copyText(text: string, label = '内容') {
+  function copyText(text: string, label = t('playground.copyDefault')) {
     navigator.clipboard?.writeText(text)
     toast.success(t('toast.copySuccess', { label }))
   }
@@ -691,7 +691,7 @@ main();
                 <div class="flex items-center gap-3 min-w-0">
                   <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
                     <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
-                    选择评测模型:
+                    {t('playground.selectEvalModel')}
                   </span>
                   <div class="flex-1 min-w-0">
                     <Select
@@ -710,7 +710,7 @@ main();
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
-                    模型 A
+                    {t('playground.modelA')}
                   </span>
                   <div class="flex-1 min-w-0">
                     <Select
@@ -723,7 +723,7 @@ main();
                 </div>
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0">
-                    模型 B
+                    {t('playground.modelB')}
                   </span>
                   <div class="flex-1 min-w-0">
                     <Select
@@ -801,17 +801,17 @@ main();
                             {/* 性能指标栏 */}
                             <div class="flex items-center gap-2 text-[11px] text-faint font-mono">
                               <Show when={turn.a.metrics?.ttftMs !== undefined}>
-                                <span title="首字到达延迟 (TTFT)">
+                                <span title={t('playground.ttftTitle')}>
                                   TTFT: <strong class="text-foreground">{turn.a.metrics!.ttftMs}ms</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.metrics?.totalMs !== undefined}>
-                                <span title="总响应耗时">
+                                <span title={t('playground.totalMsTitle')}>
                                   总计: <strong class="text-foreground">{(turn.a.metrics!.totalMs! / 1000).toFixed(2)}s</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.metrics?.speed && turn.a.metrics!.speed > 0}>
-                                <span title="生成速度">
+                                <span title={t('playground.speedTitle')}>
                                   速度: <strong class="text-foreground">{turn.a.metrics!.speed} t/s</strong>
                                 </span>
                               </Show>
@@ -835,7 +835,7 @@ main();
                                 type="button"
                                 class="hover:text-accent p-1 transition-colors cursor-pointer"
                                 title={t('playground.copyContent')}
-                                onClick={() => copyText(turn.a.content, '助手回复')}
+                                onClick={() => copyText(turn.a.content, t('playground.copyAssistant'))}
                               >
                                 <IconClipboard size={13} />
                               </button>
@@ -902,7 +902,7 @@ main();
                               <button
                                 type="button"
                                 class="hover:text-accent p-1 cursor-pointer"
-                                onClick={() => copyText(turn.a.content, '模型 A 回复')}
+                                onClick={() => copyText(turn.a.content, t('playground.copyModelA'))}
                               >
                                 <IconClipboard size={12} />
                               </button>
@@ -962,7 +962,7 @@ main();
                               <button
                                 type="button"
                                 class="hover:text-accent p-1 cursor-pointer"
-                                onClick={() => copyText(turn.b?.content || '', '模型 B 回复')}
+                                onClick={() => copyText(turn.b?.content || '', t('playground.copyModelB'))}
                               >
                                 <IconClipboard size={12} />
                               </button>
@@ -1037,7 +1037,7 @@ main();
                     onClick={() => handleSend()}
                   >
                     <IconPlay size={14} />
-                    发送
+                    {t('playground.send')}
                   </Button>
                 </div>
               </div>
@@ -1052,7 +1052,7 @@ main();
               <div class="flex items-center justify-between border-b border-subtle/50 pb-2">
                 <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <IconSliders size={14} />
-                  推理参数配置
+                  {t('playground.paramsConfig')}
                 </span>
                 <span class="text-[11px] text-faint">{t('playground.autoSaved')}</span>
               </div>
@@ -1185,7 +1185,7 @@ main();
               size="sm"
               class="gap-1.5"
               onClick={() => {
-                copyText(generateCode(codeLang()), '客户端代码')
+                copyText(generateCode(codeLang()), t('playground.copyClientCode'))
                 setCopiedCode(true)
                 setTimeout(() => setCopiedCode(false), 2000)
               }}
@@ -1193,7 +1193,7 @@ main();
               <Show when={copiedCode()} fallback={<IconClipboard size={14} />}>
                 <IconCheck size={14} />
               </Show>
-              复制代码
+              {t('playground.copyCode')}
             </Button>
           </div>
 
@@ -1220,9 +1220,9 @@ main();
                   <button
                     type="button"
                     class="text-accent hover:underline cursor-pointer"
-                    onClick={() => copyText(JSON.stringify(data().request, null, 2), '请求 JSON')}
+                    onClick={() => copyText(JSON.stringify(data().request, null, 2), t('playground.copyRequestJson'))}
                   >
-                    复制请求 JSON
+                    {t('playground.copyRequestJson')}
                   </button>
                 </div>
                 <pre class="p-3 bg-slate-950 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto max-h-[160px] border border-slate-800">
@@ -1236,9 +1236,9 @@ main();
                   <button
                     type="button"
                     class="text-accent hover:underline cursor-pointer"
-                    onClick={() => copyText(JSON.stringify(data().response, null, 2), '响应 JSON')}
+                    onClick={() => copyText(JSON.stringify(data().response, null, 2), t('playground.copyResponseJson'))}
                   >
-                    复制响应 JSON
+                    {t('playground.copyResponseJson')}
                   </button>
                 </div>
                 <pre class="p-3 bg-slate-950 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto max-h-[220px] border border-slate-800">

@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js'
 import { useI18n } from '@/i18n'
 export function ThemeToggle() {
+  const { t } = useI18n()
   const [light, setLight] = createSignal(document.documentElement.classList.contains('light'))
   const toggle = () => {
     const next = !light()
@@ -13,8 +14,8 @@ export function ThemeToggle() {
       type="button"
       class="relative flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-text hover:bg-hover transition-colors overflow-hidden"
       onClick={toggle}
-      aria-label="切换主题"
-      title={light() ? '切换到暗色主题' : '切换到亮色主题'}
+      aria-label={t('sidebar.themeToggle')}
+      title={light() ? t('sidebar.switchToDark') : t('sidebar.switchToLight')}
     >
       {/* 太阳图标（暗色模式显示） */}
       <svg
@@ -57,14 +58,14 @@ export function ThemeToggle() {
   )
 }
 export function LanguageToggle() {
-  const { locale, toggleLocale } = useI18n()
+  const { locale, toggleLocale, t } = useI18n()
   return (
     <button
       type="button"
       class="flex h-8 px-2 items-center justify-center gap-1 rounded-control text-xs font-medium text-muted hover:text-foreground hover:bg-hover transition-colors cursor-pointer"
       onClick={toggleLocale}
       aria-label="Toggle Language"
-      title={locale() === 'zh-CN' ? 'Switch to English' : '切换到简体中文'}
+      title={locale() === 'zh-CN' ? 'Switch to English' : t('sidebar.switchToChinese')}
     >
       <svg
         class="w-3.5 h-3.5 shrink-0"

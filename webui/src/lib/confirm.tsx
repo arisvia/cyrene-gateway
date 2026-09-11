@@ -1,7 +1,7 @@
 import { createSignal, Show, type Component, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Button } from '@/components/ui'
-import { useI18n } from '@/i18n'
+import { useI18n, t as translate } from '@/i18n'
 import { IconAlertCircle, IconAlertTriangle, IconInfo } from '@/components/ui/icons'
 
 export interface ConfirmOptions {
@@ -39,9 +39,9 @@ export function confirm(opts: ConfirmOptions | string): Promise<boolean> {
 export function alert(message: string, title?: string): Promise<boolean> {
   return new Promise<boolean>(resolve => {
     setState({
-      title: title || '提示',
+      title: title || translate('confirm.titleInfo'),
       message,
-      confirmText: '好的',
+      confirmText: translate('common.ok'),
       variant: 'primary',
       isOpen: true,
       isAlert: true,
@@ -117,7 +117,7 @@ export const ConfirmDialogHost: Component = () => {
         <div class="fixed inset-0 z-120 flex items-center justify-center p-4">
         <button
           type="button"
-          aria-label="关闭确认框遮罩"
+          aria-label={t('confirm.closeOverlay')}
           class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
           onClick={() => handleClose(false)}
         />
@@ -151,7 +151,7 @@ export const ConfirmDialogHost: Component = () => {
 
             <div class="flex-1 min-w-0">
               <h3 class="text-base font-semibold text-foreground leading-snug">
-                {s().title || (s().variant === 'danger' ? '确认操作' : s().variant === 'warning' ? '重要提醒' : '提示')}
+                {s().title || (s().variant === 'danger' ? t('confirm.titleDanger') : s().variant === 'warning' ? t('confirm.titleWarning') : t('confirm.titleInfo'))}
               </h3>
               <p class="text-sm text-muted mt-1.5 leading-relaxed whitespace-pre-wrap wrap-break-word">
                 {s().message}

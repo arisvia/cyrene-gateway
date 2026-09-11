@@ -670,7 +670,7 @@ const Providers: Component = () => {
                     ? 'bg-accent/10 border-accent/40 text-accent font-medium'
                     : 'bg-hover border-subtle text-muted hover:text-foreground'
                 }`}
-                title={hideAdded() ? '点击显示所有提供商（含已接入）' : '点击只看尚未接入的提供商'}
+                title={hideAdded() ? t('providers.catalogFilterAll') : t('providers.catalogFilterUnadded')}
               >
                 <span class="flex items-center gap-1.5">{hideAdded() ? <><IconCheck size={12} /><span>{t('providers.hideAddedActive')}</span></> : t('providers.showAllMarket')}</span>
                 <Show when={connectedCount() > 0}>
@@ -790,14 +790,14 @@ const Providers: Component = () => {
                             size="sm"
                             variant="secondary"
                             onClick={() => openWizard(reg()!)}
-                            title="为此供应商添加备用账号（支持 API Key 或 OAuth）"
+                            title={t('providers.addBackupAccountTitle')}
                           >
                             + 加账号
                           </Button>
                         </Show>
                         <A href={`/providers/${group.primaryConnectionId}`}>
                           <Button size="sm" variant="primary">
-                            管理 →
+                            {t('providers.manageArrow')}
                           </Button>
                         </A>
                       </div>
@@ -1027,7 +1027,7 @@ const Providers: Component = () => {
       {/* 接入配置向导 Modal */}
       <Modal
         open={wizardOpen()}
-        title={selectedReg() ? `接入提供商：${selectedReg()!.name}` : '添加提供商'}
+        title={selectedReg() ? t('providers.wizardTitleConnect', { name: selectedReg()!.name }) : t('providers.wizardTitleAdd')}
         onClose={() => { cancelWizardOAuth(); setWizardOpen(false) }}
       >
         <Show when={selectedReg()}>
@@ -1048,7 +1048,7 @@ const Providers: Component = () => {
                   </div>
                   <Show when={reg().apiKeyUrl}>
                     <div>
-                      获取密钥链接：
+                      {t('providers.getKeyLink')}
                       <a href={reg().apiKeyUrl} target="_blank" rel="noreferrer" class="text-accent underline font-mono ml-1">
                         {reg().apiKeyUrl}
                       </a>
@@ -1059,17 +1059,17 @@ const Providers: Component = () => {
                   </Show>
                 </div>
 
-                <Field label="连接显示名称" hint="自定义连接名称，便于多账号识别">
+                <Field label={t('providers.connDisplayName')} hint={t('providers.connDisplayNameHint')}>
                   <Input
                     value={form().name}
-                    placeholder={`例如：我的 ${reg().name}`}
+                    placeholder={t('providers.connDisplayNamePlaceholder', { name: reg().name })}
                     onInput={v => setForm(f => ({ ...f, name: v }))}
                   />
                 </Field>
 
                 {/* 如果支持多种认证模式 */}
                 <Show when={authModes().length > 1}>
-                  <Field label="认证方式" hint="该上游支持多种鉴权模式">
+                  <Field label={t('providers.authMethod')} hint={t('providers.authMethodHint')}>
                     <Select
                       value={form().authType === 'apikey' ? 'api-key' : form().authType}
                       options={authModes().map(m => {
@@ -1082,7 +1082,7 @@ const Providers: Component = () => {
                 </Show>
                 <Show when={form().authType === 'api-key' || form().authType === 'apikey'}>
                   <div class="space-y-2">
-                    <Field label="API Key / 访问凭据" hint={reg().authHint || "凭证安全存储于服务端并进行掩码处理"}>
+                    <Field label={t('providers.authCredential')} hint={reg().authHint || t('providers.credentialHint')}>
                       <div class="flex items-center gap-2">
                         <div class="flex-1">
                           <Input
@@ -1102,7 +1102,7 @@ const Providers: Component = () => {
                           disabled={!form().apiKey.trim()}
                           onClick={handleTestWizardCreds}
                         >
-                          测试连接
+                          {t('providerDetail.testConnection')}
                         </Button>
                       </div>
                     </Field>
@@ -1126,7 +1126,7 @@ const Providers: Component = () => {
                     <Show when={wizardOAuthError()}>
                       <Alert
                         variant="danger"
-                        title="授权遇到问题"
+                        title={t('providers.authProblemTitle')}
                         closable
                         onClose={() => setWizardOAuthError('')}
                       >
@@ -1141,20 +1141,20 @@ const Providers: Component = () => {
                           <span>Token 导入授权模式</span>
                         </div>
                         <p class="text-xs text-faint leading-relaxed">
-                          该提供商不支持网页跳转或设备码直接登录，请填入从客户端或环境获取的访问凭据 (Access Token / Session Token)：
+                          {t('providers.tokenImportHint')}
                         </p>
                         <div class="space-y-1.5">
                           <textarea
                             rows={3}
                             value={wizardImportToken()}
                             onInput={e => setWizardImportToken(e.currentTarget.value)}
-                            placeholder="粘贴从本地配置或数据库提取的 Access Token / JWT..."
+                            placeholder={t('providers.tokenPastePlaceholder')}
                             class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
                           />
                         </div>
                         <div class="flex items-center justify-end gap-2 pt-1">
                           <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
-                            取消
+                            {t('common.cancel')}
                           </Button>
                           <Button
                             size="sm"
@@ -1163,7 +1163,7 @@ const Providers: Component = () => {
                             disabled={!wizardImportToken().trim()}
                             onClick={handleWizardImportSubmit}
                           >
-                            导入并连接
+                            {t('providers.importAndConnect')}
                           </Button>
                         </div>
                       </div>
@@ -1203,7 +1203,7 @@ const Providers: Component = () => {
                                         if (url) window.open(url, '_blank')
                                       }}
                                     >
-                                      打开授权网页 ↗
+                                      {t('providers.openAuthPage')}
                                     </Button>
                                   </div>
                                 </div>
@@ -1239,7 +1239,7 @@ const Providers: Component = () => {
                             </div>
                             <div class="pt-2 flex justify-center">
                               <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
-                                取消当前授权
+                                {t('providers.cancelAuth')}
                               </Button>
                             </div>
                           </div>
@@ -1251,7 +1251,7 @@ const Providers: Component = () => {
 
 
                 <Show when={reg().category === 'custom' || reg().id.startsWith('custom-')} fallback={
-                  <Field label="调度优先级" hint="数值越小越优先调度">
+                  <Field label={t('providerDetail.priorityLabel')} hint={t('providers.priorityHint')}>
                     <Input
                       type="number"
                       value={form().priority}
@@ -1260,7 +1260,7 @@ const Providers: Component = () => {
                   </Field>
                 }>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="调度优先级" hint="数值越小越优先调度">
+                    <Field label={t('providerDetail.priorityLabel')} hint={t('providers.priorityHint')}>
                       <Input
                         type="number"
                         value={form().priority}
@@ -1268,8 +1268,8 @@ const Providers: Component = () => {
                       />
                     </Field>
                     <Field
-                      label="Base URL (必填)"
-                      hint="标准端点地址，如 https://api.my-host.com/v1"
+                      label={t('providers.baseUrlRequired')}
+                      hint={t('providers.baseUrlHint')}
                     >
                       <Input
                         value={form().baseUrl}
@@ -1281,7 +1281,7 @@ const Providers: Component = () => {
                 </Show>
                 <div class="pt-3 border-t border-subtle flex justify-end gap-2.5">
                   <Button variant="secondary" onClick={() => { cancelWizardOAuth(); setWizardOpen(false) }}>
-                    取消
+                    {t('common.cancel')}
                   </Button>
                   <Button
                     variant="primary"

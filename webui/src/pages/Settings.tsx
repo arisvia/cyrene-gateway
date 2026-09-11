@@ -6,7 +6,7 @@ import {
   IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDatabase, IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
-import { formatUptime, formatVersion } from '@/lib/format'
+import { formatUptime, formatVersion, type UptimeUnits } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 import { useI18n } from '@/i18n'
@@ -43,6 +43,14 @@ const Settings: Component = () => {
     { value: 'full', label: t('settings.tokenSaver.ponytailLevels.full') },
     { value: 'ultra', label: t('settings.tokenSaver.ponytailLevels.ultra') },
   ]
+  const uptimeUnits = (): UptimeUnits => ({
+    s: t('units.second'),
+    m: t('units.minuteShort'),
+    h: t('units.hourShort'),
+    d: t('units.day'),
+    mLong: t('units.minute'),
+    hLong: t('units.hour'),
+  })
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
   const toast = useToast()
@@ -110,12 +118,12 @@ const Settings: Component = () => {
       return
     }
     const modeText = restoreMode() === 'replace'
-      ? '全量覆盖（清空现有用户配置并完整恢复快照）'
-      : '增量合并（保留现有配置，仅对快照包含条目进行覆盖/更新）'
+      ? t('settings.data.restoreModeReplace')
+      : t('settings.data.restoreModeMerge')
 
     const ok = await confirm({
-      title: '确认恢复网关数据？',
-      message: `即将使用备份文件「${file.name}」以【${modeText}】模式重载数据库。该操作不可撤销，确定要执行吗？`,
+      title: t('settings.data.restoreConfirmTitle'),
+      message: t('settings.data.restoreConfirmMessage', { file: file.name, mode: modeText }),
       variant: 'danger',
     })
     if (!ok) return
@@ -135,7 +143,7 @@ const Settings: Component = () => {
       setRestoreFile(null)
       await store.loadCore()
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '恢复失败'
+      const msg = e instanceof Error ? e.message : t('settings.restoreFailed')
       toast.error(t('toast.restoreFailed', { error: msg }))
     } finally {
       setRestoring(false)
@@ -188,8 +196,8 @@ const Settings: Component = () => {
 
   async function handleClearCache() {
     const ok = await confirm({
-      title: '清空响应缓存',
-      message: '确定清空当前内存中的所有响应缓存条目吗？后续相同请求将重新向上游发起。',
+      title: t('settings.cache.clearConfirmTitle'),
+      message: t('settings.cache.clearConfirmMessage'),
       variant: 'danger',
     })
     if (!ok) return
@@ -390,7 +398,7 @@ const Settings: Component = () => {
                 type="password"
                 value={pw()}
                 onInput={setPw}
-                placeholder="输入新管理密码..."
+                placeholder={t('settings.pwPlaceholder')}
                 class="flex-1 !w-full"
               />
               <Button
@@ -399,7 +407,7 @@ const Settings: Component = () => {
                 onClick={changePassword}
                 class="shrink-0"
               >
-                更新密码
+                {t('settings.updatePassword')}
               </Button>
             </div>
           </Field>
@@ -427,7 +435,7 @@ const Settings: Component = () => {
                 variant="ghost"
                 loading={refreshingStats()}
                 onClick={handleRefreshStats}
-                title="刷新统计指标"
+                title={t('settings.refreshStatsTitle')}
               >
                 {t('common.refresh')}
               </Button>
@@ -437,7 +445,7 @@ const Settings: Component = () => {
                 class="text-danger hover:text-danger hover:bg-danger/10"
                 loading={clearingCache()}
                 onClick={handleClearCache}
-                title="清空所有内存缓存条目"
+                title={t('settings.clearCacheTitle')}
               >
                 {t('settings.cache.clearCache')}
               </Button>
@@ -549,7 +557,7 @@ const Settings: Component = () => {
             </div>
             <Show when={!!local().cavemanEnabled}>
               <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                <Field label={t('settings.tokenSaver.compressionLevel')} hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
+                <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.cavemanHint')}>
                   <Select
                     value={String(local().cavemanLevel || 'lite')}
                     options={cavemanOptions()}
@@ -577,7 +585,7 @@ const Settings: Component = () => {
             </div>
             <Show when={!!local().ponytailEnabled}>
               <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                <Field label={t('settings.tokenSaver.compressionLevel')} hint="lite: 最简替代 | full: 严格阶梯 | ultra: 极致单行">
+                <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.ponytailHint')}>
                   <Select
                     value={String(local().ponytailLevel || 'lite')}
                     options={ponytailOptions()}
@@ -612,7 +620,7 @@ const Settings: Component = () => {
                       <button
                         type="button"
                         class="hover:opacity-75 focus:outline-none"
-                        title="移除排除"
+                        title={t('settings.removeExclude')}
                         onClick={() => removeExcludeProvider(p)}
                       >
                         &times;
@@ -626,7 +634,7 @@ const Settings: Component = () => {
             {/* 输入框与添加按钮：移动端自动换行/占满，大屏并排 */}
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <Input
-                placeholder="输入提供商名称（如 deepseek）后回车或点击添加"
+                placeholder={t('settings.excludePlaceholder')}
                 class="flex-1 text-xs !w-full"
                 value={excludeInput()}
                 onInput={setExcludeInput}
@@ -643,7 +651,7 @@ const Settings: Component = () => {
                 class="shrink-0"
                 onClick={() => addExcludeProvider(excludeInput())}
               >
-                添加
+                {t('common.add')}
               </Button>
             </div>
 
@@ -694,8 +702,8 @@ const Settings: Component = () => {
                 variant="danger"
                 onClick={async () => {
                   const ok = await confirm({
-                    title: '清除自定义壁纸',
-                    message: '确定清除当前壁纸并恢复默认纯净背景吗？',
+                    title: t('settings.appearance.clearBgConfirmTitle'),
+                    message: t('settings.appearance.clearBgConfirmMessage'),
                     variant: 'danger',
                   })
                   if (!ok) return
@@ -704,7 +712,7 @@ const Settings: Component = () => {
                   toast.success(t('toast.resetWallpaperSuccess'))
                 }}
               >
-                清除壁纸
+                {t('settings.clearWallpaper')}
               </Button>
             </Show>
           </div>
@@ -712,7 +720,7 @@ const Settings: Component = () => {
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
             {/* 远程图片链接 */}
             <div class="space-y-1.5">
-              <label class="text-xs font-medium text-muted">远程图片 URL</label>
+              <label class="text-xs font-medium text-muted">{t('settings.remoteImageUrl')}</label>
               <div class="flex flex-col sm:flex-row gap-2">
                 <Input
                   value={bgUrlInput()}
@@ -776,14 +784,14 @@ const Settings: Component = () => {
                     }
                   }}
                 >
-                  应用
+                  {t('settings.apply')}
                 </Button>
               </div>
             </div>
 
             {/* 本地图片上传 */}
             <div class="space-y-1.5">
-              <label class="text-xs font-medium text-muted">本地图片上传</label>
+              <label class="text-xs font-medium text-muted">{t('settings.localImageUpload')}</label>
               <label class="cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control bg-black/4 dark:bg-white/6 hover:bg-black/7 dark:hover:bg-white/10 text-xs text-muted hover:text-foreground transition-all min-h-[34px] shadow-xs">
                 <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
@@ -981,7 +989,7 @@ const Settings: Component = () => {
             </div>
 
             <div class="space-y-3.5 text-xs">
-              <Field label="备份文件 (.cyrene.json / .json)" hint="选择之前导出的网关备份文件">
+              <Field label={t('settings.backupFileLabel')} hint={t('settings.backupFileHint')}>
                 <input
                   type="file"
                   accept=".json,.cyrene.json"
@@ -993,12 +1001,12 @@ const Settings: Component = () => {
                 />
               </Field>
 
-              <Field label="恢复策略" hint="选择导入数据与当前数据库的合并方式">
+              <Field label={t('settings.restoreStrategyLabel')} hint={t('settings.restoreStrategyHint')}>
                 <Select
                   value={restoreMode()}
                   options={[
-                    { value: 'replace', label: '全量覆盖 (清空现有用户配置并完整恢复为快照)' },
-                    { value: 'merge', label: '增量合并 (保留未冲突项，仅对快照条目进行更新或追加)' },
+                    { value: 'replace', label: t('settings.restoreModeReplaceLabel') },
+                    { value: 'merge', label: t('settings.restoreModeMergeLabel') },
                   ]}
                   onChange={v => setRestoreMode(v as 'replace' | 'merge')}
                 />
@@ -1010,7 +1018,7 @@ const Settings: Component = () => {
                   <span>重要提示</span>
                 </div>
                 <p>
-                  恢复操作会在数据库事务中安全执行并即时重载服务。若导入的是脱敏备份，系统将自动保留现有连接的既有有效密钥。建议在操作前先下载一份当前备份作为底稿！
+                  {t('settings.restoreNotice')}
                 </p>
               </div>
             </div>
@@ -1044,7 +1052,7 @@ const Settings: Component = () => {
             <span class="font-semibold text-foreground whitespace-nowrap">Cyrene Gateway</span>
             <span
               class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-hover text-faint border border-subtle/50 whitespace-nowrap"
-              title={`完整版本：v${store.version() || 'dev'}`}
+              title={`${t('settings.fullVersion')}: v${store.version() || 'dev'}`}
             >
               v{formatVersion(store.version())}
             </span>
@@ -1063,7 +1071,7 @@ const Settings: Component = () => {
             <span class="text-subtle select-none hidden sm:inline">•</span>
             <div class="flex items-center gap-1 whitespace-nowrap">
               <span>{t('common.uptime')}：</span>
-              <span class="font-medium font-mono text-foreground">{formatUptime(Number(store.health().uptimeSeconds))}</span>
+              <span class="font-medium font-mono text-foreground">{formatUptime(Number(store.health().uptimeSeconds), uptimeUnits())}</span>
             </div>
           </div>
         </div>

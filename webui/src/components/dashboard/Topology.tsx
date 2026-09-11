@@ -174,13 +174,13 @@ export const GatewayTopology: Component<TopologyProps> = props => {
           <div class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shadow-accent" />
           <div>
             <h3 class="text-xs font-semibold flex items-center gap-2 text-foreground">
-              实时路由拓扑
+              {t('topology.title')}
               <Badge tone="green" class="text-[10px] px-1.5 py-0">
-                {activeCount()} 活跃通道
+                {t('topology.activeChannels', { count: activeCount() })}
               </Badge>
             </h3>
             <p class="text-[11px] text-faint">
-              支持无限平移与缩放 · 实时监控流量路由分发
+              {t('topology.subtitle')}
             </p>
           </div>
         </div>

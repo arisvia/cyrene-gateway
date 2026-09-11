@@ -125,9 +125,9 @@ const Media: Component = () => {
       if (model()) body.model = model()
       const r = await apiPost(cap.endpoint, body)
       setResult(r)
-      toast.success(`${cap.label} 调用完成`)
+      toast.success(t('media.callComplete', { cap: cap.label }))
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '请求失败'
+      const msg = e instanceof Error ? e.message : t('media.requestFailed')
       setError(msg)
       toast.error(msg)
     } finally {
@@ -192,7 +192,7 @@ const Media: Component = () => {
                       when={p.models && p.models.length > 0}
                       fallback={
                         <span class="text-[11px] font-mono text-muted bg-bg-elevated px-2 py-0.5 rounded border border-subtle">
-                          默认端点驱动
+                          {t('media.defaultEndpoint')}
                         </span>
                       }
                     >
@@ -210,12 +210,12 @@ const Media: Component = () => {
 
               <div class="pt-2.5 border-t border-subtle flex items-center justify-between gap-2">
                 <span class="text-[11px] text-faint">
-                  就绪可调用
+                  {t('media.readyToCall')}
                 </span>
                 <div class="flex items-center gap-2">
                   <Show when={p.primaryConnectionId}>
                     <A href={`/providers/${p.primaryConnectionId}`}>
-                      <Button size="sm" variant="secondary" title="管理账号与参数">
+                      <Button size="sm" variant="secondary" title={t('media.manageAccountTitle')}>
                         {t('media.manage')}
                       </Button>
                     </A>
@@ -277,11 +277,11 @@ const Media: Component = () => {
             </Field>
           </Show>
 
-          <Field label={active() === 'image' ? '生成提示词 (Prompt)' : active() === 'search' ? '搜索关键词 (Query)' : '输入内容 (Input)'}>
+          <Field label={active() === 'image' ? t('media.promptLabelImage') : active() === 'search' ? t('media.promptLabelSearch') : t('media.promptLabelDefault')}>
             <Input
               value={text()}
               onInput={setText}
-              placeholder={active() === 'image' ? '输入英文提示词以获得最佳效果...' : '输入关键词或文本...'}
+              placeholder={active() === 'image' ? t('media.placeholderImage') : t('media.placeholderDefault')}
             />
           </Field>
 
@@ -312,7 +312,7 @@ const Media: Component = () => {
                       <img src={url} alt={`Generated result ${idx() + 1}`} class="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
                       <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
                         <a href={url} target="_blank" rel="noreferrer" class="px-3 py-1.5 rounded-control text-xs bg-bg/90 text-foreground font-medium shadow hover:bg-bg transition">
-                          查看原图
+                          {t('media.viewOriginal')}
                         </a>
                       </div>
                     </div>

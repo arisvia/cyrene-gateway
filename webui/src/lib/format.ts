@@ -29,17 +29,21 @@ export function maskKey(key: string): string {
   if (!key || key.length < 12) return key || ''
   return key.slice(0, 8) + '…' + key.slice(-4)
 }
-export function formatUptime(seconds: number | undefined | null): string {
+export type UptimeUnits = { s: string; m: string; h: string; d: string; mLong: string; hLong: string }
+
+const ZH_UPTIME: UptimeUnits = { s: '秒', m: '分', h: '时', d: '天', mLong: '分钟', hLong: '小时' }
+
+export function formatUptime(seconds: number | undefined | null, units: UptimeUnits = ZH_UPTIME): string {
   const sec = Math.max(0, Math.floor(Number(seconds) || 0))
-  if (sec < 60) return `${sec} 秒`
+  if (sec < 60) return `${sec} ${units.s}`
   const mins = Math.floor(sec / 60)
-  if (mins < 60) return `${mins} 分钟`
+  if (mins < 60) return `${mins} ${units.mLong}`
   const hours = Math.floor(mins / 60)
   const remMins = mins % 60
-  if (hours < 24) return `${hours} 小时${remMins > 0 ? ` ${remMins} 分` : ''}`
+  if (hours < 24) return `${hours} ${units.hLong}${remMins > 0 ? ` ${remMins} ${units.m}` : ''}`
   const days = Math.floor(hours / 24)
   const remHours = hours % 24
-  return `${days} 天${remHours > 0 ? ` ${remHours} 时` : ''}`
+  return `${days} ${units.d}${remHours > 0 ? ` ${remHours} ${units.h}` : ''}`
 }
 
 export function formatVersion(v: string | undefined | null): string {

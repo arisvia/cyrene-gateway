@@ -184,6 +184,7 @@ const Home: Component = () => {
                   onKeyDown={async e => {
                     if (e.key === 'Enter' && keyName().trim() && !creatingKey()) {
                       const n = keyName().trim()
+                      setCreatingKey(true)
                       try {
                         await store.createKey(n)
                         setKeyName('')
@@ -206,6 +207,7 @@ const Home: Component = () => {
                   onClick={async () => {
                     const n = keyName().trim()
                     if (!n) return
+                    setCreatingKey(true)
                     try {
                       await store.createKey(n)
                       setKeyName('')

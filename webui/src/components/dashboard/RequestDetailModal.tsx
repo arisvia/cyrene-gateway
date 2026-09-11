@@ -60,7 +60,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
           {/* 背景遮罩 */}
           <button
             type="button"
-            aria-label="关闭详情遮罩"
+            aria-label={t('requestDetail.closeOverlay')}
             class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-sm border-none cursor-default"
             onClick={props.onClose}
           />
@@ -87,8 +87,8 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               type="button"
               class="w-8 h-8 rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors flex items-center justify-center"
               onClick={props.onClose}
-              title="关闭 (Esc)"
-              aria-label="关闭"
+              title={t('requestDetail.closeEsc')}
+              aria-label={t('requestDetail.close')}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -184,7 +184,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                     <svg class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
-                    请求输入内容
+                    {t('requestDetail.inputContent')}
                   </div>
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
                     {cleanPayload()?.input
@@ -199,7 +199,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                     <svg class="w-3.5 h-3.5 text-accent-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                     </svg>
-                    模型回复内容 (已过滤思考)
+                    {t('requestDetail.outputContent')}
                   </div>
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
                     {cleanPayload()?.output
@@ -221,7 +221,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
           {/* 底栏 */}
           <div class="h-14 px-6 border-t border-subtle flex items-center justify-end bg-card/20 shrink-0">
             <Button size="sm" variant="secondary" onClick={props.onClose}>
-              关闭
+              {t('common.close')}
             </Button>
           </div>
         </div>

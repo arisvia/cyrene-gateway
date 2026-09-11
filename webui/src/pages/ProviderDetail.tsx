@@ -65,10 +65,10 @@ const ProviderDetail: Component = () => {
         throw new Error(errData?.error?.message || errData?.error || `${res.status} ${res.statusText}`)
       }
       const r = await res.json()
-      const reply = r?.choices?.[0]?.message?.content ?? '(无返回)'
+      const reply = r?.choices?.[0]?.message?.content ?? t('providerDetail.noResponse')
       setChatHistory(h => [...h, { role: 'assistant', content: reply, servedModel: servedModel || r?.model }])
     } catch (e: unknown) {
-      let errMsg = '请求失败'
+      let errMsg = t('common.failed')
       if (e instanceof Error) {
         errMsg = e.message
       } else if (typeof e === 'object' && e !== null) {
@@ -153,10 +153,10 @@ const ProviderDetail: Component = () => {
   const accountAuthOptions = () => {
     const modes = regInfo()?.authModes || [regInfo()?.authType || 'api-key']
     const opts: Array<{ value: string; label: string }> = [
-      { value: 'api-key', label: 'API Key / 访问凭据 (PAT)' },
+      { value: 'api-key', label: t('providerDetail.authApiKeyPat') },
     ]
     if (modes.includes('oauth') || regInfo()?.category === 'oauth') {
-      opts.push({ value: 'oauth', label: 'OAuth 授权模式 (支持设备码一键登录)' })
+      opts.push({ value: 'oauth', label: t('providerDetail.authOauthMode') })
     }
     return opts
   }
@@ -540,7 +540,7 @@ const ProviderDetail: Component = () => {
         toast.error(t('toast.modelTestFailed', { id: modelId, error: res.error || 'unavailable' }))
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '测试请求异常'
+      const msg = e instanceof Error ? e.message : t('providerDetail.testRequestError')
       setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
       toast.error(t('toast.modelTestFailed', { id: modelId, error: msg }))
     } finally {
@@ -578,7 +578,7 @@ const ProviderDetail: Component = () => {
       toast.info(t('toast.allModelsDisabled'))
       return
     }
-    if (!await confirm(`确定要禁用该提供商旗下的全部 ${toDisable.length} 个模型吗？`)) return
+    if (!await confirm(t('providerDetail.confirmDisableAll', { count: toDisable.length }))) return
     setModelsData(prev => ({
       ...prev,
       registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: false })),
@@ -604,7 +604,7 @@ const ProviderDetail: Component = () => {
       return true
     })
     if (targetList.length === 0) {
-      toast.info('没有可测试的模型')
+      toast.info(t('toast.noTestableModels'))
       return
     }
     setTestingAll(true)
@@ -634,7 +634,7 @@ const ProviderDetail: Component = () => {
           else failed++
         } catch (e: unknown) {
           failed++
-          const msg = e instanceof Error ? e.message : '异常'
+          const msg = e instanceof Error ? e.message : t('providerDetail.testUnexpected')
           setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
         } finally {
           completed++
@@ -649,7 +649,7 @@ const ProviderDetail: Component = () => {
 
     setTestingAll(false)
     setTestAllProgress(null)
-    toast.success(`全部测试完成: ${passed} 个可用，${failed} 个失败`)
+    toast.success(t('toast.testAllDone', { passed, failed }))
   }
 
   const failedModelsList = () => {
@@ -668,10 +668,10 @@ const ProviderDetail: Component = () => {
     const p = conn()!.provider
     const failedList = failedModelsList()
     if (failedList.length === 0) {
-      toast.info('当前没有需要禁用的失败模型')
+      toast.info(t('toast.noFailedModels'))
       return
     }
-    if (!await confirm(`检测到 ${failedList.length} 个模型测试失败，是否一键全部禁用？`)) return
+    if (!await confirm(t('providerDetail.confirmDisableFailed', { count: failedList.length }))) return
     const failedIds = new Set(failedList.map(m => m.id || m.name).filter((id): id is string => Boolean(id)))
     setModelsData(prev => ({
       ...prev,
@@ -680,9 +680,9 @@ const ProviderDetail: Component = () => {
     }))
     try {
       await Promise.all(failedList.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, true)))
-      toast.success(`已一键禁用 ${failedList.length} 个失效模型`)
+      toast.success(t('toast.batchDisableSuccess', { count: failedList.length }))
     } catch {
-      toast.error('禁用失败，正在刷新状态')
+      toast.error(t('toast.batchDisableFailed'))
       refetchModels()
     }
   }
@@ -792,12 +792,15 @@ const ProviderDetail: Component = () => {
     try {
       const r = await store.testProvider(params.id)
       if (r?.ok) {
-        toast.success(`提供商连通正常 · 响应延迟 ${r.latencyMs}ms`)
+        toast.success(t('providerDetail.testConnOk', { latency: r.latencyMs ?? 0 }))
       } else {
-        toast.error(`连通失败: ${r?.error || '上游无响应'}${r?.code ? `（HTTP ${r.code}）` : ''}`)
+        toast.error(t('providerDetail.testConnFailed', {
+          error: r?.error || t('providerDetail.testUpstreamNoResponse'),
+          code: r?.code ? ` (HTTP ${r.code})` : '',
+        }))
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '连通测试请求失败')
+      toast.error(e instanceof Error ? e.message : t('providerDetail.testConnRequestFailed'))
     } finally {
       setTesting(false)
     }
@@ -807,26 +810,26 @@ const ProviderDetail: Component = () => {
     if (!modelId.trim()) return
     try {
       await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || modelId.trim() })
-      toast.success(`已添加自定义模型「${modelId.trim()}」`)
+      toast.success(t('providerDetail.customModelAdded', { id: modelId.trim() }))
       refetchModels()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '添加模型失败')
+      toast.error(e instanceof Error ? e.message : t('common.addFailed'))
     }
   }
 
   async function removeCustomModel(modelId: string) {
     const ok = await confirm({
-      title: '删除模型',
-      message: `确定要删除自定义模型「${modelId}」吗？`,
+      title: t('providerDetail.deleteModelTitle'),
+      message: t('providerDetail.deleteModelMessage', { id: modelId }),
       variant: 'danger',
     })
     if (!ok) return
     try {
       await store.deleteProviderModel(params.id, modelId)
-      toast.success(`已删除模型「${modelId}」`)
+      toast.success(t('providerDetail.modelDeleted', { id: modelId }))
       refetchModels()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : '删除模型失败')
+      toast.error(e instanceof Error ? e.message : t('providerDetail.deleteModelFailed'))
     }
   }
 
@@ -915,7 +918,7 @@ const ProviderDetail: Component = () => {
                           <Badge tone="blue">{accounts().length} 个</Badge>
                         </h3>
                         <p class="text-[11px] text-faint mt-0.5">
-                          优先级升序调度 · 限流时自动 Fallback
+                          {t('providerDetail.schedulingHint')}
                         </p>
                       </div>
                       <Button
@@ -982,7 +985,7 @@ const ProviderDetail: Component = () => {
                                   </Show>
                                   <Show when={isCurrent()}>
                                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">
-                                      编辑中
+                                      {t('providerDetail.editingBadge')}
                                     </span>
                                   </Show>
                                 </div>
@@ -1000,12 +1003,12 @@ const ProviderDetail: Component = () => {
                                     <button
                                       type="button"
                                       class="text-muted hover:text-danger text-xs p-1 rounded hover:bg-hover transition-colors"
-                                      title="删除此账号"
+                                      title={t('providerDetail.deleteAccountTitle2')}
                                       onClick={async (e) => {
                                         e.stopPropagation()
                                         const ok = await confirm({
-                                          title: '删除账号',
-                                          message: `确定要删除账号「${getAccountDisplayName(acc, idx())}」吗？`,
+                                          title: t('providerDetail.deleteAccountTitle'),
+                                          message: t('providerDetail.deleteAccountMessage', { name: getAccountDisplayName(acc, idx()) }),
                                           variant: 'danger',
                                         })
                                         if (ok) {
@@ -1087,14 +1090,14 @@ const ProviderDetail: Component = () => {
                           rel="noreferrer"
                           class="text-xs text-accent hover:underline inline-flex items-center gap-1"
                         >
-                          获取官方密钥 ↗
+                          {t('providerDetail.getOfficialKey')}
                         </a>
                       </Show>
                     </div>
 
                     {/* 表单内容滚动区 */}
                     <div class="flex-1 overflow-y-auto pr-1 py-3 space-y-4">
-                      <Field label="账号显示名称" hint="自定义名称，便于在调度日志和控制台中辨识（留空默认按序号编号）">
+                      <Field label={t('providerDetail.accountNameLabel2')} hint={t('providerDetail.accountNameHint2')}>
                         <Input
                           value={name()}
                           onInput={setName}
@@ -1102,7 +1105,7 @@ const ProviderDetail: Component = () => {
                         />
                       </Field>
 
-                      <Field label="调度优先级" hint="数值越小越优先调度。例如：主账号设为 10，备用账号设为 20">
+                      <Field label={t('providerDetail.priorityLabel')} hint={t('providerDetail.priorityHint')}>
                         <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
                       </Field>
 
@@ -1128,23 +1131,23 @@ const ProviderDetail: Component = () => {
                                   startDeviceFlow()
                                 }}
                               >
-                                重新发起授权 ↗
+                                {t('providerDetail.reauthorize')}
                               </Button>
                             </div>
                             <p class="text-faint leading-relaxed">
-                              本账号凭证由官方 OAuth 单点登录/设备码颁发管理，无需手动输入 API Key。如需更新授权请点击上方重新授权。
+                              {t('providerDetail.oauthManagedHint')}
                             </p>
                           </div>
                         }
                       >
                         <Field
-                          label={c().provider === 'qoder' ? 'Personal Access Token (PAT) / API Key' : 'API Key / 访问凭据'}
+                          label={c().provider === 'qoder' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
                           hint={
                             c().provider === 'qoder'
-                              ? '支持填入 Qoder Personal Access Token (pt-...) 或 API Key'
+                              ? t('providerDetail.qoderCredHint')
                               : c().data?.hasApiKey
-                              ? '留空表示保持当前密钥不变；输入新密钥并点击保存后将安全覆盖'
-                              : '请输入有效 API Key'
+                              ? t('providerDetail.credKeepHint')
+                              : t('providerDetail.credEnterHint')
                           }
                         >
                           <Input
@@ -1169,8 +1172,8 @@ const ProviderDetail: Component = () => {
 
                       <Show when={c().provider.startsWith('custom-') || regInfo()?.category === 'custom'}>
                         <Field
-                          label="Base URL (必填)"
-                          hint="标准上游 API 地址，如 https://api.my-host.com/v1（必填）"
+                          label={t('providerDetail.baseUrlRequired')}
+                          hint={t('providerDetail.baseUrlHint')}
                         >
                           <Input value={baseUrl()} onInput={setBaseUrl} placeholder="https://api.example.com/v1" />
                         </Field>
@@ -1206,8 +1209,8 @@ const ProviderDetail: Component = () => {
                             </Show>
 
                             <Field
-                              label="自定义请求头覆盖 (JSON 格式)"
-                              hint="用于应对上游客户端强制校验新版本号。此处指定的 Header 会覆盖默认 Header 发送给上游。"
+                              label={t('providerDetail.customHeadersLabel')}
+                              hint={t('providerDetail.customHeadersHint')}
                             >
                               <textarea
                                 rows={4}
@@ -1224,8 +1227,8 @@ const ProviderDetail: Component = () => {
                       <Show when={c().data?.credentialHint}>
                         <div class="text-xs text-faint">
                           当前凭证标识：<span class="font-mono">{String(c().data?.credentialHint ?? '')}</span>
-                          <Show when={c().data?.hasAccessToken}> · Access Token 已就绪</Show>
-                          <Show when={c().data?.hasRefreshToken}> · Refresh Token 已就绪</Show>
+                          <Show when={c().data?.hasAccessToken}> · {t('providerDetail.accessTokenReady')}</Show>
+                          <Show when={c().data?.hasRefreshToken}> · {t('providerDetail.refreshTokenReady')}</Show>
                         </div>
                       </Show>
                     </div>
@@ -1237,8 +1240,8 @@ const ProviderDetail: Component = () => {
                         size="sm"
                         onClick={async () => {
                           const ok = await confirm({
-                            title: '删除账号',
-                            message: `确定要删除此账号「${getAccountDisplayName(c())}」吗？`,
+                            title: t('providerDetail.deleteAccountTitle'),
+                            message: t('providerDetail.deleteAccountSelfMessage', { name: getAccountDisplayName(c()) }),
                             variant: 'danger',
                           })
                           if (ok) {
@@ -1253,10 +1256,10 @@ const ProviderDetail: Component = () => {
                           }
                         }}
                       >
-                        删除此账号
+                        {t('providerDetail.deleteThisAccount')}
                       </Button>
                       <Button variant="primary" size="sm" loading={saving()} onClick={save}>
-                        保存当前配置
+                        {t('providerDetail.saveCurrentConfig')}
                       </Button>
                     </div>
                   </Card>
@@ -1278,7 +1281,7 @@ const ProviderDetail: Component = () => {
                     <Input
                       value={newCustomModelId()}
                       onInput={setNewCustomModelId}
-                      placeholder="模型 ID，例如 my-finetune-v1"
+                      placeholder={t('providerDetail.customModelPlaceholder')}
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
@@ -1295,7 +1298,7 @@ const ProviderDetail: Component = () => {
                         if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
                       }}
                     >
-                      添加
+                      {t('common.add')}
                     </Button>
                   </div>
                   <div class="mt-3 flex flex-wrap gap-2">
@@ -1311,7 +1314,7 @@ const ProviderDetail: Component = () => {
                             <button
                               type="button"
                               class="text-faint hover:text-accent text-xs"
-                              title="编辑模型元数据"
+                              title={t('providerDetail.editModelMetaTitle')}
                               onClick={() => startEditModel(m)}
                             >
                               <IconEdit size={12} />
@@ -1320,7 +1323,7 @@ const ProviderDetail: Component = () => {
                               checked={m.enabled !== false}
                               onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
                             />
-                            <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" title="删除" onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></button>
+                            <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></button>
                           </span>
                         )}
                       </For>
@@ -1341,7 +1344,7 @@ const ProviderDetail: Component = () => {
                         <Input
                           value={modelSearch()}
                           onInput={setModelSearch}
-                          placeholder="搜索模型 ID 或名称…"
+                          placeholder={t('providerDetail.modelSearchPlaceholder')}
                           size="sm"
                         />
                       </div>
@@ -1350,9 +1353,9 @@ const ProviderDetail: Component = () => {
                         variant="secondary"
                         loading={syncingModels()}
                         onClick={handleSyncModels}
-                        title="向官方上游或端点发起查询并更新本地模型缓存"
+                        title={t('providerDetail.syncModelsTitle')}
                       >
-                        同步上游模型
+                        {t('providerDetail.syncUpstreamModels')}
                       </Button>
                     </div>
                   </div>
@@ -1434,7 +1437,7 @@ const ProviderDetail: Component = () => {
                                     </span>
                                     <Show when={m.isFree}>
                                       <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
-                                        免费
+                                        {t('providerDetail.freeBadge')}
                                       </span>
                                     </Show>
                                     <Show when={m.enabled === false}>
@@ -1443,7 +1446,7 @@ const ProviderDetail: Component = () => {
                                       </span>
                                     </Show>
                                     <Show when={m.hasOverride}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title="包含用户自定义元数据">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title={t('providerDetail.customMetaChipTitle')}>
                                         {t('providerDetail.chipCustom')}
                                       </span>
                                     </Show>
@@ -1465,7 +1468,7 @@ const ProviderDetail: Component = () => {
                                     fallback={
                                       <span
                                         class="text-faint px-1 text-[11px] cursor-not-allowed opacity-50"
-                                        title="官方动态同步元数据，已锁定保护"
+                                        title={t('providerDetail.lockedMetaTitle')}
                                       >
                                         <IconLock size={12} />
                                       </span>
@@ -1474,7 +1477,7 @@ const ProviderDetail: Component = () => {
                                     <button
                                       type="button"
                                       class="text-faint hover:text-accent p-1 text-xs rounded transition-colors"
-                                      title="编辑模型元数据（名称、上下文长度等）"
+                                      title={t('providerDetail.editModelMetaLongTitle')}
                                       onClick={() => startEditModel(m)}
                                     >
                                       <IconEdit size={12} />
@@ -1564,7 +1567,7 @@ const ProviderDetail: Component = () => {
                     <A
                       href="/playground"
                       class="text-xs text-accent hover:underline flex items-center gap-1"
-                      title="前往具有 Side-by-Side 竞技和全参数调优的演练场"
+                      title={t('providerDetail.playgroundLinkTitle')}
                     >
                       {t('providerDetail.chatGoPlayground')}
                     </A>
@@ -1648,14 +1651,14 @@ const ProviderDetail: Component = () => {
         onClose={() => setEditingModel(null)}
       >
         <div class="space-y-4">
-          <Field label="模型 ID" hint="路由匹配唯一标识（不可修改）">
+          <Field label={t('providerDetail.modelIdLabel')} hint={t('providerDetail.modelIdHint')}>
             <Input value={editingModel()?.id || ''} disabled class="bg-hover font-mono opacity-80" />
           </Field>
-          <Field label="显示名称" hint="对外展现的模型友好名称">
-            <Input value={editDisplayName()} onInput={setEditDisplayName} placeholder="例如 GPT-4o Custom" />
+          <Field label={t('providerDetail.displayNameLabel')} hint={t('providerDetail.displayNameHint')}>
+            <Input value={editDisplayName()} onInput={setEditDisplayName} placeholder={t('providerDetail.displayNamePlaceholder')} />
           </Field>
           <div class="grid grid-cols-2 gap-3">
-            <Field label="上下文长度 (Tokens)" hint="例如 128000 或 200000">
+            <Field label={t('providerDetail.contextLengthLabel')} hint={t('providerDetail.contextLengthHint')}>
               <Input
                 type="number"
                 value={editContextLength()}
@@ -1663,7 +1666,7 @@ const ProviderDetail: Component = () => {
                 placeholder="128000"
               />
             </Field>
-            <Field label="最大输出 (Tokens)" hint="例如 8192 或 16384">
+            <Field label={t('providerDetail.maxOutputLabel')} hint={t('providerDetail.maxOutputHint')}>
               <Input
                 type="number"
                 value={editMaxOutput()}
@@ -1681,16 +1684,16 @@ const ProviderDetail: Component = () => {
                   loading={savingMeta()}
                   onClick={handleResetModelMeta}
                 >
-                  恢复官方默认
+                  {t('providerDetail.restoreOfficialDefault')}
                 </Button>
               </Show>
             </div>
             <div class="flex items-center gap-2">
               <Button size="sm" variant="secondary" onClick={() => setEditingModel(null)}>
-                取消
+                {t('common.cancel')}
               </Button>
               <Button size="sm" variant="primary" loading={savingMeta()} onClick={handleSaveModelMeta}>
-                保存元数据
+                {t('providerDetail.saveMetadata')}
               </Button>
             </div>
           </div>
@@ -1705,16 +1708,16 @@ const ProviderDetail: Component = () => {
       >
         <div class="space-y-4">
           <div class="p-3 rounded-control bg-hover border border-subtle text-xs text-faint leading-relaxed">
-            支持接入多个账户。网关将基于优先级依次调度、实现故障转移（Fallback 容灾）与分摊 Token 限流。
+            {t('providerDetail.addAccountHint')}
           </div>
-          <Field label="账号名称" hint="例如：主账号、备用 PAT、Team B 商业号">
+          <Field label={t('providerDetail.accountNameLabel')} hint={t('providerDetail.accountNameHint')}>
             <Input
               value={newAccountName()}
               onInput={setNewAccountName}
               placeholder={`例如：账号 ${accounts().length + 1}、备用 Key`}
             />
           </Field>
-          <Field label="认证方式" hint="选择凭证模式">
+          <Field label={t('providerDetail.authMethodLabel')} hint={t('providerDetail.authMethodSelectHint')}>
             <Select
               value={newAccountAuthType()}
               options={accountAuthOptions()}
@@ -1723,8 +1726,8 @@ const ProviderDetail: Component = () => {
           </Field>
           <Show when={newAccountAuthType() === 'api-key'}>
             <Field
-              label={conn()?.provider === 'qoder' ? 'Personal Access Token (PAT) / API Key' : 'API Key / 访问凭据'}
-              hint="凭据将安全加密存储"
+              label={conn()?.provider === 'qoder' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
+              hint={t('providerDetail.credSecureHint')}
             >
               <div class="space-y-1.5">
                 <Input
@@ -1747,7 +1750,7 @@ const ProviderDetail: Component = () => {
                       rel="noreferrer"
                       class="text-xs text-accent hover:underline inline-flex items-center gap-1"
                     >
-                      前往官方控制台获取 Key ↗
+                      {t('providerDetail.getKeyConsole')}
                     </a>
                   </div>
                 </Show>
@@ -1760,7 +1763,7 @@ const ProviderDetail: Component = () => {
               <p class="text-faint">保存创建后可直接在当前页发起设备码一键授权，新标签页登录后自动完成绑定。</p>
             </div>
           </Show>
-          <Field label="调度优先级" hint="数值越小越优先调度。主账号设为 10，备用账号设为 20">
+          <Field label={t('providerDetail.priorityLabel')} hint={t('providerDetail.newAccountPriorityHint')}>
             <Input
               type="number"
               value={newAccountPriority()}
@@ -1770,10 +1773,10 @@ const ProviderDetail: Component = () => {
           </Field>
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-subtle">
             <Button size="sm" variant="secondary" onClick={() => setAddAccountOpen(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button size="sm" variant="primary" loading={addingAccount()} onClick={handleAddAccountSubmit}>
-              保存账号
+              {t('providerDetail.saveAccount')}
             </Button>
           </div>
         </div>
@@ -1788,15 +1791,15 @@ const ProviderDetail: Component = () => {
           {/* 1. 纯错误展示（未处于导入流程时优先接管展示与重试） */}
           <Show when={deviceError() && !isImportFlow()}>
             <div class="space-y-4 py-2">
-              <Alert variant="danger" title="授权遇到问题">
+              <Alert variant="danger" title={t('providerDetail.authProblemTitle')}>
                 {deviceError()}
               </Alert>
               <div class="flex justify-end gap-2">
                 <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
-                  关闭
+                  {t('common.close')}
                 </Button>
                 <Button size="sm" variant="primary" onClick={startDeviceFlow}>
-                  重试
+                  {t('common.retry')}
                 </Button>
               </div>
             </div>
@@ -1806,14 +1809,14 @@ const ProviderDetail: Component = () => {
           <Show when={isImportFlow()}>
             <div class="space-y-3 text-left py-1">
               <p class="text-xs text-faint leading-relaxed">
-                该提供商为令牌导入模式，请填入从本地环境或配置提取的访问凭据 (Access Token / Session Token)：
+                {t('providerDetail.tokenImportHint')}
               </p>
               <div class="space-y-1.5">
                 <textarea
                   rows={4}
                   value={importTokenText()}
                   onInput={e => setImportTokenText(e.currentTarget.value)}
-                  placeholder="粘贴 Access Token / JWT..."
+                  placeholder={t('providerDetail.tokenPastePlaceholder')}
                   class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
                 />
               </div>
@@ -1824,7 +1827,7 @@ const ProviderDetail: Component = () => {
               </Show>
               <div class="flex justify-end gap-2 pt-2 border-t border-subtle">
                 <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
-                  取消
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   size="sm"
@@ -1833,7 +1836,7 @@ const ProviderDetail: Component = () => {
                   disabled={!importTokenText().trim()}
                   onClick={handleImportToken}
                 >
-                  导入并保存
+                  {t('providerDetail.importAndSave')}
                 </Button>
               </div>
             </div>
@@ -1867,18 +1870,18 @@ const ProviderDetail: Component = () => {
                               if (url) window.open(url, '_blank')
                             }}
                           >
-                            打开授权网页 ↗
+                            {t('providerDetail.openAuthPage')}
                           </Button>
                         </div>
                       </div>
                     }
                   >
                     <p class="text-xs text-faint leading-relaxed">
-                      请访问下方登录授权网址并在浏览器中确认授权：
+                      {t('providerDetail.authPageHint')}
                     </p>
                     {/* 验证码卡片 */}
                     <div class="p-4 rounded-card bg-accent/10 border border-accent/30 space-y-1.5">
-                      <div class="text-[11px] text-faint font-medium">Your Code / 授权验证码</div>
+                      <div class="text-[11px] text-faint font-medium">{t('providerDetail.authCodeLabel')}</div>
                       <div class="flex items-center justify-center gap-3">
                         <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
                           {flow().userCode}
@@ -1886,12 +1889,12 @@ const ProviderDetail: Component = () => {
                         <button
                           type="button"
                           class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
-                          title="复制验证码"
+                          title={t('providerDetail.copyCodeTitle')}
                           onClick={() => {
                             if (flow().userCode) {
                               navigator.clipboard.writeText(flow().userCode!)
                               setCopiedCode(true)
-                              toast.success('验证码已复制')
+                              toast.success(t('providerDetail.codeCopied'))
                               setTimeout(() => setCopiedCode(false), 2000)
                             }
                           }}
@@ -1916,11 +1919,11 @@ const ProviderDetail: Component = () => {
                           const url = flow().verificationUriComplete || flow().verificationUri
                           if (url) {
                             navigator.clipboard.writeText(url)
-                            toast.success('登录网址已复制')
+                            toast.success(t('providerDetail.copyUrlSuccess'))
                           }
                         }}
                       >
-                        复制网址
+                        {t('providerDetail.copyUrl')}
                       </Button>
                       <Button
                         size="sm"
@@ -1930,7 +1933,7 @@ const ProviderDetail: Component = () => {
                           if (url) window.open(url, '_blank')
                         }}
                       >
-                        打开网页 ↗
+                        {t('providerDetail.openPage')}
                       </Button>
                     </div>
                   </div>
@@ -1938,12 +1941,12 @@ const ProviderDetail: Component = () => {
                   {/* 轮询等待状态 */}
                   <div class="flex items-center justify-center gap-2 pt-2 text-xs text-faint">
                     <span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-                    <span>Waiting for authorization / 等待浏览器授权完成...</span>
+                    <span>{t('providerDetail.waitingAuth')}</span>
                   </div>
 
                   <div class="pt-2 border-t border-subtle flex justify-end">
                     <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
-                      取消
+                      {t('common.cancel')}
                     </Button>
                   </div>
                 </div>

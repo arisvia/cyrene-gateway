@@ -172,8 +172,8 @@ const Usage: Component = () => {
                 </Show>
               </h3>
               <p class="text-xs text-faint mt-0.5">
-                <Show when={hoveredPoint()} fallback={`按时间段聚合的 Prompt 与 Completion 吞吐 · 峰值 ${fmtNum(maxTokens())} Tokens`}>
-                  悬浮各柱状节点查看详细用量吞吐
+                <Show when={hoveredPoint()} fallback={t('usage.chartAggregateHint', { peak: fmtNum(maxTokens()) })}>
+                  {t('usage.chartHoverHint')}
                 </Show>
               </p>
             </div>
@@ -293,7 +293,7 @@ const Usage: Component = () => {
               <h3 class="text-sm font-semibold">实时事件</h3>
               <Show when={live()}><Badge tone="green">连接中</Badge></Show>
             </div>
-            <Show when={liveEvents().length > 0} fallback={<Empty message={live() ? '等待事件…' : '点击右上角「实时事件」开始监听'} />}>
+            <Show when={liveEvents().length > 0} fallback={<Empty message={live() ? t('usage.waitingEvents') : t('usage.clickLiveToListen')} />}>
               <div class="space-y-1 max-h-64 overflow-y-auto">
                 <For each={liveEvents()}>
                   {e => (
@@ -347,8 +347,8 @@ const Usage: Component = () => {
                             type="button"
                             class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors"
                             onClick={() => setSelectedDetail(d)}
-                            title="查看请求明细"
-                            aria-label="查看请求明细"
+                            title={t('usage.viewDetailTitle')}
+                            aria-label={t('usage.viewDetailTitle')}
                           >
                             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
