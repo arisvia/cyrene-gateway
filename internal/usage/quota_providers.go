@@ -265,11 +265,7 @@ func fetchMiniMax(ctx context.Context, client *http.Client, c QuotaCredentials) 
 			return QuotaResult{Message: "MiniMax connected. " + lastErr}
 		}
 		if statusCode != 0 {
-			msg := statusMsg
-			if msg == "" {
-				msg = "Upstream quota API error"
-			}
-			return QuotaResult{Message: "MiniMax connected. " + msg}
+			return QuotaResult{Message: fmt.Sprintf("MiniMax connected. Upstream quota API error (code %d)", int(statusCode))}
 		}
 
 		modelRemains, _ := orSlice(payload, "model_remains", "modelRemains")

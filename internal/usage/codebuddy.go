@@ -139,7 +139,7 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 		return QuotaResult{Message: "Failed to parse CodeBuddy quota response: " + err.Error()}
 	}
 	if billingResp.Code != 0 {
-		return QuotaResult{Message: "CodeBuddy quota API error: " + billingResp.Msg}
+		return QuotaResult{Message: fmt.Sprintf("CodeBuddy quota API error (code %d)", billingResp.Code)}
 	}
 
 	accounts := billingResp.Data.Response.Data.Accounts
