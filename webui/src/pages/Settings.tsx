@@ -409,7 +409,7 @@ const Settings: Component = () => {
       <div class="space-y-3.5">
         <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
           <IconZap size={14} class="text-accent shrink-0" />
-          <span>效能与节省引擎</span>
+          <span>{t('settings.cache.groupTitle')}</span>
         </div>
 
         {/* 响应精确缓存卡片 */}
@@ -417,8 +417,8 @@ const Settings: Component = () => {
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
               <IconZap size={16} class="text-accent shrink-0" />
-              <h3 class="text-sm font-semibold">响应精确缓存</h3>
-              <Badge tone="blue">1ms 直出 · 0 Token</Badge>
+              <h3 class="text-sm font-semibold">{t('settings.cache.title')}</h3>
+              <Badge tone="blue">{t('settings.cache.badge')}</Badge>
             </div>
             <div class="flex items-center gap-1.5">
               <Button
@@ -428,7 +428,7 @@ const Settings: Component = () => {
                 onClick={handleRefreshStats}
                 title="刷新统计指标"
               >
-                刷新
+                {t('common.refresh')}
               </Button>
               <Button
                 size="sm"
@@ -438,7 +438,7 @@ const Settings: Component = () => {
                 onClick={handleClearCache}
                 title="清空所有内存缓存条目"
               >
-                清空缓存
+                {t('settings.cache.clearCache')}
               </Button>
             </div>
           </div>
@@ -446,7 +446,7 @@ const Settings: Component = () => {
           {/* 缓存指标数据小横条：移动端 2 列，平板及以上 4 列 */}
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-subtle/20 p-3 rounded-control border border-subtle/40 text-xs">
             <div>
-              <span class="text-faint block text-[11px]">命中率</span>
+              <span class="text-faint block text-[11px]">{t('settings.cache.hitRate')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
               </span>
@@ -455,21 +455,21 @@ const Settings: Component = () => {
               </span>
             </div>
             <div>
-              <span class="text-faint block text-[11px]">累计节省 Token</span>
+              <span class="text-faint block text-[11px]">{t('settings.cache.tokensSaved')}</span>
               <span class="font-semibold text-accent text-sm">
                 {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
               </span>
               <span class="text-[10px] text-muted block mt-0.5 truncate">直接节省消耗</span>
             </div>
             <div>
-              <span class="text-faint block text-[11px]">在存条目</span>
+              <span class="text-faint block text-[11px]">{t('settings.cache.entries')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
               </span>
               <span class="text-[10px] text-muted block mt-0.5 truncate">LRU 内存置换池</span>
             </div>
             <div>
-              <span class="text-faint block text-[11px]">内存占用</span>
+              <span class="text-faint block text-[11px]">{t('settings.cache.memory')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {formatBytes(cacheStats()?.bytesUsed ?? 0)}
               </span>
@@ -479,7 +479,7 @@ const Settings: Component = () => {
 
           {/* 控制项 */}
           <div class="flex items-start justify-between gap-4 pt-1">
-            <Field label="启用响应精确缓存" hint="对完全一致的对话请求（temperature=0、相同上下文）直接直出缓存">
+            <Field label={t('settings.cache.enabled')} hint={t('settings.cache.enabledHint')}>
               <span />
             </Field>
             <Toggle
@@ -493,7 +493,7 @@ const Settings: Component = () => {
 
           <Show when={!!local().responseCacheEnabled}>
             <div class="space-y-3 pt-2 border-t border-subtle/50">
-              <Field label="缓存有效期 (TTL)" hint="缓存条目的生存秒数，默认 3600 秒（1 小时），过期自动清理">
+              <Field label={t('settings.cache.ttl')} hint={t('settings.cache.ttlHint')}>
                 <Input
                   type="number"
                   class="!w-full sm:!w-36 mt-1"
@@ -502,7 +502,7 @@ const Settings: Component = () => {
                 />
               </Field>
               <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
-                <Field label="缓存全部非流式请求" hint="开启后不论 temperature 为何值均缓存；关闭则仅缓存确定性请求">
+                <Field label={t('settings.cache.enableAllRequests')} hint={t('settings.cache.enableAllRequestsHint')}>
                   <span />
                 </Field>
                 <Toggle
@@ -519,14 +519,14 @@ const Settings: Component = () => {
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
               <IconSparkles size={16} class="text-accent shrink-0" />
-              <h3 class="text-sm font-semibold">令牌节省引擎</h3>
+              <h3 class="text-sm font-semibold">{t('settings.tokenSaver.title')}</h3>
               <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
             </div>
           </div>
 
           {/* RTK 压缩 */}
           <div class="flex items-start justify-between gap-4">
-            <Field label="RTK 压缩" hint="无损清洗工具输出并对超长结果实施首尾智能截断（保留前 120 行与后 60 行）">
+            <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
               <span />
             </Field>
             <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
@@ -535,7 +535,7 @@ const Settings: Component = () => {
           {/* Caveman 极简表达 */}
           <div class="space-y-3 pt-2 border-t border-subtle/50">
             <div class="flex items-start justify-between gap-4">
-              <Field label="Caveman 极简表达" hint="注入极简表达指令（洞穴人模式），压制客套寒暄，大幅削减回复 Token">
+              <Field label={t('settings.tokenSaver.cavemanTitle')} hint={t('settings.tokenSaver.cavemanHint')}>
                 <span />
               </Field>
               <Toggle
@@ -548,7 +548,7 @@ const Settings: Component = () => {
             </div>
             <Show when={!!local().cavemanEnabled}>
               <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                <Field label="压缩级别" hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
+                <Field label={t('settings.tokenSaver.compressionLevel')} hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
                   <Select
                     value={String(local().cavemanLevel || 'lite')}
                     options={cavemanOptions()}
@@ -563,7 +563,7 @@ const Settings: Component = () => {
           {/* Ponytail 极简代码 */}
           <div class="space-y-3 pt-2 border-t border-subtle/50">
             <div class="flex items-start justify-between gap-4">
-              <Field label="Ponytail 极简代码" hint="注入极简代码原则指令（马尾模式），推崇 YAGNI，严禁多余抽象与样板代码">
+              <Field label={t('settings.tokenSaver.ponytailTitle')} hint={t('settings.tokenSaver.ponytailHint')}>
                 <span />
               </Field>
               <Toggle
@@ -576,7 +576,7 @@ const Settings: Component = () => {
             </div>
             <Show when={!!local().ponytailEnabled}>
               <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                <Field label="压缩级别" hint="lite: 最简替代 | full: 严格阶梯 | ultra: 极致单行">
+                <Field label={t('settings.tokenSaver.compressionLevel')} hint="lite: 最简替代 | full: 严格阶梯 | ultra: 极致单行">
                   <Select
                     value={String(local().ponytailLevel || 'lite')}
                     options={ponytailOptions()}
@@ -592,8 +592,8 @@ const Settings: Component = () => {
           <div class="space-y-3 pt-3 border-t border-subtle/50">
             <div>
               <Field
-                label="排除提供商名单 (TokenSaver Exclude)"
-                hint="指定跳过 RTK 压缩与极简提示词注入的提供商（如保护复杂指令遵循模型）"
+                label={t('settings.tokenSaver.exclusionsTitle')}
+                hint={t('settings.tokenSaver.exclusionsHint')}
               >
                 <span />
               </Field>

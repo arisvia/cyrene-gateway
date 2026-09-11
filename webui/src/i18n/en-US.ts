@@ -45,6 +45,11 @@ export const enUS: TranslationDict = {
     nextPage: 'Next',
     noData: 'No Data',
   },
+  ui: {
+    searchOptions: 'Search options...',
+    showingOptions: 'Showing {visible} of {total} · scroll for more or search',
+    noMatchingOptions: 'No matching options found',
+  },
   nav: {
     groupAccess: 'Access',
     groupSystem: 'System',

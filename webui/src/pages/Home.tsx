@@ -319,34 +319,34 @@ const Home: Component = () => {
       {/* 细粒度规则配置弹窗 */}
       <Modal
         open={!!editingKey()}
-        title="配置 API Key 细粒度规则"
+        title={t('home.editKeyTitle')}
         onClose={() => setEditingKey(null)}
       >
         <div class="space-y-4">
-          <Field label="密钥名称" hint="方便识别该 Key 绑定的设备或业务端">
+          <Field label={t('home.keyName')} hint={t('home.keyNameHint')}>
             <Input
               value={editName()}
               onInput={setEditName}
-              placeholder="如: MacBook-Claude / Staging-Bot"
+              placeholder={t('home.keyNamePlaceholder')}
               class="w-full mt-1"
             />
           </Field>
 
           <Field
-            label="模型访问白名单 (Allowed Models)"
-            hint="逗号分隔。支持通配符（如 deepseek/*）；留空表示允许调用所有可用模型"
+            label={t('home.allowedModels')}
+            hint={t('home.allowedModelsHint')}
           >
             <Input
               value={editAllowedModels()}
               onInput={setEditAllowedModels}
-              placeholder="如: deepseek/*, openai/gpt-4o"
+              placeholder={t('home.allowedModelsPlaceholder')}
               class="w-full mt-1 font-mono text-xs"
             />
           </Field>
 
           <Field
-            label="独立速率限制 (RPM)"
-            hint="该 Key 独享的每分钟请求上限。填 0 或留空表示沿用全局设置"
+            label={t('home.keyRpm')}
+            hint={t('home.keyRpmHint')}
           >
             <Input
               type="number"
@@ -357,23 +357,23 @@ const Home: Component = () => {
           </Field>
 
           <Field
-            label="预设上下文注入 (System Context)"
-            hint="请求发往模型前自动置入 System 消息。各 Key 独立隔离，响应缓存自动分离哈希"
+            label={t('home.systemContext')}
+            hint={t('home.systemContextHint')}
           >
             <textarea
               class="w-full h-24 p-2.5 text-xs rounded-control bg-bg-elevated border border-subtle focus:border-accent font-mono resize-y mt-1 text-foreground"
               value={editSystemPrompt()}
               onInput={e => setEditSystemPrompt(e.currentTarget.value)}
-              placeholder="如: You are a coding assistant for team backend. Target environment: staging."
+              placeholder={t('home.systemContextPlaceholder')}
             />
           </Field>
 
           <div class="flex items-center justify-end gap-2 pt-2 border-t border-subtle/50">
             <Button variant="secondary" onClick={() => setEditingKey(null)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button variant="primary" loading={savingEdit()} onClick={saveKeyEdit}>
-              保存规则
+              {savingEdit() ? t('common.saving') : t('common.save')}
             </Button>
           </div>
         </div>

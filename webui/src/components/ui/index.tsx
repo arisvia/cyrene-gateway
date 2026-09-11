@@ -1,6 +1,7 @@
 import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
+import { useI18n } from '@/i18n'
 import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo } from './icons'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export * from './icons'
@@ -197,7 +198,7 @@ export function ToastHost() {
 
               <button
                 type="button"
-                aria-label="关闭提示"
+                aria-label={useI18n().t('common.close')}
                 onClick={() => dismiss(t.id)}
                 class="text-faint hover:text-foreground p-1 rounded-md hover:bg-hover transition-colors shrink-0 -mr-1 -mt-1 cursor-pointer"
               >
@@ -278,7 +279,7 @@ export const Alert: Component<{
         <Show when={props.closable}>
           <button
             type="button"
-            aria-label="关闭提示"
+            aria-label={useI18n().t('common.close')}
             onClick={() => {
               setClosed(true)
               props.onClose?.()
@@ -613,7 +614,7 @@ export const Select: Component<{
                   type="text"
                   value={search()}
                   onInput={e => setSearch(e.currentTarget.value)}
-                  placeholder="搜索选项…"
+                  placeholder={useI18n().t('ui.searchOptions')}
                   class="w-full px-2.5 py-1.5 text-xs rounded-md bg-hover/80 text-foreground placeholder:text-faint border border-subtle/60 outline-hidden focus:border-accent"
                   onClick={e => e.stopPropagation()}
                   onKeyDown={e => {
@@ -680,11 +681,11 @@ export const Select: Component<{
               </For>
               <Show when={displayLimit() < filteredOptions().length}>
                 <div class="px-2 py-1.5 text-center text-[10px] text-faint border-t border-subtle/30">
-                  已显示 {visibleOptions().length} / {filteredOptions().length} 项 · 滚动加载更多或输入搜索
+                  {useI18n().t('ui.showingOptions', { visible: visibleOptions().length, total: filteredOptions().length })}
                 </div>
               </Show>
               <Show when={filteredOptions().length === 0}>
-                <div class="px-3 py-3 text-center text-xs text-faint">未找到匹配项</div>
+                <div class="px-3 py-3 text-center text-xs text-faint">{useI18n().t('ui.noMatchingOptions')}</div>
               </Show>
             </div>
           </div>
@@ -854,7 +855,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
         <div class="fixed inset-0 z-100 flex items-center justify-center p-4">
           <button
             type="button"
-            aria-label="关闭对话框遮罩"
+            aria-label={useI18n().t('common.close')}
             class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
             onClick={props.onClose}
           />
@@ -871,7 +872,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
                 type="button"
                 class="flex h-7 w-7 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover transition-colors"
                 onClick={props.onClose}
-                aria-label="关闭"
+                aria-label={useI18n().t('common.close')}
               >
                 <IconClose size={14} />
               </button>

@@ -132,6 +132,7 @@ const Combos: Component = () => {
                         const ok = await confirm({
                           title: t('combos.deleteConfirmTitle'),
                           message: t('combos.deleteConfirmMessage', { name: c.name }),
+                          variant: 'danger',
                         })
                         if (ok) {
                           await store.deleteCombo(c.id)

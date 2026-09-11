@@ -43,6 +43,11 @@ export const zhCN = {
     nextPage: '下一页',
     noData: '暂无数据',
   },
+  ui: {
+    searchOptions: '搜索选项…',
+    showingOptions: '已显示 {visible} / {total} 项 · 滚动加载更多或输入搜索',
+    noMatchingOptions: '未找到匹配项',
+  },
   nav: {
     groupAccess: '接入',
     groupSystem: '系统',
@@ -128,7 +133,7 @@ export const zhCN = {
       groupTitle: '效能与节省引擎',
       title: '响应精确缓存',
       badge: '1ms 直出 · 0 Token',
-      hitRate: '当前命中率',
+      hitRate: '缓存命中率',
       entries: '在存条目',
       memory: '内存占用',
       clearCache: '清空缓存',
@@ -159,7 +164,7 @@ export const zhCN = {
       },
       ponytailTitle: 'Ponytail 极简代码',
       ponytailHint: '指导模型优先采用标准库与原生特性，拒绝过度抽象与冗余脚手架',
-      exclusionsTitle: '跳过令牌节省的服务商',
+      exclusionsTitle: '排除提供商名单',
       exclusionsHint: '针对特定服务商（如擅长代码补全的特定专有通道）保持原始输出，不注入提示词',
     },
     appearance: {

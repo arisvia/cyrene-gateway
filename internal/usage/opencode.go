@@ -33,7 +33,7 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 		apiKey = strings.TrimSpace(creds.AccessToken)
 	}
 	if apiKey == "" {
-		return QuotaResult{Message: "未配置 OpenCode API Key，请先添加凭据。"}
+		return QuotaResult{Message: "OpenCode API key not configured"}
 	}
 
 	url := opencodeUsageURL
@@ -61,19 +61,19 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	if resp.StatusCode == http.StatusUnauthorized {
 		return QuotaResult{
 			Plan:    "OpenCode",
-			Message: "OpenCode API Key 鉴权失败，请检查凭据。",
+			Message: "OpenCode authentication failed, please verify API key",
 		}
 	}
 	if resp.StatusCode == http.StatusForbidden {
 		return QuotaResult{
 			Plan:    "OpenCode Zen",
-			Message: "当前凭据为 OpenCode Zen 免费/标准版，官方未开放用量追踪接口（仅 Go 订阅版支持配额监控）。",
+			Message: "OpenCode Zen plan does not expose quota usage endpoint (Go subscription required)",
 		}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return QuotaResult{
 			Plan:    "OpenCode",
-			Message: fmt.Sprintf("OpenCode 用量接口响应异常 (%d)。", resp.StatusCode),
+			Message: fmt.Sprintf("OpenCode usage request failed with status %d", resp.StatusCode),
 		}
 	}
 
@@ -90,7 +90,7 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	if len(data.Usage) == 0 {
 		return QuotaResult{
 			Plan:    "OpenCode",
-			Message: "OpenCode 用量响应未包含有效配额数据。",
+			Message: "OpenCode usage response contains no quota records",
 		}
 	}
 
@@ -129,10 +129,9 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	if len(quotas) == 0 {
 		return QuotaResult{
 			Plan:    "OpenCode",
-			Message: "OpenCode 用量响应未包含可解析配额指标。",
+			Message: "OpenCode usage response contains no recognizable quota metrics",
 		}
 	}
-
 	return QuotaResult{
 		Plan:   "OpenCode Go",
 		Quotas: quotas,
