@@ -376,9 +376,16 @@ export const Input: Component<{
   )
 }
 
+export interface SelectOption {
+  value: string
+  label: string
+  description?: string
+  badge?: string
+}
+
 export const Select: Component<{
   value?: string
-  options: { value: string; label: string }[]
+  options: (SelectOption | { value: string; label: string })[]
   onChange?: (v: string) => void
   size?: 'sm' | 'md' | 'lg'
   class?: string
@@ -403,8 +410,8 @@ export const Select: Component<{
     const style: Record<string, string> = {
       position: 'fixed',
       'z-index': '110',
-      'min-width': `${rect.width}px`,
-      'max-width': 'min(92vw, 480px)',
+      'min-width': `${Math.max(rect.width, 240)}px`,
+      'max-width': 'min(92vw, 520px)',
     }
 
     if (props.align === 'right') {
@@ -484,13 +491,19 @@ export const Select: Component<{
     })
   })
 
-  const selectedOption = () => props.options.find(o => o.value === (props.value ?? ''))
+  const selectedOption = () => (props.options as SelectOption[]).find(o => o.value === (props.value ?? ''))
   const isSelected = () => !!selectedOption()
   const displayLabel = () => selectedOption()?.label || props.placeholder || (props.options[0]?.label ?? '')
   const filteredOptions = createMemo(() => {
     const q = search().trim().toLowerCase()
-    if (!q) return props.options
-    return props.options.filter(o => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q))
+    const opts = props.options as SelectOption[]
+    if (!q) return opts
+    return opts.filter(o =>
+      o.label.toLowerCase().includes(q) ||
+      o.value.toLowerCase().includes(q) ||
+      (o.description && o.description.toLowerCase().includes(q)) ||
+      (o.badge && o.badge.toLowerCase().includes(q))
+    )
   })
 
   const triggerSizes: Record<ControlSize, string> = {
@@ -514,7 +527,7 @@ export const Select: Component<{
   return (
     <div
       ref={rootRef}
-      class={`relative ${props.class?.includes('flex-1') ? 'flex-1' : props.class?.includes('w-full') ? 'w-full' : 'inline-block'} ${props.class ?? ''}`}
+      class={`relative min-w-0 ${props.class?.includes('flex-1') ? 'flex-1 w-full' : props.class?.includes('w-full') ? 'w-full' : props.class?.includes('w-') ? '' : 'w-full'} ${props.class ?? ''}`}
     >
       <button
         type="button"
@@ -524,14 +537,20 @@ export const Select: Component<{
         aria-label={props.ariaLabel || displayLabel()}
         disabled={props.disabled}
         onClick={toggleOpen}
-        class={`w-full flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text hover:bg-black/7 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
+        class={`w-full min-w-0 flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text hover:bg-black/7 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
           open() ? 'ring-2 ring-accent/30 bg-card' : ''
         } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
-        <span class={`truncate text-left flex-1 ${isSelected() ? 'text-text' : 'text-faint'}`}>
-          {displayLabel()}
-        </span>
-        {/* 精致内嵌居中的 Chevron 矢量箭头：预留呼吸空间，完全消除原生靠死右侧的视觉不协调感 */}
+        <div class="flex items-center gap-1.5 min-w-0 flex-1 truncate text-left">
+          <Show when={selectedOption()?.badge}>
+            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-muted shrink-0 border border-subtle/50">
+              {selectedOption()!.badge}
+            </span>
+          </Show>
+          <span class={`truncate ${isSelected() ? 'text-text font-medium' : 'text-faint'}`}>
+            {displayLabel()}
+          </span>
+        </div>
         <div class="flex items-center justify-center shrink-0 text-faint ml-1">
           <svg
             class={`${chevronSizes[props.size ?? 'md']} transition-transform duration-200 ${
@@ -587,7 +606,7 @@ export const Select: Component<{
                       type="button"
                       role="option"
                       aria-selected={active()}
-                      class={`w-full flex items-center justify-between gap-3 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
+                      class={`w-full flex items-center justify-between gap-2.5 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
                         active()
                           ? 'bg-accent/15 text-accent font-medium'
                           : 'text-text hover:bg-hover hover:text-text'
@@ -598,10 +617,21 @@ export const Select: Component<{
                         setSearch('')
                       }}
                     >
-                      <span class="truncate">{o.label}</span>
+                      <div class="min-w-0 flex-1 flex flex-col py-0.5">
+                        <div class="flex items-center gap-1.5 min-w-0">
+                          <Show when={o.badge}>
+                            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-muted shrink-0 border border-subtle/40">
+                              {o.badge}
+                            </span>
+                          </Show>
+                          <span class="truncate font-medium text-xs">{o.label}</span>
+                        </div>
+                        <Show when={o.description}>
+                          <span class="text-[10px] font-mono text-faint truncate mt-0.5">{o.description}</span>
+                        </Show>
+                      </div>
                       <Show when={active()}>
                         <svg
-                          class="w-4 h-4 text-accent shrink-0 animate-scale-in"
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"

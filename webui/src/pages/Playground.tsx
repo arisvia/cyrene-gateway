@@ -23,6 +23,7 @@ import {
 } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { confirm } from '@/lib/confirm'
+import { useGatewayStore } from '@/stores/gateway'
 
 interface ModelEntry {
   id: string
@@ -175,16 +176,45 @@ const Playground: Component = () => {
     }
   }
 
+  const store = useGatewayStore()
+
+  function formatContextLength(tokens?: number): string {
+    if (!tokens || tokens <= 0) return ''
+    if (tokens >= 1048576) return `${(tokens / 1048576).toFixed(tokens % 1048576 === 0 ? 0 : 1)}M`
+    if (tokens >= 1024) return `${Math.round(tokens / 1024)}k`
+    return `${tokens}`
+  }
+
+  function getProviderBadge(providerId: string): string {
+    const reg = store.registryList().find(r => r.id === providerId)
+    if (reg?.name) return reg.name
+    if (providerId === 'codebuddy-cn') return 'CodeBuddy'
+    if (providerId === 'openrouter') return 'OpenRouter'
+    if (providerId === 'antigravity') return 'Antigravity'
+    if (providerId === 'opencode') return 'OpenCode'
+    if (providerId === 'github-models') return 'GitHub'
+    if (providerId === 'deepseek') return 'DeepSeek'
+    return providerId.split('-')[0].charAt(0).toUpperCase() + providerId.split('-')[0].slice(1)
+  }
+
   const modelOptions = () =>
     models().map(m => {
-      const provider = m.owned_by || m.id.split('/')[0]
-      const name = m.display_name ? `${m.display_name} (${m.id})` : m.id
+      const providerId = m.owned_by || m.id.split('/')[0]
+      const badge = getProviderBadge(providerId)
+      let cleanName = m.display_name?.trim() || ''
+      if (!cleanName || cleanName === m.id) {
+        cleanName = m.id.includes('/') ? m.id.slice(m.id.indexOf('/') + 1) : m.id
+      }
+      const ctxStr = formatContextLength(m.context_length)
+      const desc = ctxStr ? `${m.id} · ${ctxStr}` : m.id
+
       return {
         value: m.id,
-        label: `[${provider}] ${name}`,
+        badge,
+        label: cleanName,
+        description: desc,
       }
     })
-
   const isBusy = () =>
     turns().some(t => t.a.busy || (t.b && t.b.busy))
 
@@ -650,49 +680,52 @@ main();
       {/* 主工作区布局 */}
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* 对话互动主体区 */}
-        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} space-y-4 transition-all duration-300`}>
+        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} min-w-0 space-y-4 transition-all duration-300`}>
           {/* 顶部模型选择栏 */}
           <Card class="p-3 bg-card/60 backdrop-blur-md">
             <Show
               when={mode() === 'compare'}
               fallback={
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 min-w-0">
                   <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
                     <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
                     选择评测模型:
                   </span>
-                  <div class="flex-1 min-w-[200px]">
+                  <div class="flex-1 min-w-0">
                     <Select
+                      class="w-full"
                       value={modelA()}
                       options={modelOptions()}
                       onChange={setModelA}
                     />
                   </div>
                   <Show when={loadingModels()}>
-                    <span class="text-xs text-faint">同步中...</span>
+                    <span class="text-xs text-faint shrink-0">同步中...</span>
                   </Show>
                 </div>
               }
             >
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 min-w-0">
                   <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
                     模型 A
                   </span>
                   <div class="flex-1 min-w-0">
                     <Select
+                      class="w-full"
                       value={modelA()}
                       options={modelOptions()}
                       onChange={setModelA}
                     />
                   </div>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 min-w-0">
                   <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0">
                     模型 B
                   </span>
                   <div class="flex-1 min-w-0">
                     <Select
+                      class="w-full"
                       value={modelB()}
                       options={modelOptions()}
                       onChange={setModelB}
@@ -753,9 +786,9 @@ main();
                         /* 单模型回答卡片 */
                         <Card class="p-4 space-y-3 bg-card/70 backdrop-blur-sm">
                           <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2">
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
                               <ProviderAvatar provider={(turn.a.servedModel || turn.a.targetModel).split('/')[0]} size="sm" />
-                              <span class="text-xs font-mono font-medium text-foreground">
+                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[320px]" title={turn.a.servedModel || turn.a.targetModel}>
                                 {turn.a.servedModel || turn.a.targetModel}
                               </span>
                               <Show when={turn.a.busy}>
