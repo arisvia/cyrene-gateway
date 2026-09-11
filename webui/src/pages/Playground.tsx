@@ -1061,17 +1061,15 @@ main();
 
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
-                <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between h-5">
                   <label class="text-xs font-medium text-muted">系统提示词 (System Prompt)</label>
-                  <Show when={systemPrompt()}>
-                    <button
-                      type="button"
-                      class="text-[11px] text-faint hover:text-danger cursor-pointer"
-                      onClick={() => setSystemPrompt('')}
-                    >
-                      重置
-                    </button>
-                  </Show>
+                  <button
+                    type="button"
+                    class={`text-[11px] text-faint hover:text-danger transition-opacity cursor-pointer ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    onClick={() => setSystemPrompt('')}
+                  >
+                    重置
+                  </button>
                 </div>
                 <textarea
                   class="w-full bg-black/4 dark:bg-white/6 border border-subtle rounded-control p-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-accent/40 min-h-[90px] resize-y"

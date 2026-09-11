@@ -317,7 +317,7 @@ export interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement>
 export const Button: Component<ButtonProps> = props => {
   const [local, others] = splitProps(props, ['variant', 'size', 'disabled', 'loading', 'children', 'class', 'ref', 'type'])
   const base =
-    'inline-flex items-center justify-center font-medium transition-all duration-150 select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
+    'inline-flex items-center justify-center font-medium leading-none [&>svg]:block [&>svg]:shrink-0 transition-all duration-150 select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
   const sizes: Record<ControlSize, string> = {
     sm: `${controlSizes.sm} px-3 min-w-fit gap-1.5`,
     md: `${controlSizes.md} px-4 min-w-fit gap-2`,
@@ -535,6 +535,7 @@ export const Select: Component<{
         aria-expanded={open()}
         aria-haspopup="listbox"
         aria-label={props.ariaLabel || displayLabel()}
+        title={selectedOption()?.description || displayLabel()}
         disabled={props.disabled}
         onClick={toggleOpen}
         class={`w-full min-w-0 flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text hover:bg-black/7 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
@@ -632,6 +633,7 @@ export const Select: Component<{
                       </div>
                       <Show when={active()}>
                         <svg
+                          class="w-4 h-4 text-accent shrink-0 animate-scale-in"
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
