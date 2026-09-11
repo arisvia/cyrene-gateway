@@ -4,7 +4,7 @@ import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
 import { useI18n } from './i18n'
-import { ToastHost, ConfirmDialogHost } from './components/ui'
+import { ToastHost, ConfirmDialogHost, CyreneLogo } from './components/ui'
 
 import Home from './pages/Home'
 const Providers = lazy(() => import('./pages/Providers'))
@@ -159,7 +159,7 @@ const App: Component = () => {
         {/* 桌面侧栏 */}
         <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 glass-panel border-r border-glass-border shadow-glass">
           <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
-            <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
+            <CyreneLogo class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
             <div class="min-w-0">
               <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
             </div>
@@ -195,7 +195,7 @@ const App: Component = () => {
           />
           <aside class="absolute inset-y-0 left-0 w-65 glass-panel border-r border-glass-border flex flex-col animate-slide-up shadow-xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
-              <img src="/icon.png" alt="Cyrene Gateway" class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
+              <CyreneLogo class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
               <button
                 type="button"
@@ -235,9 +235,7 @@ const App: Component = () => {
       {/* 主区 */}
       <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
         <header class={`sticky top-0 z-30 px-4 lg:px-10 transition-all duration-300 pointer-events-none ${scrolled() ? 'pt-2 pb-2' : 'pt-3.5 pb-2'}`}>
-          <div class={`h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-sticky transition-all duration-300 pointer-events-auto ${
-            scrolled() ? 'shadow-md' : 'shadow-glass'
-          }`}>
+          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-sticky shadow-glass transition-all duration-300 pointer-events-auto">
             <button
               type="button"
               class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle shrink-0"

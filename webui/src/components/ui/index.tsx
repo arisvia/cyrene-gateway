@@ -4,6 +4,7 @@ import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
+export * from './CyreneLogo'
 export * from './icons'
 export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
 export const Card: Component<{
