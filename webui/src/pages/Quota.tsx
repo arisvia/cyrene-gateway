@@ -125,12 +125,13 @@ const Quota: Component = () => {
     const isExhausted = () => props.quota.remaining <= 0 && props.quota.total > 0
 
     // 梯度配额健康色彩：>=50% 翠绿充足，20%~49% 暖橙适中，<20% 警戒红，0% 或耗尽暗红警报
+    // text 需按主题分层（浅色用 600/700 级），dot/bar 是实心色块，任何主题下均可辨识，保持不变
     const colorClass = () => {
-      if (isExhausted() || pct() <= 0) return { dot: 'bg-red-500 shadow-xs shadow-red-500/50', bar: 'bg-red-500', text: 'text-red-500' }
-      if (pct() < 20) return { dot: 'bg-red-400 shadow-xs shadow-red-400/50', bar: 'bg-red-400', text: 'text-red-400' }
-      if (pct() < 50) return { dot: 'bg-amber-400 shadow-xs shadow-amber-400/50', bar: 'bg-amber-400', text: 'text-amber-400' }
-      if (pct() < 80) return { dot: 'bg-cyan-400 shadow-xs shadow-cyan-400/50', bar: 'bg-cyan-400', text: 'text-cyan-400' }
-      return { dot: 'bg-emerald-500 shadow-xs shadow-emerald-500/50', bar: 'bg-emerald-500', text: 'text-emerald-500' }
+      if (isExhausted() || pct() <= 0) return { dot: 'bg-red-500 shadow-xs shadow-red-500/50', bar: 'bg-red-500', text: 'text-red-600 dark:text-red-500' }
+      if (pct() < 20) return { dot: 'bg-red-400 shadow-xs shadow-red-400/50', bar: 'bg-red-400', text: 'text-red-600 dark:text-red-400' }
+      if (pct() < 50) return { dot: 'bg-amber-400 shadow-xs shadow-amber-400/50', bar: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400' }
+      if (pct() < 80) return { dot: 'bg-cyan-400 shadow-xs shadow-cyan-400/50', bar: 'bg-cyan-400', text: 'text-cyan-600 dark:text-cyan-400' }
+      return { dot: 'bg-emerald-500 shadow-xs shadow-emerald-500/50', bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-500' }
     }
 
     const resetHint = () => {
@@ -281,10 +282,10 @@ const Quota: Component = () => {
             <Button
               size="sm"
               variant="secondary"
-              class={`gap-1.5 transition-colors ${autoRefresh() ? 'border border-amber-500/40 text-amber-500 dark:text-amber-400 font-medium' : 'text-muted'}`}
+              class={`gap-1.5 transition-colors ${autoRefresh() ? 'border border-warning/40 text-warning font-medium' : 'text-muted'}`}
               onClick={() => setAutoRefresh(!autoRefresh())}
             >
-              <span class={`w-1.5 h-1.5 rounded-full ${autoRefresh() ? 'bg-amber-400 animate-pulse' : 'bg-muted/40'}`} />
+              <span class={`w-1.5 h-1.5 rounded-full ${autoRefresh() ? 'bg-warning animate-pulse' : 'bg-muted/40'}`} />
               <span>{t('quota.autoRefresh')}</span>
               <span class="opacity-70">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
             </Button>

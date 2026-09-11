@@ -712,7 +712,7 @@ main();
             >
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div class="flex items-center gap-2 min-w-0">
-                  <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
+                  <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
                     {t('playground.modelA')}
                   </span>
                   <div class="flex-1 min-w-0">
@@ -725,7 +725,7 @@ main();
                   </div>
                 </div>
                 <div class="flex items-center gap-2 min-w-0">
-                  <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 shrink-0">
+                  <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0">
                     {t('playground.modelB')}
                   </span>
                   <div class="flex-1 min-w-0">
@@ -848,7 +848,7 @@ main();
                           <Show
                             when={!turn.a.error}
                             fallback={
-                              <div class="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs flex items-start gap-2">
+                              <div class="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-700 dark:text-rose-400 text-xs flex items-start gap-2">
                                 <IconAlertCircle size={15} class="shrink-0 mt-0.5" />
                                 <div>
                                   <div class="font-semibold">{t('playground.callFailed')}</div>
@@ -870,7 +870,7 @@ main();
                         <Card class="p-3.5 space-y-2.5 border-t-2 border-t-blue-500/50">
                           <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5">
                             <div class="flex items-center gap-1.5 min-w-0">
-                              <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 shrink-0">
+                              <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 shrink-0">
                                 A
                               </span>
                               <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.a.servedModel || turn.a.targetModel}>
@@ -915,7 +915,7 @@ main();
                           <Show
                             when={!turn.a.error}
                             fallback={
-                              <div class="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs font-mono">
+                              <div class="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-700 dark:text-rose-400 text-xs font-mono">
                                 {turn.a.error}
                               </div>
                             }
@@ -930,7 +930,7 @@ main();
                         <Card class="p-3.5 space-y-2.5 border-t-2 border-t-purple-500/50">
                           <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5">
                             <div class="flex items-center gap-1.5 min-w-0">
-                              <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 shrink-0">
+                              <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 shrink-0">
                                 B
                               </span>
                               <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.b?.servedModel || turn.b?.targetModel}>
@@ -975,7 +975,7 @@ main();
                           <Show
                             when={!turn.b?.error}
                             fallback={
-                              <div class="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs font-mono">
+                              <div class="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-700 dark:text-rose-400 text-xs font-mono">
                                 {turn.b?.error}
                               </div>
                             }

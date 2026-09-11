@@ -136,10 +136,10 @@ const LogsPage: Component = () => {
   const levelColor = (level: string) => {
     switch (level.toUpperCase()) {
       case 'ERROR': return 'text-red-400 font-bold'
-      case 'WARN': return 'text-yellow-400 font-semibold'
-      case 'INFO': return 'text-cyan-400'
-      case 'DEBUG': return 'text-zinc-500'
-      default: return 'text-zinc-400'
+      case 'WARN': return 'text-amber-300 font-semibold'
+      case 'INFO': return 'text-cyan-300'
+      case 'DEBUG': return 'text-zinc-400'
+      default: return 'text-zinc-300'
     }
   }
 
@@ -208,7 +208,7 @@ const LogsPage: Component = () => {
         <Show
           when={displayedLogs().length > 0}
           fallback={
-            <div class="h-full flex items-center justify-center text-zinc-600 text-sm">
+            <div class="h-full flex items-center justify-center text-zinc-400 text-sm">
               {t('logs.noLogs')}
             </div>
           }
@@ -221,7 +221,7 @@ const LogsPage: Component = () => {
           <For each={displayedLogs()}>
             {log => (
               <div class="flex items-start gap-2.5 leading-relaxed hover:bg-white/2 px-1.5 py-0.5 rounded transition-colors break-all">
-                <span class="text-zinc-500 shrink-0 select-none">{formatTime(log.time)}</span>
+                <span class="text-zinc-400 shrink-0 select-none">{formatTime(log.time)}</span>
                 <span class={`px-1.5 py-0.5 rounded text-[10px] shrink-0 uppercase select-none ${levelColor(log.level)}`}>
                   [{log.level}]
                 </span>

@@ -62,12 +62,14 @@ export const PageHeader: Component<PageHeaderProps> = props => (
 
 
 export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blue'; class?: string; children?: JSX.Element }> = props => {
+  // 状态色已按主题在 app.css 中分别调校（浅色用深色系保证 AA 对比度）；
+  // gray 不能用 bg-hover —— 它在浅色下是 92% 白，叠加在白色卡片上等于隐形。
   const tones: Record<string, string> = {
-    green: 'text-success bg-success/15 border-success/30',
-    amber: 'text-warning bg-warning/15 border-warning/30',
-    red: 'text-danger bg-danger/15 border-danger/30',
-    blue: 'text-info bg-info/15 border-info/30',
-    gray: 'text-muted bg-hover border-subtle/70',
+    green: 'text-success bg-success/12 border-success/30',
+    amber: 'text-warning bg-warning/12 border-warning/30',
+    red: 'text-danger bg-danger/12 border-danger/30',
+    blue: 'text-info bg-info/12 border-info/30',
+    gray: 'text-muted bg-black/6 dark:bg-white/10 border-black/10 dark:border-white/15',
   }
   return (
     <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${tones[props.tone ?? 'gray']} ${props.class ?? ''}`}>
@@ -110,7 +112,7 @@ export const StatusPulse: Component<{
     amber: 'bg-warning',
     red: 'bg-danger',
     blue: 'bg-info',
-    gray: 'bg-zinc-500',
+    gray: 'bg-muted/60',
   }
 
   const pingColors: Record<string, string> = {
@@ -119,7 +121,7 @@ export const StatusPulse: Component<{
     amber: 'bg-warning/75',
     red: 'bg-danger/75',
     blue: 'bg-info/75',
-    gray: 'bg-zinc-500/50',
+    gray: 'bg-muted/40',
   }
 
   const sizeClasses: Record<string, string> = {
@@ -817,8 +819,8 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
                 size() === 'md' ? 'px-4 py-2 text-sm' : 'px-3.5 py-1.5 text-xs'
               } ${
                 isActive()
-                  ? 'bg-bg-elevated/90 text-foreground border border-accent/45 shadow-[0_2px_10px_-2px_rgba(45,212,191,0.35),inset_0_1px_0_rgba(255,255,255,0.10)]'
-                  : 'text-muted hover:text-foreground hover:bg-black/2 dark:hover:bg-white/2 border border-transparent'
+                  ? 'glass-segment text-foreground ring-1 ring-accent/40'
+                  : 'text-muted hover:text-foreground hover:bg-black/2 dark:hover:bg-white/6 border border-transparent'
               }`}
             >
               <Show when={opt.icon}>

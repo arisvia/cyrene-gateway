@@ -1170,7 +1170,7 @@ const ProviderDetail: Component = () => {
                             }
                           />
                           <Show when={c().data?.hasApiKey}>
-                            <div class="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
+                            <div class="text-[11px] text-success mt-1 flex items-center gap-1">
                               <IconCheck size={12} /> <span>{t('providerDetail.keyConfigured')}</span>
                             </div>
                           </Show>
@@ -1460,12 +1460,12 @@ const ProviderDetail: Component = () => {
                                       {m.name || m.id}
                                     </span>
                                     <Show when={m.isFree}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 shrink-0">
                                         {t('providerDetail.freeBadge')}
                                       </span>
                                     </Show>
                                     <Show when={m.enabled === false}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/8 dark:bg-white/10 text-muted border border-black/12 dark:border-white/15 shrink-0">
                                         {t('providerDetail.chipDisabled')}
                                       </span>
                                     </Show>
@@ -1524,7 +1524,7 @@ const ProviderDetail: Component = () => {
                                       when={res().ok}
                                       fallback={
                                         <span
-                                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30 cursor-help"
+                                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger/12 text-danger border border-danger/30 cursor-help"
                                           title={res().error || t('providerDetail.testNotPassed')}
                                         >
                                           <IconClose size={10} class="shrink-0" />
@@ -1533,7 +1533,7 @@ const ProviderDetail: Component = () => {
                                       }
                                     >
                                       <span
-                                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono"
+                                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 font-mono"
                                         title={t('providerDetail.testPassedLatency', { latency: res().latency || t('providerDetail.normal') })}
                                       >
                                         <IconCheck size={10} class="shrink-0" />

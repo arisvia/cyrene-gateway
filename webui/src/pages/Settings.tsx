@@ -896,7 +896,7 @@ const Settings: Component = () => {
                         </span>
                       }
                     >
-                      <span class="text-amber-500/90 dark:text-amber-400 flex items-center gap-1">
+                      <span class="text-warning flex items-center gap-1">
                         <IconAlertTriangle size={13} class="text-warning shrink-0" />
                         <span>{t('settings.data.secretsWarning')}</span>
                       </span>
@@ -932,7 +932,7 @@ const Settings: Component = () => {
           <Card class="p-5 space-y-4">
             <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
               <div class="flex items-center gap-2">
-                <IconUpload size={16} class="text-amber-400 shrink-0" />
+                <IconUpload size={16} class="text-warning shrink-0" />
                 <div>
                   <h3 class="text-sm font-semibold">{t('settings.data.restoreCardTitle')}</h3>
                   <p class="text-xs text-faint mt-0.5">{t('settings.data.restoreCardSubtitle')}</p>
@@ -963,7 +963,7 @@ const Settings: Component = () => {
                 />
               </Field>
 
-              <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-control text-[11px] text-amber-500 space-y-1">
+              <div class="p-3 bg-warning/10 border border-warning/25 rounded-control text-[11px] text-warning space-y-1">
                 <div class="font-semibold flex items-center gap-1">
                   <IconAlertTriangle size={13} />
                   <span>{t('settings.data.importantNotice')}</span>

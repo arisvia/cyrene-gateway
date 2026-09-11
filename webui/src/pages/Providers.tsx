@@ -611,8 +611,8 @@ const Providers: Component = () => {
           />
         }
       >
-        {/* 搜索与过滤工具栏：轻量透明容器，杜绝在 PageHeader 内嵌套实心 Card 导致纯白/纯黑 */}
-        <div class="p-3 rounded-xl bg-bg-elevated/60 dark:bg-bg-elevated/50 border border-subtle/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
+        {/* 搜索与过滤工具栏：保持半透明轻量容器，避免在 glass-sticky 上再叠一层实心面板 */}
+        <div class="p-3 rounded-xl bg-black/4 dark:bg-white/6 border border-black/8 dark:border-white/10 flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
               class="w-64!"
@@ -841,7 +841,7 @@ const Providers: Component = () => {
                             <div class="min-w-0">
                               <div class="font-semibold text-sm text-foreground flex items-center gap-2">
                                 <span>{group.name}</span>
-                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-bg text-faint border border-subtle">
+                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded text-muted bg-black/6 dark:bg-white/10 border border-black/10 dark:border-white/15">
                                   {reg().id}
                                 </span>
                               </div>
@@ -923,7 +923,7 @@ const Providers: Component = () => {
                     {/* 区域 / 渠道小标签切换器 (如 cn / intl) 或等高占位 */}
                     <div class="mt-3 min-h-8 flex items-center">
                       <Show when={hasVariants()} fallback={<div class="h-8" />}>
-                        <div class="w-full flex items-center gap-1 p-1 bg-hover rounded-lg border border-subtle">
+                        <div class="w-full flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/8 border border-black/10 dark:border-white/12">
                           <For each={group.items}>
                             {variant => {
                               const isSelected = () => reg().id === variant.id
@@ -1003,7 +1003,7 @@ const Providers: Component = () => {
 
                       <div class="flex items-center gap-2">
                         <Show when={connected()}>
-                          <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">{t('providers.alreadyConnected')}</span>
+                          <span class="text-xs text-success font-semibold px-2 py-0.5 rounded-md bg-success/12 border border-success/30">{t('providers.alreadyConnected')}</span>
                         </Show>
                         <Button
                           size="sm"
