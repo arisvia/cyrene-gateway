@@ -717,6 +717,57 @@ export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange
     />
   </button>
 )
+export interface CheckboxProps {
+  checked?: boolean
+  disabled?: boolean
+  onChange?: (checked: boolean) => void
+  label?: JSX.Element
+  description?: JSX.Element
+  class?: string
+  children?: JSX.Element
+}
+
+export const Checkbox: Component<CheckboxProps> = props => (
+  <label
+    class={`flex items-start gap-3 select-none cursor-pointer group ${
+      props.disabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+    } ${props.class ?? ''}`}
+  >
+    <div class="relative flex items-center justify-center shrink-0 mt-0.5">
+      <input
+        type="checkbox"
+        class="sr-only peer"
+        checked={props.checked ?? false}
+        disabled={props.disabled}
+        onChange={e => props.onChange?.(e.currentTarget.checked)}
+      />
+      <div
+        class={`w-4 h-4 rounded-[5px] border transition-all duration-200 flex items-center justify-center shadow-xs peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 ${
+          props.checked
+            ? 'bg-accent border-accent text-on-accent shadow-accent/25'
+            : 'border-subtle bg-black/5 dark:bg-white/5 group-hover:border-accent/60 group-hover:bg-hover'
+        }`}
+      >
+        <Show when={props.checked}>
+          <svg class="w-3 h-3 stroke-current stroke-[3] transition-transform scale-100" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </Show>
+      </div>
+    </div>
+    <Show when={props.label || props.description || props.children}>
+      <div class="min-w-0 text-xs leading-snug">
+        <Show when={props.label}>
+          <div class="font-medium text-foreground group-hover:text-accent transition-colors">{props.label}</div>
+        </Show>
+        <Show when={props.description}>
+          <div class="text-[11px] text-faint mt-0.5">{props.description}</div>
+        </Show>
+        {props.children}
+      </div>
+    </Show>
+  </label>
+)
 export interface SegmentedControlOption<T extends string = string> {
   value: T
   label: JSX.Element

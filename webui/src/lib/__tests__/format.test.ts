@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatNumber, formatCost, timeAgo, maskKey } from '@/lib/format'
+import { formatNumber, formatCost, timeAgo, maskKey, formatUptime, formatVersion } from '@/lib/format'
 
 describe('formatNumber', () => {
   it('returns "0" for null/undefined', () => {
@@ -68,5 +68,47 @@ describe('maskKey', () => {
 
   it('handles empty/null', () => {
     expect(maskKey('')).toBe('')
+  })
+})
+describe('formatUptime', () => {
+  it('formats seconds', () => {
+    expect(formatUptime(45)).toBe('45 秒')
+  })
+
+  it('formats minutes', () => {
+    expect(formatUptime(125)).toBe('2 分钟')
+  })
+
+  it('formats hours and minutes', () => {
+    expect(formatUptime(3660)).toBe('1 小时 1 分')
+    expect(formatUptime(7200)).toBe('2 小时')
+  })
+
+  it('formats days and hours', () => {
+    expect(formatUptime(90000)).toBe('1 天 1 时')
+  })
+
+  it('handles null/undefined/0', () => {
+    expect(formatUptime(null)).toBe('0 秒')
+    expect(formatUptime(undefined)).toBe('0 秒')
+    expect(formatUptime(0)).toBe('0 秒')
+  })
+})
+
+describe('formatVersion', () => {
+  it('formats git build commit version to clean string', () => {
+    expect(formatVersion('0.0.0-20260911025156-2e77abe8fbe3')).toBe('0.0.0 (2e77abe)')
+    expect(formatVersion('v1.2.3-20260911025156-abcdef123456')).toBe('1.2.3 (abcdef1)')
+  })
+
+  it('formats standard semver tags', () => {
+    expect(formatVersion('1.0.0')).toBe('1.0.0')
+    expect(formatVersion('v2.1.0')).toBe('2.1.0')
+  })
+
+  it('handles null/undefined/dev', () => {
+    expect(formatVersion(null)).toBe('dev')
+    expect(formatVersion(undefined)).toBe('dev')
+    expect(formatVersion('custom-build')).toBe('custom-build')
   })
 })

@@ -29,3 +29,27 @@ export function maskKey(key: string): string {
   if (!key || key.length < 12) return key || ''
   return key.slice(0, 8) + '…' + key.slice(-4)
 }
+export function formatUptime(seconds: number | undefined | null): string {
+  const sec = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (sec < 60) return `${sec} 秒`
+  const mins = Math.floor(sec / 60)
+  if (mins < 60) return `${mins} 分钟`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  if (hours < 24) return `${hours} 小时${remMins > 0 ? ` ${remMins} 分` : ''}`
+  const days = Math.floor(hours / 24)
+  const remHours = hours % 24
+  return `${days} 天${remHours > 0 ? ` ${remHours} 时` : ''}`
+}
+
+export function formatVersion(v: string | undefined | null): string {
+  if (!v) return 'dev'
+  const match = v.match(/^v?(\d+\.\d+\.\d+)(?:-\d{14}-([a-f0-9]{7,}))?/)
+  if (match) {
+    const semver = match[1]
+    const commit = match[2]
+    if (commit) return `${semver} (${commit.slice(0, 7)})`
+    return semver
+  }
+  return v
+}

@@ -2,10 +2,11 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import {
-  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl,
+  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox,
   IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDatabase, IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
+import { formatUptime, formatVersion } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 
@@ -60,6 +61,12 @@ const Settings: Component = () => {
   // TokenSaver 排除项状态
   // 设置分类 Tab
   const [activeTab, setActiveTab] = createSignal<'gateway' | 'appearance' | 'data'>('gateway')
+  function handleTabChange(tab: 'gateway' | 'appearance' | 'data') {
+    setActiveTab(tab)
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
 
   // 数据备份与导出状态
   const [includeSecrets, setIncludeSecrets] = createSignal(true)
@@ -271,34 +278,33 @@ const Settings: Component = () => {
             </Button>
           </Show>
         }
-      />
-
-      {/* ── 设置分类 Tab 与存储宿主指示条 ── */}
-      <div class="space-y-2">
-        <SegmentedControl
-          options={[
-            { value: 'gateway', label: '网关核心 (Gateway)' },
-            { value: 'appearance', label: '界面与外观 (Appearance)' },
-            { value: 'data', label: '数据管理与备份 (Data & Backup)' },
-          ]}
-          value={activeTab()}
-          onChange={v => setActiveTab(v as 'gateway' | 'appearance' | 'data')}
-        />
-        <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5">
-          <Show when={activeTab() === 'gateway'}>
-            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-            <span>存储宿主：<span class="font-semibold text-foreground">SQLite 数据库 (data.sqlite)</span> · 修改后网关全局及所有下游 API 客户端实时生效</span>
-          </Show>
-          <Show when={activeTab() === 'appearance'}>
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>存储宿主：<span class="font-semibold text-foreground">浏览器本地存储 (LocalStorage / IndexedDB)</span> · 仅保存在当前设备浏览器中，不影响后端核心配置</span>
-          </Show>
-          <Show when={activeTab() === 'data'}>
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>存储宿主：<span class="font-semibold text-foreground">SQLite 核心库 (data.sqlite)</span> · 支持全库结构化快照导出、脱敏分享与单事务原子热恢复</span>
-          </Show>
+      >
+        <div class="pt-2 border-t border-subtle/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <SegmentedControl
+            options={[
+              { value: 'gateway', label: '网关核心 (Gateway)' },
+              { value: 'appearance', label: '界面与外观 (Appearance)' },
+              { value: 'data', label: '数据管理与备份 (Data & Backup)' },
+            ]}
+            value={activeTab()}
+            onChange={handleTabChange}
+          />
+          <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5 whitespace-nowrap">
+            <Show when={activeTab() === 'gateway'}>
+              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+              <span>存储宿主：<span class="font-semibold text-foreground">SQLite 核心库</span> · 全局实时生效</span>
+            </Show>
+            <Show when={activeTab() === 'appearance'}>
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span>存储宿主：<span class="font-semibold text-foreground">本地浏览器</span> · 本设备独享</span>
+            </Show>
+            <Show when={activeTab() === 'data'}>
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span>存储宿主：<span class="font-semibold text-foreground">SQLite 核心库</span> · 支持单事务热恢复</span>
+            </Show>
+          </div>
         </div>
-      </div>
+      </PageHeader>
 
       {/* ── Tab 1：网关核心设置 ── */}
       <Show when={activeTab() === 'gateway'}>
@@ -911,36 +917,39 @@ const Settings: Component = () => {
               <Badge tone="blue">快照导出</Badge>
             </div>
 
-            <div class="space-y-3 text-xs">
-              <label class="flex items-start gap-2.5 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={includeSecrets()}
-                  onChange={e => setIncludeSecrets(e.currentTarget.checked)}
-                  class="mt-0.5 accent-accent"
-                />
-                <div>
-                  <span class="font-medium text-foreground">包含敏感凭据 (API Keys、OAuth Tokens、JWT 密钥)</span>
-                  <p class="text-faint text-[11px] mt-0.5">
-                    {includeSecrets()
-                      ? '⚠️ 导出的备份将包含完整上游及下游明文密钥，请妥善保管，切勿公开发布或提交至代码仓库！'
-                      : 'ℹ️ 已开启脱敏导出。恢复时将保留现有运行中连接的密钥，适合作为公开模板共享。'}
-                  </p>
-                </div>
-              </label>
+            <div class="space-y-3.5">
+              <Checkbox
+                checked={includeSecrets()}
+                onChange={setIncludeSecrets}
+                label="包含敏感凭据 (API Keys、OAuth Tokens、JWT 密钥)"
+                description={
+                  <div class="flex items-center gap-1.5 mt-1 text-[11px]">
+                    <Show
+                      when={includeSecrets()}
+                      fallback={
+                        <span class="text-faint flex items-center gap-1">
+                          <IconInfo size={13} class="text-info shrink-0" />
+                          <span>已开启脱敏导出。恢复时将保留现有运行中连接的密钥，适合作为公开模板共享。</span>
+                        </span>
+                      }
+                    >
+                      <span class="text-amber-500/90 dark:text-amber-400 flex items-center gap-1">
+                        <IconAlertTriangle size={13} class="text-warning shrink-0" />
+                        <span>导出的备份将包含完整上游及下游明文密钥，请妥善保管，切勿公开发布或提交至代码仓库！</span>
+                      </span>
+                    </Show>
+                  </div>
+                }
+              />
 
-              <label class="flex items-start gap-2.5 cursor-pointer select-none pt-2 border-t border-subtle/40">
-                <input
-                  type="checkbox"
+              <div class="pt-3 border-t border-subtle/40">
+                <Checkbox
                   checked={includeUsage()}
-                  onChange={e => setIncludeUsage(e.currentTarget.checked)}
-                  class="mt-0.5 accent-accent"
+                  onChange={setIncludeUsage}
+                  label="包含历史调用日志与请求排障明细"
+                  description="一并打包全部 API 历史日志与完整排障报文（若调用量大将增加导出文件体积）。"
                 />
-                <div>
-                  <span class="font-medium text-foreground">包含历史调用日志与请求排障明细</span>
-                  <p class="text-faint text-[11px] mt-0.5">一并打包全部 API 历史日志与完整排障报文（若调用量大将增加导出文件体积）。</p>
-                </div>
-              </label>
+              </div>
             </div>
 
             <div class="pt-2 border-t border-subtle/50 flex justify-end">
@@ -1024,24 +1033,37 @@ const Settings: Component = () => {
       </Show>
 
       {/* ── 底部通用系统与存储信息 ── */}
-      <Card class="p-4 flex items-center justify-between text-xs text-faint">
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-1.5">
-            <IconInfo size={15} class="text-muted shrink-0" />
-            <span class="font-medium text-foreground">Cyrene Gateway</span>
-            <Badge tone="gray">v{store.version()}</Badge>
+      <Card class="p-4 text-xs text-faint">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0 shrink-0">
+            <div class="w-6 h-6 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+              <IconInfo size={14} class="text-accent" />
+            </div>
+            <span class="font-semibold text-foreground whitespace-nowrap">Cyrene Gateway</span>
+            <span
+              class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-hover text-faint border border-subtle/50 whitespace-nowrap"
+              title={`完整版本：v${store.version() || 'dev'}`}
+            >
+              v{formatVersion(store.version())}
+            </span>
           </div>
-          <span class="hidden sm:inline text-faint">|</span>
-          <span class="hidden sm:inline text-faint">
-            数据库：{store.health().db === 'ok' ? '已就绪 (WAL 模式)' : '检测中'}
-          </span>
-          <span class="hidden sm:inline text-faint">|</span>
-          <span class="hidden sm:inline text-faint">
-            活动连接：{store.activeConnections()} / {store.providers().length}
-          </span>
-        </div>
-        <div class="text-[11px] font-mono text-faint">
-          运行时间：{Math.floor((Number(store.health().uptimeSeconds) || 0) / 60)} 分钟
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-faint sm:justify-end">
+            <div class="flex items-center gap-1.5 whitespace-nowrap">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span>数据库：</span>
+              <span class="font-medium text-foreground">{store.health().db === 'ok' ? '已就绪 (WAL)' : '检测中'}</span>
+            </div>
+            <span class="text-subtle select-none hidden sm:inline">•</span>
+            <div class="flex items-center gap-1 whitespace-nowrap">
+              <span>活动连接：</span>
+              <span class="font-medium font-mono text-foreground">{store.activeConnections()} / {store.providers().length}</span>
+            </div>
+            <span class="text-subtle select-none hidden sm:inline">•</span>
+            <div class="flex items-center gap-1 whitespace-nowrap">
+              <span>运行时间：</span>
+              <span class="font-medium font-mono text-foreground">{formatUptime(Number(store.health().uptimeSeconds))}</span>
+            </div>
+          </div>
         </div>
       </Card>
     </div>
