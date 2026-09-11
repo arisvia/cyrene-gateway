@@ -13,16 +13,30 @@ export function formatCost(cost: number | undefined | null): string {
   return '$' + cost.toFixed(2)
 }
 
-export function timeAgo(dateStr: string | undefined | null): string {
+export type TimeAgoUnits = {
+  justNow: string
+  minutesAgo: (m: number) => string
+  hoursAgo: (h: number) => string
+  daysAgo: (d: number) => string
+}
+
+const DEFAULT_TIME_AGO: TimeAgoUnits = {
+  justNow: 'just now',
+  minutesAgo: m => `${m}m ago`,
+  hoursAgo: h => `${h}h ago`,
+  daysAgo: d => `${d}d ago`,
+}
+
+export function timeAgo(dateStr: string | undefined | null, units: TimeAgoUnits = DEFAULT_TIME_AGO): string {
   if (!dateStr) return '—'
   const diff = Date.now() - new Date(dateStr).getTime()
   if (Number.isNaN(diff)) return '—'
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return units.justNow
+  if (mins < 60) return units.minutesAgo(mins)
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
+  if (hours < 24) return units.hoursAgo(hours)
+  return units.daysAgo(Math.floor(hours / 24))
 }
 
 export function maskKey(key: string): string {
@@ -31,9 +45,9 @@ export function maskKey(key: string): string {
 }
 export type UptimeUnits = { s: string; m: string; h: string; d: string; mLong: string; hLong: string }
 
-const ZH_UPTIME: UptimeUnits = { s: '秒', m: '分', h: '时', d: '天', mLong: '分钟', hLong: '小时' }
+const DEFAULT_UPTIME: UptimeUnits = { s: 's', m: 'm', h: 'h', d: 'd', mLong: 'm', hLong: 'h' }
 
-export function formatUptime(seconds: number | undefined | null, units: UptimeUnits = ZH_UPTIME): string {
+export function formatUptime(seconds: number | undefined | null, units: UptimeUnits = DEFAULT_UPTIME): string {
   const sec = Math.max(0, Math.floor(Number(seconds) || 0))
   if (sec < 60) return `${sec} ${units.s}`
   const mins = Math.floor(sec / 60)

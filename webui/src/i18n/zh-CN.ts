@@ -13,6 +13,12 @@ export const zhCN = {
     "titleWarning": "重要提醒",
     "titleInfo": "提示",
   },
+  time: {
+    justNow: "刚刚",
+    minutesAgo: "{m} 分钟前",
+    hoursAgo: "{h} 小时前",
+    daysAgo: "{d} 天前",
+  },
   common: {
     chooseFile: "选择文件",
     dragOrClickFile: "点击或拖拽文件到此处选择",

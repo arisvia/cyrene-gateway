@@ -71,27 +71,37 @@ describe('maskKey', () => {
   })
 })
 describe('formatUptime', () => {
-  it('formats seconds', () => {
-    expect(formatUptime(45)).toBe('45 秒')
+  it('formats seconds with default EN units', () => {
+    expect(formatUptime(45)).toBe('45 s')
   })
 
-  it('formats minutes', () => {
-    expect(formatUptime(125)).toBe('2 分钟')
+  it('formats minutes with default EN units', () => {
+    expect(formatUptime(125)).toBe('2 m')
   })
 
-  it('formats hours and minutes', () => {
-    expect(formatUptime(3660)).toBe('1 小时 1 分')
-    expect(formatUptime(7200)).toBe('2 小时')
+  it('formats hours and minutes with default EN units', () => {
+    expect(formatUptime(3660)).toBe('1 h 1 m')
+    expect(formatUptime(7200)).toBe('2 h')
   })
 
-  it('formats days and hours', () => {
-    expect(formatUptime(90000)).toBe('1 天 1 时')
+  it('formats days and hours with default EN units', () => {
+    expect(formatUptime(90000)).toBe('1 d 1 h')
   })
 
   it('handles null/undefined/0', () => {
-    expect(formatUptime(null)).toBe('0 秒')
-    expect(formatUptime(undefined)).toBe('0 秒')
-    expect(formatUptime(0)).toBe('0 秒')
+    expect(formatUptime(null)).toBe('0 s')
+    expect(formatUptime(undefined)).toBe('0 s')
+    expect(formatUptime(0)).toBe('0 s')
+  })
+
+  it('accepts custom localized units', () => {
+    const zh = { s: '秒', m: '分', h: '时', d: '天', mLong: '分钟', hLong: '小时' }
+    expect(formatUptime(45, zh)).toBe('45 秒')
+    expect(formatUptime(125, zh)).toBe('2 分钟')
+    expect(formatUptime(3660, zh)).toBe('1 小时 1 分')
+    expect(formatUptime(7200, zh)).toBe('2 小时')
+    expect(formatUptime(90000, zh)).toBe('1 天 1 时')
+    expect(formatUptime(0, zh)).toBe('0 秒')
   })
 })
 

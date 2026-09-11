@@ -23,6 +23,12 @@ const Usage: Component = () => {
   const [live, setLive] = createSignal(false)
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
   let es: EventSource | null = null
+  const timeUnits = () => ({
+    justNow: t('time.justNow'),
+    minutesAgo: (m: number) => t('time.minutesAgo', { m }),
+    hoursAgo: (h: number) => t('time.hoursAgo', { h }),
+    daysAgo: (d: number) => t('time.daysAgo', { d }),
+  })
 
   async function load() {
     setLoading(true)
@@ -298,7 +304,7 @@ const Usage: Component = () => {
                 <For each={liveEvents()}>
                   {e => (
                     <div class="flex items-center gap-2 text-xs py-1 border-b border-subtle/50 last:border-0">
-                      <span class="text-faint font-mono">{fmtTime(e.timestamp)}</span>
+                      <span class="text-faint font-mono">{fmtTime(e.timestamp, timeUnits())}</span>
                       <span class="truncate">{e.model || e.endpoint || '-'}</span>
                       <Badge tone={e.status === 'ok' ? 'green' : 'red'}>{e.status || '-'}</Badge>
                       <Show when={e.latencyMs}><span class="ml-auto text-faint">{e.latencyMs}ms</span></Show>
@@ -336,7 +342,7 @@ const Usage: Component = () => {
                   <For each={store.requestDetails()}>
                     {d => (
                       <tr class="border-b border-subtle/40 last:border-0 hover:bg-hover/30 transition-colors">
-                        <td class="py-1.5 text-faint font-mono">{fmtTime(d.timestamp)}</td>
+                        <td class="py-1.5 text-faint font-mono">{fmtTime(d.timestamp, timeUnits())}</td>
                         <td class="py-1.5 truncate max-w-[200px] font-medium">{d.model || '-'}</td>
                         <td class="py-1.5"><Badge tone={d.status === 'ok' ? 'green' : 'red'}>{d.status || '-'}</Badge></td>
                         <td class="py-1.5 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>

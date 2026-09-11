@@ -14,6 +14,12 @@ interface RequestDetailModalProps {
 export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   const [activeTab, setActiveTab] = createSignal<'overview' | 'payload' | 'raw'>('overview')
   const { t } = useI18n()
+  const timeUnits = () => ({
+    justNow: t('time.justNow'),
+    minutesAgo: (m: number) => t('time.minutesAgo', { m }),
+    hoursAgo: (h: number) => t('time.hoursAgo', { h }),
+    daysAgo: (d: number) => t('time.daysAgo', { d }),
+  })
 
   // 若 item 存在 id，尝试从后端获取更详细的持久化请求数据
   const [fullDetail] = createResource(
@@ -78,7 +84,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                   </Badge>
                 </div>
                 <div class="text-xs text-faint font-mono truncate mt-0.5">
-                  ID: {props.item?.id || '-'} · {props.item?.timestamp ? fmtTime(props.item.timestamp) : ''}
+                  ID: {props.item?.id || '-'} · {props.item?.timestamp ? fmtTime(props.item.timestamp, timeUnits()) : ''}
                 </div>
               </div>
             </div>

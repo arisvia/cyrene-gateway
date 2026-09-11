@@ -15,6 +15,12 @@ export const enUS: TranslationDict = {
     "titleWarning": "Important Notice",
     "titleInfo": "Notice",
   },
+  time: {
+    justNow: "just now",
+    minutesAgo: "{m}m ago",
+    hoursAgo: "{h}h ago",
+    daysAgo: "{d}d ago",
+  },
   common: {
     chooseFile: "Choose file",
     dragOrClickFile: "Click or drag file here to select",
