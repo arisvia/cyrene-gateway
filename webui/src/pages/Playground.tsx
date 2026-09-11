@@ -559,9 +559,10 @@ const Playground: Component = () => {
   function generateCode(lang: 'curl' | 'python' | 'node'): string {
     const origin = window.location.origin
     const model = modelA() || 'antigravity/gemini-2.5-flash'
+    const sample = t('playground.sampleUserMessage')
     const messages = systemPrompt().trim()
-      ? [{ role: 'system', content: systemPrompt().trim() }, { role: 'user', content: turns().slice(-1)[0]?.user || '你好' }]
-      : [{ role: 'user', content: turns().slice(-1)[0]?.user || '你好' }]
+      ? [{ role: 'system', content: systemPrompt().trim() }, { role: 'user', content: turns().slice(-1)[0]?.user || sample }]
+      : [{ role: 'user', content: turns().slice(-1)[0]?.user || sample }]
 
     if (lang === 'curl') {
       const body = {
@@ -582,7 +583,7 @@ const Playground: Component = () => {
 
 client = OpenAI(
     base_url="${origin}/v1",
-    api_key="cyrene-local"  # 网关本地调用或填写在网关配置的 API Key
+    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
 )
 
 response = client.chat.completions.create(

@@ -344,7 +344,7 @@ const Quota: Component = () => {
         {/* 一行两个的账号配额卡片网格 (2-Column Grid) */}
         <Show
           when={filteredConnections().length > 0}
-          fallback={<Card class="p-8"><Empty message="当前暂未接入任何提供商连接。" /></Card>}
+          fallback={<Card class="p-8"><Empty message={t('quota.noConnectionsShort')} /></Card>}
         >
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <For each={filteredConnections()}>
@@ -410,11 +410,11 @@ const Quota: Component = () => {
 
                       <div class="text-[11px] text-faint font-medium mt-2 px-1 flex items-center justify-between">
                         <span>
-                          {hasRealQuotas() ? `${quotaKeys().length} 项配额指标` : '网关网内用量统计'}
+                          {hasRealQuotas() ? t('quota.metricsCountSuffix', { count: quotaKeys().length }) : t('quota.inNetworkUsage')}
                         </span>
                         <Show when={aggRow()}>
                           <span class="text-[10px] font-mono tabular-nums">
-                            请求 {formatNumber(aggRow()!.requests)} · 标记 {formatNumber((aggRow()!.promptTokens || 0) + (aggRow()!.completionTokens || 0))}
+                            {t('quota.requestMark', { requests: formatNumber(aggRow()!.requests), tokens: formatNumber((aggRow()!.promptTokens || 0) + (aggRow()!.completionTokens || 0)) })}
                           </span>
                         </Show>
                       </div>

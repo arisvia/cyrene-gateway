@@ -188,13 +188,13 @@ export const GatewayTopology: Component<TopologyProps> = props => {
         {/* 状态图例 */}
         <div class="hidden sm:flex items-center gap-3 text-[11px] text-faint bg-bg/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-subtle pointer-events-auto">
           <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-accent animate-pulse shadow-accent" /> 调度中
+            <span class="w-2 h-2 rounded-full bg-accent animate-pulse shadow-accent" /> {t('topology.legendRouting')}
           </span>
           <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-success" /> 活跃
+            <span class="w-2 h-2 rounded-full bg-success" /> {t('topology.legendActive')}
           </span>
           <span class="flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-zinc-600" /> 未激活
+            <span class="w-2 h-2 rounded-full bg-zinc-600" /> {t('topology.legendInactive')}
           </span>
         </div>
       </div>
@@ -425,7 +425,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                   return acc.name
                 }
                 if (acc.data?.credentialHint) return String(acc.data.credentialHint)
-                return acc.authType === 'api-key' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth 授权' : (acc.authType || '活跃中')
+                return acc.authType === 'api-key' ? 'API Key' : acc.authType === 'oauth' ? t('topology.oauthAuth') : (acc.authType || t('topology.activeNow'))
               }
 
               return (

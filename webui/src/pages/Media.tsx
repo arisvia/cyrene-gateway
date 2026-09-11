@@ -180,7 +180,7 @@ const Media: Component = () => {
                   <div class="flex items-center gap-1.5 shrink-0">
                     <StatusPulse status={p.hasConnection ? 'active' : 'idle'} size="xs" />
                     <span class="text-[11px] text-faint">
-                      {p.hasConnection ? `${p.activeConnections} 个账号` : '未接入'}
+                      {p.hasConnection ? t('media.accountsCount', { count: p.activeConnections ?? 0 }) : t('media.notConnected')}
                     </span>
                   </div>
                 </div>
@@ -303,7 +303,7 @@ const Media: Component = () => {
             <div class="space-y-2 pt-2 border-t border-subtle">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-foreground">{t('media.resultsPreview')}</span>
-                <span class="text-[11px] text-faint">共 {imageUrls().length} 张</span>
+                <span class="text-[11px] text-faint">{t('media.imageCount', { count: imageUrls().length })}</span>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <For each={imageUrls()}>

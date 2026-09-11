@@ -180,7 +180,7 @@ const Usage: Component = () => {
             <Select value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
           </div>
 
-          <Show when={chart().length > 0} fallback={<Empty message="该周期暂无数据。" />}>
+          <Show when={chart().length > 0} fallback={<Empty message={t('usage.noDataForPeriod')} />}>
             <div class="relative h-48 w-full flex flex-col justify-end pt-6 pb-1">
               {/* 背景水平参考基准线 */}
               <div class="absolute inset-x-0 top-6 bottom-7 flex flex-col justify-between pointer-events-none opacity-40">
@@ -290,8 +290,8 @@ const Usage: Component = () => {
           {/* 实时事件 */}
           <Card class="p-5">
             <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-semibold">实时事件</h3>
-              <Show when={live()}><Badge tone="green">连接中</Badge></Show>
+              <h3 class="text-sm font-semibold">{t('usage.liveEvents')}</h3>
+              <Show when={live()}><Badge tone="green">{t('usage.connecting')}</Badge></Show>
             </div>
             <Show when={liveEvents().length > 0} fallback={<Empty message={live() ? t('usage.waitingEvents') : t('usage.clickLiveToListen')} />}>
               <div class="space-y-1 max-h-64 overflow-y-auto">

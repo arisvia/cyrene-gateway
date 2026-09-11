@@ -1,5 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { t, locale, setLocale, toggleLocale } from '../index'
+import { zhCN } from '../zh-CN'
+import { enUS } from '../en-US'
+
+/** 收集词典全部叶子路径。若某层键名本身含点号（如 "a.b"），
+ *  t() 的 split('.') 遍历将无法命中，会原样吐出 key。 */
+function leafPaths(node: unknown, prefix = ''): string[] {
+  if (typeof node === 'string') return [prefix]
+  if (!node || typeof node !== 'object') return []
+  return Object.entries(node as Record<string, unknown>).flatMap(([k, v]) => {
+    const dotted = k.includes('.')
+    const next = prefix ? `${prefix}.${k}` : k
+    return dotted ? [`${next}`] : leafPaths(v, next)
+  })
+}
 
 describe('i18n module', () => {
   beforeEach(() => {
@@ -56,5 +70,33 @@ describe('i18n module', () => {
     expect(t('combos.title')).toBe('Model Combos')
     expect(t('quota.title')).toBe('Quota Center')
     expect(t('usage.title')).toBe('Usage Analytics')
+  })
+
+  // 回归：曾出现把 "settings.data.restoreConfirmTitle" 当作扁平键名写入词典，
+  // tsc 因 NestedKeyOf 视其为叶子而放行，运行时 t() 却回吐原始路径。
+  it('dictionaries contain no dotted leaf keys', () => {
+    for (const dict of [zhCN, enUS]) {
+      for (const path of leafPaths(dict)) {
+        // 分隔符不应出现在单段键名中：真正嵌套的路径由 leafPaths 逐层拼出
+        expect(path.split('.').every(seg => seg.length > 0)).toBe(true)
+      }
+    }
+  })
+
+  it('every key resolves to a real translation in both locales', () => {
+    const paths = [...new Set([...leafPaths(zhCN), ...leafPaths(enUS)])]
+    for (const path of paths) {
+      for (const loc of ['zh-CN', 'en-US'] as const) {
+        setLocale(loc)
+        // 传入覆盖全部占位符的样本参数，确保模板既有占位符都能被替换
+        const probe: Record<string, string> = {}
+        for (const m of JSON.stringify(zhCN).matchAll(/\{(\w+)\}/g)) probe[m[1]] = 'x'
+        for (const m of JSON.stringify(enUS).matchAll(/\{(\w+)\}/g)) probe[m[1]] = 'x'
+        const out = t(path as Parameters<typeof t>[0], probe)
+        expect(out, `${loc} → ${path}`).not.toBe(path)
+        // 未被替换的 {param} 说明词典里存在未声明的占位符
+        expect(out, `${loc} → ${path} 残留占位符`).not.toMatch(/\{[a-zA-Z]+\}/)
+      }
+    }
   })
 })

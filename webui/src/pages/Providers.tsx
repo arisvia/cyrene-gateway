@@ -352,7 +352,7 @@ const Providers: Component = () => {
       })) as { ok: boolean; error?: string; latency?: string }
 
       if (res.ok) {
-        setTestedCreds({ ok: true, msg: `验证通过 (${res.latency || '正常'})` })
+        setTestedCreds({ ok: true, msg: t('providers.credVerifiedMsg', { latency: res.latency || t('providerDetail.normal') }) })
         toast.success(t('toast.credTestSuccess', { latency: res.latency || 'ok' }))
       } else {
         setTestedCreds({ ok: false, msg: res.error || 'error' })
@@ -747,10 +747,10 @@ const Providers: Component = () => {
                               </A>
                             </div>
                             <Badge tone={allActive() ? 'green' : noneActive() ? 'gray' : 'amber'} class="text-[10px] px-1.5 py-0.5 shrink-0">
-                              {allActive() ? '全部启用' : noneActive() ? '全部停用' : `部分启用 (${group.activeCount}/${group.connections.length})`}
+                              {allActive() ? t('providers.allEnabled') : noneActive() ? t('providers.allDisabled') : t('providers.partiallyEnabled', { active: group.activeCount, total: group.connections.length })}
                             </Badge>
                             <Badge tone="blue" class="text-[10px] px-1.5 py-0.5 shrink-0">
-                              {group.connections.length} 个账号
+                              {t('providers.accountsCount', { count: group.connections.length })}
                             </Badge>
                             <Show when={hasMultiple()}>
                               <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] px-1.5 py-0.5 shrink-0">
@@ -846,7 +846,7 @@ const Providers: Component = () => {
                                 </span>
                               </div>
                               <div class="text-xs text-faint mt-1 line-clamp-2">
-                                {reg().authHint || "标准协议兼容接入，需填写 Base URL 与对应 API Key"}
+                                {reg().authHint || t('providers.defaultAuthHint')}
                               </div>
                             </div>
                           </div>
@@ -856,14 +856,14 @@ const Providers: Component = () => {
                         </div>
                         <div class="mt-4 pt-3 border-t border-subtle/60 flex items-center justify-between">
                           <span class="text-xs text-faint font-mono">
-                            {reg().id === 'custom-openai' ? 'Chat / Responses 兼容' : 'Messages 兼容'}
+                            {reg().id === 'custom-openai' ? t('providers.chatResponsesCompat') : t('providers.messagesCompat')}
                           </span>
                           <Button
                             size="sm"
                             variant={connected() ? 'secondary' : 'primary'}
                             onClick={() => openWizard(reg())}
                           >
-                            {connected() ? '+ 加节点' : '配置接入 →'}
+                            {connected() ? t('providers.addNode') : t('providers.configureConnect')}
                           </Button>
                         </div>
                       </Card>
@@ -997,7 +997,7 @@ const Providers: Component = () => {
                           rel="noreferrer"
                           class="text-xs text-accent hover:underline inline-flex items-center gap-1 shrink-0"
                         >
-                          {reg().apiKeyUrl ? '获取密钥 ↗' : '官网 ↗'}
+                          {reg().apiKeyUrl ? t('providers.getKeyArrow') : t('providers.websiteArrow')}
                         </a>
                       </Show>
 
@@ -1010,7 +1010,7 @@ const Providers: Component = () => {
                           variant={connected() ? 'secondary' : 'primary'}
                           onClick={() => openWizard(reg())}
                         >
-                          {connected() ? '再加一个' : '接入配置'}
+                          {connected() ? t('providers.addAnother') : t('providers.connectConfig')}
                         </Button>
                       </div>
                     </div>
@@ -1112,7 +1112,7 @@ const Providers: Component = () => {
                           res().ok ? 'bg-success/10 text-success border border-success/20' : 'bg-danger/10 text-danger border border-danger/20'
                         }`}>
                           <span class="flex items-center gap-1.5">{res().ok ? <><IconCheck size={12} class="text-success" /><span>{res().msg}</span></> : <><IconClose size={12} class="text-danger" /><span>{res().msg}</span></>}</span>
-                          <span class="text-[11px] opacity-75">{res().ok ? '凭据有效，允许保存' : '请核对凭证与网络端点'}</span>
+                          <span class="text-[11px] opacity-75">{res().ok ? t('providers.credValidAllowSave') : t('providers.checkCredAndEndpoint')}</span>
                         </div>
                       )}
                     </Show>
@@ -1225,7 +1225,7 @@ const Providers: Component = () => {
                                     }
                                   }}
                                 >
-                                  {wizardOAuthCopied() ? '已复制' : '复制码'}
+                                  {wizardOAuthCopied() ? t('providers.copied') : t('providers.copyCode')}
                                 </Button>
                               </div>
                             </Show>
@@ -1291,7 +1291,7 @@ const Providers: Component = () => {
                     }
                     onClick={handleWizardSubmit}
                   >
-                    {form().authType === 'oauth' ? (wizardOAuthPolling() ? '正在授权中...' : '发起 OAuth 授权 ↗') : '验证并通过后保存'}
+                    {form().authType === 'oauth' ? (wizardOAuthPolling() ? t('providers.authorizing') : t('providers.startOAuth')) : t('providers.verifyAndSave')}
                   </Button>
                 </div>
               </div>

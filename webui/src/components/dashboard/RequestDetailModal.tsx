@@ -189,7 +189,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
                     {cleanPayload()?.input
                       ? (typeof cleanPayload()!.input === 'object' ? JSON.stringify(cleanPayload()!.input, null, 2) : String(cleanPayload()!.input))
-                      : '（该历史记录未包含完整 Prompt 内容）'}
+                      : t('requestDetail.noPromptContent')}
                   </div>
                 </div>
 
@@ -204,7 +204,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
                     {cleanPayload()?.output
                       ? (typeof cleanPayload()!.output === 'object' ? JSON.stringify(cleanPayload()!.output, null, 2) : String(cleanPayload()!.output))
-                      : '（该历史记录未包含完整 Response 内容）'}
+                      : t('requestDetail.noResponseContent')}
                   </div>
                 </div>
               </div>

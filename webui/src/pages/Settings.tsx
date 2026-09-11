@@ -1025,7 +1025,7 @@ const Settings: Component = () => {
 
             <div class="pt-2 border-t border-subtle/50 flex items-center justify-between">
               <span class="text-xs text-faint font-mono">
-                {restoreFile() ? `已就绪: ${restoreFile()!.name}` : '未选择文件'}
+                {restoreFile() ? t('settings.fileReady', { name: restoreFile()!.name }) : t('settings.noFileSelected')}
               </span>
               <Button
                 variant="danger"

@@ -948,7 +948,7 @@ const ProviderDetail: Component = () => {
                             <div
                               role="button"
                               tabIndex={0}
-                              aria-label={`选择账号 ${getAccountDisplayName(acc, idx())}`}
+                              aria-label={t('providerDetail.selectAccount', { name: getAccountDisplayName(acc, idx()) })}
                               onClick={e => {
                                 if ((e.target as HTMLElement).closest('button, [role="switch"], a, input')) return
                                 switchAccount(acc.id)
@@ -1041,11 +1041,11 @@ const ProviderDetail: Component = () => {
                                     : 'bg-hover/80 border-subtle text-muted'
                                 }`}>
                                   <span class={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
-                                  <span class="leading-none">优先级 {acc.priority}</span>
-                                  <span class="opacity-70 font-sans leading-none">{idx() === 0 ? '(主)' : '(备用)'}</span>
+                                  <span class="leading-none">{t('providerDetail.priorityValue', { value: acc.priority })}</span>
+                                  <span class="opacity-70 font-sans leading-none">{idx() === 0 ? t('providerDetail.primaryMark') : t('providerDetail.backupMark')}</span>
                                 </span>
                                 <Show when={cooling()}>
-                                  <Badge tone="amber" class="text-[10px] h-5">限流冷却中</Badge>
+                                  <Badge tone="amber" class="text-[10px] h-5">{t('providerDetail.coolingBadge')}</Badge>
                                 </Show>
                                 <Show when={acc.data?.credentialHint}>
                                   <span class="truncate max-w-[140px] text-[11px] text-faint font-mono leading-none" title={String(acc.data?.credentialHint)}>
@@ -1101,7 +1101,7 @@ const ProviderDetail: Component = () => {
                         <Input
                           value={name()}
                           onInput={setName}
-                          placeholder={`例如：主账号、备用 PAT（当前默认：${getAccountDisplayName(c())}）`}
+                          placeholder={t('providerDetail.accountNamePlaceholder', { name: getAccountDisplayName(c()) })}
                         />
                       </Field>
 
@@ -1158,7 +1158,7 @@ const ProviderDetail: Component = () => {
                               c().provider === 'qoder'
                                 ? 'pt-... (Personal Access Token)'
                                 : c().provider === 'opencode'
-                                ? '输入 OpenCode API Key'
+                                ? t('providerDetail.opencodeKeyPlaceholder')
                                 : 'sk-...'
                             }
                           />
@@ -1483,7 +1483,7 @@ const ProviderDetail: Component = () => {
                                       <IconEdit size={12} />
                                     </button>
                                   </Show>
-                                  <div title={m.enabled !== false ? '点击关闭，禁止对外提供' : '点击开启，恢复对外提供'}>
+                                  <div title={m.enabled !== false ? t('providerDetail.toggleOffHint') : t('providerDetail.toggleOnHint')}>
                                     <Toggle
                                       checked={m.enabled !== false}
                                       onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
@@ -1501,19 +1501,19 @@ const ProviderDetail: Component = () => {
                                       fallback={
                                         <span
                                           class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30 cursor-help"
-                                          title={res().error || '测试未通过'}
+                                          title={res().error || t('providerDetail.testNotPassed')}
                                         >
                                           <IconClose size={10} class="shrink-0" />
-                                          <span>{res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : '失败'}</span>
+                                          <span>{res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : t('common.failed')}</span>
                                         </span>
                                       }
                                     >
                                       <span
                                         class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono"
-                                        title={`测试通过 · 耗时 ${res().latency || '正常'}`}
+                                        title={t('providerDetail.testPassedLatency', { latency: res().latency || t('providerDetail.normal') })}
                                       >
                                         <IconCheck size={10} class="shrink-0" />
-                                        <span>{res().latency || '连通'}</span>
+                                        <span>{res().latency || t('providerDetail.connected')}</span>
                                       </span>
                                     </Show>
                                   )}
@@ -1703,7 +1703,7 @@ const ProviderDetail: Component = () => {
       {/* 添加新账号 / 凭证弹窗 */}
       <Modal
         open={addAccountOpen()}
-        title={`为此供应商添加新账号 - ${providerDisplayName()}`}
+        title={t('providerDetail.addAccountTitle', { name: providerDisplayName() })}
         onClose={() => setAddAccountOpen(false)}
       >
         <div class="space-y-4">
@@ -1714,7 +1714,7 @@ const ProviderDetail: Component = () => {
             <Input
               value={newAccountName()}
               onInput={setNewAccountName}
-              placeholder={`例如：账号 ${accounts().length + 1}、备用 Key`}
+              placeholder={t('providerDetail.newAccountPlaceholder', { index: accounts().length + 1 })}
             />
           </Field>
           <Field label={t('providerDetail.authMethodLabel')} hint={t('providerDetail.authMethodSelectHint')}>
@@ -1738,7 +1738,7 @@ const ProviderDetail: Component = () => {
                     conn()?.provider === 'qoder'
                       ? 'pt-... (Personal Access Token)'
                       : conn()?.provider === 'opencode'
-                      ? '输入 OpenCode API Key'
+                      ? t('providerDetail.opencodeKeyPlaceholder')
                       : 'sk-...'
                   }
                 />
@@ -1784,7 +1784,7 @@ const ProviderDetail: Component = () => {
       {/* 统一设备码 OAuth 授权弹窗 (9router 同款弹窗体验) */}
       <Modal
         open={!!deviceFlow() || devicePolling() || isImportFlow() || !!deviceError()}
-        title={isImportFlow() ? `导入 ${providerDisplayName()} 访问令牌` : `连接 ${providerDisplayName()}`}
+        title={isImportFlow() ? t('providerDetail.importTokenTitle', { name: providerDisplayName() }) : t('providerDetail.connectTitle', { name: providerDisplayName() })}
         onClose={cancelDeviceFlow}
       >
         <div class="space-y-4 py-2">
