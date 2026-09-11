@@ -864,7 +864,7 @@ const ProviderDetail: Component = () => {
               <div class="flex items-center gap-2 flex-wrap">
                 <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? t('common.enabled') : t('common.disabled')}</Badge>
                 <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
-                <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-subtle">
+                <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
                   {c().provider}
                 </span>
                 <span class="text-xs text-faint">{t('providerDetail.accountCount', { count: accounts().length })}</span>
@@ -991,7 +991,7 @@ const ProviderDetail: Component = () => {
                                     </span>
                                   </Show>
                                   <Show when={isCurrent()}>
-                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-accent/15 text-accent border border-accent/35 font-medium shrink-0">
                                       {t('providerDetail.editingBadge')}
                                     </span>
                                   </Show>
@@ -1039,7 +1039,7 @@ const ProviderDetail: Component = () => {
                               </div>
 
                               <div class="mt-2.5 flex items-center gap-2 flex-wrap text-xs">
-                                <span class="inline-flex items-center justify-center h-5 px-2 text-[10px] font-medium rounded-full text-info bg-info/10 border border-info/20">
+                                <span class="inline-flex items-center justify-center h-5 px-2 text-[10px] font-medium rounded-full text-info bg-info/12 border border-info/30">
                                   {acc.authType === 'api-key' || acc.authType === 'apikey' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth' : acc.authType}
                                 </span>
                                 <span class={`inline-flex items-center h-5 gap-1.5 text-[10px] px-2 rounded-full border font-mono ${
@@ -1330,7 +1330,7 @@ const ProviderDetail: Component = () => {
                           <For each={modelsData().customModels ?? models()?.customModels ?? []}>
                             {m => (
                               <span class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-control border text-xs transition-colors ${
-                                m.enabled !== false ? 'bg-hover border-subtle text-text' : 'bg-bg-elevated/40 border-subtle/30 text-faint opacity-60'
+                                m.enabled !== false ? 'bg-black/6 dark:bg-white/10 border-black/12 dark:border-white/15 text-text' : 'bg-bg-elevated/40 border-black/6 dark:border-white/8 text-faint opacity-60'
                               }`}>
                                 <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.name || m.id}</span>
                                 <button
