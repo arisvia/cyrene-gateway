@@ -73,6 +73,13 @@ func TestBackupRestoreEndpoints(t *testing.T) {
 	if wRestore.Code != http.StatusOK {
 		t.Fatalf("expected 200 from restore, got %d: %s", wRestore.Code, wRestore.Body.String())
 	}
+	// 3. Test invalid mode rejected with 400
+	reqInvalidMode := httptest.NewRequest("POST", "/api/system/restore?mode=upsert", bytes.NewReader(bodyBytes))
+	wInvalidMode := httptest.NewRecorder()
+	srv.Router.ServeHTTP(wInvalidMode, reqInvalidMode)
+	if wInvalidMode.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown restore mode 'upsert', got %d", wInvalidMode.Code)
+	}
 
 	cAfter, err := d.GetConnection("c-1")
 	if err != nil {

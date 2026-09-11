@@ -59,10 +59,14 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRestorePayloadSize)
 
 	mode := r.URL.Query().Get("mode")
-	if mode != db.RestoreModeMerge {
+	if mode == "" {
 		mode = db.RestoreModeReplace
+	} else if mode != db.RestoreModeReplace && mode != db.RestoreModeMerge {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("invalid restore mode %q: must be %q or %q", mode, db.RestoreModeReplace, db.RestoreModeMerge),
+		})
+		return
 	}
-
 	var payload db.ExportPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid backup JSON: %v", err)})
