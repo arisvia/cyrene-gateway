@@ -159,7 +159,7 @@ const App: Component = () => {
         {/* 桌面侧栏 */}
         <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 glass-panel border-r border-glass-border shadow-glass">
           <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
-            <CyreneLogo class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
+            <CyreneLogo class="w-8 h-8 shrink-0" />
             <div class="min-w-0">
               <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
             </div>
@@ -195,7 +195,7 @@ const App: Component = () => {
           />
           <aside class="absolute inset-y-0 left-0 w-65 glass-panel border-r border-glass-border flex flex-col animate-slide-up shadow-xl">
             <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
-              <CyreneLogo class="w-8 h-8 rounded-xl object-contain shadow-accent shrink-0" />
+              <CyreneLogo class="w-8 h-8 shrink-0" />
               <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
               <button
                 type="button"

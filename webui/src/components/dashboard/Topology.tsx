@@ -388,7 +388,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             }`}
           >
             <div class="relative shrink-0">
-              <CyreneLogo class="w-6 h-6 rounded-lg object-contain shadow-sm shadow-accent/20" pulsing={Boolean(activeHit())} />
+              <CyreneLogo class="w-6 h-6" pulsing={Boolean(activeHit())} />
               <span class={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-bg-elevated ${
                 activeHit() ? 'bg-amber-400 animate-ping shadow-[0_0_8px_#f59e0b]' : 'bg-accent animate-pulse'
               }`} />
