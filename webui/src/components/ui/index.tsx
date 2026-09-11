@@ -63,14 +63,14 @@ export const PageHeader: Component<PageHeaderProps> = props => (
 
 export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blue'; class?: string; children?: JSX.Element }> = props => {
   const tones: Record<string, string> = {
-    green: 'text-success bg-success/10',
-    amber: 'text-warning bg-warning/10',
-    red: 'text-danger bg-danger/10',
-    blue: 'text-info bg-info/10',
-    gray: 'text-faint bg-hover',
+    green: 'text-success bg-success/15 border-success/30',
+    amber: 'text-warning bg-warning/15 border-warning/30',
+    red: 'text-danger bg-danger/15 border-danger/30',
+    blue: 'text-info bg-info/15 border-info/30',
+    gray: 'text-muted bg-hover border-subtle/70',
   }
   return (
-    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${tones[props.tone ?? 'gray']} ${props.class ?? ''}`}>
+    <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${tones[props.tone ?? 'gray']} ${props.class ?? ''}`}>
       {props.children}
     </span>
   )
@@ -380,7 +380,7 @@ export const Input: Component<{
       aria-label={props.ariaLabel}
       onInput={e => props.onInput?.(e.currentTarget.value)}
       onKeyDown={props.onKeyDown}
-      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text placeholder:text-faint focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/8 text-text placeholder:text-muted/70 focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
     />
   )
 }
@@ -817,8 +817,8 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
                 size() === 'md' ? 'px-4 py-2 text-sm' : 'px-3.5 py-1.5 text-xs'
               } ${
                 isActive()
-                  ? 'bg-bg-elevated text-foreground shadow-xs'
-                  : 'text-muted hover:text-foreground hover:bg-black/2 dark:hover:bg-white/2'
+                  ? 'bg-bg-elevated/90 text-foreground border border-accent/45 shadow-[0_2px_10px_-2px_rgba(45,212,191,0.35),inset_0_1px_0_rgba(255,255,255,0.10)]'
+                  : 'text-muted hover:text-foreground hover:bg-black/2 dark:hover:bg-white/2 border border-transparent'
               }`}
             >
               <Show when={opt.icon}>

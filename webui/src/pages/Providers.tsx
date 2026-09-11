@@ -612,7 +612,7 @@ const Providers: Component = () => {
         }
       >
         {/* 搜索与过滤工具栏：轻量透明容器，杜绝在 PageHeader 内嵌套实心 Card 导致纯白/纯黑 */}
-        <div class="p-3 rounded-xl bg-black/3 dark:bg-white/4 flex flex-wrap items-center justify-between gap-3">
+        <div class="p-3 rounded-xl bg-bg-elevated/60 dark:bg-bg-elevated/50 border border-subtle/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
               class="w-64!"
@@ -753,7 +753,7 @@ const Providers: Component = () => {
                               {t('providers.accountsCount', { count: group.connections.length })}
                             </Badge>
                             <Show when={hasMultiple()}>
-                              <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] px-1.5 py-0.5 shrink-0">
+                              <Badge tone="blue" class="bg-purple-500/15 text-purple-300 border-purple-500/35 text-[10px] px-1.5 py-0.5 shrink-0">
                                 {t('providers.fallbackReady')}
                               </Badge>
                             </Show>
