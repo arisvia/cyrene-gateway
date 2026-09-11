@@ -165,25 +165,23 @@ const Usage: Component = () => {
         </Show>
         {/* 图表 */}
         <Card class="p-5">
-          <div class="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 class="text-sm font-semibold flex items-center gap-2">
-                <span>{t('usage.tokenTrend')}</span>
+          <div class="flex items-center justify-between gap-3 mb-4 min-h-[44px]">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <h3 class="text-sm font-semibold whitespace-nowrap">{t('usage.tokenTrend')}</h3>
                 <Show when={hoveredPoint()}>
                   {pt => (
-                    <Badge tone="blue" class="text-[11px] font-mono px-2 py-0.5">
+                    <Badge tone="blue" class="text-[11px] font-mono px-2 py-0.5 whitespace-nowrap shrink-0 animate-fade-in">
                       {pt().label} · {fmtNum(pt().tokens)} Tokens
                     </Badge>
                   )}
                 </Show>
-              </h3>
-              <p class="text-xs text-faint mt-0.5">
-                <Show when={hoveredPoint()} fallback={t('usage.chartAggregateHint', { peak: fmtNum(maxTokens()) })}>
-                  {t('usage.chartHoverHint')}
-                </Show>
+              </div>
+              <p class="text-xs text-faint mt-0.5 truncate">
+                {t('usage.chartAggregateHint', { peak: fmtNum(maxTokens()) })}
               </p>
             </div>
-            <Select value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
+            <Select class="w-36 sm:w-40 shrink-0" size="sm" value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
           </div>
 
           <Show when={chart().length > 0} fallback={<Empty message={t('usage.noDataForPeriod')} />}>

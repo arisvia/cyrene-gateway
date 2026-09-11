@@ -1270,8 +1270,8 @@ const ProviderDetail: Component = () => {
             {/* 模型 */}
             <Show when={tab() === 'models'}>
               <div class="space-y-4">
-                <Card class="p-5">
-                  <div class="flex items-center justify-between mb-3">
+                <Card class="p-4 sm:p-4.5">
+                  <div class="flex items-center justify-between mb-2.5">
                     <div>
                       <h3 class="text-sm font-semibold">{t('providerDetail.customModelsTitle')}</h3>
                       <p class="text-xs text-faint mt-0.5">{t('providerDetail.customModelsDesc')}</p>
@@ -1331,8 +1331,8 @@ const ProviderDetail: Component = () => {
                   </div>
                 </Card>
 
-                <Card class="p-5 flex flex-col">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <Card class="p-4 sm:p-4.5 flex flex-col">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
                     <div class="flex items-center gap-2 flex-wrap">
                       <h3 class="text-sm font-semibold">{t('providerDetail.availableModels')}</h3>
                       <span class="text-xs text-faint">
@@ -1360,7 +1360,7 @@ const ProviderDetail: Component = () => {
                     </div>
                   </div>
                   {/* 批量运维工具栏 */}
-                  <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-subtle/40 mb-3 text-xs">
+                  <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-subtle/40 mb-2.5 text-xs">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="text-faint">{t('providerDetail.batchOps')}</span>
                       <Button
@@ -1414,7 +1414,7 @@ const ProviderDetail: Component = () => {
                     fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
                     {/* 独立可滚动区域：带对外开放开关的 Liquid Glass 卡片网格 */}
-                    <div class="max-h-[420px] overflow-y-auto pr-1">
+                    <div class="max-h-[320px] lg:max-h-[calc(100vh-530px)] min-h-[220px] overflow-y-auto pr-1">
                       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                         <For each={(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
                           const q = modelSearch().trim().toLowerCase()
