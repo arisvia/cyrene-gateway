@@ -13,6 +13,7 @@ interface QuotaBucket {
   remaining: number
   remainingPercentage: number
   resetAt: string
+  resetSoon?: boolean
   unit: string
   displayName?: string
 }
@@ -133,6 +134,7 @@ const Quota: Component = () => {
     }
 
     const resetHint = () => {
+      if (props.quota.resetSoon) return t('quota.resetSoon')
       const raw = props.quota.resetAt
       if (!raw) return ''
       try {
@@ -276,18 +278,15 @@ const Quota: Component = () => {
               />
             </Show>
 
-            <button
-              type="button"
-              class={`text-xs px-2.5 py-1.5 rounded-control border transition-all flex items-center gap-1.5 cursor-pointer ${
-                autoRefresh()
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 font-medium'
-                  : 'bg-hover border-subtle text-faint hover:text-foreground'
-              }`}
+            <Button
+              size="sm"
+              variant={autoRefresh() ? 'secondary' : 'ghost'}
+              class={`text-xs gap-1.5 ${autoRefresh() ? 'border-amber-500/40 text-amber-400 font-medium' : ''}`}
               onClick={() => setAutoRefresh(!autoRefresh())}
             >
               <span>{t('quota.autoRefresh')}</span>
               <span class="text-[10px] opacity-75">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
-            </button>
+            </Button>
 
             <Button
               size="sm"

@@ -160,6 +160,54 @@ func TestClusterAntigravityQuotas(t *testing.T) {
 		t.Errorf("expected 'Imagen 3.0', got %q", imgQ.DisplayName)
 	}
 }
+func TestClusterAntigravityQuotas_ResetTimeNormalization(t *testing.T) {
+	rem := 0.5
+	resp := AntigravityModelsResponse{
+		Models: map[string]struct {
+			DisplayName string `json:"displayName"`
+			QuotaInfo   *struct {
+				RemainingFraction *float64 `json:"remainingFraction"`
+				ResetTime         string   `json:"resetTime"`
+				IsExhausted       bool     `json:"isExhausted"`
+			} `json:"quotaInfo"`
+		}{
+			"gemini-2.5-flash": {
+				QuotaInfo: &struct {
+					RemainingFraction *float64 `json:"remainingFraction"`
+					ResetTime         string   `json:"resetTime"`
+					IsExhausted       bool     `json:"isExhausted"`
+				}{
+					RemainingFraction: &rem,
+					ResetTime:         "即将重置",
+				},
+			},
+			"claude-3-7-sonnet": {
+				QuotaInfo: &struct {
+					RemainingFraction *float64 `json:"remainingFraction"`
+					ResetTime         string   `json:"resetTime"`
+					IsExhausted       bool     `json:"isExhausted"`
+				}{
+					RemainingFraction: &rem,
+					ResetTime:         "not-a-valid-time",
+				},
+			},
+		},
+	}
+
+	quotas := clusterAntigravityQuotas(resp)
+	geminiQ := quotas["gemini"]
+	if !geminiQ.ResetSoon {
+		t.Errorf("expected ResetSoon=true for 即将重置 sentinel, got false")
+	}
+	if geminiQ.ResetAt != "" {
+		t.Errorf("expected empty ResetAt on sentinel text, got %q", geminiQ.ResetAt)
+	}
+
+	claudeQ := quotas["claude"]
+	if claudeQ.ResetAt != "" {
+		t.Errorf("expected empty ResetAt for unparseable time string, got %q", claudeQ.ResetAt)
+	}
+}
 
 func TestFetchAntigravity_MockServer(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

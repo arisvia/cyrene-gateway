@@ -349,11 +349,14 @@ export const Button: Component<ButtonProps> = props => {
 }
 
 export const Input: Component<{
-  value?: string
+  value?: string | number
   placeholder?: string
   type?: string
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
+  min?: number | string
+  max?: number | string
+  step?: number | string
   onInput?: (v: string) => void
   onKeyDown?: (e: KeyboardEvent) => void
   class?: string
@@ -370,6 +373,9 @@ export const Input: Component<{
       value={props.value ?? ''}
       placeholder={props.placeholder}
       disabled={props.disabled}
+      min={props.min}
+      max={props.max}
+      step={props.step}
       aria-label={props.ariaLabel}
       onInput={e => props.onInput?.(e.currentTarget.value)}
       onKeyDown={props.onKeyDown}

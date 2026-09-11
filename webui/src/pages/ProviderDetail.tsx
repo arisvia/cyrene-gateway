@@ -514,6 +514,8 @@ const ProviderDetail: Component = () => {
   const [modelTestResults, setModelTestResults] = createSignal<Record<string, { ok: boolean; latency?: string; error?: string }>>({})
   const [testingAll, setTestingAll] = createSignal(false)
   const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
+  const [showCustomModels, setShowCustomModels] = createSignal(false)
+  const customCount = () => (modelsData().customModels ?? models()?.customModels ?? []).length
 
   const allDisplayModels = () =>
     (modelsData().registryModels ?? models()?.registryModels ?? [])
@@ -1270,65 +1272,82 @@ const ProviderDetail: Component = () => {
             {/* 模型 */}
             <Show when={tab() === 'models'}>
               <div class="space-y-4">
-                <Card class="p-4 sm:p-4.5">
-                  <div class="flex items-center justify-between mb-2.5">
-                    <div>
-                      <h3 class="text-sm font-semibold">{t('providerDetail.customModelsTitle')}</h3>
-                      <p class="text-xs text-faint mt-0.5">{t('providerDetail.customModelsDesc')}</p>
+                <Card class="p-3.5 sm:p-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-2 flex-wrap min-w-0">
+                      <h3 class="text-sm font-semibold whitespace-nowrap">{t('providerDetail.customModelsTitle')}</h3>
+                      <Badge tone="gray" class="text-[10px] font-mono px-1.5 py-0.2 shrink-0">
+                        {customCount()}
+                      </Badge>
+                      <span class="text-xs text-faint truncate hidden sm:inline">{t('providerDetail.customModelsDesc')}</span>
                     </div>
-                  </div>
-                  <div class="flex gap-2">
-                    <Input
-                      value={newCustomModelId()}
-                      onInput={setNewCustomModelId}
-                      placeholder={t('providerDetail.customModelPlaceholder')}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          const val = newCustomModelId().trim()
-                          if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
-                        }
-                      }}
-                    />
                     <Button
-                      variant="secondary"
-                      disabled={!newCustomModelId().trim()}
-                      onClick={() => {
-                        const val = newCustomModelId().trim()
-                        if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
-                      }}
+                      size="sm"
+                      variant="ghost"
+                      class="text-xs shrink-0"
+                      onClick={() => setShowCustomModels(s => !s)}
                     >
-                      {t('common.add')}
+                      {showCustomModels() ? t('common.collapse') : (customCount() > 0 ? t('common.expand') : `+ ${t('common.add')}`)}
                     </Button>
                   </div>
-                  <div class="mt-3 flex flex-wrap gap-2">
-                    <Show when={(modelsData().customModels ?? models()?.customModels ?? []).length > 0} fallback={
-                      <span class="text-xs text-faint">{t('providerDetail.noCustomModels')}</span>
-                    }>
-                      <For each={modelsData().customModels ?? models()?.customModels ?? []}>
-                        {m => (
-                          <span class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-control border text-xs transition-colors ${
-                            m.enabled !== false ? 'bg-hover border-subtle text-text' : 'bg-bg-elevated/40 border-subtle/30 text-faint opacity-60'
-                          }`}>
-                            <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.name || m.id}</span>
-                            <button
-                              type="button"
-                              class="text-faint hover:text-accent text-xs"
-                              title={t('providerDetail.editModelMetaTitle')}
-                              onClick={() => startEditModel(m)}
-                            >
-                              <IconEdit size={12} />
-                            </button>
-                            <Toggle
-                              checked={m.enabled !== false}
-                              onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
-                            />
-                            <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></button>
-                          </span>
-                        )}
-                      </For>
-                    </Show>
-                  </div>
+                  <Show when={showCustomModels() || customCount() > 0}>
+                    <div class="pt-3 border-t border-subtle/50 mt-2.5 space-y-2.5">
+                      <div class="flex gap-2">
+                        <Input
+                          value={newCustomModelId()}
+                          onInput={setNewCustomModelId}
+                          placeholder={t('providerDetail.customModelPlaceholder')}
+                          size="sm"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              const val = newCustomModelId().trim()
+                              if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!newCustomModelId().trim()}
+                          onClick={() => {
+                            const val = newCustomModelId().trim()
+                            if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
+                          }}
+                        >
+                          {t('common.add')}
+                        </Button>
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        <Show when={customCount() > 0} fallback={
+                          <span class="text-xs text-faint">{t('providerDetail.noCustomModels')}</span>
+                        }>
+                          <For each={modelsData().customModels ?? models()?.customModels ?? []}>
+                            {m => (
+                              <span class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-control border text-xs transition-colors ${
+                                m.enabled !== false ? 'bg-hover border-subtle text-text' : 'bg-bg-elevated/40 border-subtle/30 text-faint opacity-60'
+                              }`}>
+                                <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.name || m.id}</span>
+                                <button
+                                  type="button"
+                                  class="text-faint hover:text-accent text-xs"
+                                  title={t('providerDetail.editModelMetaTitle')}
+                                  onClick={() => startEditModel(m)}
+                                >
+                                  <IconEdit size={12} />
+                                </button>
+                                <Toggle
+                                  checked={m.enabled !== false}
+                                  onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
+                                />
+                                <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></button>
+                              </span>
+                            )}
+                          </For>
+                        </Show>
+                      </div>
+                    </div>
+                  </Show>
                 </Card>
 
                 <Card class="p-4 sm:p-4.5 flex flex-col">
@@ -1414,7 +1433,14 @@ const ProviderDetail: Component = () => {
                     fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
                     {/* 独立可滚动区域：带对外开放开关的 Liquid Glass 卡片网格 */}
-                    <div class="max-h-[320px] lg:max-h-[calc(100vh-530px)] min-h-[220px] overflow-y-auto pr-1">
+                    <div
+                      class="min-h-[200px] overflow-y-auto pr-1"
+                      style={{
+                        'max-height': showCustomModels() || customCount() > 0
+                          ? 'max(200px, calc(100vh - 580px))'
+                          : 'max(260px, calc(100vh - 460px))',
+                      }}
+                    >
                       <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                         <For each={(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
                           const q = modelSearch().trim().toLowerCase()

@@ -2,6 +2,7 @@ import { type Component, For, Show, createSignal, createEffect, createMemo, onMo
 import { api } from '@/lib/api'
 import {
   Card,
+  Input,
   Button,
   Select,
   Toggle,
@@ -1129,14 +1130,15 @@ main();
                   <span class="text-muted font-medium">Max Tokens</span>
                   <span class="font-mono text-foreground">{maxTokens()}</span>
                 </div>
-                <input
+                <Input
                   type="number"
-                  min="64"
-                  max="32768"
-                  step="256"
+                  min={64}
+                  max={32768}
+                  step={256}
+                  size="sm"
                   value={maxTokens()}
-                  onInput={e => setMaxTokens(parseInt(e.currentTarget.value) || 2048)}
-                  class="w-full bg-black/4 dark:bg-white/6 border border-subtle rounded-control px-2.5 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-accent/40"
+                  onInput={(v: string) => setMaxTokens(parseInt(v) || 2048)}
+                  class="font-mono"
                 />
               </div>
 

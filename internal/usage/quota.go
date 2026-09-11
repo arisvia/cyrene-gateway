@@ -22,6 +22,7 @@ type Quota struct {
 	Remaining           float64 `json:"remaining,omitempty"`
 	RemainingPercentage float64 `json:"remainingPercentage"`
 	ResetAt             string  `json:"resetAt,omitempty"`
+	ResetSoon           bool    `json:"resetSoon,omitempty"`
 	Unlimited           bool    `json:"unlimited,omitempty"`
 	Unit                string  `json:"unit,omitempty"`
 	DisplayName         string  `json:"displayName,omitempty"`

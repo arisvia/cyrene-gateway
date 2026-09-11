@@ -90,6 +90,7 @@ type modelQuotaRaw struct {
 	displayName string
 	remFrac     float64
 	resetAt     string
+	resetSoon   bool
 }
 
 func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota {
@@ -124,10 +125,22 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			remFrac = 0.0
 		}
 
-		resetAt := m.QuotaInfo.ResetTime
-		if resetAt != "" {
-			if t, err := time.Parse(time.RFC3339Nano, resetAt); err == nil {
+		resetAt := ""
+		resetSoon := false
+		rawReset := strings.TrimSpace(m.QuotaInfo.ResetTime)
+		if rawReset != "" {
+			if t, err := time.Parse(time.RFC3339Nano, rawReset); err == nil {
 				resetAt = t.UTC().Format(time.RFC3339)
+				if time.Until(t) <= 0 {
+					resetSoon = true
+				}
+			} else if t, err := time.Parse(time.RFC3339, rawReset); err == nil {
+				resetAt = t.UTC().Format(time.RFC3339)
+				if time.Until(t) <= 0 {
+					resetSoon = true
+				}
+			} else if rawReset == "即将重置" || strings.EqualFold(rawReset, "reset soon") || strings.EqualFold(rawReset, "resetting soon") {
+				resetSoon = true
 			}
 		}
 
@@ -136,6 +149,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			displayName: dispName,
 			remFrac:     remFrac,
 			resetAt:     resetAt,
+			resetSoon:   resetSoon,
 		}
 
 		lowerID := strings.ToLower(id)
@@ -169,6 +183,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			Remaining:           rem,
 			RemainingPercentage: rep.remFrac * 100.0,
 			ResetAt:             rep.resetAt,
+			ResetSoon:           rep.resetSoon,
 			Unit:                "requests",
 		}
 	}
@@ -189,6 +204,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			Remaining:           rem,
 			RemainingPercentage: rep.remFrac * 100.0,
 			ResetAt:             rep.resetAt,
+			ResetSoon:           rep.resetSoon,
 			Unit:                "requests",
 		}
 	}
@@ -203,6 +219,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			Remaining:           rem,
 			RemainingPercentage: m.remFrac * 100.0,
 			ResetAt:             m.resetAt,
+			ResetSoon:           m.resetSoon,
 			Unit:                "requests",
 		}
 	}
@@ -217,6 +234,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			Remaining:           rem,
 			RemainingPercentage: m.remFrac * 100.0,
 			ResetAt:             m.resetAt,
+			ResetSoon:           m.resetSoon,
 			Unit:                "requests",
 		}
 	}

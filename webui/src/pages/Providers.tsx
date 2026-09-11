@@ -662,23 +662,23 @@ const Providers: Component = () => {
                 ]}
                 onChange={setCatFilter}
               />
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant={hideAdded() ? 'secondary' : 'ghost'}
+                class={`text-xs gap-1.5 ${hideAdded() ? 'border-accent/40 text-accent font-medium' : ''}`}
                 onClick={() => setHideAdded(!hideAdded())}
-                class={`text-xs px-2.5 py-1.5 rounded-control border transition-all flex items-center gap-1.5 cursor-pointer ${
-                  hideAdded()
-                    ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                    : 'bg-hover border-subtle text-muted hover:text-foreground'
-                }`}
                 title={hideAdded() ? t('providers.catalogFilterAll') : t('providers.catalogFilterUnadded')}
               >
-                <span class="flex items-center gap-1.5">{hideAdded() ? <><IconCheck size={12} /><span>{t('providers.hideAddedActive')}</span></> : t('providers.showAllMarket')}</span>
+                <Show when={hideAdded()} fallback={<span>{t('providers.showAllMarket')}</span>}>
+                  <IconCheck size={12} />
+                  <span>{t('providers.hideAddedActive')}</span>
+                </Show>
                 <Show when={connectedCount() > 0}>
-                  <span class="text-[10px] opacity-75">
+                  <span class="text-[10px] opacity-75 font-mono">
                     ({hideAdded() ? t('providers.hiddenCount', { count: connectedCount() }) : t('providers.connectedCount', { count: connectedCount() })})
                   </span>
                 </Show>
-              </button>
+              </Button>
             </Show>
           </div>
 
