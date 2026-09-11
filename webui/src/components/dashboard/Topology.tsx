@@ -170,7 +170,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
     <Card class="h-[460px] sm:h-[480px] overflow-hidden relative border border-subtle/80 animate-fade-in select-none">
       {/* 顶部标题栏与状态指示 */}
       <div class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
-        <div class="flex items-center gap-3 bg-bg/85 backdrop-blur-md px-3.5 py-2 rounded-xl border border-subtle shadow-sm pointer-events-auto">
+        <div class="flex items-center gap-3 glass-float px-3.5 py-2 rounded-xl pointer-events-auto">
           <div class="w-2.5 h-2.5 rounded-full bg-accent animate-pulse shadow-accent" />
           <div>
             <h3 class="text-xs font-semibold flex items-center gap-2 text-foreground">
@@ -186,7 +186,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
         </div>
 
         {/* 状态图例 */}
-        <div class="hidden sm:flex items-center gap-3 text-[11px] text-faint bg-bg/85 backdrop-blur-md px-3 py-1.5 rounded-xl border border-subtle pointer-events-auto">
+        <div class="hidden sm:flex items-center gap-3 text-[11px] text-faint glass-float px-3 py-1.5 rounded-xl pointer-events-auto">
           <span class="flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-accent animate-pulse shadow-accent" /> {t('topology.legendRouting')}
           </span>
@@ -381,7 +381,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
 
           {/* 1. 中心枢纽：Cyrene Gateway (命中时激活温暖金橙色光晕，对齐 9router) */}
           <div
-            class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border transition-all duration-300 cursor-default flex items-center gap-2 ${
+            class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl glass-float transition-all duration-300 cursor-default flex items-center gap-2 ${
               activeHit()
                 ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_32px_rgba(245,158,11,0.45)] scale-105 animate-gateway-jitter'
                 : 'border-accent/40 shadow-lg shadow-accent/15 ring-1 ring-accent/20 hover:scale-105'
@@ -440,7 +440,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                 >
                   <A
                     href={`/providers/${node.id}`}
-                    class={`w-[164px] h-[46px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-sm flex items-center gap-2 transition-all duration-300 cursor-pointer block no-underline ${
+                    class={`w-[164px] h-[46px] px-2.5 py-1.5 rounded-xl glass-float border shadow-sm flex items-center gap-2 transition-all duration-300 cursor-pointer block no-underline ${
                       node.isActive
                         ? node.isHitting
                           ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_26px_rgba(245,158,11,0.38)] scale-105 bg-amber-500/5'
@@ -489,7 +489,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
       </div>
 
       {/* 左下角视窗控制器 (缩放/重置) */}
-      <div class="absolute bottom-4 left-4 z-20 flex items-center gap-1 bg-bg/85 backdrop-blur-md p-1 rounded-xl border border-subtle shadow-sm">
+      <div class="absolute bottom-4 left-4 z-20 flex items-center gap-1 glass-float p-1 rounded-xl">
         <button
           type="button"
           class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"

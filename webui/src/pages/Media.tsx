@@ -158,7 +158,7 @@ const Media: Component = () => {
 
       <div class="text-xs text-faint flex items-center gap-2">
         <span class="flex items-center gap-1.5"><IconBulb size={14} class="text-accent" /> {caps().find(c => c.id === active())?.hint}</span>
-        <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-bg-elevated border border-subtle">
+        <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-black/5 dark:bg-white/8 border border-black/10 dark:border-white/12">
           {caps().find(c => c.id === active())?.endpoint}
         </span>
       </div>
@@ -191,14 +191,14 @@ const Media: Component = () => {
                     <Show
                       when={p.models && p.models.length > 0}
                       fallback={
-                        <span class="text-[11px] font-mono text-muted bg-bg-elevated px-2 py-0.5 rounded border border-subtle">
+                        <span class="text-[11px] font-mono text-muted bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
                           {t('media.defaultEndpoint')}
                         </span>
                       }
                     >
                       <For each={p.models}>
                         {m => (
-                          <span class="text-[11px] font-mono text-foreground bg-bg-elevated px-2 py-0.5 rounded border border-subtle">
+                          <span class="text-[11px] font-mono text-foreground bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
                             {m.name || m.id}
                           </span>
                         )}

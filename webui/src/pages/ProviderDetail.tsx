@@ -1067,7 +1067,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 容灾与 Fallback 调度说明 */}
-                    <div class="p-2.5 rounded bg-hover/70 border border-subtle/60 text-[11px] text-faint leading-relaxed flex items-start gap-1.5">
+                    <div class="p-2.5 rounded-lg bg-black/4 dark:bg-white/6 border border-black/10 dark:border-white/12 text-[11px] text-faint leading-relaxed flex items-start gap-1.5">
                       <IconBulb size={14} class="text-accent shrink-0 mt-0.5" />
                       <div><span class="text-foreground font-medium">{t('providerDetail.dispatchMechanismTitle')}</span>{t('providerDetail.dispatchMechanismDesc')}</div>
                     </div>

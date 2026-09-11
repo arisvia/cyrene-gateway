@@ -148,19 +148,19 @@ export function ToastHost() {
 
   const kindStyles = {
     success: {
-      card: 'bg-bg-elevated/95',
+      card: 'glass-float',
       iconWrap: 'bg-success/15 text-success',
     },
     error: {
-      card: 'bg-bg-elevated/95',
+      card: 'glass-float',
       iconWrap: 'bg-danger/15 text-danger',
     },
     warning: {
-      card: 'bg-bg-elevated/95',
+      card: 'glass-float',
       iconWrap: 'bg-warning/15 text-warning',
     },
     info: {
-      card: 'bg-bg-elevated/95',
+      card: 'glass-float',
       iconWrap: 'bg-accent/15 text-accent',
     },
   }
@@ -615,7 +615,7 @@ export const Select: Component<{
             ref={popoverRef}
             role="listbox"
             style={popoverStyle()}
-            class="rounded-control border border-subtle bg-bg-elevated/95 backdrop-blur-[12px] shadow-glass-hover p-1.5 flex flex-col gap-1 animate-fade-in"
+            class="rounded-control glass-float p-1.5 flex flex-col gap-1 animate-fade-in"
           >
             <Show when={props.options.length > 8}>
               <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
@@ -875,7 +875,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
             role="dialog"
             aria-modal="true"
             aria-label={props.title}
-            class="relative w-full max-w-lg rounded-2xl bg-bg-elevated/95 backdrop-blur-lg shadow-glass-hover animate-scale-in"
+            class="relative w-full max-w-lg rounded-2xl glass-float animate-scale-in"
           >
             <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle/50 bg-black/2 dark:bg-white/2 rounded-t-2xl">
               <h3 class="text-sm font-semibold">{props.title}</h3>
