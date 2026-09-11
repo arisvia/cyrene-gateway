@@ -1027,8 +1027,7 @@ main();
                       class="gap-1"
                       onClick={stopAll}
                     >
-                      <IconSquare size={13} />
-                      停止生成
+                      <IconSquare size={14} />
                     </Button>
                   </Show>
                   <Button
@@ -1038,8 +1037,7 @@ main();
                     disabled={!inputPrompt().trim() || isBusy()}
                     onClick={() => handleSend()}
                   >
-                    <IconPlay size={13} />
-                    发送
+                    <IconPlay size={14} />
                   </Button>
                 </div>
               </div>
@@ -1062,10 +1060,11 @@ main();
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between h-5">
-                  <label class="text-xs font-medium text-muted">系统提示词 (System Prompt)</label>
+                  <label class="text-xs font-medium text-muted leading-none">系统提示词 (System Prompt)</label>
                   <button
                     type="button"
-                    class={`text-[11px] text-faint hover:text-danger transition-opacity cursor-pointer ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    disabled={!systemPrompt()}
+                    class={`text-[11px] leading-none text-faint hover:text-danger transition-opacity cursor-pointer ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                     onClick={() => setSystemPrompt('')}
                   >
                     重置
