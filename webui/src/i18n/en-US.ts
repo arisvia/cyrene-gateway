@@ -78,6 +78,7 @@ export const enUS: TranslationDict = {
     noMatchingOptions: 'No matching options found',
   },
   nav: {
+    openMenu: "Open Menu",
     groupAccess: 'Access',
     groupSystem: 'System',
     home: 'Dashboard',

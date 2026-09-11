@@ -34,7 +34,7 @@ export interface PageHeaderProps {
 }
 
 export const PageHeader: Component<PageHeaderProps> = props => (
-  <header class={`sticky top-19 z-20 rounded-2xl bg-bg-elevated/92 dark:bg-[#12121a]/92 backdrop-blur-2xl border border-subtle/50 px-5 py-4 shadow-glass transition-all space-y-3 ${props.class ?? ''}`}>
+  <header class={`sticky top-19 z-20 rounded-2xl glass-sticky px-5 py-4 transition-all space-y-3 ${props.class ?? ''}`}>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2.5 flex-wrap">

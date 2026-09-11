@@ -203,12 +203,12 @@ const App: Component = () => {
       {/* 主区 */}
       <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
         <header class="sticky top-0 z-30 px-4 lg:px-10 pt-3.5 pb-2 transition-all pointer-events-none">
-          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-panel shadow-glass transition-all pointer-events-auto">
+          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-sticky shadow-glass transition-all pointer-events-auto">
             <button
               type="button"
               class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle shrink-0"
               onClick={() => setOpen(true)}
-              aria-label="打开菜单"
+              aria-label={t('nav.openMenu')}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="4" y1="12" x2="20" y2="12" />

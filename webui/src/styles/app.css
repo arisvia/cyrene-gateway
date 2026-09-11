@@ -378,6 +378,15 @@
   box-shadow: var(--glass-depth);
 }
 
+@utility glass-sticky {
+  background-color: color-mix(in oklab, var(--bg-elevated) 92%, transparent);
+  background-image: var(--glass-sheen);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--subtle);
+  box-shadow: var(--glass-depth);
+}
+
 @utility glass-avatar {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
   backdrop-filter: blur(16px);

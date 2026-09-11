@@ -76,6 +76,7 @@ export const zhCN = {
     noMatchingOptions: '未找到匹配项',
   },
   nav: {
+    openMenu: "打开菜单",
     groupAccess: '接入',
     groupSystem: '系统',
     home: '控制台',
