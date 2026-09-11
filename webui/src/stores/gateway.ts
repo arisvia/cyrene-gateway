@@ -18,7 +18,34 @@ function createGatewayStore() {
   const [apiKeys, setApiKeys] = createSignal<ApiKey[]>([])
   const [proxyPools, setProxyPools] = createSignal<ProxyPool[]>([])
   const [endpoints, setEndpoints] = createSignal<Endpoint[]>([])
-  const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>([])
+const REGISTRY_CACHE_KEY = 'cyrene_registry_cache'
+
+function getInitialRegistry(): RegistryCategory[] {
+  try {
+    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+      const cached = window.localStorage.getItem(REGISTRY_CACHE_KEY)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    }
+  } catch {
+    // safe fallback for SSR / test environments
+  }
+  return []
+}
+
+function saveRegistryCache(cats: RegistryCategory[]) {
+  try {
+    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined' && Array.isArray(cats) && cats.length > 0) {
+      window.localStorage.setItem(REGISTRY_CACHE_KEY, JSON.stringify(cats))
+    }
+  } catch {
+    // safe fallback
+  }
+}
+
+  const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>(getInitialRegistry())
   const [settings, setSettings] = createSignal<Record<string, unknown>>({})
   const [aliases, setAliases] = createSignal<Record<string, string>>({})
 
@@ -52,7 +79,10 @@ function createGatewayStore() {
       setHealth(h || {})
       setProviders(Array.isArray(p) ? p : [])
       setCombos(Array.isArray(c) ? c : [])
-      setRegistryCategories(Array.isArray(reg?.categories) ? reg.categories : [])
+      if (Array.isArray(reg?.categories)) {
+        setRegistryCategories(reg.categories)
+        saveRegistryCache(reg.categories)
+      }
       setEndpoints(Array.isArray(ep?.endpoints) ? ep.endpoints : [])
       setAliases(a || {})
     } catch (e) {
