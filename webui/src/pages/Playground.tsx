@@ -1,4 +1,4 @@
-import { type Component, For, Show, createSignal, createEffect, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js'
 import { api } from '@/lib/api'
 import {
   Card,
@@ -197,7 +197,7 @@ const Playground: Component = () => {
     return providerId.split('-')[0].charAt(0).toUpperCase() + providerId.split('-')[0].slice(1)
   }
 
-  const modelOptions = () =>
+  const modelOptions = createMemo(() =>
     models().map(m => {
       const providerId = m.owned_by || m.id.split('/')[0]
       const badge = getProviderBadge(providerId)
@@ -215,6 +215,7 @@ const Playground: Component = () => {
         description: desc,
       }
     })
+  )
   const isBusy = () =>
     turns().some(t => t.a.busy || (t.b && t.b.busy))
 

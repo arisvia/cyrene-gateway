@@ -42,6 +42,10 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
 		return
 	}
+	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
+	}
 
 	if !media.SupportsKind(modelInfo.Provider, media.KindImage) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support image generation", modelInfo.Provider)})
@@ -106,6 +110,10 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
 		return
 	}
+	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
+	}
 
 	if !media.SupportsKind(modelInfo.Provider, media.KindTTS) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support TTS", modelInfo.Provider)})
@@ -153,6 +161,10 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelStr)})
+		return
+	}
+	if provider.IsModelDisabled(modelStr, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelStr)})
 		return
 	}
 
@@ -204,6 +216,10 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		if err == nil && modelInfo.Provider != "" {
 			providerID = modelInfo.Provider
 		}
+	}
+	if req.Model != "" && (provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(providerID+"/"+req.Model, s.DB)) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
 	}
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider or model"})
@@ -329,6 +345,10 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web search", req.Provider)})
 		return
 	}
+	if req.Model != "" && (provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(req.Provider+"/"+req.Model, s.DB)) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
+	}
 
 	conn, creds := s.resolveMediaCredentials(req.Provider)
 	if conn == nil {
@@ -391,6 +411,13 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 
 	enrichList := func(entries []*media.MediaProviderInfo, filterKind media.Kind) []EnrichedProvider {
 		var out []EnrichedProvider
+		disabledMap, _ := s.DB.KVList(model.KVScopeDisabledModels)
+		isModelDisabled := func(fullID, bareID string) bool {
+			if disabledMap == nil {
+				return false
+			}
+			return disabledMap[fullID] != "" || disabledMap[bareID] != ""
+		}
 		for _, e := range entries {
 			count := connCountByProvider[e.Provider]
 			has := count > 0
@@ -401,6 +428,10 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 			seenModel := make(map[string]bool)
 			var matchedModels []media.ModelEntry
 			for _, m := range e.Models {
+				fullID := e.Provider + "/" + m.ID
+				if isModelDisabled(fullID, m.ID) {
+					continue
+				}
 				if filterKind == "" || m.Kind == filterKind {
 					seenModel[m.ID] = true
 					matchedModels = append(matchedModels, m)
@@ -412,6 +443,10 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 				var cached model.CachedModels
 				if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
 					for _, cm := range cached.Models {
+						fullID := e.Provider + "/" + cm.ID
+						if isModelDisabled(fullID, cm.ID) {
+							continue
+						}
 						lowerID := strings.ToLower(cm.ID)
 						match := false
 						switch filterKind {
@@ -444,6 +479,9 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 				}
+			}
+			if connectedOnly && len(matchedModels) == 0 {
+				continue
 			}
 			out = append(out, EnrichedProvider{
 				Provider:            e.Provider,

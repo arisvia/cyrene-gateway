@@ -1169,6 +1169,10 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelStr)})
 		return
 	}
+	if provider.IsModelDisabled(modelStr, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelStr)})
+		return
+	}
 
 	// Phase: Response Cache check
 	settings, _ := s.DB.GetSettings()
@@ -1423,6 +1427,10 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(modelInfo.Model, req.Provider+"/") {
 			modelInfo.Model = strings.TrimPrefix(modelInfo.Model, req.Provider+"/")
 		}
+	}
+	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
 	}
 
 	// Phase: Response Cache check

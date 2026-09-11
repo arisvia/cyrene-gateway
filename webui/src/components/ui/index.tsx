@@ -506,6 +506,29 @@ export const Select: Component<{
     )
   })
 
+  const INITIAL_LIMIT = 40
+  const [displayLimit, setDisplayLimit] = createSignal(INITIAL_LIMIT)
+
+  createEffect(() => {
+    search()
+    open()
+    setDisplayLimit(INITIAL_LIMIT)
+  })
+
+  const visibleOptions = createMemo(() => {
+    const list = filteredOptions()
+    if (list.length <= INITIAL_LIMIT) return list
+    return list.slice(0, displayLimit())
+  })
+
+  const handleListScroll = (e: Event) => {
+    const el = e.currentTarget as HTMLElement
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) {
+      if (displayLimit() < filteredOptions().length) {
+        setDisplayLimit(l => l + 40)
+      }
+    }
+  }
   const triggerSizes: Record<ControlSize, string> = {
     sm: `${controlSizes.sm} pl-3 pr-2.5 gap-2`,
     md: `${controlSizes.md} pl-3.5 pr-3 gap-2.5`,
@@ -598,8 +621,11 @@ export const Select: Component<{
                 />
               </div>
             </Show>
-            <div class="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
-              <For each={filteredOptions()}>
+            <div
+              class="max-h-60 overflow-y-auto space-y-0.5 pr-0.5"
+              onScroll={handleListScroll}
+            >
+              <For each={visibleOptions()}>
                 {o => {
                   const active = () => (props.value ?? '') === o.value
                   return (
@@ -649,6 +675,11 @@ export const Select: Component<{
                   )
                 }}
               </For>
+              <Show when={displayLimit() < filteredOptions().length}>
+                <div class="px-2 py-1.5 text-center text-[10px] text-faint border-t border-subtle/30">
+                  已显示 {visibleOptions().length} / {filteredOptions().length} 项 · 滚动加载更多或输入搜索
+                </div>
+              </Show>
               <Show when={filteredOptions().length === 0}>
                 <div class="px-3 py-3 text-center text-xs text-faint">未找到匹配项</div>
               </Show>
