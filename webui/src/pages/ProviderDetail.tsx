@@ -1045,7 +1045,7 @@ const ProviderDetail: Component = () => {
                                 <span class={`inline-flex items-center h-5 gap-1.5 text-[10px] px-2 rounded-full border font-mono ${
                                   idx() === 0
                                     ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
-                                    : 'bg-hover/80 border-subtle text-muted'
+                                    : 'bg-black/6 dark:bg-white/8 border-black/12 dark:border-white/15 text-muted'
                                 }`}>
                                   <span class={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
                                   <span class="leading-none">{t('providerDetail.priorityValue', { value: acc.priority })}</span>

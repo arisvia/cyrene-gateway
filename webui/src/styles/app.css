@@ -32,6 +32,9 @@
   --glass-hover: rgba(255, 255, 255, 0.07);
   --glass-border: transparent;
   --glass-border-hover: transparent;
+  /* border-subtle 是全局分隔线/标签描边，此前的 transparent 会让所有依赖它的
+     边框隐形（浅色下尤其明显）。这里给出真实可见的中性分隔色。 */
+  --subtle: rgba(255, 255, 255, 0.12);
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%);
   --glass-depth: 0 10px 32px -4px rgba(0, 0, 0, 0.42);
   --glass-depth-hover: 0 18px 44px -6px rgba(0, 0, 0, 0.58);
@@ -66,6 +69,7 @@
   --glass-hover: rgba(255, 255, 255, 0.92);
   --glass-border: transparent;
   --glass-border-hover: transparent;
+  --subtle: rgba(15, 23, 42, 0.12);
   --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.35) 50%, transparent 100%);
   --glass-depth: 0 10px 30px -4px rgba(15, 23, 42, 0.07);
   --glass-depth-hover: 0 18px 40px -6px rgba(15, 23, 42, 0.12);
@@ -140,7 +144,7 @@
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-on-accent: var(--on-accent);
-  --color-subtle: var(--glass-border);
+  --color-subtle: var(--subtle);
   --color-glass-border: var(--glass-border);
   --color-hover: var(--glass-hover);
   --color-card: var(--glass);
