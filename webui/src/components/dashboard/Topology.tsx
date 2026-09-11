@@ -281,8 +281,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                       stroke-dasharray={node.isActive ? 'none' : '4 4'}
                     />
 
-                    {/* 命中时的 9router 级高能科技激光能量流 (Laser Energy Stream) */}
-                    <Show when={node.isHitting}>
+                    {/* 激活命中或悬停时的 9router 级密集激光能量流 (Laser Energy Stream) */}
+                    <Show when={node.isHitting || isHovered()}>
                       {/* 1. 外层霓虹漫反射扩散光晕 */}
                       <path
                         d={d}
@@ -290,7 +290,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                         stroke="url(#laserStreamGrad)"
                         stroke-width="7"
                         stroke-linecap="round"
-                        opacity="0.45"
+                        opacity={node.isHitting ? 0.5 : 0.38}
                         filter="url(#laserGlow)"
                       />
                       {/* 2. 核心高速流动的激光能量段流 (Segmented Laser Stream) */}
@@ -311,16 +311,15 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                           repeatCount="indefinite"
                         />
                       </path>
-                      {/* 3. 沿管道高速激射的能量粒子核心 */}
+                      {/* 3. 三重错相密集连绵能量粒子流 (对齐 9router 密集流光) */}
                       <circle r="4.5" fill="#a7f3d0" filter="url(#laserGlow)">
-                        <animateMotion path={d} dur="0.85s" repeatCount="indefinite" />
+                        <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="0s" />
                       </circle>
-                    </Show>
-
-                    {/* 悬停状态下的轻量导向粒子 */}
-                    <Show when={!node.isHitting && isHovered()}>
-                      <circle r="3.5" fill="var(--accent)">
-                        <animateMotion path={d} dur="1.2s" repeatCount="indefinite" />
+                      <circle r="4" fill="#6ee7b7" filter="url(#laserGlow)">
+                        <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="-0.28s" />
+                      </circle>
+                      <circle r="3.5" fill="#38bdf8" filter="url(#laserGlow)">
+                        <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="-0.56s" />
                       </circle>
                     </Show>
                   </g>
@@ -394,7 +393,9 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                       node.isActive
                         ? node.isHitting
                           ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_26px_rgba(245,158,11,0.38)] scale-105 bg-amber-500/5'
-                          : 'border-subtle hover:border-accent/50 hover:shadow-md hover:-translate-y-0.5'
+                          : hoveredNode() === node.id
+                            ? 'border-accent ring-2 ring-accent/40 shadow-accent/25 scale-105 bg-accent/5'
+                            : 'border-subtle hover:border-accent/50 hover:shadow-md hover:-translate-y-0.5'
                         : 'border-subtle/50 opacity-60 hover:opacity-100'
                     }`}
                   >
