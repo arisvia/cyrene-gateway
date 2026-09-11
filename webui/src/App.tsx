@@ -115,8 +115,8 @@ const App: Component = () => {
                 transform: bgStore.config().blur ? 'scale(1.05)' : undefined,
               }}
             />
-            {/* 轻微暗色叠加滤镜，确保亮色图片下文字保持高对比度 */}
-            <div class="absolute inset-0 bg-bg/30 pointer-events-none" />
+            {/* 仅在暗色模式下提供适度暗色微调，亮色模式保持壁纸原画通透鲜亮 */}
+            <div class="absolute inset-0 bg-transparent dark:bg-black/25 pointer-events-none" />
           </div>
         </Show>
         {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
@@ -223,7 +223,7 @@ const App: Component = () => {
               <span class="text-faint hidden sm:inline">Unified LLM Gateway</span>
             </div>
             <div class="ml-auto flex items-center gap-3">
-              <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg/50 border border-subtle shadow-sm text-xs backdrop-blur-sm">
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/60 border border-glass-border shadow-sm text-xs backdrop-blur-md">
                 <span class="w-2 h-2 rounded-full bg-success animate-pulse" />
                 <span class="font-medium text-foreground">{store.activeConnections()}</span>
                 <span class="text-faint">{t('common.activeConns')}</span>

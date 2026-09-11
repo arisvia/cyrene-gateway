@@ -284,7 +284,7 @@ const Quota: Component = () => {
               class={`gap-1.5 transition-colors ${autoRefresh() ? 'border border-amber-500/40 text-amber-500 dark:text-amber-400 font-medium' : 'text-muted'}`}
               onClick={() => setAutoRefresh(!autoRefresh())}
             >
-              <span class={`w-1.5 h-1.5 rounded-full ${autoRefresh() ? 'bg-amber-400 animate-pulse' : 'bg-muted-foreground/40'}`} />
+              <span class={`w-1.5 h-1.5 rounded-full ${autoRefresh() ? 'bg-amber-400 animate-pulse' : 'bg-muted/40'}`} />
               <span>{t('quota.autoRefresh')}</span>
               <span class="opacity-70">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
             </Button>

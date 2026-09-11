@@ -836,11 +836,11 @@ const Settings: Component = () => {
                 />
                 <Slider
                   label={t('settings.appearance.surfaceAlpha')}
-                  min={0.4}
+                  min={0.2}
                   max={0.95}
                   step={0.02}
-                  valueDisplay={`${Math.round((bgStore.config().surfaceAlpha ?? 0.78) * 100)}%`}
-                  value={bgStore.config().surfaceAlpha ?? 0.78}
+                  valueDisplay={`${Math.round((bgStore.config().surfaceAlpha ?? 0.62) * 100)}%`}
+                  value={bgStore.config().surfaceAlpha ?? 0.62}
                   onChange={v => bgStore.updateConfig({ surfaceAlpha: v })}
                 />
                 <Slider
