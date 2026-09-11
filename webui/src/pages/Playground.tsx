@@ -1028,6 +1028,7 @@ main();
                       onClick={stopAll}
                     >
                       <IconSquare size={14} />
+                      停止生成
                     </Button>
                   </Show>
                   <Button
@@ -1038,6 +1039,7 @@ main();
                     onClick={() => handleSend()}
                   >
                     <IconPlay size={14} />
+                    发送
                   </Button>
                 </div>
               </div>
