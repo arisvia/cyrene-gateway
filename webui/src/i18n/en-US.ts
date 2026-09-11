@@ -16,6 +16,12 @@ export const enUS: TranslationDict = {
     "titleInfo": "Notice",
   },
   common: {
+    chooseFile: "Choose file",
+    dragOrClickFile: "Click or drag file here to select",
+    supportedFormats: "Supported formats",
+    change: "Change",
+    clear: "Clear",
+    syncing: "Syncing...",
     "update": "Update",
     "retry": "Retry",
     "add": "Add",
@@ -95,6 +101,7 @@ export const enUS: TranslationDict = {
     "switchToChinese": "切换到简体中文",
   },
   home: {
+    copiedKey: "Key {name}",
     heroSubtitle: 'High-concurrency unified LLM API proxy and routing gateway',
     activeChannels: 'Active Channels',
     fallbackCombos: 'Fallback Combos',
@@ -188,6 +195,10 @@ export const enUS: TranslationDict = {
       pwHelpText: 'Minimum 8 characters. Passwords are hashed with Argon2id to protect the admin panel',
     },
     cache: {
+      hitsAndMisses: "{hits} hits / {misses} misses",
+      directSavings: "Direct token savings",
+      lruPool: "LRU replacement pool",
+      entrySizeLimit: "≤2MB per entry protection",
       "clearConfirmMessage": "Clear all in-memory response cache entries? Identical requests will be re-fetched from upstream.",
       "clearConfirmTitle": "Clear response cache",
       groupTitle: 'Efficiency & Saving Engine',
@@ -207,6 +218,8 @@ export const enUS: TranslationDict = {
       tokensSaved: 'Cumulative Tokens Saved',
     },
     tokenSaver: {
+      noExclusions: "No exclusions (Token Saver applies to all providers)",
+      quickAddConfigured: "Quick add configured providers:",
       title: 'Token Saver Engine',
       badge: 'RTK · Caveman · Ponytail',
       rtkTitle: 'RTK Compression',
@@ -233,6 +246,7 @@ export const enUS: TranslationDict = {
       exclusionsHint: 'Keep raw output without prompt injection for specific providers (e.g. specialized code completion channels)',
     },
     appearance: {
+      selectLocalImage: "Select local image...",
       "clearBgConfirmMessage": "Clear the current wallpaper and restore the default background?",
       "clearBgConfirmTitle": "Clear custom wallpaper",
       groupTitle: 'Interface & Preferences',
@@ -252,6 +266,7 @@ export const enUS: TranslationDict = {
       glassBlur: 'Glass Blur',
     },
     data: {
+      importantNotice: "Important Notice",
       "restoreConfirmMessage": "The database will be reloaded from backup \"{file}\" in [{mode}] mode. This is irreversible. Continue?",
       "restoreConfirmTitle": "Restore gateway data?",
       "restoreModeMerge": "Incremental merge (keep existing config, overwrite/update entries from snapshot)",
@@ -468,6 +483,8 @@ export const enUS: TranslationDict = {
     authCredential: 'API Key / Access Token',
   },
   providerDetail: {
+    details: "Provider Details",
+    accountIndex: "Account {index}",
     "opencodeKeyPlaceholder": "Enter OpenCode API Key",
     "selectAccount": "Select account {name}",
     "priorityValue": "Priority {value}",
@@ -732,6 +749,8 @@ export const enUS: TranslationDict = {
     disconnected: 'Disconnected',
   },
   usage: {
+    totalRecords: "{count} total",
+    noRecords: "No request records yet.",
     "noDataForPeriod": "No data for this period.",
     "liveEvents": "Live events",
     "connecting": "Live",

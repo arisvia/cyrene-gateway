@@ -2,7 +2,7 @@ import { type Component, type JSX, For, Show, createSignal, createMemo, createEf
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
-import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo } from './icons'
+import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export * from './icons'
 export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
@@ -34,7 +34,7 @@ export interface PageHeaderProps {
 }
 
 export const PageHeader: Component<PageHeaderProps> = props => (
-  <header class={`sticky top-19 z-20 rounded-2xl glass-card px-5 py-4 shadow-glass transition-all space-y-3 ${props.class ?? ''}`}>
+  <header class={`sticky top-19 z-20 rounded-2xl bg-bg-elevated/92 dark:bg-[#12121a]/92 backdrop-blur-2xl border border-subtle/50 px-5 py-4 shadow-glass transition-all space-y-3 ${props.class ?? ''}`}>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2.5 flex-wrap">
@@ -790,7 +790,7 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
   return (
     <div
       role="tablist"
-      class={`inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/8 border border-black/3 dark:border-white/4 select-none ${props.class ?? ''}`}
+      class={`inline-flex flex-nowrap shrink-0 max-w-full overflow-x-auto no-scrollbar items-center gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/8 border border-black/3 dark:border-white/4 select-none ${props.class ?? ''}`}
     >
       <For each={props.options}>
         {opt => {
@@ -806,7 +806,7 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
                   props.onChange(opt.value)
                 }
               }}
-              class={`transition-all font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              class={`transition-all font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 size() === 'md' ? 'px-4 py-2 text-sm' : 'px-3.5 py-1.5 text-xs'
               } ${
                 isActive()
@@ -900,5 +900,204 @@ export const Field: Component<{ label: string; hint?: string; children?: JSX.Ele
     </Show>
   </label>
 )
+
+export interface SliderProps {
+  value: number
+  min?: number
+  max?: number
+  step?: number
+  disabled?: boolean
+  label?: string
+  hint?: string
+  valueDisplay?: string | number
+  unit?: string
+  onChange?: (val: number) => void
+  onInput?: (val: number) => void
+  class?: string
+}
+
+export const Slider: Component<SliderProps> = props => {
+  const min = () => props.min ?? 0
+  const max = () => props.max ?? 100
+  const step = () => props.step ?? 1
+  const pct = () => {
+    const range = max() - min()
+    if (range <= 0) return 0
+    return Math.min(100, Math.max(0, ((props.value - min()) / range) * 100))
+  }
+
+  return (
+    <div class={`space-y-1.5 w-full select-none ${props.class ?? ''}`}>
+      <Show when={props.label || props.valueDisplay !== undefined || props.unit}>
+        <div class="flex items-center justify-between text-xs">
+          <Show when={props.label}>
+            <span class="font-medium text-muted">{props.label}</span>
+          </Show>
+          <span class="font-mono text-[11px] font-semibold text-foreground px-2 py-0.5 rounded-md bg-hover border border-subtle/50 shadow-2xs">
+            {props.valueDisplay ?? `${props.value}${props.unit ?? ''}`}
+          </span>
+        </div>
+      </Show>
+      <div class="relative flex items-center h-6 w-full">
+        <div class="absolute inset-x-0 h-1.5 rounded-full bg-black/8 dark:bg-white/12 pointer-events-none overflow-hidden">
+          <div
+            class="h-full bg-gradient-to-r from-accent to-accent/90 rounded-full transition-[width] duration-75"
+            style={{ width: `${pct()}%` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={min()}
+          max={max()}
+          step={step()}
+          disabled={props.disabled}
+          value={props.value}
+          onInput={e => {
+            const val = Number(e.currentTarget.value)
+            props.onInput?.(val)
+            props.onChange?.(val)
+          }}
+          onChange={e => {
+            props.onChange?.(Number(e.currentTarget.value))
+          }}
+          class="relative w-full z-10 appearance-none bg-transparent cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+        />
+      </div>
+      <Show when={props.hint}>
+        <p class="text-[11px] text-faint leading-relaxed">{props.hint}</p>
+      </Show>
+    </div>
+  )
+}
+
+export interface FileUploadProps {
+  accept?: string
+  value?: File | null
+  onChange?: (file: File | null) => void
+  label?: string
+  hint?: string
+  placeholder?: string
+  disabled?: boolean
+  compact?: boolean
+  class?: string
+}
+
+export const FileUpload: Component<FileUploadProps> = props => {
+  let fileInputRef: HTMLInputElement | undefined
+  const [dragOver, setDragOver] = createSignal(false)
+  const { t } = useI18n()
+
+  function handleFile(f?: File) {
+    if (!f) return
+    props.onChange?.(f)
+  }
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+  }
+
+  return (
+    <div class={`w-full ${props.class ?? ''}`}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={props.accept}
+        disabled={props.disabled}
+        class="hidden"
+        onChange={e => {
+          const f = e.currentTarget.files?.[0]
+          handleFile(f)
+        }}
+      />
+      <Show
+        when={!props.compact}
+        fallback={
+          <button
+            type="button"
+            disabled={props.disabled}
+            onClick={() => fileInputRef?.click()}
+            class="w-full cursor-pointer flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-black/4 dark:bg-white/6 hover:bg-black/8 dark:hover:bg-white/10 border border-subtle text-xs text-muted hover:text-foreground transition-all min-h-[36px] shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed group"
+          >
+            <IconImage size={15} class="text-muted group-hover:text-accent transition-colors shrink-0" />
+            <span class="truncate font-medium">
+              {props.value ? props.value.name : (props.placeholder ?? t('common.chooseFile'))}
+            </span>
+          </button>
+        }
+      >
+        <Show
+          when={props.value}
+          fallback={
+            <div
+              onClick={() => fileInputRef?.click()}
+              onDragOver={e => {
+                e.preventDefault()
+                setDragOver(true)
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => {
+                e.preventDefault()
+                setDragOver(false)
+                const f = e.dataTransfer?.files?.[0]
+                handleFile(f)
+              }}
+              class={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all ${
+                dragOver()
+                  ? 'border-accent bg-accent/10 scale-[1.01]'
+                  : 'border-subtle/80 hover:border-accent/60 bg-black/2 dark:bg-white/2 hover:bg-hover'
+              }`}
+            >
+              <div class="flex flex-col items-center gap-2">
+                <div class="w-10 h-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
+                  <IconUpload size={20} />
+                </div>
+                <div class="text-xs font-semibold text-foreground">
+                  {props.placeholder ?? t('common.dragOrClickFile')}
+                </div>
+                <div class="text-[11px] text-faint">
+                  {props.hint ?? (props.accept ? `${t('common.supportedFormats')}: ${props.accept}` : '')}
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <div class="flex items-center justify-between p-3.5 rounded-2xl bg-card/60 border border-accent/30 shadow-2xs">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-9 h-9 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                <IconFile size={18} />
+              </div>
+              <div class="min-w-0">
+                <div class="text-xs font-semibold text-foreground truncate">{props.value!.name}</div>
+                <div class="text-[11px] text-faint font-mono mt-0.5">{formatSize(props.value!.size)}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fileInputRef?.click()}
+              >
+                {t('common.change')}
+              </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (fileInputRef) fileInputRef.value = ''
+                  props.onChange?.(null)
+                }}
+                class="w-7 h-7 rounded-lg hover:bg-danger/10 text-muted hover:text-danger flex items-center justify-center transition-colors cursor-pointer"
+                title={t('common.clear')}
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+          </div>
+        </Show>
+      </Show>
+    </div>
+  )
+}
 
 export { Show }

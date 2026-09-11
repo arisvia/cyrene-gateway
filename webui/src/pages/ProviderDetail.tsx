@@ -120,7 +120,7 @@ const ProviderDetail: Component = () => {
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
 
   const regInfo = () => store.registryList().find(r => r.id === conn()?.provider)
-  const providerDisplayName = () => regInfo()?.name || conn()?.provider || '供应商详情'
+  const providerDisplayName = () => regInfo()?.name || conn()?.provider || t('providerDetail.details')
 
   function getAccountDisplayName(acc?: Provider | null, idx?: number): string {
     if (!acc) return ''
@@ -143,7 +143,7 @@ const ProviderDetail: Component = () => {
     const indexNum = (idx !== undefined && idx >= 0)
       ? idx + 1
       : Math.max(1, accounts().findIndex(a => a.id === acc.id) + 1)
-    return `账号 ${indexNum}`
+    return t('providerDetail.accountIndex', { index: indexNum })
   }
   function switchAccount(targetId: string) {
     if (!targetId || targetId === conn()?.id) return
@@ -181,7 +181,7 @@ const ProviderDetail: Component = () => {
       const added = await store.addProvider({
         provider: p,
         authType: aType,
-        name: newAccountName().trim() || `账号 ${accounts().length + 1}`,
+        name: newAccountName().trim() || t('providerDetail.accountIndex', { index: accounts().length + 1 }),
         priority: Number(newAccountPriority()) || 20,
         data: {
           apiKey: newAccountApiKey().trim() || undefined,

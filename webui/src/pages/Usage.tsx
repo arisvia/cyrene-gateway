@@ -316,9 +316,9 @@ const Usage: Component = () => {
         <Card class="p-5">
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
-            <span class="text-xs text-faint">共 {store.requestDetailsPagination().totalItems} 条</span>
+            <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>
           </div>
-          <Show when={store.requestDetails().length > 0} fallback={<Empty message="暂无请求记录。" />}>
+          <Show when={store.requestDetails().length > 0} fallback={<Empty message={t('usage.noRecords')} />}>
             <div class="overflow-x-auto">
               <table class="w-full text-xs">
                 <thead>

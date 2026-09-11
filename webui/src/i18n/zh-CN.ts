@@ -14,6 +14,12 @@ export const zhCN = {
     "titleInfo": "提示",
   },
   common: {
+    chooseFile: "选择文件",
+    dragOrClickFile: "点击或拖拽文件到此处选择",
+    supportedFormats: "支持格式",
+    change: "更换",
+    clear: "清除",
+    syncing: "同步中...",
     "update": "更新",
     "retry": "重试",
     "add": "添加",
@@ -93,6 +99,7 @@ export const zhCN = {
     "switchToChinese": "切换到简体中文",
   },
   home: {
+    copiedKey: "密钥 {name}",
     heroSubtitle: '高并发统一 API 代理与模型路由枢纽',
     activeChannels: '活跃上游通道',
     fallbackCombos: '故障回退组合',
@@ -186,6 +193,10 @@ export const zhCN = {
       pwHelpText: '密码长度至少 8 位，密码通过 Argon2id 散列存储，保障管理接口防护',
     },
     cache: {
+      hitsAndMisses: "{hits} 命中 / {misses} 未中",
+      directSavings: "直接节省消耗",
+      lruPool: "LRU 内存置换池",
+      entrySizeLimit: "单条 ≤2MB 保护",
       "clearConfirmMessage": "确定清空当前内存中的所有响应缓存条目吗？后续相同请求将重新向上游发起。",
       "clearConfirmTitle": "清空响应缓存",
       groupTitle: '效能与节省引擎',
@@ -205,6 +216,8 @@ export const zhCN = {
       tokensSaved: '累计节省 Token',
     },
     tokenSaver: {
+      noExclusions: "暂无排除项（所有提供商均应用 Token 节省规则）",
+      quickAddConfigured: "快速添加已配提供商:",
       title: '令牌节省引擎',
       badge: 'RTK · Caveman · Ponytail',
       rtkTitle: 'RTK 压缩',
@@ -231,6 +244,7 @@ export const zhCN = {
       exclusionsHint: '针对特定服务商（如擅长代码补全的特定专有通道）保持原始输出，不注入提示词',
     },
     appearance: {
+      selectLocalImage: "选择本地图片...",
       "clearBgConfirmMessage": "确定清除当前壁纸并恢复默认纯净背景吗？",
       "clearBgConfirmTitle": "清除自定义壁纸",
       groupTitle: '界面与系统偏好',
@@ -250,6 +264,7 @@ export const zhCN = {
       glassBlur: '毛玻璃模糊度',
     },
     data: {
+      importantNotice: "重要提示",
       "restoreConfirmMessage": "即将使用备份文件「{file}」以【{mode}】模式重载数据库。该操作不可撤销，确定要执行吗？",
       "restoreConfirmTitle": "确认恢复网关数据？",
       "restoreModeMerge": "增量合并（保留现有配置，仅对快照包含条目进行覆盖/更新）",
@@ -466,6 +481,8 @@ export const zhCN = {
     authCredential: 'API Key / 访问凭据',
   },
   providerDetail: {
+    details: "供应商详情",
+    accountIndex: "账号 {index}",
     "opencodeKeyPlaceholder": "输入 OpenCode API Key",
     "selectAccount": "选择账号 {name}",
     "priorityValue": "优先级 {value}",
@@ -730,6 +747,8 @@ export const zhCN = {
     disconnected: '已断开连接',
   },
   usage: {
+    totalRecords: "共 {count} 条",
+    noRecords: "暂无请求记录。",
     "noDataForPeriod": "该周期暂无数据。",
     "liveEvents": "实时事件",
     "connecting": "连接中",

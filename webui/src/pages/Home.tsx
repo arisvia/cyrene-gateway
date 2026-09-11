@@ -282,7 +282,7 @@ const Home: Component = () => {
                                 size="sm"
                                 variant="secondary"
                                 onClick={() => {
-                                  copyText(k.key, `密钥 ${k.name || ''}`)
+                                  copyText(k.key, t('home.copiedKey', { name: k.name || '' }))
                                   setCopiedKeyId(k.id)
                                   setTimeout(() => setCopiedKeyId(null), 2000)
                                 }}

@@ -5,6 +5,7 @@ import {
   Button,
   Select,
   Toggle,
+  Slider,
   Modal,
   PageHeader,
   SegmentedControl,
@@ -703,7 +704,7 @@ main();
                     />
                   </div>
                   <Show when={loadingModels()}>
-                    <span class="text-xs text-faint shrink-0">同步中...</span>
+                    <span class="text-xs text-faint shrink-0">{t('common.syncing')}</span>
                   </Show>
                 </div>
               }
@@ -1094,18 +1095,14 @@ main();
 
               {/* Temperature (温度) */}
               <div class="space-y-1">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-muted font-medium">Temperature</span>
-                  <span class="font-mono text-accent">{temperature().toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.05"
+                <Slider
+                  label="Temperature"
+                  min={0}
+                  max={2}
+                  step={0.05}
                   value={temperature()}
-                  onInput={e => setTemperature(parseFloat(e.currentTarget.value))}
-                  class="w-full accent-(--accent) cursor-pointer"
+                  valueDisplay={temperature().toFixed(2)}
+                  onChange={setTemperature}
                 />
                 <div class="flex justify-between text-[10px] text-faint">
                   <span>{t('playground.tempPrecise')}</span>
@@ -1115,18 +1112,14 @@ main();
 
               {/* Top P */}
               <div class="space-y-1">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-muted font-medium">Top P</span>
-                  <span class="font-mono text-accent">{topP().toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
+                <Slider
+                  label="Top P"
+                  min={0}
+                  max={1}
+                  step={0.05}
                   value={topP()}
-                  onInput={e => setTopP(parseFloat(e.currentTarget.value))}
-                  class="w-full accent-(--accent) cursor-pointer"
+                  valueDisplay={topP().toFixed(2)}
+                  onChange={setTopP}
                 />
               </div>
 

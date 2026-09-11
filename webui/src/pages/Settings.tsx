@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import {
-  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox,
+  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload,
   IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDatabase, IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
@@ -291,6 +291,7 @@ const Settings: Component = () => {
       >
         <div class="pt-2 border-t border-subtle/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <SegmentedControl
+            class="shrink-0"
             options={[
               { value: 'gateway', label: t('settings.tabs.gateway') },
               { value: 'appearance', label: t('settings.tabs.appearance') },
@@ -299,18 +300,18 @@ const Settings: Component = () => {
             value={activeTab()}
             onChange={handleTabChange}
           />
-          <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5 whitespace-nowrap">
+          <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5 min-w-0 overflow-hidden">
             <Show when={activeTab() === 'gateway'}>
               <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-              <span>{t('settings.hosts.gateway')}</span>
+              <span class="truncate">{t('settings.hosts.gateway')}</span>
             </Show>
             <Show when={activeTab() === 'appearance'}>
               <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-              <span>{t('settings.hosts.appearance')}</span>
+              <span class="truncate">{t('settings.hosts.appearance')}</span>
             </Show>
             <Show when={activeTab() === 'data'}>
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>{t('settings.hosts.data')}</span>
+              <span class="truncate">{t('settings.hosts.data')}</span>
             </Show>
           </div>
         </div>
@@ -460,7 +461,7 @@ const Settings: Component = () => {
                 {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
               </span>
               <span class="text-[10px] text-muted block mt-0.5 truncate">
-                {cacheStats()?.hits ?? 0} 命中 / {cacheStats()?.misses ?? 0} 未中
+                {t('settings.cache.hitsAndMisses', { hits: cacheStats()?.hits ?? 0, misses: cacheStats()?.misses ?? 0 })}
               </span>
             </div>
             <div>
@@ -468,21 +469,21 @@ const Settings: Component = () => {
               <span class="font-semibold text-accent text-sm">
                 {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">直接节省消耗</span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.directSavings')}</span>
             </div>
             <div>
               <span class="text-faint block text-[11px]">{t('settings.cache.entries')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">LRU 内存置换池</span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.lruPool')}</span>
             </div>
             <div>
               <span class="text-faint block text-[11px]">{t('settings.cache.memory')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {formatBytes(cacheStats()?.bytesUsed ?? 0)}
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">单条 ≤2MB 保护</span>
+              <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.entrySizeLimit')}</span>
             </div>
           </div>
 
@@ -611,7 +612,7 @@ const Settings: Component = () => {
             <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-bg-elevated border border-subtle">
               <Show
                 when={excludedProviders().length > 0}
-                fallback={<span class="text-xs text-faint">暂无排除项（所有提供商均应用 Token 节省规则）</span>}
+                fallback={<span class="text-xs text-faint">{t('settings.tokenSaver.noExclusions')}</span>}
               >
                 <For each={excludedProviders()}>
                   {p => (
@@ -657,7 +658,7 @@ const Settings: Component = () => {
 
             <Show when={quickSuggestions().length > 0}>
               <div class="flex flex-wrap items-center gap-1 text-[11px] text-faint">
-                <span>快速添加已配提供商:</span>
+                <span>{t('settings.tokenSaver.quickAddConfigured')}</span>
                 <For each={quickSuggestions()}>
                   {name => (
                     <button
@@ -683,7 +684,7 @@ const Settings: Component = () => {
       <div class="space-y-3.5">
         <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
           <IconPalette size={14} class="text-accent shrink-0" />
-          <span>界面与系统偏好</span>
+          <span>{t('settings.appearance.groupTitle')}</span>
         </div>
 
         {/* 界面与壁纸卡片 */}
@@ -692,8 +693,8 @@ const Settings: Component = () => {
             <div class="flex items-center gap-2">
               <IconPalette size={16} class="text-accent shrink-0" />
               <div>
-                <h3 class="text-sm font-semibold">界面与壁纸</h3>
-                <p class="text-xs text-faint mt-0.5">大图持久化于浏览器 IndexedDB，外观配置实时保存在 localStorage</p>
+                <h3 class="text-sm font-semibold">{t('settings.appearance.cardTitle')}</h3>
+                <p class="text-xs text-faint mt-0.5">{t('settings.appearance.cardSubtitle')}</p>
               </div>
             </div>
             <Show when={bgStore.hasCustomBg()}>
@@ -792,30 +793,21 @@ const Settings: Component = () => {
             {/* 本地图片上传 */}
             <div class="space-y-1.5">
               <label class="text-xs font-medium text-muted">{t('settings.localImageUpload')}</label>
-              <label class="cursor-pointer flex items-center justify-center gap-2 px-3 py-2 rounded-control bg-black/4 dark:bg-white/6 hover:bg-black/7 dark:hover:bg-white/10 text-xs text-muted hover:text-foreground transition-all min-h-[34px] shadow-xs">
-                <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-                  <circle cx="9" cy="9" r="2" />
-                  <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                </svg>
-                <span class="truncate">选择本地图片...</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  class="hidden"
-                  onChange={e => {
-                    const file = e.currentTarget.files?.[0]
-                    if (!file) return
-                    const reader = new FileReader()
-                    reader.onload = async () => {
-                      const dataUrl = reader.result as string
-                      await bgStore.setWallpaper(dataUrl, { sourceType: 'upload' })
-                      toast.success(t('toast.saveUploadWallpaperSuccess', { name: file.name }))
-                    }
-                    reader.readAsDataURL(file)
-                  }}
-                />
-              </label>
+              <FileUpload
+                compact
+                accept="image/*"
+                placeholder={t('settings.appearance.selectLocalImage')}
+                onChange={async file => {
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = async () => {
+                    const dataUrl = reader.result as string
+                    await bgStore.setWallpaper(dataUrl, { sourceType: 'upload' })
+                    toast.success(t('toast.saveUploadWallpaperSuccess', { name: file.name }))
+                  }
+                  reader.readAsDataURL(file)
+                }}
+              />
             </div>
           </div>
 
@@ -824,81 +816,42 @@ const Settings: Component = () => {
             <div class="space-y-3 pt-3 border-t border-subtle/50">
               <div class="text-xs font-semibold text-muted">{t('settings.appearance.appearanceSliders')}</div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* 背景虚化 */}
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-muted">{t('settings.appearance.blur')}</span>
-                    <span class="font-mono text-faint">{bgStore.config().blur || 0}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="30"
-                    step="1"
-                    class="w-full accent-accent cursor-pointer"
-                    value={bgStore.config().blur || 0}
-                    onInput={e => {
-                      bgStore.updateConfig({ blur: Number(e.currentTarget.value) })
-                    }}
-                  />
-                </div>
-
-                {/* 背景不透明度 */}
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-muted">{t('settings.appearance.opacity')}</span>
-                    <span class="font-mono text-faint">{Math.round((bgStore.config().opacity ?? 1) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.05"
-                    class="w-full accent-accent cursor-pointer"
-                    value={bgStore.config().opacity ?? 1}
-                    onInput={e => {
-                      bgStore.updateConfig({ opacity: Number(e.currentTarget.value) })
-                    }}
-                  />
-                </div>
-
-                {/* 面板底色不透明度 */}
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-muted">{t('settings.appearance.surfaceAlpha')}</span>
-                    <span class="font-mono text-faint">{Math.round((bgStore.config().surfaceAlpha ?? 0.78) * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.4"
-                    max="0.95"
-                    step="0.02"
-                    class="w-full accent-accent cursor-pointer"
-                    value={bgStore.config().surfaceAlpha ?? 0.78}
-                    onInput={e => {
-                      bgStore.updateConfig({ surfaceAlpha: Number(e.currentTarget.value) })
-                    }}
-                  />
-                </div>
-
-                {/* 面板毛玻璃强度 */}
-                <div class="space-y-1">
-                  <div class="flex justify-between text-xs">
-                    <span class="text-muted">{t('settings.appearance.glassBlur')}</span>
-                    <span class="font-mono text-faint">{bgStore.config().glassBlur ?? 20}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="40"
-                    step="2"
-                    class="w-full accent-accent cursor-pointer"
-                    value={bgStore.config().glassBlur ?? 20}
-                    onInput={e => {
-                      bgStore.updateConfig({ glassBlur: Number(e.currentTarget.value) })
-                    }}
-                  />
-                </div>
+                <Slider
+                  label={t('settings.appearance.blur')}
+                  min={0}
+                  max={30}
+                  step={1}
+                  unit="px"
+                  value={bgStore.config().blur || 0}
+                  onChange={v => bgStore.updateConfig({ blur: v })}
+                />
+                <Slider
+                  label={t('settings.appearance.opacity')}
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  valueDisplay={`${Math.round((bgStore.config().opacity ?? 1) * 100)}%`}
+                  value={bgStore.config().opacity ?? 1}
+                  onChange={v => bgStore.updateConfig({ opacity: v })}
+                />
+                <Slider
+                  label={t('settings.appearance.surfaceAlpha')}
+                  min={0.4}
+                  max={0.95}
+                  step={0.02}
+                  valueDisplay={`${Math.round((bgStore.config().surfaceAlpha ?? 0.78) * 100)}%`}
+                  value={bgStore.config().surfaceAlpha ?? 0.78}
+                  onChange={v => bgStore.updateConfig({ surfaceAlpha: v })}
+                />
+                <Slider
+                  label={t('settings.appearance.glassBlur')}
+                  min={0}
+                  max={40}
+                  step={2}
+                  unit="px"
+                  value={bgStore.config().glassBlur ?? 20}
+                  onChange={v => bgStore.updateConfig({ glassBlur: v })}
+                />
               </div>
             </div>
           </Show>
@@ -911,7 +864,7 @@ const Settings: Component = () => {
         <div class="space-y-3.5">
           <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
             <IconDatabase size={14} class="text-accent shrink-0" />
-            <span>数据导出与恢复</span>
+            <span>{t('settings.data.groupTitle')}</span>
           </div>
 
           {/* 数据备份导出卡片 */}
@@ -920,11 +873,11 @@ const Settings: Component = () => {
               <div class="flex items-center gap-2">
                 <IconDownload size={16} class="text-accent shrink-0" />
                 <div>
-                  <h3 class="text-sm font-semibold">生成数据备份快照</h3>
-                  <p class="text-xs text-faint mt-0.5">将网关全量或脱敏配置导出为版本化 JSON 文件 (.cyrene.json)</p>
+                  <h3 class="text-sm font-semibold">{t('settings.data.backupCardTitle')}</h3>
+                  <p class="text-xs text-faint mt-0.5">{t('settings.data.backupCardSubtitle')}</p>
                 </div>
               </div>
-              <Badge tone="blue">快照导出</Badge>
+              <Badge tone="blue">{t('settings.data.snapshotBadge')}</Badge>
             </div>
 
             <div class="space-y-3.5">
@@ -981,23 +934,21 @@ const Settings: Component = () => {
               <div class="flex items-center gap-2">
                 <IconUpload size={16} class="text-amber-400 shrink-0" />
                 <div>
-                  <h3 class="text-sm font-semibold">从备份文件恢复</h3>
-                  <p class="text-xs text-faint mt-0.5">基于 SQLite 单事务原子重载网关配置，杜绝中间态故障</p>
+                  <h3 class="text-sm font-semibold">{t('settings.data.restoreCardTitle')}</h3>
+                  <p class="text-xs text-faint mt-0.5">{t('settings.data.restoreCardSubtitle')}</p>
                 </div>
               </div>
-              <Badge tone="amber">数据恢复</Badge>
+              <Badge tone="amber">{t('settings.data.restoreBadge')}</Badge>
             </div>
 
             <div class="space-y-3.5 text-xs">
               <Field label={t('settings.backupFileLabel')} hint={t('settings.backupFileHint')}>
-                <input
-                  type="file"
+                <FileUpload
                   accept=".json,.cyrene.json"
-                  class="block w-full text-xs text-faint file:mr-3 file:py-1.5 file:px-3 file:rounded-control file:border-0 file:text-xs file:font-semibold file:bg-hover file:text-foreground hover:file:bg-active cursor-pointer"
-                  onChange={e => {
-                    const f = e.currentTarget.files?.[0]
-                    setRestoreFile(f || null)
-                  }}
+                  value={restoreFile()}
+                  onChange={setRestoreFile}
+                  placeholder={t('common.dragOrClickFile')}
+                  hint={`${t('common.supportedFormats')}: .cyrene.json, .json`}
                 />
               </Field>
 
@@ -1015,7 +966,7 @@ const Settings: Component = () => {
               <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-control text-[11px] text-amber-500 space-y-1">
                 <div class="font-semibold flex items-center gap-1">
                   <IconAlertTriangle size={13} />
-                  <span>重要提示</span>
+                  <span>{t('settings.data.importantNotice')}</span>
                 </div>
                 <p>
                   {t('settings.restoreNotice')}
@@ -1057,20 +1008,20 @@ const Settings: Component = () => {
               v{formatVersion(store.version())}
             </span>
           </div>
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-faint sm:justify-end">
-            <div class="flex items-center gap-1.5 whitespace-nowrap">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint sm:justify-end">
+            <div class="flex items-center gap-1 whitespace-nowrap">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>{t('common.database')}：</span>
+              <span>{t('common.database')}:</span>
               <span class="font-medium text-foreground">{store.health().db === 'ok' ? `${t('common.ready')} (WAL)` : t('common.checking')}</span>
             </div>
             <span class="text-subtle select-none hidden sm:inline">•</span>
             <div class="flex items-center gap-1 whitespace-nowrap">
-              <span>{t('common.activeConns')}：</span>
+              <span>{t('common.activeConns')}:</span>
               <span class="font-medium font-mono text-foreground">{store.activeConnections()} / {store.providers().length}</span>
             </div>
             <span class="text-subtle select-none hidden sm:inline">•</span>
             <div class="flex items-center gap-1 whitespace-nowrap">
-              <span>{t('common.uptime')}：</span>
+              <span>{t('common.uptime')}:</span>
               <span class="font-medium font-mono text-foreground">{formatUptime(Number(store.health().uptimeSeconds), uptimeUnits())}</span>
             </div>
           </div>
