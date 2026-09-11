@@ -2,7 +2,8 @@ import { type Component, type JSX, For, Show, createSignal, onMount, lazy } from
 import { HashRouter, Route, A } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
-import { ThemeToggle } from './components/layout/Sidebar'
+import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
+import { useI18n } from './i18n'
 import { ToastHost, ConfirmDialogHost } from './components/ui'
 
 import Home from './pages/Home'
@@ -87,31 +88,10 @@ const NavIcons = {
   ),
 }
 
-const NAV = [
-  {
-    group: '接入',
-    items: [
-      { href: '/', label: '首页', end: true, icon: NavIcons.home },
-      { href: '/providers', label: '提供商', icon: NavIcons.providers },
-      { href: '/playground', label: '演练场', icon: NavIcons.playground },
-      { href: '/combos', label: '组合', icon: NavIcons.combos },
-      { href: '/usage', label: '用量', icon: NavIcons.usage },
-      { href: '/quota', label: '配额', icon: NavIcons.quota },
-    ],
-  },
-  {
-    group: '系统',
-    items: [
-      { href: '/media', label: '媒体', icon: NavIcons.media },
-      { href: '/proxy-pools', label: '代理池', icon: NavIcons.proxy },
-      { href: '/logs', label: '日志', icon: NavIcons.logs },
-    ],
-  },
-]
-
 const App: Component = () => {
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
+  const { t } = useI18n()
   const [open, setOpen] = createSignal(false)
   onMount(() => {
     store.loadCore()
@@ -154,7 +134,10 @@ const App: Component = () => {
           </div>
           <SidebarNav onNavigate={() => setOpen(false)} />
           <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40">
-            <ThemeToggle />
+            <div class="flex items-center gap-1">
+              <ThemeToggle />
+              <LanguageToggle />
+            </div>
             <A
               href="/settings"
               class="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
@@ -196,7 +179,10 @@ const App: Component = () => {
             </div>
             <SidebarNav onNavigate={() => setOpen(false)} />
             <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40 shrink-0">
-              <ThemeToggle />
+              <div class="flex items-center gap-1">
+                <ThemeToggle />
+                <LanguageToggle />
+              </div>
               <A
                 href="/settings"
                 onClick={() => setOpen(false)}
@@ -240,7 +226,7 @@ const App: Component = () => {
               <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-bg/50 border border-subtle shadow-sm text-xs backdrop-blur-sm">
                 <span class="w-2 h-2 rounded-full bg-success animate-pulse" />
                 <span class="font-medium text-foreground">{store.activeConnections()}</span>
-                <span class="text-faint">活跃连接</span>
+                <span class="text-faint">{t('common.activeConns')}</span>
               </div>
             </div>
           </div>
@@ -272,9 +258,32 @@ const App: Component = () => {
 }
 
 function SidebarNav(props: { onNavigate?: () => void }) {
+  const { t } = useI18n()
+  const navGroups = () => [
+    {
+      group: t('nav.groupAccess'),
+      items: [
+        { href: '/', label: t('nav.home'), end: true, icon: NavIcons.home },
+        { href: '/providers', label: t('nav.providers'), icon: NavIcons.providers },
+        { href: '/playground', label: t('nav.playground'), icon: NavIcons.playground },
+        { href: '/combos', label: t('nav.combos'), icon: NavIcons.combos },
+        { href: '/usage', label: t('nav.usage'), icon: NavIcons.usage },
+        { href: '/quota', label: t('nav.quota'), icon: NavIcons.quota },
+      ],
+    },
+    {
+      group: t('nav.groupSystem'),
+      items: [
+        { href: '/media', label: t('nav.media'), icon: NavIcons.media },
+        { href: '/proxy-pools', label: t('nav.proxies'), icon: NavIcons.proxy },
+        { href: '/logs', label: t('nav.logs'), icon: NavIcons.logs },
+      ],
+    },
+  ]
+
   return (
     <nav class="flex-1 overflow-y-auto px-3.5 py-4 space-y-6">
-      <For each={NAV}>
+      <For each={navGroups()}>
         {group => (
           <div>
             <div class="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-faint">{group.group}</div>

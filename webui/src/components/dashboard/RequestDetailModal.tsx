@@ -149,19 +149,19 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               {/* 路由与调度属性列表 */}
               <div class="rounded-xl border border-subtle bg-card/40 divide-y divide-subtle/50">
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">请求提供商 (Provider)</span>
+                  <span class="text-faint">请求提供商</span>
                   <span class="font-semibold text-foreground">{props.item?.provider || '-'}</span>
                 </div>
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">实际目标模型 (Model)</span>
+                  <span class="text-faint">实际目标模型</span>
                   <span class="font-mono text-foreground">{props.item?.model || '-'}</span>
                 </div>
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">网关接收端点 (Endpoint)</span>
+                  <span class="text-faint">网关接收端点</span>
                   <span class="font-mono text-faint">{props.item?.endpoint || '/v1/chat/completions'}</span>
                 </div>
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">请求时间戳 (UTC)</span>
+                  <span class="text-faint">请求时间戳</span>
                   <span class="font-mono text-faint">{props.item?.timestamp || '-'}</span>
                 </div>
                 <Show when={props.item?.connectionId}>
@@ -182,7 +182,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                     <svg class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
-                    请求输入 (Prompt Payload)
+                    请求输入内容
                   </div>
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
                     {cleanPayload()?.input
@@ -197,7 +197,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                     <svg class="w-3.5 h-3.5 text-accent-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                     </svg>
-                    模型回复 (Response Content · 已自动精简长思考)
+                    模型回复内容 (已过滤思考)
                   </div>
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
                     {cleanPayload()?.output

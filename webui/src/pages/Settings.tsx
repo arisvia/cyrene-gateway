@@ -9,7 +9,7 @@ import {
 import { formatUptime, formatVersion } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
-
+import { useI18n } from '@/i18n'
 const cavemanOptions = [
   { value: 'lite', label: '精简 (lite)' },
   { value: 'full', label: '标准极简 (full)' },
@@ -42,6 +42,7 @@ function formatBytes(bytes: number): string {
 }
 
 const Settings: Component = () => {
+  const { t } = useI18n()
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
   const toast = useToast()
@@ -269,12 +270,12 @@ const Settings: Component = () => {
   return (
     <div class="max-w-3xl mx-auto space-y-6 stagger">
       <PageHeader
-        title="系统设置"
-        subtitle="网关运行参数、访问控制与效能引擎"
+        title={t('settings.title')}
+        subtitle={t('settings.subtitle')}
         actions={
           <Show when={activeTab() === 'gateway'}>
             <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">
-              {dirty() ? '保存修改' : '全部已保存'}
+              {dirty() ? t('common.save') : t('common.saved')}
             </Button>
           </Show>
         }
@@ -282,9 +283,9 @@ const Settings: Component = () => {
         <div class="pt-2 border-t border-subtle/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <SegmentedControl
             options={[
-              { value: 'gateway', label: '网关核心 (Gateway)' },
-              { value: 'appearance', label: '界面与外观 (Appearance)' },
-              { value: 'data', label: '数据管理与备份 (Data & Backup)' },
+              { value: 'gateway', label: t('settings.tabs.gateway') },
+              { value: 'appearance', label: t('settings.tabs.appearance') },
+              { value: 'data', label: t('settings.tabs.data') },
             ]}
             value={activeTab()}
             onChange={handleTabChange}
@@ -292,15 +293,15 @@ const Settings: Component = () => {
           <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5 whitespace-nowrap">
             <Show when={activeTab() === 'gateway'}>
               <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-              <span>存储宿主：<span class="font-semibold text-foreground">SQLite 核心库</span> · 全局实时生效</span>
+              <span>{t('settings.hosts.gateway')}</span>
             </Show>
             <Show when={activeTab() === 'appearance'}>
               <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-              <span>存储宿主：<span class="font-semibold text-foreground">本地浏览器</span> · 本设备独享</span>
+              <span>{t('settings.hosts.appearance')}</span>
             </Show>
             <Show when={activeTab() === 'data'}>
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>存储宿主：<span class="font-semibold text-foreground">SQLite 核心库</span> · 支持单事务热恢复</span>
+              <span>{t('settings.hosts.data')}</span>
             </Show>
           </div>
         </div>
@@ -812,12 +813,12 @@ const Settings: Component = () => {
           {/* 壁纸与毛玻璃微调控制面板（仿 zashboard 外观微调系统） */}
           <Show when={bgStore.hasCustomBg()}>
             <div class="space-y-3 pt-3 border-t border-subtle/50">
-              <div class="text-xs font-semibold text-muted">毛玻璃拟态与外观微调</div>
+              <div class="text-xs font-semibold text-muted">{t('settings.appearance.appearanceSliders')}</div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* 背景虚化 */}
                 <div class="space-y-1">
                   <div class="flex justify-between text-xs">
-                    <span class="text-muted">背景虚化 (Blur)</span>
+                    <span class="text-muted">{t('settings.appearance.blur')}</span>
                     <span class="font-mono text-faint">{bgStore.config().blur || 0}px</span>
                   </div>
                   <input
@@ -836,7 +837,7 @@ const Settings: Component = () => {
                 {/* 背景不透明度 */}
                 <div class="space-y-1">
                   <div class="flex justify-between text-xs">
-                    <span class="text-muted">背景不透明度 (Opacity)</span>
+                    <span class="text-muted">{t('settings.appearance.opacity')}</span>
                     <span class="font-mono text-faint">{Math.round((bgStore.config().opacity ?? 1) * 100)}%</span>
                   </div>
                   <input
@@ -855,7 +856,7 @@ const Settings: Component = () => {
                 {/* 面板底色不透明度 */}
                 <div class="space-y-1">
                   <div class="flex justify-between text-xs">
-                    <span class="text-muted">面板底色透明度 (Surface Alpha)</span>
+                    <span class="text-muted">{t('settings.appearance.surfaceAlpha')}</span>
                     <span class="font-mono text-faint">{Math.round((bgStore.config().surfaceAlpha ?? 0.78) * 100)}%</span>
                   </div>
                   <input
@@ -874,7 +875,7 @@ const Settings: Component = () => {
                 {/* 面板毛玻璃强度 */}
                 <div class="space-y-1">
                   <div class="flex justify-between text-xs">
-                    <span class="text-muted">毛玻璃模糊度 (Glass Blur)</span>
+                    <span class="text-muted">{t('settings.appearance.glassBlur')}</span>
                     <span class="font-mono text-faint">{bgStore.config().glassBlur ?? 20}px</span>
                   </div>
                   <input
@@ -921,7 +922,7 @@ const Settings: Component = () => {
               <Checkbox
                 checked={includeSecrets()}
                 onChange={setIncludeSecrets}
-                label="包含敏感凭据 (API Keys、OAuth Tokens、JWT 密钥)"
+                label={t('settings.data.includeSecrets')}
                 description={
                   <div class="flex items-center gap-1.5 mt-1 text-[11px]">
                     <Show
@@ -929,13 +930,13 @@ const Settings: Component = () => {
                       fallback={
                         <span class="text-faint flex items-center gap-1">
                           <IconInfo size={13} class="text-info shrink-0" />
-                          <span>已开启脱敏导出。恢复时将保留现有运行中连接的密钥，适合作为公开模板共享。</span>
+                          <span>{t('settings.data.secretsSafe')}</span>
                         </span>
                       }
                     >
                       <span class="text-amber-500/90 dark:text-amber-400 flex items-center gap-1">
                         <IconAlertTriangle size={13} class="text-warning shrink-0" />
-                        <span>导出的备份将包含完整上游及下游明文密钥，请妥善保管，切勿公开发布或提交至代码仓库！</span>
+                        <span>{t('settings.data.secretsWarning')}</span>
                       </span>
                     </Show>
                   </div>
@@ -946,8 +947,8 @@ const Settings: Component = () => {
                 <Checkbox
                   checked={includeUsage()}
                   onChange={setIncludeUsage}
-                  label="包含历史调用日志与请求排障明细"
-                  description="一并打包全部 API 历史日志与完整排障报文（若调用量大将增加导出文件体积）。"
+                  label={t('settings.data.includeUsage')}
+                  description={t('settings.data.usageDesc')}
                 />
               </div>
             </div>
@@ -960,7 +961,7 @@ const Settings: Component = () => {
                 class="flex items-center gap-1.5"
               >
                 <IconDownload size={14} />
-                <span>下载备份文件</span>
+                <span>{t('settings.data.downloadBackup')}</span>
               </Button>
             </div>
           </Card>
@@ -1025,7 +1026,7 @@ const Settings: Component = () => {
                 class="flex items-center gap-1.5"
               >
                 <IconUpload size={14} />
-                <span>开始恢复数据</span>
+                <span>{t('settings.data.startRestore')}</span>
               </Button>
             </div>
           </Card>
@@ -1050,17 +1051,17 @@ const Settings: Component = () => {
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-faint sm:justify-end">
             <div class="flex items-center gap-1.5 whitespace-nowrap">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span>数据库：</span>
-              <span class="font-medium text-foreground">{store.health().db === 'ok' ? '已就绪 (WAL)' : '检测中'}</span>
+              <span>{t('common.database')}：</span>
+              <span class="font-medium text-foreground">{store.health().db === 'ok' ? `${t('common.ready')} (WAL)` : '...'}</span>
             </div>
             <span class="text-subtle select-none hidden sm:inline">•</span>
             <div class="flex items-center gap-1 whitespace-nowrap">
-              <span>活动连接：</span>
+              <span>{t('common.activeConns')}：</span>
               <span class="font-medium font-mono text-foreground">{store.activeConnections()} / {store.providers().length}</span>
             </div>
             <span class="text-subtle select-none hidden sm:inline">•</span>
             <div class="flex items-center gap-1 whitespace-nowrap">
-              <span>运行时间：</span>
+              <span>{t('common.uptime')}：</span>
               <span class="font-medium font-mono text-foreground">{formatUptime(Number(store.health().uptimeSeconds))}</span>
             </div>
           </div>

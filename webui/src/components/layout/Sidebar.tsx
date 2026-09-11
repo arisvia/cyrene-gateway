@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js'
-
+import { useI18n } from '@/i18n'
 export function ThemeToggle() {
   const [light, setLight] = createSignal(document.documentElement.classList.contains('light'))
   const toggle = () => {
@@ -53,6 +53,33 @@ export function ThemeToggle() {
       >
         <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
       </svg>
+    </button>
+  )
+}
+export function LanguageToggle() {
+  const { locale, toggleLocale } = useI18n()
+  return (
+    <button
+      type="button"
+      class="flex h-8 px-2 items-center justify-center gap-1 rounded-control text-xs font-medium text-muted hover:text-foreground hover:bg-hover transition-colors cursor-pointer"
+      onClick={toggleLocale}
+      aria-label="Toggle Language"
+      title={locale() === 'zh-CN' ? 'Switch to English' : '切换到简体中文'}
+    >
+      <svg
+        class="w-3.5 h-3.5 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+      <span class="font-mono text-[11px] uppercase tracking-wider">{locale() === 'zh-CN' ? 'EN' : '中'}</span>
     </button>
   )
 }

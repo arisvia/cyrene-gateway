@@ -24,7 +24,7 @@ import {
 import { useToast } from '@/lib/toast'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
-
+import { useI18n } from '@/i18n'
 interface ModelEntry {
   id: string
   object: string
@@ -76,6 +76,7 @@ const QUICK_PROMPTS = [
 
 const Playground: Component = () => {
   const toast = useToast()
+  const { t } = useI18n()
 
   // 模式：单模型 (single) / 双模型对比 (compare)
   const [mode, setMode] = createSignal<'single' | 'compare'>('single')
@@ -624,12 +625,12 @@ main();
   return (
     <div class="space-y-4 max-w-7xl mx-auto pb-10">
       <PageHeader
-        title="平台演练场 (Playground)"
-        subtitle="跨供应商模型测试、双模型竞技 (Side-by-Side) 横向比对与参数调优"
+        title={t('playground.title')}
+        subtitle={t('playground.subtitle')}
         badge={
           <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">
             <IconSparkles size={13} />
-            实时竞技
+            {t('playground.realtimeArena')}
           </span>
         }
         actions={
@@ -638,8 +639,8 @@ main();
               value={mode()}
               onChange={m => setMode(m as 'single' | 'compare')}
               options={[
-                { value: 'single', label: '单模型测试' },
-                { value: 'compare', label: '双模型对比 (Side-by-Side)' },
+                { value: 'single', label: t('playground.modeSingle') },
+                { value: 'compare', label: t('playground.modeCompare') },
               ]}
               size="sm"
             />
@@ -651,7 +652,7 @@ main();
               title="一键导出为 cURL / Python / Node.js 代码"
             >
               <IconCode size={14} />
-              导出代码
+              {t('playground.exportCode')}
             </Button>
             <Button
               variant={showParams() ? 'secondary' : 'ghost'}
@@ -661,7 +662,7 @@ main();
               title="切换显示右侧高级参数配置"
             >
               <IconSliders size={14} />
-              参数面板
+              {t('playground.paramPanel')}
             </Button>
             <Button
               variant="ghost"
@@ -672,7 +673,7 @@ main();
               title="清空当前所有会话历史"
             >
               <IconTrash size={14} />
-              清空
+              {t('playground.clearHistory')}
             </Button>
           </div>
         }
@@ -747,11 +748,13 @@ main();
                     <IconChat size={24} />
                   </div>
                   <div class="space-y-1">
-                    <h3 class="text-base font-semibold text-foreground">开始你的模型交互演练</h3>
+                    <h3 class="text-base font-semibold text-foreground">{t('playground.startInteraction')}</h3>
                     <p class="text-xs text-faint max-w-md mx-auto">
                       {mode() === 'compare'
-                        ? '双模型竞技已激活：输入一个提示词，同时向两个模型并行派发，直观对比首字延迟 (TTFT)、生成耗时及文本质量。'
-                        : '直接在下方输入提问，或点击下方快捷问题卡片快速启动测试。'}
+                        ? (t('common.langZh') === '简体中文'
+                            ? '双模型竞技已激活：输入一个提示词，同时向两个模型并行派发，直观对比首字延迟 (TTFT)、生成耗时及文本质量。'
+                            : 'Arena mode active: send one prompt to both models in parallel to evaluate TTFT, latency, and response quality side-by-side.')
+                        : t('playground.startInteractionHint')}
                     </p>
                   </div>
                   <div class="flex flex-wrap items-center justify-center gap-2 max-w-xl mx-auto">
@@ -998,8 +1001,10 @@ main();
                 class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[70px] max-h-[220px]"
                 placeholder={
                   mode() === 'compare'
-                    ? '输入提示词，同时向模型 A 和模型 B 发起竞技对比... (Enter 发送，Shift+Enter 换行)'
-                    : '输入提示词测试该模型... (Enter 发送，Shift+Enter 换行)'
+                    ? (t('common.langZh') === '简体中文'
+                        ? '输入提示词，同时向模型 A 和模型 B 发起竞技对比... (Enter 发送，Shift+Enter 换行)'
+                        : 'Type prompt to compare Model A and Model B in real-time... (Enter to send, Shift+Enter for newline)')
+                    : t('playground.sendPlaceholder')
                 }
                 value={inputPrompt()}
                 onInput={e => setInputPrompt(e.currentTarget.value)}
@@ -1012,11 +1017,11 @@ main();
               />
               <div class="flex items-center justify-between pt-1 border-t border-subtle/40">
                 <div class="text-[11px] text-faint flex items-center gap-2">
-                  <span>Enter 发送 · Shift+Enter 换行</span>
+                  <span>{t('common.langZh') === '简体中文' ? 'Enter 发送 · Shift+Enter 换行' : 'Enter to send · Shift+Enter for newline'}</span>
                   <Show when={stream()}>
                     <span class="text-accent flex items-center gap-0.5">
                       <span class="w-1.5 h-1.5 rounded-full bg-accent animate-ping" />
-                      流式渲染
+                      {t('playground.streamLabel')}
                     </span>
                   </Show>
                 </div>
@@ -1029,7 +1034,7 @@ main();
                       onClick={stopAll}
                     >
                       <IconSquare size={14} />
-                      停止生成
+                      {t('playground.stop')}
                     </Button>
                   </Show>
                   <Button
@@ -1063,7 +1068,7 @@ main();
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between h-5">
-                  <label class="text-xs font-medium text-muted leading-none">系统提示词 (System Prompt)</label>
+                  <label class="text-xs font-medium text-muted leading-none">{t('playground.systemPrompt')}</label>
                   <button
                     type="button"
                     disabled={!systemPrompt()}
@@ -1152,8 +1157,8 @@ main();
               {/* 流式传输开关 */}
               <div class="flex items-center justify-between pt-2 border-t border-subtle/40">
                 <div>
-                  <div class="text-xs font-medium text-foreground">流式传输 (Stream)</div>
-                  <div class="text-[10px] text-faint">逐字流式打字机渲染</div>
+                  <div class="text-xs font-medium text-foreground">{t('playground.streamLabel')}</div>
+                  <div class="text-[10px] text-faint">{t('playground.streamDesc')}</div>
                 </div>
                 <Toggle
                   checked={stream()}

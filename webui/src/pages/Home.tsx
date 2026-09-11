@@ -164,7 +164,7 @@ const Home: Component = () => {
                     <path d="m21 2-9.6 9.6" />
                     <path d="m15.5 7.5 3 3L22 7l-3-3" />
                   </svg>
-                  <span>API 密钥 (API Keys)</span>
+                  <span>API 密钥</span>
                 </h2>
                 <p class="text-xs text-faint mt-0.5">用于客户端（Claude Code / Codex / NextChat / Cursor 等）鉴权</p>
               </div>

@@ -48,8 +48,8 @@ const AUTHTYPE_LABEL: Record<string, string> = {
 export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
   llm: { label: 'LLM 对话', tone: 'blue', icon: IconChat },
   image: { label: '图像生成', tone: 'blue', icon: IconPalette },
-  tts: { label: '语音合成 (TTS)', tone: 'green', icon: IconVolume },
-  stt: { label: '语音识别 (STT)', tone: 'amber', icon: IconMic },
+  tts: { label: '语音合成', tone: 'green', icon: IconVolume },
+  stt: { label: '语音识别', tone: 'amber', icon: IconMic },
   video: { label: '视频生成', tone: 'red', icon: IconVideo },
   embedding: { label: '文本向量', tone: 'gray', icon: IconVector },
   'web-search': { label: '网络搜索', tone: 'amber', icon: IconSearch },
