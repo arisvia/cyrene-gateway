@@ -135,7 +135,9 @@ const Quota: Component = () => {
     const resetHint = () => {
       const raw = props.quota.resetAt
       if (!raw) return ''
-      if (raw.startsWith('in ') || raw === '即将重置') return raw
+      // Upstream API status check; localize backend string
+      if (raw === '即将重置') return t('quota.resetSoon')
+      if (raw.startsWith('in ')) return raw
       try {
         const timeMs = new Date(raw).getTime()
         if (isNaN(timeMs)) return ''

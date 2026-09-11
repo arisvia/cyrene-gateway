@@ -809,12 +809,12 @@ main();
                               </Show>
                               <Show when={turn.a.metrics?.totalMs !== undefined}>
                                 <span title={t('playground.totalMsTitle')}>
-                                  总计: <strong class="text-foreground">{(turn.a.metrics!.totalMs! / 1000).toFixed(2)}s</strong>
+                                  {t('playground.totalTime')}: <strong class="text-foreground">{(turn.a.metrics!.totalMs! / 1000).toFixed(2)}s</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.metrics?.speed && turn.a.metrics!.speed > 0}>
                                 <span title={t('playground.speedTitle')}>
-                                  速度: <strong class="text-foreground">{turn.a.metrics!.speed} t/s</strong>
+                                  {t('playground.speed')}: <strong class="text-foreground">{turn.a.metrics!.speed} t/s</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.rawRequest}>
@@ -857,7 +857,7 @@ main();
                             }
                           >
                             <div class="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed select-text font-sans">
-                              {turn.a.content || (turn.a.busy ? '...' : '(空返回)')}
+                              {turn.a.content || (turn.a.busy ? '...' : t('playground.emptyResponse'))}
                             </div>
                           </Show>
                         </Card>
@@ -876,7 +876,7 @@ main();
                                 {turn.a.servedModel || turn.a.targetModel}
                               </span>
                               <Show when={turn.a.busy}>
-                                <span class="text-[10px] text-accent animate-pulse">生成中</span>
+                                <span class="text-[10px] text-accent animate-pulse">{t('playground.generating')}</span>
                               </Show>
                             </div>
                             <div class="flex items-center gap-1 text-[10px] font-mono text-faint">
@@ -892,7 +892,7 @@ main();
                                   class="hover:text-accent p-1 cursor-pointer"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: `模型 A (${turn.a.servedModel || turn.a.targetModel})`,
+                                      title: `${t('playground.modelA')} (${turn.a.servedModel || turn.a.targetModel})`,
                                       request: turn.a.rawRequest,
                                       response: turn.a.rawResponse,
                                     })
@@ -920,7 +920,7 @@ main();
                             }
                           >
                             <div class="text-xs sm:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed select-text min-h-[60px]">
-                              {turn.a.content || (turn.a.busy ? '...' : '(空返回)')}
+                              {turn.a.content || (turn.a.busy ? '...' : t('playground.emptyResponse'))}
                             </div>
                           </Show>
                         </Card>
@@ -936,7 +936,7 @@ main();
                                 {turn.b?.servedModel || turn.b?.targetModel}
                               </span>
                               <Show when={turn.b?.busy}>
-                                <span class="text-[10px] text-accent animate-pulse">生成中</span>
+                                <span class="text-[10px] text-accent animate-pulse">{t('playground.generating')}</span>
                               </Show>
                             </div>
                             <div class="flex items-center gap-1 text-[10px] font-mono text-faint">
@@ -952,7 +952,7 @@ main();
                                   class="hover:text-accent p-1 cursor-pointer"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: `模型 B (${turn.b?.servedModel || turn.b?.targetModel})`,
+                                      title: `${t('playground.modelB')} (${turn.b?.servedModel || turn.b?.targetModel})`,
                                       request: turn.b?.rawRequest,
                                       response: turn.b?.rawResponse,
                                     })
@@ -980,7 +980,7 @@ main();
                             }
                           >
                             <div class="text-xs sm:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed select-text min-h-[60px]">
-                              {turn.b?.content || (turn.b?.busy ? '...' : '(空返回)')}
+                              {turn.b?.content || (turn.b?.busy ? '...' : t('playground.emptyResponse'))}
                             </div>
                           </Show>
                         </Card>

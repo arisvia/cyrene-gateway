@@ -878,7 +878,7 @@ const ProviderDetail: Component = () => {
       </Show>
 
       <Show when={notFound()}>
-        <Card class="p-6"><Empty message="连接不存在或已被删除。" /></Card>
+        <Card class="p-6"><Empty message={t('providerDetail.connectionNotFound')} /></Card>
       </Show>
 
       <Show when={!loading() && conn()}>
@@ -914,8 +914,8 @@ const ProviderDetail: Component = () => {
                     <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-subtle">
                       <div>
                         <h3 class="text-sm font-semibold flex items-center gap-2">
-                          <span>账号与凭据池</span>
-                          <Badge tone="blue">{accounts().length} 个</Badge>
+                          <span>{t('providerDetail.accountsAndPool')}</span>
+                          <Badge tone="blue">{t('providerDetail.accountCount', { count: accounts().length })}</Badge>
                         </h3>
                         <p class="text-[11px] text-faint mt-0.5">
                           {t('providerDetail.schedulingHint')}
@@ -926,14 +926,14 @@ const ProviderDetail: Component = () => {
                         variant="primary"
                         onClick={() => {
                           const nextNum = accounts().length + 1
-                          setNewAccountName(`账号 ${nextNum}`)
+                          setNewAccountName(t('providerDetail.accountIndex', { index: nextNum }))
                           setNewAccountAuthType('api-key')
                           setNewAccountApiKey('')
                           setNewAccountPriority(String((Number(priority()) || 0) + 10))
                           setAddAccountOpen(true)
                         }}
                       >
-                        + 加账号
+                        {t('providerDetail.addAccount')}
                       </Button>
                     </div>
 
@@ -1062,7 +1062,7 @@ const ProviderDetail: Component = () => {
                     {/* 容灾与 Fallback 调度说明 */}
                     <div class="p-2.5 rounded bg-hover/70 border border-subtle/60 text-[11px] text-faint leading-relaxed flex items-start gap-1.5">
                       <IconBulb size={14} class="text-accent shrink-0 mt-0.5" />
-                      <div><span class="text-foreground font-medium">调度机制：</span>主账号遇到 429 或配额耗尽时，网关自动 Fallback 转移至备用账号；同优先级多账号自动负载均衡分摊并发。</div>
+                      <div><span class="text-foreground font-medium">{t('providerDetail.dispatchMechanismTitle')}</span>{t('providerDetail.dispatchMechanismDesc')}</div>
                     </div>
                   </Card>
                 </div>
@@ -1073,13 +1073,13 @@ const ProviderDetail: Component = () => {
                     <div class="flex items-center justify-between pb-3 border-b border-subtle shrink-0">
                       <div>
                         <div class="text-sm font-semibold flex items-center gap-2">
-                          <span>编辑账号：{getAccountDisplayName(c())}</span>
+                          <span>{t('providerDetail.editAccountWith', { name: getAccountDisplayName(c()) })}</span>
                           <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
                         </div>
                         <div class="text-xs text-faint mt-0.5 font-mono flex items-center gap-2">
-                          <span>节点 ID: {c().id}</span>
+                          <span>{t('providerDetail.nodeId', { id: c().id })}</span>
                           <Show when={c().email && c().email !== getAccountDisplayName(c())}>
-                            <span>· 授权邮箱: {c().email}</span>
+                            <span>{t('providerDetail.authEmail', { email: c().email || '' })}</span>
                           </Show>
                         </div>
                       </div>
@@ -1119,7 +1119,7 @@ const ProviderDetail: Component = () => {
                           <div class="p-3.5 rounded-control bg-accent/10 border border-accent/30 space-y-2 text-xs">
                             <div class="flex items-center justify-between">
                               <span class="font-medium text-accent flex items-center gap-1.5">
-                                <IconCheck size={14} /> 当前为 OAuth 授权账号
+                                <IconCheck size={14} /> {t('providerDetail.currentIsOauth')}
                               </span>
                               <Button
                                 size="sm"
@@ -1164,7 +1164,7 @@ const ProviderDetail: Component = () => {
                           />
                           <Show when={c().data?.hasApiKey}>
                             <div class="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-                              <IconCheck size={12} /> <span>当前账号已配置密钥</span>
+                              <IconCheck size={12} /> <span>{t('providerDetail.keyConfigured')}</span>
                             </div>
                           </Show>
                         </Field>
@@ -1187,14 +1187,14 @@ const ProviderDetail: Component = () => {
                           onClick={() => setShowAdvanced(!showAdvanced())}
                         >
                           <span>{showAdvanced() ? '▼' : '▶'}</span>
-                          <span>高级协议与客户端标识覆盖（Headers / 版本参数）</span>
+                          <span>{t('providerDetail.customHeadersOverride')}</span>
                         </button>
 
                         <Show when={showAdvanced()}>
                           <div class="mt-3 p-3.5 rounded-control bg-bg-elevated/50 border border-subtle/70 space-y-3 text-xs">
                             <Show when={modelsData().defaultHeaders && Object.keys(modelsData().defaultHeaders!).length > 0}>
                               <div>
-                                <div class="text-faint mb-1.5 font-medium">当前网关内置默认 Header（供参考）：</div>
+                                <div class="text-faint mb-1.5 font-medium">{t('providerDetail.defaultHeaderHint')}</div>
                                 <div class="bg-bg/80 p-2 rounded border border-subtle font-mono text-[11px] space-y-1">
                                   <For each={Object.entries(modelsData().defaultHeaders!)}>
                                     {([k, v]) => (
@@ -1226,7 +1226,7 @@ const ProviderDetail: Component = () => {
 
                       <Show when={c().data?.credentialHint}>
                         <div class="text-xs text-faint">
-                          当前凭证标识：<span class="font-mono">{String(c().data?.credentialHint ?? '')}</span>
+                          {t('providerDetail.credentialHintLabel')}<span class="font-mono">{String(c().data?.credentialHint ?? '')}</span>
                           <Show when={c().data?.hasAccessToken}> · {t('providerDetail.accessTokenReady')}</Show>
                           <Show when={c().data?.hasRefreshToken}> · {t('providerDetail.refreshTokenReady')}</Show>
                         </div>
@@ -1273,8 +1273,8 @@ const ProviderDetail: Component = () => {
                 <Card class="p-5">
                   <div class="flex items-center justify-between mb-3">
                     <div>
-                      <h3 class="text-sm font-semibold">自定义模型</h3>
-                      <p class="text-xs text-faint mt-0.5">注册未在官方列表中的模型 ID，供网关路由匹配与对外转发</p>
+                      <h3 class="text-sm font-semibold">{t('providerDetail.customModelsTitle')}</h3>
+                      <p class="text-xs text-faint mt-0.5">{t('providerDetail.customModelsDesc')}</p>
                     </div>
                   </div>
                   <div class="flex gap-2">
@@ -1303,7 +1303,7 @@ const ProviderDetail: Component = () => {
                   </div>
                   <div class="mt-3 flex flex-wrap gap-2">
                     <Show when={(modelsData().customModels ?? models()?.customModels ?? []).length > 0} fallback={
-                      <span class="text-xs text-faint">暂无自定义模型</span>
+                      <span class="text-xs text-faint">{t('providerDetail.noCustomModels')}</span>
                     }>
                       <For each={modelsData().customModels ?? models()?.customModels ?? []}>
                         {m => (
@@ -1334,9 +1334,9 @@ const ProviderDetail: Component = () => {
                 <Card class="p-5 flex flex-col">
                   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <h3 class="text-sm font-semibold">可用模型</h3>
+                      <h3 class="text-sm font-semibold">{t('providerDetail.availableModels')}</h3>
                       <span class="text-xs text-faint">
-                        共 {(modelsData().registryModels ?? models()?.registryModels ?? []).length} 个 · 开放中 {(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length} 个
+                        {t('providerDetail.modelsCountSummary', { total: (modelsData().registryModels ?? models()?.registryModels ?? []).length, enabled: (modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length })}
                       </span>
                     </div>
                     <div class="flex items-center gap-2 w-full sm:w-auto">
@@ -1362,7 +1362,7 @@ const ProviderDetail: Component = () => {
                   {/* 批量运维工具栏 */}
                   <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-subtle/40 mb-3 text-xs">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <span class="text-faint">批量运维:</span>
+                      <span class="text-faint">{t('providerDetail.batchOps')}</span>
                       <Button
                         size="sm"
                         variant="secondary"
@@ -1647,7 +1647,7 @@ const ProviderDetail: Component = () => {
       {/* 模型元数据编辑弹窗 */}
       <Modal
         open={Boolean(editingModel())}
-        title={`编辑模型元数据 - ${editingModel()?.id || ''}`}
+        title={t('providerDetail.editModelMeta', { id: editingModel()?.id || '' })}
         onClose={() => setEditingModel(null)}
       >
         <div class="space-y-4">
@@ -1759,8 +1759,8 @@ const ProviderDetail: Component = () => {
           </Show>
           <Show when={newAccountAuthType() === 'oauth'}>
             <div class="p-3 rounded-control bg-accent/10 border border-accent/30 text-xs text-accent space-y-1">
-              <div class="font-medium flex items-center gap-1.5"><IconCheck size={14} /> OAuth 授权模式</div>
-              <p class="text-faint">保存创建后可直接在当前页发起设备码一键授权，新标签页登录后自动完成绑定。</p>
+              <div class="font-medium flex items-center gap-1.5"><IconCheck size={14} /> {t('providerDetail.oauthModeTitle')}</div>
+              <p class="text-faint">{t('providerDetail.oauthModeDesc')}</p>
             </div>
           </Show>
           <Field label={t('providerDetail.priorityLabel')} hint={t('providerDetail.newAccountPriorityHint')}>
@@ -1849,7 +1849,7 @@ const ProviderDetail: Component = () => {
               fallback={
                 <div class="py-8 flex flex-col items-center justify-center gap-3">
                   <span class="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-                  <p class="text-xs text-faint">正在向上游申请授权验证码...</p>
+                  <p class="text-xs text-faint">{t('providerDetail.requestingAuthCode')}</p>
                 </div>
               }
             >
@@ -1860,7 +1860,7 @@ const ProviderDetail: Component = () => {
                     when={flow().userCode}
                     fallback={
                       <div class="space-y-2 py-1">
-                        <div class="text-xs text-faint">已在浏览器新标签页中打开授权网页，请在网页中完成登录并确认授权：</div>
+                        <div class="text-xs text-faint">{t('providerDetail.browserAuthPrompt')}</div>
                         <div class="flex items-center justify-center gap-2">
                           <Button
                             size="sm"

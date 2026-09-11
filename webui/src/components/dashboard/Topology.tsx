@@ -415,11 +415,11 @@ export const GatewayTopology: Component<TopologyProps> = props => {
               const accountSubtitle = () => {
                 if (node.accounts.length > 1) {
                   const activeN = node.accounts.filter(a => a.isActive).length
-                  return `${activeN}/${node.accounts.length} 账号活跃`
+                  return t('topology.accountsActive', { active: activeN, total: node.accounts.length })
                 }
                 const acc = activeAcc()
-                if (!acc) return '未配置'
-                if (!acc.isActive) return '已停用'
+                if (!acc) return t('topology.notConfigured')
+                if (!acc.isActive) return t('common.disabled')
                 if (acc.email) return acc.email
                 if (acc.name && acc.name.trim() !== providerDisplayName() && acc.name.trim().toLowerCase() !== node.provider.toLowerCase()) {
                   return acc.name

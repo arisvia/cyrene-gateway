@@ -141,8 +141,8 @@ const App: Component = () => {
             <A
               href="/settings"
               class="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
-              title="系统设置"
-              aria-label="系统设置"
+              title={t('nav.settings')}
+              aria-label={t('nav.settings')}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3" />
@@ -157,7 +157,7 @@ const App: Component = () => {
         <div class="md:hidden fixed inset-0 z-50">
           <button
             type="button"
-            aria-label="关闭菜单遮罩"
+            aria-label={t('nav.closeMenuOverlay')}
             class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-sm animate-fade-in border-none cursor-default"
             onClick={() => setOpen(false)}
           />
@@ -169,7 +169,7 @@ const App: Component = () => {
                 type="button"
                 class="flex h-8 w-8 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover"
                 onClick={() => setOpen(false)}
-                aria-label="关闭菜单"
+                aria-label={t('nav.closeMenu')}
               >
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -187,8 +187,8 @@ const App: Component = () => {
                 href="/settings"
                 onClick={() => setOpen(false)}
                 class="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
-                title="系统设置"
-                aria-label="系统设置"
+                title={t('nav.settings')}
+                aria-label={t('nav.settings')}
               >
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="3" />

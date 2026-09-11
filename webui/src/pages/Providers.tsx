@@ -754,7 +754,7 @@ const Providers: Component = () => {
                             </Badge>
                             <Show when={hasMultiple()}>
                               <Badge tone="blue" class="bg-purple-500/15 text-purple-400 border border-purple-500/30 text-[10px] px-1.5 py-0.5 shrink-0">
-                                Fallback 就绪
+                                {t('providers.fallbackReady')}
                               </Badge>
                             </Show>
                           </div>
@@ -792,7 +792,7 @@ const Providers: Component = () => {
                             onClick={() => openWizard(reg()!)}
                             title={t('providers.addBackupAccountTitle')}
                           >
-                            + 加账号
+                            {t('providers.addAccount')}
                           </Button>
                         </Show>
                         <A href={`/providers/${group.primaryConnectionId}`}>
@@ -818,10 +818,10 @@ const Providers: Component = () => {
             <div class="space-y-3">
               <div class="flex items-center justify-between px-1">
                 <div class="flex items-center gap-2">
-                  <span class="text-sm font-semibold text-foreground">自定义通用接口 (Compatible APIs)</span>
-                  <Badge tone="blue" class="text-[10px]">支持自定义 Base URL</Badge>
+                  <span class="text-sm font-semibold text-foreground">{t('providers.customApiTitle')}</span>
+                  <Badge tone="blue" class="text-[10px]">{t('providers.customBaseUrlBadge')}</Badge>
                 </div>
-                <span class="text-xs text-faint">接入私有化部署、开源代理或三方标准中转服务</span>
+                <span class="text-xs text-faint">{t('providers.customApiDesc')}</span>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <For each={customBrandGroups()}>
@@ -877,8 +877,8 @@ const Providers: Component = () => {
           {/* 官方认证主流供应商列表 */}
           <div class="space-y-3">
             <div class="flex items-center justify-between px-1">
-              <span class="text-sm font-semibold text-foreground">认证提供商服务 (Official Providers)</span>
-              <span class="text-xs text-faint">开箱即用官方路由，无需手动维护端点</span>
+              <span class="text-sm font-semibold text-foreground">{t('providers.officialProvidersTitle')}</span>
+              <span class="text-xs text-faint">{t('providers.officialProvidersDesc')}</span>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-1">
               <For each={brandGroups()}>
@@ -928,8 +928,8 @@ const Providers: Component = () => {
                             {variant => {
                               const isSelected = () => reg().id === variant.id
                               const label = () => {
-                                if (variant.region === 'cn') return '国内版 (CN)'
-                                if (variant.region === 'intl') return '国际版 (Intl)'
+                                if (variant.region === 'cn') return t('providers.regionCn')
+                                if (variant.region === 'intl') return t('providers.regionIntl')
                                 return variant.name.replace(group.name, '').trim() || variant.id
                               }
                               return (
@@ -973,7 +973,7 @@ const Providers: Component = () => {
                     </div>
                     {/* 说明提示：固定最小高度保证网格卡片严格等高 */}
                     <div class="mt-2 min-h-5 flex items-center">
-                      <Show when={reg().authHint} fallback={<span class="text-[11px] text-faint/60">官方标准接口</span>}>
+                      <Show when={reg().authHint} fallback={<span class="text-[11px] text-faint/60">{t('providers.officialStandardApi')}</span>}>
                         <span class="text-[11px] text-muted italic line-clamp-1">{reg().authHint}</span>
                       </Show>
                     </div>
@@ -982,14 +982,14 @@ const Providers: Component = () => {
                   {/* 下半部分：横向完全对齐的协议与优先级 */}
                   <div class="mt-3 pt-3 border-t border-subtle space-y-3">
                     <div class="flex items-center justify-between text-xs text-faint">
-                      <span>协议: <code class="font-mono text-foreground font-semibold">{reg().apiType || 'openai'}</code></span>
-                      <span>默认优先级: <span class="font-mono text-foreground font-medium">{reg().priority ?? 50}</span></span>
+                      <span>{t('providers.protocol')}: <code class="font-mono text-foreground font-semibold">{reg().apiType || 'openai'}</code></span>
+                      <span>{t('providers.defaultPriority')}: <span class="font-mono text-foreground font-medium">{reg().priority ?? 50}</span></span>
                     </div>
 
                     <div class="flex items-center justify-between gap-2 pt-0.5">
                       <Show
                         when={reg().apiKeyUrl || reg().website}
-                        fallback={<span class="text-[11px] text-faint">原生内置</span>}
+                        fallback={<span class="text-[11px] text-faint">{t('providers.nativeBuiltin')}</span>}
                       >
                         <a
                           href={reg().apiKeyUrl || reg().website}
@@ -1003,7 +1003,7 @@ const Providers: Component = () => {
 
                       <div class="flex items-center gap-2">
                         <Show when={connected()}>
-                          <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">已接入</span>
+                          <span class="text-xs text-success font-semibold px-2 py-0.5 rounded bg-success/10">{t('providers.alreadyConnected')}</span>
                         </Show>
                         <Button
                           size="sm"
@@ -1043,8 +1043,8 @@ const Providers: Component = () => {
               <div class="space-y-4">
                 <div class="p-3.5 rounded-xl bg-hover text-xs space-y-1.5 text-faint border border-subtle">
                   <div class="flex items-center justify-between">
-                    <span>接口协议：<strong class="font-mono text-foreground">{reg().apiType || 'openai'}</strong></span>
-                    <span>类别：<strong class="text-foreground">{categoryLabel()[reg().category] || reg().category}</strong></span>
+                    <span>{t('providers.apiProtocol')}: <strong class="font-mono text-foreground">{reg().apiType || 'openai'}</strong></span>
+                    <span>{t('providers.category')}: <strong class="text-foreground">{categoryLabel()[reg().category] || reg().category}</strong></span>
                   </div>
                   <Show when={reg().apiKeyUrl}>
                     <div>
@@ -1055,7 +1055,7 @@ const Providers: Component = () => {
                     </div>
                   </Show>
                   <Show when={reg().authHint}>
-                    <div class="text-muted">提示：{reg().authHint}</div>
+                    <div class="text-muted">{t('providers.hint')}: {reg().authHint}</div>
                   </Show>
                 </div>
 
@@ -1138,7 +1138,7 @@ const Providers: Component = () => {
                     <Show when={wizardIsImport()}>
                       <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3">
                         <div class="text-xs font-semibold text-accent flex items-center gap-1.5">
-                          <span>Token 导入授权模式</span>
+                          <span>{t('providers.tokenImportMode')}</span>
                         </div>
                         <p class="text-xs text-faint leading-relaxed">
                           {t('providers.tokenImportHint')}
@@ -1176,24 +1176,24 @@ const Providers: Component = () => {
                         fallback={
                           <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
                             <div class="font-medium text-accent flex items-center gap-1.5">
-                              <IconCheck size={14} /> 已选择 OAuth 快捷授权模式
+                              <IconCheck size={14} /> {t('providers.oauthQuickModeSelected')}
                             </div>
                             <p class="text-faint leading-relaxed">
-                              点击下方「发起 OAuth 授权」后将呼出浏览器授权页面或设备码，<strong>在第三方平台成功授权通过后才保存连接</strong>，免去繁琐的密钥配置。
+                              {t('providers.oauthNotice')}
                             </p>
                           </div>
                         }
                       >
                         {flow => (
                           <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3 text-center">
-                            <div class="text-xs font-semibold text-accent">正在进行 OAuth 快捷授权</div>
+                            <div class="text-xs font-semibold text-accent">{t('providers.oauthInProgress')}</div>
 
                             {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
                             <Show
                               when={flow().userCode}
                               fallback={
                                 <div class="space-y-2 py-1">
-                                  <div class="text-xs text-faint">已在新窗口中打开授权网页，请在网页中完成登录并确认授权：</div>
+                                  <div class="text-xs text-faint">{t('providers.oauthBrowserOpened')}</div>
                                   <div class="flex items-center justify-center gap-2">
                                     <Button
                                       size="sm"
@@ -1209,7 +1209,7 @@ const Providers: Component = () => {
                                 </div>
                               }
                             >
-                              <div class="text-xs text-faint">请在新打开的页面中输入下方验证码完成授权：</div>
+                              <div class="text-xs text-faint">{t('providers.oauthEnterCode')}</div>
                               <div class="flex items-center justify-center gap-2">
                                 <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
                                   {flow().userCode}
@@ -1235,7 +1235,7 @@ const Providers: Component = () => {
                             </div>
                             <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
                               <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
-                              <span>等待浏览器授权完成... 授权成功将自动保存</span>
+                              <span>{t('providers.oauthWaitingAuth')}</span>
                             </div>
                             <div class="pt-2 flex justify-center">
                               <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
