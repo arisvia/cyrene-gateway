@@ -223,39 +223,103 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             'transform-origin': '0 0',
           }}
         >
-          {/* SVG 曲线连接层 (贝塞尔平滑流向曲线 + 粒子脉冲) */}
+          {/* SVG 曲线连接层 (全向对称贝塞尔平滑流向曲线 + 9router 级高能激光流) */}
           <svg
             class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] pointer-events-none overflow-visible -z-10"
             viewBox="-600 -600 1200 1200"
           >
             <defs>
-              <linearGradient id="activeLineGrad" gradientUnits="userSpaceOnUse" x1="-300" y1="-300" x2="300" y2="300">
-                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.9" />
-                <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0.9" />
+              {/* 激活激光能量流渐变 (青蓝 -> 翠绿 -> 薄荷) */}
+              <linearGradient id="laserStreamGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="50%" stop-color="#2dd4bf" />
+                <stop offset="100%" stop-color="#34d399" />
               </linearGradient>
+
+              {/* 激光辉光滤镜 */}
+              <filter id="laserGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
             </defs>
 
             <For each={nodePositions()}>
               {node => {
                 const isHovered = () => hoveredNode() === node.id
-                const cpx = Math.round(node.x * 0.48) + (node.x === 0 ? 20 : 0)
-                const cpy = Math.round(node.y * 0.48)
-                const d = `M 0 0 Q ${cpx} ${cpy} ${node.x} ${node.y}`
+                const absX = Math.abs(node.x)
+                const absY = Math.abs(node.y)
+                let d = ''
+                if (absY >= absX) {
+                  // 纵向为主（上方/下方节点）：S 弯平滑连接，x 为 0 时添加自然弧度偏移
+                  const arcX = node.x === 0 ? 18 : 0
+                  const cp1x = Math.round(node.x * 0.25 + arcX)
+                  const cp1y = Math.round(node.y * 0.5)
+                  const cp2x = Math.round(node.x * 0.85 + (node.x === 0 ? 8 : 0))
+                  const cp2y = Math.round(node.y * 0.6)
+                  d = `M 0 0 C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${node.x} ${node.y}`
+                } else {
+                  // 横向为主（左侧/右侧节点）：S 弯平滑连接，y 为 0 时添加自然弧度偏移
+                  const arcY = node.y === 0 ? 14 : 0
+                  const cp1x = Math.round(node.x * 0.5)
+                  const cp1y = Math.round(node.y * 0.25 + arcY)
+                  const cp2x = Math.round(node.x * 0.6)
+                  const cp2y = Math.round(node.y * 0.85 + (node.y === 0 ? 6 : 0))
+                  d = `M 0 0 C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${node.x} ${node.y}`
+                }
 
                 return (
                   <g class="transition-opacity duration-200">
-                    {/* 底层连接线 */}
+                    {/* 底层基础导轨线 */}
                     <path
                       d={d}
                       fill="none"
-                      stroke={node.isHitting ? 'url(#activeLineGrad)' : (node.isActive ? 'rgba(45, 212, 191, 0.45)' : 'rgba(150, 150, 150, 0.2)')}
-                      stroke-width={node.isHitting ? 3 : (node.isActive ? 2 : 1.5)}
+                      stroke={node.isActive ? 'rgba(45, 212, 191, 0.35)' : 'rgba(150, 150, 150, 0.2)'}
+                      stroke-width={node.isActive ? 2 : 1.5}
                       stroke-dasharray={node.isActive ? 'none' : '4 4'}
                     />
 
-                    {/* 命中时的光斑脉冲粒子 */}
-                    <Show when={node.isHitting || isHovered()}>
-                      <circle r="4" fill="var(--accent)">
+                    {/* 命中时的 9router 级高能科技激光能量流 (Laser Energy Stream) */}
+                    <Show when={node.isHitting}>
+                      {/* 1. 外层霓虹漫反射扩散光晕 */}
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke="url(#laserStreamGrad)"
+                        stroke-width="7"
+                        stroke-linecap="round"
+                        opacity="0.45"
+                        filter="url(#laserGlow)"
+                      />
+                      {/* 2. 核心高速流动的激光能量段流 (Segmented Laser Stream) */}
+                      <path
+                        d={d}
+                        fill="none"
+                        stroke="url(#laserStreamGrad)"
+                        stroke-width="3.5"
+                        stroke-linecap="round"
+                        stroke-dasharray="12 8 22 8 8 8"
+                        filter="url(#laserGlow)"
+                      >
+                        <animate
+                          attributeName="stroke-dashoffset"
+                          from="0"
+                          to="-66"
+                          dur="0.85s"
+                          repeatCount="indefinite"
+                        />
+                      </path>
+                      {/* 3. 沿管道高速激射的能量粒子核心 */}
+                      <circle r="4.5" fill="#a7f3d0" filter="url(#laserGlow)">
+                        <animateMotion path={d} dur="0.85s" repeatCount="indefinite" />
+                      </circle>
+                    </Show>
+
+                    {/* 悬停状态下的轻量导向粒子 */}
+                    <Show when={!node.isHitting && isHovered()}>
+                      <circle r="3.5" fill="var(--accent)">
                         <animateMotion path={d} dur="1.2s" repeatCount="indefinite" />
                       </circle>
                     </Show>
@@ -265,20 +329,28 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             </For>
           </svg>
 
-          {/* 1. 中心枢纽：Cyrene Gateway */}
+          {/* 1. 中心枢纽：Cyrene Gateway (命中时激活温暖金橙色光晕，对齐 9router) */}
           <div
-            class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border border-accent/40 shadow-lg shadow-accent/15 flex items-center gap-2 hover:scale-105 transition-all duration-200 cursor-default ring-1 ring-accent/20"
+            class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border transition-all duration-300 cursor-default flex items-center gap-2 ${
+              activeHit()
+                ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_32px_rgba(245,158,11,0.45)] scale-105'
+                : 'border-accent/40 shadow-lg shadow-accent/15 ring-1 ring-accent/20 hover:scale-105'
+            }`}
           >
             <div class="relative shrink-0">
               <img src="/icon.png" alt="Cyrene" class="w-6 h-6 rounded-lg object-contain shadow-sm shadow-accent/20" />
-              <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-accent ring-2 ring-bg-elevated animate-pulse" />
+              <span class={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-bg-elevated ${
+                activeHit() ? 'bg-amber-400 animate-ping shadow-[0_0_8px_#f59e0b]' : 'bg-accent animate-pulse'
+              }`} />
             </div>
             <div class="min-w-0 flex-1">
               <div class="font-bold text-xs tracking-tight text-foreground truncate flex items-center gap-1">
                 <span>Cyrene Gateway</span>
               </div>
-              <div class="text-[10px] text-accent/90 font-medium truncate flex items-center gap-1">
-                <span>核心调度</span>
+              <div class={`text-[10px] font-medium truncate flex items-center gap-1 ${
+                activeHit() ? 'text-amber-500 dark:text-amber-400 font-semibold' : 'text-accent/90'
+              }`}>
+                <span>{activeHit() ? '路由调度中' : '核心调度'}</span>
                 <span class="text-[9px] text-faint">· {activeCount()} 活跃</span>
               </div>
             </div>
@@ -318,10 +390,10 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                 >
                   <A
                     href={`/providers/${node.id}`}
-                    class={`w-[164px] h-[46px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-sm flex items-center gap-2 transition-all duration-200 cursor-pointer block no-underline ${
+                    class={`w-[164px] h-[46px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-md border shadow-sm flex items-center gap-2 transition-all duration-300 cursor-pointer block no-underline ${
                       node.isActive
                         ? node.isHitting
-                          ? 'border-accent ring-2 ring-accent/40 shadow-accent/25 scale-105'
+                          ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_26px_rgba(245,158,11,0.38)] scale-105 bg-amber-500/5'
                           : 'border-subtle hover:border-accent/50 hover:shadow-md hover:-translate-y-0.5'
                         : 'border-subtle/50 opacity-60 hover:opacity-100'
                     }`}
@@ -344,7 +416,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                           </Show>
                           <span class={`w-2 h-2 rounded-full shrink-0 ${
                             node.isActive
-                              ? (node.isHitting ? 'bg-accent animate-pulse shadow-accent' : 'bg-success')
+                              ? (node.isHitting ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]' : 'bg-success')
                               : 'bg-zinc-600'
                           }`} />
                         </div>
@@ -352,7 +424,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                       <div class="text-[10px] text-faint font-mono truncate mt-0.5 flex items-center justify-between gap-1">
                         <span class="truncate">{accountSubtitle()}</span>
                         <Show when={node.isHitting && node.recentLatency}>
-                          <span class="text-accent shrink-0 font-semibold">{node.recentLatency}ms</span>
+                          <span class="text-amber-500 dark:text-amber-400 shrink-0 font-semibold font-mono">{node.recentLatency}ms</span>
                         </Show>
                       </div>
                     </div>
