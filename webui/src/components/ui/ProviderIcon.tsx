@@ -83,7 +83,7 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
       {/* Qoder */}
       <Show when={p().includes('qoder')}>
         <svg width={sz()} height={sz()} viewBox="0 0 24 24" fill="currentColor" class={props.class}>
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2V7h2v5.5z" />
+          <path d="M23.376 14.458v-4.056c0-2.304-1.003-4.154-2.748-5.075L11.612.574l-.046.086-.045.086c1.68.886 2.644 2.673 2.644 4.902v4.056a7.928 7.928 0 01-.014.454l-.005.061c-.005.081-.01.164-.018.245a4.897 4.897 0 01-.011.1l-.01.076c-.008.068-.015.135-.025.203l-.018.113-.01.058a9.99 9.99 0 01-.098.513l-.007.03a7.209 7.209 0 01-.074.294l-.024.086c-.027.099-.056.197-.087.296l-.027.085a9.592 9.592 0 01-.111.323l-.033.085-.018.046c-.032.082-.064.166-.098.248-.019.048-.04.096-.061.145l-.007.017a6 6 0 01-.084.187c-.024.056-.05.11-.077.165-.03.061-.058.122-.089.182a9.423 9.423 0 01-.176.332c-.03.056-.062.111-.094.167-.035.059-.07.119-.107.178-.029.047-.06.094-.09.141-.044.067-.088.134-.134.2l-.047.067c-.053.075-.107.15-.162.223l-.034.045c-.062.082-.125.163-.19.243l-.024.03c-.074.09-.15.18-.227.268l-.022.025a10.024 10.024 0 01-.252.277l-.026.027c-.085.088-.172.174-.26.259l-.029.027c-.092.087-.185.172-.28.256l-.029.025c-.1.085-.2.167-.303.248l-.028.022c-.11.083-.22.163-.332.242l-.024.017c-.12.083-.243.163-.368.24l-.023.014c-.13.08-.261.157-.394.232l-.015.008c-.145.081-.292.159-.441.233-.3.15-.61.286-.928.406-.307.116-.62.215-.94.298-.316.08-.636.144-.96.19-.315.045-.632.072-.952.082H.08l-.08-.002v-4.056c0-2.229.964-4.016 2.644-4.902L12.388.574l.046.086.045.086c-1.68.886-2.644 2.673-2.644 4.902v4.056c0 .152.005.304.014.454l.005.061c.005.081.01.164.018.245.004.033.007.067.011.1l.01.076c.008.068.015.135.025.203l.018.113.01.058c.03.172.063.343.098.513l.007.03c.023.099.048.197.074.294l.024.086c.027.099.056.197.087.296l.027.085c.035.108.072.216.111.323l.033.085.018.046c.032.082.064.166.098.248.019.048.04.096.061.145l.007.017c.027.063.055.125.084.187.024.056.05.11.077.165.03.061.058.122.089.182.057.111.116.222.176.332.03.056.062.111.094.167.035.059.07.119.107.178.029.047.06.094.09.141.044.067.088.134.134.2l.047.067c.053.075.107.15.162.223l.034.045c.062.082.125.163.19.243l.024.03c.074.09.15.18.227.268l.022.025c.083.093.167.186.252.277l.026.027c.085.088.172.174.26.259l.029.027c.092.087.185.172.28.256l.029.025c.1.085.2.167.303.248l.028.022c.11.083.22.163.332.242l.024.017c.12.083.243.163.368.24l.023.014c.13.08.261.157.394.232l.015.008c.145.081.292.159.441.233.3.15.61.286.928.406.307.116.62.215.94.298.316.08.636.144.96.19.315.045.632.072.952.082h9.736l.08-.002z" />
         </svg>
       </Show>
 
@@ -176,57 +176,75 @@ export const ProviderBrandIcon: Component<{ provider: string; size?: number; cla
   )
 }
 
-// 映射当前活跃 provider 与 cli 工具的静态 SVG 矢量资产（按优先级由长到短匹配）
+// 编译期内嵌所有 Provider SVG 为 Data URL，彻底断绝离线或网关停止时的网络请求与图标变色丢失
+const RAW_SVGS = import.meta.glob<string>('../../assets/providers/*.svg', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+})
+
+const PROVIDER_DATA_URLS: Record<string, string> = {}
+for (const [path, content] of Object.entries(RAW_SVGS)) {
+  const match = path.match(/\/([^/]+)\.svg$/)
+  if (match && match[1]) {
+    PROVIDER_DATA_URLS[match[1]] = `data:image/svg+xml;utf8,${encodeURIComponent(content)}`
+  }
+}
+
+// 映射当前活跃 provider 与 cli 工具的静态 SVG 资产
+const getProviderAsset = (key: string): string | undefined => {
+  return PROVIDER_DATA_URLS[key] || `/providers/${key}.svg`
+}
+
 const PROVIDER_IMAGE_MAP: Record<string, string> = {
-  // 品牌变体统一以官方国际版/规范标准标收敛
-  'alicode-intl': '/providers/alicode.svg',
-  alicode: '/providers/alicode.svg',
-  'codebuddy-intl': '/providers/codebuddy.svg',
-  'codebuddy-cn': '/providers/codebuddy.svg',
-  codebuddy: '/providers/codebuddy.svg',
-  'glm-cn': '/providers/glm.svg',
-  glm: '/providers/glm.svg',
-  'minimax-cn': '/providers/minimax.svg',
-  minimax: '/providers/minimax.svg',
-  'grok-cli': '/providers/grok-cli.svg',
-  grok: '/providers/grok-cli.svg',
-  deepseek: '/providers/deepseek.svg',
-  dsh: '/providers/dsh.svg',
-  openai: '/providers/openai.svg',
-  claude: '/providers/claude.svg',
-  anthropic: '/providers/anthropic.svg',
-  gemini: '/providers/gemini.svg',
-  google: '/providers/gemini.svg',
-  vertex: '/providers/vertex.svg',
-  opencode: '/providers/opencode.svg',
-  copilot: '/providers/copilot.svg',
-  github: '/providers/github.svg',
-  openrouter: '/providers/openrouter.svg',
-  qoder: '/providers/qoder.svg',
-  groq: '/providers/groq.svg',
-  kimi: '/providers/kimi.svg',
-  cerebras: '/providers/cerebras.svg',
-  nvidia: '/providers/nvidia.svg',
-  xai: '/providers/xai.svg',
-  cursor: '/providers/cursor.svg',
-  cline: '/providers/cline.svg',
-  roo: '/providers/roo.svg',
-  continue: '/providers/continue.svg',
-  antigravity: '/providers/antigravity.svg',
-  aider: '/providers/aider.svg',
-  windsurf: '/providers/windsurf.svg',
-  trae: '/providers/trae.svg',
-  tencent: '/providers/tencent.svg',
-  codex: '/providers/codex.svg',
-  'stability-ai': '/providers/stability.svg',
-  stability: '/providers/stability.svg',
-  'brave-search': '/providers/brave.svg',
-  brave: '/providers/brave.svg',
-  tavily: '/providers/tavily.svg',
-  exa: '/providers/exa.svg',
-  firecrawl: '/providers/firecrawl.svg',
-  elevenlabs: '/providers/elevenlabs.svg',
-  deepgram: '/providers/deepgram.svg',
+  'alicode-intl': getProviderAsset('alicode')!,
+  alicode: getProviderAsset('alicode')!,
+  'codebuddy-intl': getProviderAsset('codebuddy')!,
+  'codebuddy-cn': getProviderAsset('codebuddy')!,
+  codebuddy: getProviderAsset('codebuddy')!,
+  'glm-cn': getProviderAsset('glm')!,
+  glm: getProviderAsset('glm')!,
+  'minimax-cn': getProviderAsset('minimax')!,
+  minimax: getProviderAsset('minimax')!,
+  'grok-cli': getProviderAsset('grok-cli')!,
+  grok: getProviderAsset('grok-cli')!,
+  deepseek: getProviderAsset('deepseek')!,
+  dsh: getProviderAsset('dsh')!,
+  openai: getProviderAsset('openai')!,
+  claude: getProviderAsset('claude')!,
+  anthropic: getProviderAsset('anthropic')!,
+  gemini: getProviderAsset('gemini')!,
+  google: getProviderAsset('gemini')!,
+  vertex: getProviderAsset('vertex')!,
+  opencode: getProviderAsset('opencode')!,
+  copilot: getProviderAsset('copilot')!,
+  github: getProviderAsset('github')!,
+  openrouter: getProviderAsset('openrouter')!,
+  qoder: getProviderAsset('qoder')!,
+  groq: getProviderAsset('groq')!,
+  kimi: getProviderAsset('kimi')!,
+  cerebras: getProviderAsset('cerebras')!,
+  nvidia: getProviderAsset('nvidia')!,
+  xai: getProviderAsset('xai')!,
+  cursor: getProviderAsset('cursor')!,
+  cline: getProviderAsset('cline')!,
+  roo: getProviderAsset('roo')!,
+  continue: getProviderAsset('continue')!,
+  antigravity: getProviderAsset('antigravity')!,
+  aider: getProviderAsset('aider')!,
+  windsurf: getProviderAsset('windsurf')!,
+  trae: getProviderAsset('trae')!,
+  tencent: getProviderAsset('tencent')!,
+  codex: getProviderAsset('codex')!,
+  'stability-ai': getProviderAsset('stability')!,
+  stability: getProviderAsset('stability')!,
+  'brave-search': getProviderAsset('brave')!,
+  brave: getProviderAsset('brave')!,
+  tavily: getProviderAsset('tavily')!,
+  exa: getProviderAsset('exa')!,
+  firecrawl: getProviderAsset('firecrawl')!,
+  elevenlabs: getProviderAsset('elevenlabs')!,
+  deepgram: getProviderAsset('deepgram')!,
 }
 
 // 容器化 Provider Avatar 组件（支持 public SVG 图像或品牌色渐变背景 SVG）
@@ -247,7 +265,9 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
     if (imgFailed()) return null
     const norm = normalized()
     const key = Object.keys(PROVIDER_IMAGE_MAP).find(k => norm.includes(k.replace(/[-_]/g, '')))
-    return key ? PROVIDER_IMAGE_MAP[key] : null
+    if (key && PROVIDER_IMAGE_MAP[key]) return PROVIDER_IMAGE_MAP[key]
+    const dataKey = Object.keys(PROVIDER_DATA_URLS).find(k => norm.includes(k.replace(/[-_]/g, '')))
+    return dataKey ? PROVIDER_DATA_URLS[dataKey] : null
   }
   return (
     <div

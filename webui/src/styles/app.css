@@ -400,3 +400,17 @@
 @utility gradient-soft {
   background-image: linear-gradient(135deg, rgba(45, 212, 191, 0.12), rgba(139, 92, 246, 0.12));
 }
+
+@keyframes gatewayHitJitter {
+  0%, 100% { transform: translate(-50%, -50%) scale(1.05) rotate(0deg); }
+  15% { transform: translate(calc(-50% - 2px), calc(-50% + 1px)) scale(1.05) rotate(-0.8deg); }
+  30% { transform: translate(calc(-50% + 2px), calc(-50% - 1.5px)) scale(1.05) rotate(0.8deg); }
+  45% { transform: translate(calc(-50% - 1.5px), calc(-50% - 1px)) scale(1.05) rotate(-0.5deg); }
+  60% { transform: translate(calc(-50% + 1.5px), calc(-50% + 1.5px)) scale(1.05) rotate(0.5deg); }
+  75% { transform: translate(calc(-50% - 1px), calc(-50% + 1px)) scale(1.05) rotate(-0.3deg); }
+  90% { transform: translate(calc(-50% + 1px), calc(-50% - 0.5px)) scale(1.05) rotate(0.3deg); }
+}
+
+@utility animate-gateway-jitter {
+  animation: gatewayHitJitter 0.28s infinite ease-in-out;
+}

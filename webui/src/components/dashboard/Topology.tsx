@@ -229,12 +229,21 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             viewBox="-600 -600 1200 1200"
           >
             <defs>
-              {/* 激活激光能量流渐变 (青蓝 -> 翠绿 -> 薄荷) */}
+              {/* 全息虹彩高能激光流渐变 (洋红 -> 紫罗兰 -> 天青 -> 薄荷绿 -> 暖阳金) */}
               <linearGradient id="laserStreamGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#38bdf8" />
-                <stop offset="50%" stop-color="#2dd4bf" />
-                <stop offset="100%" stop-color="#34d399" />
+                <stop offset="0%" stop-color="#ec4899" />
+                <stop offset="22%" stop-color="#818cf8" />
+                <stop offset="48%" stop-color="#06b6d4" />
+                <stop offset="76%" stop-color="#10b981" />
+                <stop offset="100%" stop-color="#fbbf24" />
               </linearGradient>
+
+              {/* 网关中心光粒子喷涌渐变 */}
+              <radialGradient id="gatewayBurstGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.9" />
+                <stop offset="50%" stop-color="#ec4899" stop-opacity="0.5" />
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+              </radialGradient>
 
               {/* 激光辉光滤镜 */}
               <filter id="laserGlow" x="-50%" y="-50%" width="200%" height="200%">
@@ -311,14 +320,17 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                           repeatCount="indefinite"
                         />
                       </path>
-                      {/* 3. 三重错相密集连绵能量粒子流 (对齐 9router 密集流光) */}
-                      <circle r="4.5" fill="#a7f3d0" filter="url(#laserGlow)">
+                      {/* 3. 三重错相密集彩色能量粒子流 (全息彩色能谱，对齐 9router 密集流光) */}
+                      {/* 领头金阳粒子 */}
+                      <circle r="4.5" fill="#fbbf24" filter="url(#laserGlow)">
                         <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="0s" />
                       </circle>
-                      <circle r="4" fill="#6ee7b7" filter="url(#laserGlow)">
+                      {/* 中继天青粒子 */}
+                      <circle r="4" fill="#38bdf8" filter="url(#laserGlow)">
                         <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="-0.28s" />
                       </circle>
-                      <circle r="3.5" fill="#38bdf8" filter="url(#laserGlow)">
+                      {/* 尾部霓虹洋红粒子 */}
+                      <circle r="3.5" fill="#ec4899" filter="url(#laserGlow)">
                         <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="-0.56s" />
                       </circle>
                     </Show>
@@ -326,13 +338,50 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                 )
               }}
             </For>
+            {/* 网关核心命中时的光粒子喷涌与共振能量冲击波 */}
+            <Show when={activeHit()}>
+              <g class="pointer-events-none">
+                {/* 1. 双重共振能量扩散冲击波环 */}
+                <circle cx="0" cy="0" r="32" fill="none" stroke="url(#laserStreamGrad)" stroke-width="2.5" filter="url(#laserGlow)">
+                  <animate attributeName="r" values="28;115" dur="0.85s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.85;0" dur="0.85s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-width" values="3.5;0.5" dur="0.85s" repeatCount="indefinite" />
+                </circle>
+                <circle cx="0" cy="0" r="32" fill="none" stroke="#f59e0b" stroke-width="2" filter="url(#laserGlow)">
+                  <animate attributeName="r" values="28;135" dur="0.85s" begin="0.42s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.75;0" dur="0.85s" begin="0.42s" repeatCount="indefinite" />
+                  <animate attributeName="stroke-width" values="2.5;0.5" dur="0.85s" begin="0.42s" repeatCount="indefinite" />
+                </circle>
+
+                {/* 2. 全向辐射散射的光粒子流簇 (8 向辐射光子) */}
+                <For each={[
+                  { dx: 65, dy: 0, c: '#fbbf24', delay: '0s' },
+                  { dx: 46, dy: 46, c: '#38bdf8', delay: '0.1s' },
+                  { dx: 0, dy: 65, c: '#ec4899', delay: '0.2s' },
+                  { dx: -46, dy: 46, c: '#10b981', delay: '0.3s' },
+                  { dx: -65, dy: 0, c: '#fbbf24', delay: '0.4s' },
+                  { dx: -46, dy: -46, c: '#818cf8', delay: '0.5s' },
+                  { dx: 0, dy: -65, c: '#06b6d4', delay: '0.6s' },
+                  { dx: 46, dy: -46, c: '#f43f5e', delay: '0.7s' },
+                ]}>
+                  {spark => (
+                    <circle cx="0" cy="0" r="3" fill={spark.c} filter="url(#laserGlow)">
+                      <animate attributeName="cx" values={`0;${spark.dx * 1.5}`} dur="0.75s" begin={spark.delay} repeatCount="indefinite" />
+                      <animate attributeName="cy" values={`0;${spark.dy * 1.5}`} dur="0.75s" begin={spark.delay} repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="1;0.8;0" dur="0.75s" begin={spark.delay} repeatCount="indefinite" />
+                      <animate attributeName="r" values="3.5;2;0.5" dur="0.75s" begin={spark.delay} repeatCount="indefinite" />
+                    </circle>
+                  )}
+                </For>
+              </g>
+            </Show>
           </svg>
 
           {/* 1. 中心枢纽：Cyrene Gateway (命中时激活温暖金橙色光晕，对齐 9router) */}
           <div
             class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl bg-bg-elevated/95 backdrop-blur-xl border transition-all duration-300 cursor-default flex items-center gap-2 ${
               activeHit()
-                ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_32px_rgba(245,158,11,0.45)] scale-105'
+                ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_32px_rgba(245,158,11,0.45)] scale-105 animate-gateway-jitter'
                 : 'border-accent/40 shadow-lg shadow-accent/15 ring-1 ring-accent/20 hover:scale-105'
             }`}
           >
