@@ -391,6 +391,11 @@
   backdrop-filter: blur(var(--glass-blur)) saturate(180%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-depth);
+  transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              -webkit-backdrop-filter 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              backdrop-filter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .custom-background .glass-sticky,
@@ -399,6 +404,40 @@ html.custom-background .glass-sticky {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   backdrop-filter: blur(var(--glass-blur)) saturate(160%);
   border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-depth);
+}
+
+/* ---- 滚动动态加深与物理抬升 (Scroll-driven Dynamic Elevation) ---- */
+/* 当页面向下滚动时，吸顶面板平滑加深底色并强化立体阴影，彻底阻断下层正文文字穿透产生重影 */
+[data-scrolled="true"] .glass-sticky,
+html[data-scrolled="true"] .glass-sticky {
+  background-color: color-mix(in oklab, var(--bg-elevated) 98%, transparent);
+  border-color: var(--glass-border-hover);
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.40), 0 4px 12px -2px rgba(0, 0, 0, 0.22);
+}
+
+.custom-background[data-scrolled="true"] .glass-sticky,
+html.custom-background[data-scrolled="true"] .glass-sticky,
+[data-scrolled="true"] .custom-background .glass-sticky,
+html[data-scrolled="true"] .custom-background .glass-sticky {
+  background-color: color-mix(in oklab, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.32, 0.94) * 100%), transparent);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(200%);
+  backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(200%);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 40px -6px rgba(0, 0, 0, 0.65), 0 4px 14px -2px rgba(0, 0, 0, 0.35);
+}
+
+.light.custom-background[data-scrolled="true"] .glass-sticky,
+html.light.custom-background[data-scrolled="true"] .glass-sticky,
+:root.light.custom-background[data-scrolled="true"] .glass-sticky,
+[data-scrolled="true"] .light.custom-background .glass-sticky,
+[data-scrolled="true"] :root.light.custom-background .glass-sticky,
+html[data-scrolled="true"] .light.custom-background .glass-sticky {
+  background-color: color-mix(in oklab, #ffffff calc(min(var(--app-surface-alpha) + 0.30, 0.95) * 100%), transparent);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(200%);
+  backdrop-filter: blur(calc(var(--glass-blur) + 6px)) saturate(200%);
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 14px 34px -4px rgba(15, 23, 42, 0.14), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
 }
 
 @utility no-scrollbar {

@@ -1,5 +1,5 @@
-import { type Component, type JSX, For, Show, createSignal, onMount, lazy } from 'solid-js'
-import { HashRouter, Route, A } from '@solidjs/router'
+import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup, createEffect, lazy } from 'solid-js'
+import { HashRouter, Route, A, useLocation } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
@@ -100,6 +100,38 @@ const App: Component = () => {
 
   // 布局作为 root 传入 Router：这样侧栏/头部里的 <A> 处于路由上下文内
   const Layout: Component<{ children?: JSX.Element }> = props => {
+    const location = useLocation()
+    const [scrolled, setScrolled] = createSignal(false)
+
+    createEffect(() => {
+      // 路由切换时平滑滚回顶部并重置吸顶加深状态
+      location.pathname
+      window.scrollTo(0, 0)
+      setScrolled(false)
+      document.documentElement.setAttribute('data-scrolled', 'false')
+    })
+
+    onMount(() => {
+      let ticking = false
+      const onScroll = () => {
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            const isS = window.scrollY > 8
+            setScrolled(isS)
+            document.documentElement.setAttribute('data-scrolled', isS ? 'true' : 'false')
+            ticking = false
+          })
+          ticking = true
+        }
+      }
+      window.addEventListener('scroll', onScroll, { passive: true })
+      onScroll()
+      onCleanup(() => {
+        window.removeEventListener('scroll', onScroll)
+        document.documentElement.removeAttribute('data-scrolled')
+      })
+    })
+
     return (
       <div class={`min-h-screen text-text relative selection:bg-accent/25 app-root-shell ${bgStore.hasCustomBg() ? '' : 'bg-bg'}`}>
         <Show when={bgStore.hasCustomBg()}>
@@ -202,8 +234,10 @@ const App: Component = () => {
 
       {/* 主区 */}
       <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
-        <header class="sticky top-0 z-30 px-4 lg:px-10 pt-3.5 pb-2 transition-all pointer-events-none">
-          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-sticky shadow-glass transition-all pointer-events-auto">
+        <header class={`sticky top-0 z-30 px-4 lg:px-10 transition-all duration-300 pointer-events-none ${scrolled() ? 'pt-2 pb-2' : 'pt-3.5 pb-2'}`}>
+          <div class={`h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-sticky transition-all duration-300 pointer-events-auto ${
+            scrolled() ? 'shadow-md' : 'shadow-glass'
+          }`}>
             <button
               type="button"
               class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle shrink-0"
