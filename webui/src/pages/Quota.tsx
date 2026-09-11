@@ -135,9 +135,6 @@ const Quota: Component = () => {
     const resetHint = () => {
       const raw = props.quota.resetAt
       if (!raw) return ''
-      // Upstream API status check; localize backend string
-      if (raw === '即将重置') return t('quota.resetSoon')
-      if (raw.startsWith('in ')) return raw
       try {
         const timeMs = new Date(raw).getTime()
         if (isNaN(timeMs)) return ''
@@ -145,9 +142,9 @@ const Quota: Component = () => {
         if (diffMs <= 0) return t('quota.resetSoon')
         const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
         const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-        if (days > 0) return `in ${days}d ${hours}h`
+        if (days > 0) return t('quota.resetInDaysHours', { days, hours })
         const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-        return `in ${hours}h ${mins}m`
+        return t('quota.resetInHoursMins', { hours, mins })
       } catch {
         return ''
       }

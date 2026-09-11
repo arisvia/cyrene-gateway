@@ -715,6 +715,8 @@ export const zhCN = {
     remove: '移除',
   },
   quota: {
+    resetInDaysHours: "{days} 天 {hours} 小时后重置",
+    resetInHoursMins: "{hours} 小时 {mins} 分钟后重置",
     "noConnectionsShort": "当前暂未接入任何提供商连接。",
     "metricsCountSuffix": "{count} 项配额指标",
     "inNetworkUsage": "网关网内用量统计",

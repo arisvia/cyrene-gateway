@@ -717,6 +717,8 @@ export const enUS: TranslationDict = {
     remove: 'Remove',
   },
   quota: {
+    resetInDaysHours: "in {days}d {hours}h",
+    resetInHoursMins: "in {hours}h {mins}m",
     "noConnectionsShort": "No provider connections have been added yet.",
     "metricsCountSuffix": "{count} quota metrics",
     "inNetworkUsage": "In-network usage statistics",
