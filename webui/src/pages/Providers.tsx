@@ -53,13 +53,14 @@ const Providers: Component = () => {
   })
 
   const getCapConfig = (capKey: string) => {
+    // 8 项能力各用不同色相，避免同页出现重复色标识
     const meta: Record<string, { tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
       llm: { tone: 'blue', icon: IconChat },
-      image: { tone: 'blue', icon: IconPalette },
+      image: { tone: 'purple', icon: IconPalette },
       tts: { tone: 'green', icon: IconVolume },
-      stt: { tone: 'amber', icon: IconMic },
+      stt: { tone: 'pink', icon: IconMic },
       video: { tone: 'red', icon: IconVideo },
-      embedding: { tone: 'gray', icon: IconVector },
+      embedding: { tone: 'cyan', icon: IconVector },
       'web-search': { tone: 'amber', icon: IconSearch },
       'web-fetch': { tone: 'gray', icon: IconGlobe },
     }

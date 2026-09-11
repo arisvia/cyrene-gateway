@@ -3,6 +3,7 @@ import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
+import type { BadgeTone } from '@/types/domain'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export * from './CyreneLogo'
 export * from './icons'
@@ -61,14 +62,18 @@ export const PageHeader: Component<PageHeaderProps> = props => (
 )
 
 
-export const Badge: Component<{ tone?: 'green' | 'amber' | 'red' | 'gray' | 'blue'; class?: string; children?: JSX.Element }> = props => {
+export const Badge: Component<{ tone?: BadgeTone; class?: string; children?: JSX.Element }> = props => {
   // 状态色已按主题在 app.css 中分别调校（浅色用深色系保证 AA 对比度）；
   // gray 不能用 bg-hover —— 它在浅色下是 92% 白，叠加在白色卡片上等于隐形。
+  // 扩展色调（purple/cyan/pink）同样遵循 light 深色系 + dark 亮色系。
   const tones: Record<string, string> = {
     green: 'text-success bg-success/12 border-success/30',
     amber: 'text-warning bg-warning/12 border-warning/30',
     red: 'text-danger bg-danger/12 border-danger/30',
     blue: 'text-info bg-info/12 border-info/30',
+    purple: 'text-purple-700 dark:text-purple-300 bg-purple-500/12 border-purple-500/30',
+    cyan: 'text-cyan-700 dark:text-cyan-300 bg-cyan-500/12 border-cyan-500/30',
+    pink: 'text-pink-700 dark:text-pink-300 bg-pink-500/12 border-pink-500/30',
     gray: 'text-muted bg-black/6 dark:bg-white/10 border-black/10 dark:border-white/15',
   }
   return (
@@ -1029,7 +1034,7 @@ export const FileUpload: Component<FileUploadProps> = props => {
             onClick={() => fileInputRef?.click()}
             class="w-full cursor-pointer flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-black/4 dark:bg-white/6 hover:bg-black/8 dark:hover:bg-white/10 border border-subtle text-xs text-muted hover:text-foreground transition-all min-h-[36px] shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed group"
           >
-            <IconImage size={15} class="text-muted group-hover:text-accent transition-colors shrink-0" />
+            <IconImage size={15} class="text-muted group-hover:text-foreground transition-colors shrink-0" />
             <span class="truncate font-medium">
               {props.value ? props.value.name : (props.placeholder ?? t('common.chooseFile'))}
             </span>

@@ -609,7 +609,7 @@ const Settings: Component = () => {
               </Field>
             </div>
 
-            <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-bg-elevated border border-subtle">
+            <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-black/4 dark:bg-white/6 border border-black/10 dark:border-white/12">
               <Show
                 when={excludedProviders().length > 0}
                 fallback={<span class="text-xs text-faint">{t('settings.tokenSaver.noExclusions')}</span>}
@@ -1002,7 +1002,7 @@ const Settings: Component = () => {
             </div>
             <span class="font-semibold text-foreground whitespace-nowrap">Cyrene Gateway</span>
             <span
-              class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-hover text-faint border border-subtle/50 whitespace-nowrap"
+              class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-black/6 dark:bg-white/10 text-muted border border-black/10 dark:border-white/15 whitespace-nowrap"
               title={`${t('settings.fullVersion')}: v${store.version() || 'dev'}`}
             >
               v{formatVersion(store.version())}
