@@ -2,16 +2,19 @@ import { type Component, For, Show, createSignal, createMemo, createResource } f
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import { useI18n } from '@/i18n'
 import type { Combo } from '@/types/domain'
 import { Card, Badge, Button, Input, Select, Modal, Field, Empty, PageHeader, IconClose, confirm } from '@/components/ui'
 
-const STRATEGY_LABEL: Record<string, string> = {
-  fallback: '故障回退', 'round-robin': '轮询',
-}
 
 const Combos: Component = () => {
   const store = useGatewayStore()
   const toast = useToast()
+  const { t } = useI18n()
+  const strategyLabel = (): Record<string, string> => ({
+    fallback: t('combos.fallbackStrategy'),
+    'round-robin': t('combos.roundRobinStrategy'),
+  })
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<Combo | null>(null)
   const [saving, setSaving] = createSignal(false)
@@ -83,18 +86,18 @@ const Combos: Component = () => {
   return (
     <div class="space-y-5 stagger">
       <PageHeader
-        title="模型组合"
-        subtitle="把多个模型编排为一个入口，按策略自动轮转或回退"
+        title={t('combos.title')}
+        subtitle={t('combos.subtitle')}
         actions={
           <>
-            <Button variant="ghost" onClick={() => refetch()}>刷新模型表</Button>
-            <Button variant="primary" onClick={openCreate}>+ 新建组合</Button>
+            <Button variant="ghost" onClick={() => refetch()}>{t('combos.refreshModels')}</Button>
+            <Button variant="primary" onClick={openCreate}>+ {t('combos.newCombo')}</Button>
           </>
         }
       />
 
       <Show when={store.combos().length > 0} fallback={
-        <Card class="p-6"><Empty message="还没有组合。新建一个把多个上游模型串成统一入口。" /></Card>
+        <Card class="p-6"><Empty message={t('combos.emptyTitle')} /></Card>
       }>
         <div class="grid gap-3">
           <For each={store.combos()}>
@@ -104,8 +107,8 @@ const Combos: Component = () => {
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="font-medium text-sm">{c.name}</span>
-                      <Badge tone="blue">{STRATEGY_LABEL[c.kind] || c.kind}</Badge>
-                      <Badge tone="gray">{c.models?.length ?? 0} 个模型</Badge>
+                      <Badge tone="blue">{strategyLabel()[c.kind] || c.kind}</Badge>
+                      <Badge tone="gray">{t('combos.modelCount', { count: c.models?.length ?? 0 })}</Badge>
                     </div>
                     <div class="mt-1.5 flex flex-wrap gap-1.5">
                       <For each={c.models ?? []}>
@@ -121,22 +124,21 @@ const Combos: Component = () => {
                     </div>
                   </div>
                   <div class="flex gap-1.5 shrink-0">
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>编辑</Button>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>{t('common.edit')}</Button>
                     <Button
                       size="sm"
                       variant="danger"
                       onClick={async () => {
                         const ok = await confirm({
-                          title: '删除模型组合',
-                          message: `确定要删除组合「${c.name}」吗？依赖此组合的下游请求将无法正常解析。`,
-                          variant: 'danger',
+                          title: t('combos.deleteConfirmTitle'),
+                          message: t('combos.deleteConfirmMessage', { name: c.name }),
                         })
                         if (ok) {
                           await store.deleteCombo(c.id)
                         }
                       }}
                     >
-                      删除
+                      {t('common.delete')}
                     </Button>
                   </div>
                 </div>
@@ -146,29 +148,29 @@ const Combos: Component = () => {
         </div>
       </Show>
 
-      <Modal open={open()} title={editing() ? '编辑组合' : '新建组合'} onClose={() => setOpen(false)}>
+      <Modal open={open()} title={editing() ? t('combos.editCombo') : t('combos.newCombo')} onClose={() => setOpen(false)}>
         <div class="space-y-4">
-          <Field label="组合名称" hint="调用时使用的模型名，例如 fast-coding">
+          <Field label={t('combos.name')} hint={t('combos.nameHint')}>
             <Input value={form().name} placeholder="fast-coding" onInput={v => setForm(f => ({ ...f, name: v }))} />
           </Field>
-          <Field label="调度策略" hint="fallback：按顺序失败转移；round-robin：轮流">
+          <Field label={t('combos.strategy')} hint={t('combos.strategyHint')}>
             <Select
               value={form().kind}
               options={[
-                { value: 'fallback', label: '故障回退' },
-                { value: 'round-robin', label: '轮询' },
+                { value: 'fallback', label: t('combos.fallbackStrategy') },
+                { value: 'round-robin', label: t('combos.roundRobinStrategy') },
               ]}
               onChange={v => setForm(f => ({ ...f, kind: v }))}
             />
           </Field>
 
-          <Field label="成员模型" hint="按顺序排列，fallback 模式下靠前的优先">
+          <Field label={t('combos.memberModels')} hint={t('combos.memberModelsHint')}>
             <div class="flex gap-2">
               <Select
                 class="flex-1"
                 value={modelPick()}
                 options={[
-                  { value: '', label: '选择模型…' },
+                  { value: '', label: t('combos.selectModel') },
                   ...(available() ?? []).map(m => ({
                     value: m.id,
                     label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
@@ -176,17 +178,17 @@ const Combos: Component = () => {
                 ]}
                 onChange={setModelPick}
               />
-              <Button variant="secondary" disabled={!modelPick()} onClick={addModel}>添加</Button>
+              <Button variant="secondary" disabled={!modelPick()} onClick={addModel}>{t('combos.add')}</Button>
             </div>
             <div class="mt-2 flex flex-wrap gap-1.5">
-              <Show when={form().models.length > 0} fallback={<span class="text-[11px] text-faint">尚未添加模型</span>}>
+              <Show when={form().models.length > 0} fallback={<span class="text-[11px] text-faint">{t('combos.noModelsAdded')}</span>}>
                 <For each={form().models}>
                   {m => {
                     const displayName = () => modelNames()[m] || m
                     return (
                       <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-control bg-hover text-xs" title={m}>
                         <span class="font-medium text-foreground">{displayName()}</span>
-                        <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" onClick={() => removeModel(m)} title="移除"><IconClose size={12} /></button>
+                        <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" onClick={() => removeModel(m)} title={t('combos.remove')}><IconClose size={12} /></button>
                       </span>
                     )
                   }}
@@ -196,9 +198,9 @@ const Combos: Component = () => {
           </Field>
 
           <div class="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setOpen(false)}>取消</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
             <Button variant="primary" loading={saving()} disabled={!canSave()} onClick={submit}>
-              {editing() ? '保存' : '创建'}
+              {editing() ? t('common.save') : t('common.create')}
             </Button>
           </div>
         </div>

@@ -33,6 +33,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: 'happy-dom',
     globals: true,
+    setupFiles: ['src/test-setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     server: {
       deps: {

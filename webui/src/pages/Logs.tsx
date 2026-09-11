@@ -1,6 +1,7 @@
 import { type Component, For, Show, createSignal, onMount, onCleanup, createMemo } from 'solid-js'
 import { api } from '@/lib/api'
 import { Card, Button, Input, Select, PageHeader } from '@/components/ui'
+import { useI18n } from '@/i18n'
 
 interface LogItem {
   time: string
@@ -18,6 +19,7 @@ function processLogItem(item: LogItem): LogItem {
 }
 
 const LogsPage: Component = () => {
+  const { t } = useI18n()
   const [logs, setLogs] = createSignal<LogItem[]>([])
   const [filterLevel, setFilterLevel] = createSignal('')
   const [query, setQuery] = createSignal('')
@@ -153,9 +155,9 @@ const LogsPage: Component = () => {
   return (
     <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
       <PageHeader
-        title="网关系统日志"
+        title={t('logs.title')}
         badge={<span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm animate-pulse' : 'bg-zinc-600'}`} />}
-        subtitle="实时捕获与推送 Cyrene Gateway 后端请求转发、上游故障重试与轮转事件"
+        subtitle={t('logs.subtitle')}
         actions={
           <>
             <Button
@@ -163,10 +165,10 @@ const LogsPage: Component = () => {
               variant={autoScroll() ? 'primary' : 'secondary'}
               onClick={() => setAutoScroll(!autoScroll())}
             >
-              {autoScroll() ? '自动滚动: 开' : '自动滚动: 关'}
+              {autoScroll() ? t('logs.autoScrollOn') : t('logs.autoScrollOff')}
             </Button>
             <Button size="sm" variant="ghost" onClick={clearLogs}>
-              清屏
+              {t('logs.clearLogs')}
             </Button>
           </>
         }
@@ -177,14 +179,14 @@ const LogsPage: Component = () => {
         <div class="flex flex-wrap items-center gap-3 flex-1">
           <Input
             class="!w-full sm:!w-64"
-            placeholder="过滤日志内容 / 参数 / 路径…"
+            placeholder={t('logs.filterPlaceholder')}
             value={query()}
             onInput={setQuery}
           />
           <Select
             value={filterLevel()}
             options={[
-              { value: '', label: '全部日志级别' },
+              { value: '', label: t('logs.levelAll') },
               { value: 'INFO', label: 'INFO (正常)' },
               { value: 'WARN', label: 'WARN (告警/重试)' },
               { value: 'ERROR', label: 'ERROR (错误)' },
@@ -194,10 +196,7 @@ const LogsPage: Component = () => {
           />
         </div>
         <div class="text-xs text-faint font-mono">
-          共 {logs().length} 条，匹配 {filteredLogs().length} 条
-          <Show when={filteredLogs().length > RENDER_LIMIT}>
-            （显示最新 {displayedLogs().length} 条）
-          </Show>
+          {t('logs.logCount', { total: logs().length, matched: filteredLogs().length })}
         </div>
       </Card>
 
@@ -210,13 +209,13 @@ const LogsPage: Component = () => {
           when={displayedLogs().length > 0}
           fallback={
             <div class="h-full flex items-center justify-center text-zinc-600 text-sm">
-              暂无匹配的系统运行日志…
+              {t('logs.noLogs')}
             </div>
           }
         >
           <Show when={filteredLogs().length > RENDER_LIMIT}>
             <div class="text-center py-1 text-[11px] text-zinc-500 border-b border-subtle/30 select-none">
-              为保障流畅渲染，已仅展示最新 {RENDER_LIMIT} 条匹配日志（共 {filteredLogs().length} 条）
+              {t('logs.renderedLimit', { limit: RENDER_LIMIT, total: filteredLogs().length })}
             </div>
           </Show>
           <For each={displayedLogs()}>

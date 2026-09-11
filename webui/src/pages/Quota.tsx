@@ -1,5 +1,6 @@
 import { type Component, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
+import { useI18n } from '@/i18n'
 import { api } from '@/lib/api'
 import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, PageHeader } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
@@ -23,6 +24,7 @@ interface ConnQuota {
 }
 
 const Quota: Component = () => {
+  const { t } = useI18n()
   const store = useGatewayStore()
   const [rows, setRows] = createSignal<ProviderUsage[]>([])
   const [loading, setLoading] = createSignal(true)
@@ -138,7 +140,7 @@ const Quota: Component = () => {
         const timeMs = new Date(raw).getTime()
         if (isNaN(timeMs)) return ''
         const diffMs = timeMs - Date.now()
-        if (diffMs <= 0) return '即将重置'
+        if (diffMs <= 0) return t('quota.resetSoon')
         const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
         const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
         if (days > 0) return `in ${days}d ${hours}h`
@@ -204,7 +206,7 @@ const Quota: Component = () => {
           <div class="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5 text-xs text-faint">
             <Input
               size="sm"
-              placeholder={`搜索 ${allKeys().length} 项模型配额...`}
+              placeholder={t('quota.searchPlaceholder')}
               value={search()}
               onInput={v => { setSearch(v); setPage(1); }}
               class="w-40 sm:w-48 !text-[11px] !py-0.5 !h-7"
@@ -254,8 +256,8 @@ const Quota: Component = () => {
   return (
     <div class="space-y-5 stagger">
       <PageHeader
-        title="配额中心"
-        subtitle="按账号与节点双列实时呈现官方真实余量 (Credits / Quota) 与自动轮换状态"
+        title={t('quota.title')}
+        subtitle={t('quota.subtitle')}
         actions={
           <>
             <Show when={providerOptions().length > 1}>
@@ -265,7 +267,7 @@ const Quota: Component = () => {
                 value={providerFilter()}
                 onChange={setProviderFilter}
                 options={[
-                  { value: '', label: `全部供应商 (${store.providers().length})` },
+                  { value: '', label: t('quota.allProviders', { count: store.providers().length }) },
                   ...providerOptions().map(p => ({ value: p, label: p })),
                 ]}
               />
@@ -280,8 +282,8 @@ const Quota: Component = () => {
               }`}
               onClick={() => setAutoRefresh(!autoRefresh())}
             >
-              <span>自动刷新</span>
-              <span class="text-[10px] opacity-75">{autoRefresh() ? '(开启 60s)' : '(关闭)'}</span>
+              <span>{t('quota.autoRefresh')}</span>
+              <span class="text-[10px] opacity-75">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
             </button>
 
             <Button
@@ -290,7 +292,7 @@ const Quota: Component = () => {
               loading={refreshing()}
               onClick={() => { setRefreshing(true); load(); }}
             >
-              刷新数据
+              {t('quota.refreshData')}
             </Button>
           </>
         }

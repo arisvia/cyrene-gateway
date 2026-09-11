@@ -991,7 +991,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Guard: cannot require login without an initialized password (prevents lockout)
 	if settings.RequireLogin && settings.PasswordHash == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请先设置管理员密码再开启要求登录，以防面板被锁死"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "admin password must be configured before enabling login requirement"})
 		return
 	}
 
@@ -1038,7 +1038,7 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 
 	// Guard: cannot require login without an initialized password (prevents lockout)
 	if updated.RequireLogin && updated.PasswordHash == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "请先设置管理员密码再开启要求登录，以防面板被锁死"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "admin password must be configured before enabling login requirement"})
 		return
 	}
 

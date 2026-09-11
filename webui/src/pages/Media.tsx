@@ -3,6 +3,7 @@ import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
 import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
 import { useToast } from '@/lib/toast'
+import { useI18n } from '@/i18n'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
 
@@ -22,16 +23,17 @@ interface MediaProvider {
   primaryConnectionId?: string
 }
 
-const CAPS: { id: Cap; label: string; endpoint: string; hint: string; kindKey: string }[] = [
-  { id: 'image', label: '图像生成', endpoint: '/v1/images/generations', hint: '输入提示词，调用多模态模型生成高分辨率图像', kindKey: 'image' },
-  { id: 'search', label: '联网搜索', endpoint: '/v1/search', hint: '通过 Google Search Grounding 或专业搜索引擎检索网页', kindKey: 'web-search' },
-  { id: 'tts', label: '语音合成', endpoint: '/v1/audio/speech', hint: '将输入文本实时渲染为自然拟人语音', kindKey: 'tts' },
-  { id: 'stt', label: '语音识别', endpoint: '/v1/audio/transcriptions', hint: '转录音频内容为结构化文本', kindKey: 'stt' },
-  { id: 'embeddings', label: '向量嵌入', endpoint: '/v1/embeddings', hint: '文本特征与语义向量化提取', kindKey: 'embedding' },
-]
 
 const Media: Component = () => {
   const toast = useToast()
+  const { t } = useI18n()
+  const caps = () => [
+    { id: 'image' as Cap, label: t('media.caps.image.label'), endpoint: '/v1/images/generations', hint: t('media.caps.image.hint'), kindKey: 'image' },
+    { id: 'search' as Cap, label: t('media.caps.search.label'), endpoint: '/v1/search', hint: t('media.caps.search.hint'), kindKey: 'web-search' },
+    { id: 'tts' as Cap, label: t('media.caps.tts.label'), endpoint: '/v1/audio/speech', hint: t('media.caps.tts.hint'), kindKey: 'tts' },
+    { id: 'stt' as Cap, label: t('media.caps.stt.label'), endpoint: '/v1/audio/transcriptions', hint: t('media.caps.stt.hint'), kindKey: 'stt' },
+    { id: 'embeddings' as Cap, label: t('media.caps.embeddings.label'), endpoint: '/v1/embeddings', hint: t('media.caps.embeddings.hint'), kindKey: 'embedding' },
+  ]
   const [active, setActive] = createSignal<Cap>('image')
   const [providers, setProviders] = createSignal<MediaProvider[]>([])
   const [loadingProviders, setLoadingProviders] = createSignal(false)
@@ -48,7 +50,7 @@ const Media: Component = () => {
   async function loadProviders() {
     setLoadingProviders(true)
     try {
-      const cap = CAPS.find(c => c.id === active())!
+      const cap = caps().find(c => c.id === active())!
       const res = (await api(`/api/media-providers?kind=${cap.kindKey}&connectedOnly=true`)) as { providers?: MediaProvider[] }
       setProviders(res?.providers || [])
     } catch {
@@ -108,7 +110,7 @@ const Media: Component = () => {
 
   async function runWorkbench() {
     const p = selectedProvider()
-    const cap = CAPS.find(c => c.id === active())!
+    const cap = caps().find(c => c.id === active())!
     if (!text().trim() || !p) return
     setBusy(true)
     setError('')
@@ -136,12 +138,12 @@ const Media: Component = () => {
   return (
     <div class="space-y-5 stagger pb-16">
       <PageHeader
-        title="媒体能力与多模态工作台"
-        subtitle="多模态与衍生能力中心：图像生成、联网搜索、语音合成/识别与文本向量嵌入"
+        title={t('media.title')}
+        subtitle={t('media.subtitle')}
         actions={
           <A href="/providers?tab=catalog&category=media">
             <Button size="sm" variant="secondary" class="gap-1.5 shrink-0">
-              <span>前往提供商市场接入更多渠道 ↗</span>
+              <span>{t('media.marketBtn')}</span>
             </Button>
           </A>
         }
@@ -150,14 +152,14 @@ const Media: Component = () => {
       <SegmentedControl
         value={active()}
         onChange={handleTabChange}
-        options={CAPS.map(c => ({ value: c.id, label: c.label }))}
+        options={caps().map(c => ({ value: c.id, label: c.label }))}
         class="w-fit"
       />
 
       <div class="text-xs text-faint flex items-center gap-2">
-        <span class="flex items-center gap-1.5"><IconBulb size={14} class="text-accent" /> {CAPS.find(c => c.id === active())?.hint}</span>
+        <span class="flex items-center gap-1.5"><IconBulb size={14} class="text-accent" /> {caps().find(c => c.id === active())?.hint}</span>
         <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-bg-elevated border border-subtle">
-          {CAPS.find(c => c.id === active())?.endpoint}
+          {caps().find(c => c.id === active())?.endpoint}
         </span>
       </div>
 
@@ -184,7 +186,7 @@ const Media: Component = () => {
                 </div>
 
                 <div class="space-y-1">
-                  <div class="text-[11px] text-faint">支持模型 / 端点:</div>
+                  <div class="text-[11px] text-faint">{t('media.supportedModelsEndpoints')}</div>
                   <div class="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
                     <Show
                       when={p.models && p.models.length > 0}
@@ -214,7 +216,7 @@ const Media: Component = () => {
                   <Show when={p.primaryConnectionId}>
                     <A href={`/providers/${p.primaryConnectionId}`}>
                       <Button size="sm" variant="secondary" title="管理账号与参数">
-                        管理 →
+                        {t('media.manage')}
                       </Button>
                     </A>
                   </Show>
@@ -223,7 +225,7 @@ const Media: Component = () => {
                     variant="primary"
                     onClick={() => openWorkbench(p)}
                   >
-                    试用{CAPS.find(c => c.id === active())?.label}
+                    {t('media.tryWorkbench')} {caps().find(c => c.id === active())?.label}
                   </Button>
                 </div>
               </div>
@@ -239,16 +241,16 @@ const Media: Component = () => {
           </div>
           <div class="space-y-1">
             <h3 class="text-sm font-semibold text-foreground">
-              尚未接入支持「{CAPS.find(c => c.id === active())?.label}」的提供商
+              {t('media.emptyTitle', { cap: caps().find(c => c.id === active())?.label || '' })}
             </h3>
             <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-              统一凭证已归入市场管理。前往「提供商市场」绑定 OpenAI、Google Gemini、Antigravity 或专业媒体供应商（如 Stability AI、ElevenLabs、Tavily）的账号凭证后即可在此调试。
+              {t('media.emptyDesc')}
             </p>
           </div>
           <div class="pt-2">
             <A href="/providers?tab=catalog&category=media">
               <Button variant="primary" size="sm">
-                前往提供商市场选购接入 →
+                {t('media.emptyAction')}
               </Button>
             </A>
           </div>
@@ -258,12 +260,12 @@ const Media: Component = () => {
       {/* 专属试用交互工作台 (Workbench Modal) */}
       <Modal
         open={workbenchOpen()}
-        title={`${selectedProvider()?.name || ''} · ${CAPS.find(c => c.id === active())?.label || ''}试用台`}
+        title={`${selectedProvider()?.name || ''} · ${caps().find(c => c.id === active())?.label || ''}`}
         onClose={() => setWorkbenchOpen(false)}
       >
         <div class="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
           <Show when={selectedProvider()?.models && selectedProvider()!.models!.length > 0}>
-            <Field label="选用模型">
+            <Field label={t('media.selectModel')}>
               <Select
                 value={model()}
                 onChange={setModel}
@@ -285,10 +287,10 @@ const Media: Component = () => {
 
           <div class="flex justify-end gap-2">
             <Button size="sm" variant="secondary" onClick={() => setWorkbenchOpen(false)}>
-              关闭
+              {t('common.close')}
             </Button>
             <Button size="sm" variant="primary" loading={busy()} disabled={!text().trim()} onClick={runWorkbench}>
-              {active() === 'image' ? '开始生成图片' : active() === 'search' ? '执行全网检索' : '执行调用'}
+              {t('media.runBtn')}
             </Button>
           </div>
 
@@ -300,7 +302,7 @@ const Media: Component = () => {
           <Show when={imageUrls().length > 0}>
             <div class="space-y-2 pt-2 border-t border-subtle">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-foreground">生成结果预览</span>
+                <span class="text-xs font-semibold text-foreground">{t('media.resultsPreview')}</span>
                 <span class="text-[11px] text-faint">共 {imageUrls().length} 张</span>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -327,13 +329,13 @@ const Media: Component = () => {
                 <div class="p-3 rounded-card bg-accent/5 border border-accent/20 text-xs text-foreground leading-relaxed">
                   <div class="font-semibold text-accent mb-1 flex items-center gap-1.5">
                     <IconSparkles size={14} />
-                    <span>AI 检索总结</span>
+                    <span>{t('media.aiSummary')}</span>
                   </div>
                   {searchResults()?.summary}
                 </div>
               </Show>
 
-              <div class="text-xs font-semibold text-foreground">检索引文 ({searchResults()?.count || searchResults()?.results?.length} 条)</div>
+              <div class="text-xs font-semibold text-foreground">{t('media.citations', { count: searchResults()?.count || searchResults()?.results?.length || 0 })}</div>
               <div class="space-y-2">
                 <For each={searchResults()?.results}>
                   {item => (
@@ -354,7 +356,7 @@ const Media: Component = () => {
           {/* 原始响应 JSON 调试折叠面板 */}
           <Show when={result()}>
             <div class="pt-2 border-t border-subtle space-y-1.5">
-              <div class="text-[11px] font-semibold text-faint uppercase">原始响应数据 (JSON)</div>
+              <div class="text-[11px] font-semibold text-faint uppercase">{t('media.rawJson')}</div>
               <pre class="text-[10px] font-mono text-muted whitespace-pre-wrap break-all bg-bg-elevated p-3 rounded-control border border-subtle max-h-60 overflow-y-auto">
                 {JSON.stringify(result(), null, 2)}
               </pre>

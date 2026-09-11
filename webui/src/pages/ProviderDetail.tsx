@@ -3,6 +3,7 @@ import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm } from '@/components/ui'
 
@@ -11,6 +12,7 @@ const ProviderDetail: Component = () => {
   const navigate = useNavigate()
   const store = useGatewayStore()
   const toast = useToast()
+  const { t } = useI18n()
   const [conn, setConn] = createSignal<Provider | null>(null)
   const [loading, setLoading] = createSignal(true)
   const [notFound, setNotFound] = createSignal(false)
@@ -836,7 +838,7 @@ const ProviderDetail: Component = () => {
             title={
               <div class="flex items-center gap-2.5">
                 <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 font-normal mr-1">
-                  ← 返回
+                  ← {t('providerDetail.back')}
                 </A>
                 <ProviderAvatar
                   provider={c().provider}
@@ -850,17 +852,17 @@ const ProviderDetail: Component = () => {
             }
             badge={
               <div class="flex items-center gap-2 flex-wrap">
-                <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? '启用' : '停用'}</Badge>
+                <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? t('common.enabled') : t('common.disabled')}</Badge>
                 <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
                 <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-subtle">
                   {c().provider}
                 </span>
-                <span class="text-xs text-faint">共 {accounts().length} 个账号凭据</span>
+                <span class="text-xs text-faint">{t('providerDetail.accountCount', { count: accounts().length })}</span>
               </div>
             }
             actions={
               <div class="flex items-center gap-3">
-                <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>测试连接</Button>
+                <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>{t('providerDetail.testConnection')}</Button>
                 <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
             }
@@ -882,9 +884,9 @@ const ProviderDetail: Component = () => {
             {/* Tab */}
             <div class="flex gap-1 border-b border-subtle">
               <For each={[
-                { id: 'overview' as const, label: '账号与连接' },
-                { id: 'models' as const, label: '可用模型' },
-                { id: 'chat' as const, label: '会话测试' },
+                { id: 'overview' as const, label: t('providerDetail.tabs.overview') },
+                { id: 'models' as const, label: t('providerDetail.tabs.models') },
+                { id: 'chat' as const, label: t('providerDetail.tabs.chat') },
               ]}>
                 {t => (
                   <button
@@ -1362,32 +1364,32 @@ const ProviderDetail: Component = () => {
                         size="sm"
                         variant="secondary"
                         onClick={handleEnableAll}
-                        title="一键全部开放该提供商模型"
+                        title={t('providerDetail.tooltipEnableAll')}
                       >
-                        全部启用
+                        {t('providerDetail.enableAllModels')}
                       </Button>
                       <Button
                         size="sm"
                         variant="ghost"
                         onClick={handleDisableAll}
-                        title="一键全部关闭该提供商模型"
+                        title={t('providerDetail.tooltipDisableAll')}
                       >
-                        全部禁用
+                        {t('providerDetail.disableAllModels')}
                       </Button>
                       <Button
                         size="sm"
                         variant="secondary"
                         loading={testingAll()}
                         onClick={handleTestAll}
-                        title="对所有模型逐个发送简短打招呼请求验证连通性"
+                        title={t('providerDetail.tooltipTestAll')}
                       >
                         <IconZap size={12} class="mr-1 inline" />
-                        测试全部
+                        {t('providerDetail.testAllModels')}
                       </Button>
                       <Show when={testAllProgress()}>
                         {prog => (
                           <span class="text-[11px] text-faint font-mono">
-                            进度: {prog().current} / {prog().total}
+                            {t('providerDetail.progress', { current: prog().current, total: prog().total })}
                           </span>
                         )}
                       </Show>
@@ -1397,16 +1399,16 @@ const ProviderDetail: Component = () => {
                         size="sm"
                         variant="danger"
                         onClick={handleDisableFailed}
-                        title="将本次测试失败的模型一键全部关闭对外提供"
+                        title={t('providerDetail.tooltipDisableFailed')}
                       >
-                        一键禁用失败模型 ({failedModelsList().length})
+                        {t('providerDetail.disableFailedModels')} ({failedModelsList().length})
                       </Button>
                     </Show>
                   </div>
 
                   <Show
                     when={(modelsData().registryModels ?? models()?.registryModels ?? []).length > 0}
-                    fallback={<Empty message="该提供商未上报模型列表。" />}
+                    fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
                     {/* 独立可滚动区域：带对外开放开关的 Liquid Glass 卡片网格 */}
                     <div class="max-h-[420px] overflow-y-auto pr-1">
@@ -1437,12 +1439,12 @@ const ProviderDetail: Component = () => {
                                     </Show>
                                     <Show when={m.enabled === false}>
                                       <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30 shrink-0">
-                                        不对外
+                                        {t('providerDetail.chipDisabled')}
                                       </span>
                                     </Show>
                                     <Show when={m.hasOverride}>
                                       <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title="包含用户自定义元数据">
-                                        已改
+                                        {t('providerDetail.chipCustom')}
                                       </span>
                                     </Show>
                                   </div>
@@ -1452,7 +1454,7 @@ const ProviderDetail: Component = () => {
                                   <button
                                     type="button"
                                     class={`p-1 text-xs rounded transition-colors ${testingModels()[m.id || m.name || ''] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
-                                    title="打招呼快速测试该模型连通性"
+                                    title={t('providerDetail.testSingleTitle')}
                                     disabled={testingModels()[m.id || m.name || '']}
                                     onClick={() => testSingleModel(m.id || m.name || '')}
                                   >
@@ -1515,16 +1517,16 @@ const ProviderDetail: Component = () => {
                                 </Show>
                                 <Show when={m.contextLength && m.contextLength > 0}>
                                   <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
-                                    {m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength} 上下文
+                                    {t('providerDetail.contextLength', { length: m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength! })}
                                   </span>
                                 </Show>
                                 <Show when={m.maxOutputTokens && m.maxOutputTokens > 0}>
                                   <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
-                                    {m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens} 输出
+                                    {t('providerDetail.outputLength', { length: m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens! })}
                                   </span>
                                 </Show>
                                 <Show when={!m.contextLength && !m.maxOutputTokens}>
-                                  <span class="italic text-[10px] opacity-60">未定义上下文长度</span>
+                                  <span class="italic text-[10px] opacity-60">{t('providerDetail.noContext')}</span>
                                 </Show>
                               </div>
                             </div>
@@ -1541,13 +1543,13 @@ const ProviderDetail: Component = () => {
               <div class="space-y-4">
                 <Card class="p-4 flex flex-wrap items-center justify-between gap-3">
                   <div class="flex items-center gap-3 flex-1 min-w-[240px]">
-                    <span class="text-xs text-faint shrink-0">测试模型：</span>
+                    <span class="text-xs text-faint shrink-0">{t('providerDetail.chatModel')}</span>
                     <Select
                       class="flex-1 min-w-[200px]"
                       value={selectedModel()}
                       onChange={setSelectedModel}
                       options={[
-                        { value: '', label: '默认模型（首个可用）' },
+                        { value: '', label: t('providerDetail.chatDefaultModel') },
                         ...activeModels().map(m => ({
                           value: m.id || '',
                           label: m.name ? `${m.name} (${m.id})` : m.id || '',
@@ -1564,9 +1566,9 @@ const ProviderDetail: Component = () => {
                       class="text-xs text-accent hover:underline flex items-center gap-1"
                       title="前往具有 Side-by-Side 竞技和全参数调优的演练场"
                     >
-                      前往演练场 (Playground) ↗
+                      {t('providerDetail.chatGoPlayground')}
                     </A>
-                    <Button size="sm" variant="ghost" onClick={() => setChatHistory([])}>清空对话</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setChatHistory([])}>{t('providerDetail.chatClear')}</Button>
                   </div>
                 </Card>
 
@@ -1578,21 +1580,21 @@ const ProviderDetail: Component = () => {
                   >
                   <Show
                     when={chatHistory().length > 0}
-                    fallback={<Empty message={`向 ${providerDisplayName()} 发送一条消息，验证该连接的连通性与模型输出。`} />}
+                    fallback={<Empty message={t('providerDetail.chatEmpty', { name: providerDisplayName() })} />}
                   >
                     <For each={chatHistory()}>
-                      {t => (
-                        <div class={`flex flex-col ${t.role === 'user' ? 'items-end' : 'items-start'}`}>
+                      {msg => (
+                        <div class={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                           <div class={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
-                            t.role === 'user'
+                            msg.role === 'user'
                               ? 'bg-accent text-on-accent'
                               : 'bg-hover text-foreground border border-subtle'
                           }`}>
-                            {t.content}
+                            {msg.content}
                           </div>
-                          <Show when={t.role === 'assistant' && t.servedModel}>
+                          <Show when={msg.role === 'assistant' && msg.servedModel}>
                             <span class="mt-1 px-1.5 py-0.5 text-[10px] text-faint font-mono">
-                              由节点 {t.servedModel} 响应
+                              {t('providerDetail.chatServedBy', { model: msg.servedModel! })}
                             </span>
                           </Show>
                         </div>
@@ -1602,7 +1604,7 @@ const ProviderDetail: Component = () => {
                       <div class="flex justify-start">
                         <div class="px-4 py-2.5 rounded-2xl bg-hover text-sm text-faint flex items-center gap-2">
                           <span class="inline-block w-2 h-2 rounded-full bg-accent animate-pulse" />
-                          思考与接收回复中…
+                          {t('providerDetail.chatThinking')}
                         </div>
                       </div>
                     </Show>
@@ -1619,7 +1621,7 @@ const ProviderDetail: Component = () => {
                 <Card class="p-3 flex gap-2">
                   <Input
                     value={prompt()}
-                    placeholder="输入测试提示词，回车或点击发送…"
+                    placeholder={t('providerDetail.chatPlaceholder')}
                     onInput={setPrompt}
                     disabled={chatBusy()}
                     onKeyDown={e => {
@@ -1630,7 +1632,7 @@ const ProviderDetail: Component = () => {
                     }}
                   />
                   <Button variant="primary" loading={chatBusy()} disabled={!prompt().trim()} onClick={sendChat}>
-                    发送
+                    {t('playground.send')}
                   </Button>
                 </Card>
               </div>

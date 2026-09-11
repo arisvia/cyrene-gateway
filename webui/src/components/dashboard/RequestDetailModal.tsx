@@ -2,6 +2,7 @@ import { type Component, Show, createSignal, createResource } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Badge, Button, ProviderAvatar, Spinner, SegmentedControl } from '@/components/ui'
 import { api } from '@/lib/api'
+import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
 import type { RequestDetail } from '@/types/domain'
 
@@ -12,6 +13,7 @@ interface RequestDetailModalProps {
 
 export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   const [activeTab, setActiveTab] = createSignal<'overview' | 'payload' | 'raw'>('overview')
+  const { t } = useI18n()
 
   // 若 item 存在 id，尝试从后端获取更详细的持久化请求数据
   const [fullDetail] = createResource(
@@ -70,9 +72,9 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               <ProviderAvatar provider={props.item?.provider || 'default'} name={props.item?.provider} size="sm" class="shrink-0" />
               <div class="min-w-0">
                 <div class="text-sm font-bold truncate text-foreground flex items-center gap-2">
-                  <span>{props.item?.model || '未知模型'}</span>
+                  <span>{props.item?.model || t('common.unknownModel')}</span>
                   <Badge tone={props.item?.status === 'ok' ? 'green' : 'red'} class="text-[10px]">
-                    {props.item?.status || '未知'}
+                    {props.item?.status || t('common.unknown')}
                   </Badge>
                 </div>
                 <div class="text-xs text-faint font-mono truncate mt-0.5">
@@ -101,16 +103,16 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               value={activeTab()}
               onChange={setActiveTab}
               options={[
-                { value: 'overview', label: '调度概览与指标' },
-                { value: 'payload', label: '输入输出摘要' },
-                { value: 'raw', label: '元数据 JSON' },
+                { value: 'overview', label: t('requestDetail.tabs.overview') },
+                { value: 'payload', label: t('requestDetail.tabs.payload') },
+                { value: 'raw', label: t('requestDetail.tabs.raw') },
               ]}
             />
 
             <Show when={fullDetail.loading}>
               <div class="flex items-center gap-1.5 text-xs text-faint">
                 <Spinner />
-                <span>加载元数据…</span>
+                <span>{t('requestDetail.loadingMeta')}</span>
               </div>
             </Show>
           </div>
@@ -133,13 +135,13 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                   </div>
                 </div>
                 <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">总耗时</div>
+                  <div class="text-[11px] text-faint">{t('requestDetail.totalLatency')}</div>
                   <div class="text-base font-semibold mt-1 tabular-nums text-accent">
                     {props.item?.latencyMs ?? '-'} ms
                   </div>
                 </div>
                 <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">估算成本</div>
+                  <div class="text-[11px] text-faint">{t('requestDetail.estimatedCost')}</div>
                   <div class="text-base font-semibold mt-1 tabular-nums text-foreground">
                     {fmtCost(props.item?.cost ?? 0)}
                   </div>
@@ -149,24 +151,24 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               {/* 路由与调度属性列表 */}
               <div class="rounded-xl border border-subtle bg-card/40 divide-y divide-subtle/50">
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">请求提供商</span>
+                  <span class="text-faint">{t('requestDetail.properties.provider')}</span>
                   <span class="font-semibold text-foreground">{props.item?.provider || '-'}</span>
                 </div>
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">实际目标模型</span>
+                  <span class="text-faint">{t('requestDetail.properties.targetModel')}</span>
                   <span class="font-mono text-foreground">{props.item?.model || '-'}</span>
                 </div>
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">网关接收端点</span>
+                  <span class="text-faint">{t('requestDetail.properties.endpoint')}</span>
                   <span class="font-mono text-faint">{props.item?.endpoint || '/v1/chat/completions'}</span>
                 </div>
                 <div class="px-4 py-2.5 flex items-center justify-between">
-                  <span class="text-faint">请求时间戳</span>
+                  <span class="text-faint">{t('requestDetail.properties.timestamp')}</span>
                   <span class="font-mono text-faint">{props.item?.timestamp || '-'}</span>
                 </div>
                 <Show when={props.item?.connectionId}>
                   <div class="px-4 py-2.5 flex items-center justify-between">
-                    <span class="text-faint">连接凭证 ID</span>
+                    <span class="text-faint">{t('requestDetail.properties.connectionId')}</span>
                     <span class="font-mono text-faint">{props.item?.connectionId}</span>
                   </div>
                 </Show>

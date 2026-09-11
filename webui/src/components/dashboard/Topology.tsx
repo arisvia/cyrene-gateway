@@ -3,6 +3,7 @@ import { A } from '@solidjs/router'
 import { Card, Badge, ProviderAvatar } from '@/components/ui'
 import type { Provider, LiveUsageEvent } from '@/types/domain'
 import { useGatewayStore } from '@/stores/gateway'
+import { useI18n } from '@/i18n'
 
 interface TopologyProps {
   providers: Provider[]
@@ -12,6 +13,7 @@ interface TopologyProps {
 
 export const GatewayTopology: Component<TopologyProps> = props => {
   const store = useGatewayStore()
+  const { t } = useI18n()
   let containerRef: HTMLDivElement | undefined
   const [zoom, setZoom] = createSignal(1)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
@@ -398,8 +400,8 @@ export const GatewayTopology: Component<TopologyProps> = props => {
               <div class={`text-[10px] font-medium truncate flex items-center gap-1 ${
                 activeHit() ? 'text-amber-500 dark:text-amber-400 font-semibold' : 'text-accent/90'
               }`}>
-                <span>{activeHit() ? '路由调度中' : '核心调度'}</span>
-                <span class="text-[9px] text-faint">· {activeCount()} 活跃</span>
+                <span>{activeHit() ? t('topology.routing') : t('topology.core')}</span>
+                <span class="text-[9px] text-faint">{t('topology.activeCount', { count: activeCount() })}</span>
               </div>
             </div>
           </div>
@@ -492,7 +494,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
           type="button"
           class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"
           onClick={zoomIn}
-          title="放大 (+)"
+          title={t('topology.zoomIn')}
         >
           +
         </button>
@@ -500,7 +502,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
           type="button"
           class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-sm font-bold"
           onClick={zoomOut}
-          title="缩小 (−)"
+          title={t('topology.zoomOut')}
         >
           −
         </button>
@@ -508,7 +510,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
           type="button"
           class="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors text-xs"
           onClick={resetView}
-          title="重置视图"
+          title={t('topology.reset')}
         >
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />

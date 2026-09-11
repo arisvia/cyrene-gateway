@@ -10,20 +10,6 @@ import { formatUptime, formatVersion } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 import { useI18n } from '@/i18n'
-const cavemanOptions = [
-  { value: 'lite', label: '精简 (lite)' },
-  { value: 'full', label: '标准极简 (full)' },
-  { value: 'ultra', label: '极致极简 (ultra)' },
-  { value: 'wenyan-lite', label: '半文言 (wenyan-lite)' },
-  { value: 'wenyan', label: '文言文 (wenyan)' },
-  { value: 'wenyan-ultra', label: '极限文言 (wenyan-ultra)' },
-]
-
-const ponytailOptions = [
-  { value: 'lite', label: '精简建议 (lite)' },
-  { value: 'full', label: '阶梯原则 (full)' },
-  { value: 'ultra', label: '极致极简 (ultra)' },
-]
 
 interface CacheStats {
   hits: number
@@ -43,6 +29,20 @@ function formatBytes(bytes: number): string {
 
 const Settings: Component = () => {
   const { t } = useI18n()
+  const cavemanOptions = () => [
+    { value: 'lite', label: t('settings.tokenSaver.cavemanLevels.lite') },
+    { value: 'full', label: t('settings.tokenSaver.cavemanLevels.full') },
+    { value: 'ultra', label: t('settings.tokenSaver.cavemanLevels.ultra') },
+    { value: 'wenyan-lite', label: t('settings.tokenSaver.cavemanLevels.wenyanLite') },
+    { value: 'wenyan', label: t('settings.tokenSaver.cavemanLevels.wenyan') },
+    { value: 'wenyan-ultra', label: t('settings.tokenSaver.cavemanLevels.wenyanUltra') },
+  ]
+
+  const ponytailOptions = () => [
+    { value: 'lite', label: '精简建议 (lite)' },
+    { value: 'full', label: '阶梯原则 (full)' },
+    { value: 'ultra', label: '极致极简 (ultra)' },
+  ]
   const store = useGatewayStore()
   const bgStore = useBackgroundStore()
   const toast = useToast()
@@ -314,7 +314,7 @@ const Settings: Component = () => {
       <div class="space-y-3.5">
         <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
           <IconShield size={14} class="text-accent shrink-0" />
-          <span>安全与访问控制</span>
+          <span>{t('settings.access.groupTitle')}</span>
         </div>
 
         {/* 访问控制卡片 */}
@@ -322,20 +322,20 @@ const Settings: Component = () => {
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
               <IconLock size={16} class="text-accent shrink-0" />
-              <h3 class="text-sm font-semibold">访问控制</h3>
+              <h3 class="text-sm font-semibold">{t('settings.access.cardTitle')}</h3>
             </div>
             <Badge tone={local().requireLogin || local().requireApiKey ? 'blue' : 'gray'}>
-              {local().requireLogin || local().requireApiKey ? '已启用防护' : '公开直通'}
+              {local().requireLogin || local().requireApiKey ? t('settings.access.protected') : t('settings.access.open')}
             </Badge>
           </div>
 
           <div class="flex items-start justify-between gap-4">
             <Field
-              label="要求登录"
+              label={t('settings.access.requireLogin')}
               hint={
                 hasPw()
-                  ? '开启后管理面板需密码登录（远程非本机访问默认强制要求）'
-                  : '请先在下方设置管理密码再开启要求登录，以防面板被永久锁死'
+                  ? t('settings.access.requireLoginHint')
+                  : t('settings.access.requireLoginNoPw')
               }
             >
               <span />
@@ -354,14 +354,14 @@ const Settings: Component = () => {
           </div>
 
           <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
-            <Field label="要求 API Key" hint="开启后所有 /v1/* 接口调用均必须在请求头中携带有效密钥 (Bearer cg-...)">
+            <Field label={t('settings.access.requireApiKey')} hint={t('settings.access.requireApiKeyHint')}>
               <span />
             </Field>
             <Toggle checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
           </div>
 
           <div class="pt-1 border-t border-subtle/50">
-            <Field label="API Key 速率限制 (RPM)" hint="单个 Key 每分钟请求上限，超出返回 429；填 0 表示不限速">
+            <Field label={t('settings.access.rpmLimit')} hint={t('settings.access.rpmLimitHint')}>
               <Input
                 type="number"
                 class="!w-full sm:!w-36 mt-1"
@@ -377,13 +377,13 @@ const Settings: Component = () => {
           <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
             <div class="flex items-center gap-2">
               <IconKey size={16} class="text-accent shrink-0" />
-              <h3 class="text-sm font-semibold">管理密码</h3>
+              <h3 class="text-sm font-semibold">{t('settings.access.managePassword')}</h3>
             </div>
             <Badge tone={hasPw() ? 'green' : 'amber'}>
-              {hasPw() ? '已设置密码' : '未初始化密码'}
+              {hasPw() ? t('settings.access.pwConfigured') : t('settings.access.pwUnset')}
             </Badge>
           </div>
-          <Field label="更新管理员密码" hint="长度至少 8 位，密码通过 Argon2id 散列存储，保障管理接口防护">
+          <Field label={t('settings.access.changePassword')} hint={t('settings.access.pwHelpText')}>
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
               <Input
                 type="password"
@@ -551,7 +551,7 @@ const Settings: Component = () => {
                 <Field label="压缩级别" hint="lite: 保留要点 | full: 极限简洁 | ultra: 绝不废话 | wenyan: 文言风格">
                   <Select
                     value={String(local().cavemanLevel || 'lite')}
-                    options={cavemanOptions}
+                    options={cavemanOptions()}
                     onChange={v => set('cavemanLevel', v)}
                     class="w-full mt-1"
                   />
@@ -579,7 +579,7 @@ const Settings: Component = () => {
                 <Field label="压缩级别" hint="lite: 最简替代 | full: 严格阶梯 | ultra: 极致单行">
                   <Select
                     value={String(local().ponytailLevel || 'lite')}
-                    options={ponytailOptions}
+                    options={ponytailOptions()}
                     onChange={v => set('ponytailLevel', v)}
                     class="w-full mt-1"
                   />
@@ -1052,7 +1052,7 @@ const Settings: Component = () => {
             <div class="flex items-center gap-1.5 whitespace-nowrap">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
               <span>{t('common.database')}：</span>
-              <span class="font-medium text-foreground">{store.health().db === 'ok' ? `${t('common.ready')} (WAL)` : '...'}</span>
+              <span class="font-medium text-foreground">{store.health().db === 'ok' ? `${t('common.ready')} (WAL)` : t('common.checking')}</span>
             </div>
             <span class="text-subtle select-none hidden sm:inline">•</span>
             <div class="flex items-center gap-1 whitespace-nowrap">

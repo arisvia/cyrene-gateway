@@ -1,11 +1,13 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
+import { useI18n } from '@/i18n'
 import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, Modal, Field, confirm } from '@/components/ui'
 import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 
 const Home: Component = () => {
   const store = useGatewayStore()
+  const { t } = useI18n()
   const toast = useToast()
 
   const [keyName, setKeyName] = createSignal('')
@@ -77,10 +79,10 @@ const Home: Component = () => {
             <div>
               <div class="flex items-center gap-2.5">
                 <h1 class="text-xl font-bold tracking-tight text-foreground">Cyrene Gateway</h1>
-                <Badge tone="green" class="font-medium">运行中</Badge>
+                <Badge tone="green" class="font-medium">{t('nav.running')}</Badge>
               </div>
               <p class="text-xs text-faint mt-1 flex items-center gap-3">
-                <span>高并发统一 API 代理与模型路由枢纽</span>
+                <span>{t('home.heroSubtitle')}</span>
               </p>
             </div>
           </div>
@@ -89,14 +91,14 @@ const Home: Component = () => {
             <div class="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card/60 border border-subtle backdrop-blur-md">
               <div class="text-right">
                 <div class="text-base font-bold text-foreground leading-none">{store.activeConnections()}</div>
-                <div class="text-[11px] text-faint mt-0.5">活跃上游通道</div>
+                <div class="text-[11px] text-faint mt-0.5">{t('home.activeChannels')}</div>
               </div>
               <div class="w-2 h-2 rounded-full bg-accent animate-pulse" />
             </div>
             <div class="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card/60 border border-subtle backdrop-blur-md">
               <div class="text-right">
                 <div class="text-base font-bold text-foreground leading-none">{store.combos().length}</div>
-                <div class="text-[11px] text-faint mt-0.5">故障回退组合</div>
+                <div class="text-[11px] text-faint mt-0.5">{t('home.fallbackCombos')}</div>
               </div>
               <div class="w-2 h-2 rounded-full bg-accent-2 animate-pulse" />
             </div>
@@ -116,9 +118,9 @@ const Home: Component = () => {
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                 </svg>
-                <span>网关统一端点</span>
+                <span>{t('home.unifiedEndpoints')}</span>
               </h2>
-              <Badge tone="blue">多协议兼容</Badge>
+              <Badge tone="blue">{t('home.multiProtocol')}</Badge>
             </div>
 
             <div class="space-y-2.5">
@@ -133,21 +135,21 @@ const Home: Component = () => {
                             setCopiedEndpoint(ep.url)
                             setTimeout(() => setCopiedEndpoint(null), 2000)
                           }}
-                          title="点击一键复制"
+                          title={t('home.clickToCopy')}
                       >
                         <div class="min-w-0 flex-1">
                           <div class="text-sm font-medium text-foreground">{ep.label}</div>
                           <code class="text-xs text-faint truncate block font-mono mt-0.5">{ep.url}</code>
                         </div>
                         <span class="text-xs text-muted group-hover:text-accent font-medium shrink-0 flex items-center gap-1">
-                        {isCopied() ? <><span>已复制</span><IconCheck size={12} class="text-success" /></> : '复制'}
+                        {isCopied() ? <><span>{t('common.copied')}</span><IconCheck size={12} class="text-success" /></> : t('common.copy')}
                       </span>
                       </button>
                   )
                 }}
               </For>
               <Show when={store.endpoints().length === 0}>
-                <Empty message="暂无端点" />
+                <Empty message={t('home.noEndpoints')} />
               </Show>
             </div>
           </Card>
@@ -164,12 +166,12 @@ const Home: Component = () => {
                     <path d="m21 2-9.6 9.6" />
                     <path d="m15.5 7.5 3 3L22 7l-3-3" />
                   </svg>
-                  <span>API 密钥</span>
+                  <span>{t('home.apiKeys')}</span>
                 </h2>
-                <p class="text-xs text-faint mt-0.5">用于客户端（Claude Code / Codex / NextChat / Cursor 等）鉴权</p>
+                <p class="text-xs text-faint mt-0.5">{t('home.apiKeysHint')}</p>
               </div>
               <Button size="sm" variant="secondary" onClick={() => store.loadKeys()}>
-                刷新
+                {t('common.refresh')}
               </Button>
             </div>
 
@@ -177,7 +179,7 @@ const Home: Component = () => {
             <div class="flex gap-2 p-1.5 rounded-2xl bg-card/50 border border-subtle transition-colors">
               <Input
                   value={keyName()}
-                  placeholder="新建 API Key 名称（如: Work-MacBook / Claude-CLI）"
+                  placeholder={t('home.createKeyPlaceholder')}
                   onInput={setKeyName}
                   onKeyDown={async e => {
                     if (e.key === 'Enter' && keyName().trim() && !creatingKey()) {
@@ -227,7 +229,7 @@ const Home: Component = () => {
                   when={store.apiKeys().length > 0}
                   fallback={
                     <div class="py-8 text-center border border-dashed border-subtle rounded-2xl">
-                      <p class="text-xs text-faint">暂无可用 API Key，在上方输入名称即可一键生成</p>
+                      <p class="text-xs text-faint">{t('home.noKeys')}</p>
                     </div>
                   }
               >
@@ -301,7 +303,7 @@ const Home: Component = () => {
                                   }
                                 }}
                             >
-                              删除
+                              {t('common.delete')}
                             </Button>
                           </div>
                         </div>

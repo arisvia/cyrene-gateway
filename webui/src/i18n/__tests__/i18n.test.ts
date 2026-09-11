@@ -30,12 +30,31 @@ describe('i18n module', () => {
   })
 
   it('falls back to key for unknown paths', () => {
-    expect(t('nonexistent.path.here')).toBe('nonexistent.path.here')
+    expect(t('nonexistent.path.here' as unknown as Parameters<typeof t>[0])).toBe('nonexistent.path.here')
   })
 
   it('interpolates template parameters', () => {
     // Test custom replacement
     const res = t('common.save')
     expect(res).toBe('保存修改')
+  })
+  it('translates playground presets and prompts in both languages', () => {
+    expect(t('playground.presets.defaultAssistant.label')).toBe('默认助手')
+    expect(t('playground.enterHint')).toBe('Enter 发送 · Shift+Enter 换行')
+    setLocale('en-US')
+    expect(t('playground.presets.defaultAssistant.label')).toBe('General Assistant')
+    expect(t('playground.enterHint')).toBe('Enter to send · Shift+Enter for newline')
+  })
+
+  it('translates navigation and provider keys across languages', () => {
+    expect(t('providers.title')).toBe('模型提供商接入')
+    expect(t('combos.title')).toBe('模型组合')
+    expect(t('quota.title')).toBe('配额中心')
+    expect(t('usage.title')).toBe('用量统计')
+    setLocale('en-US')
+    expect(t('providers.title')).toBe('Model Providers')
+    expect(t('combos.title')).toBe('Model Combos')
+    expect(t('quota.title')).toBe('Quota Center')
+    expect(t('usage.title')).toBe('Usage Analytics')
   })
 })

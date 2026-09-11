@@ -2,10 +2,12 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
 import { useToast } from '@/lib/toast'
+import { useI18n } from '@/i18n'
 import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
+  const { t } = useI18n()
   const toast = useToast()
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<ProxyPool | null>(null)
@@ -44,12 +46,12 @@ const ProxyPools: Component = () => {
   return (
     <div class="space-y-5 stagger">
       <PageHeader
-        title="代理池"
-        subtitle="出站请求的 HTTP 代理轮换"
-        actions={<Button variant="primary" onClick={openCreate}>+ 新建代理池</Button>}
+        title={t('proxies.title')}
+        subtitle={t('proxies.subtitle')}
+        actions={<Button variant="primary" onClick={openCreate}>+ {t('proxies.newPool')}</Button>}
       />
       <Show when={store.proxyPools().length > 0} fallback={
-        <Card class="p-6"><Empty message="尚未配置代理池。" /></Card>
+        <Card class="p-6"><Empty message={t('proxies.emptyTitle')} /></Card>
       }>
         <div class="grid gap-3">
           <For each={store.proxyPools()}>
@@ -59,25 +61,25 @@ const ProxyPools: Component = () => {
                   <div class="min-w-0">
                     <div class="flex items-center gap-2">
                       <span class="font-medium text-sm">{p.name}</span>
-                      <Badge tone={p.isActive ? 'green' : 'gray'}>{p.isActive ? '启用' : '停用'}</Badge>
+                      <Badge tone={p.isActive ? 'green' : 'gray'}>{p.isActive ? t('common.enabled') : t('common.disabled')}</Badge>
                       <Badge tone="blue">{p.type || 'http'}</Badge>
-                      <Show when={p.strictProxy}><Badge tone="amber">强制</Badge></Show>
+                      <Show when={p.strictProxy}><Badge tone="amber">{t('proxies.strict')}</Badge></Show>
                     </div>
                     <div class="mt-1 text-xs text-faint font-mono truncate">{p.proxyUrl}</div>
                     <Show when={p.noProxy}>
-                      <div class="text-[11px] text-faint truncate">排除：{p.noProxy}</div>
+                      <div class="text-[11px] text-faint truncate">{t('proxies.noProxyPrefix')}{p.noProxy}</div>
                     </Show>
                   </div>
                   <div class="flex items-center gap-1.5 shrink-0">
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>编辑</Button>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>{t('common.edit')}</Button>
                     <Toggle checked={p.isActive} onChange={() => store.toggleProxyPool(p)} />
                     <Button
                       size="sm"
                       variant="danger"
                       onClick={async () => {
                         const ok = await confirm({
-                          title: '删除代理池',
-                          message: `确定要删除代理池「${p.name}」吗？绑定该代理池的提供商将恢复直连模式。`,
+                          title: t('proxies.deleteConfirmTitle'),
+                          message: t('proxies.deleteConfirmMessage', { name: p.name }),
                           variant: 'danger',
                         })
                         if (ok) {
@@ -85,7 +87,7 @@ const ProxyPools: Component = () => {
                         }
                       }}
                     >
-                      删除
+                      {t('common.delete')}
                     </Button>
                   </div>
                 </div>
@@ -95,26 +97,26 @@ const ProxyPools: Component = () => {
         </div>
       </Show>
 
-      <Modal open={open()} title={editing() ? '编辑代理池' : '新建代理池'} onClose={() => setOpen(false)}>
+      <Modal open={open()} title={editing() ? t('proxies.editPool') : t('proxies.newPool')} onClose={() => setOpen(false)}>
         <div class="space-y-4">
-          <Field label="名称"><Input value={form().name} onInput={v => setForm(f => ({ ...f, name: v }))} placeholder="my-proxy" /></Field>
-          <Field label="代理地址" hint="例如 http://127.0.0.1:7890">
+          <Field label={t('proxies.name')}><Input value={form().name} onInput={v => setForm(f => ({ ...f, name: v }))} placeholder="my-proxy" /></Field>
+          <Field label={t('proxies.proxyUrl')} hint={t('proxies.proxyUrlHint')}>
             <Input value={form().proxyUrl} onInput={v => setForm(f => ({ ...f, proxyUrl: v }))} placeholder="http://host:port" />
           </Field>
-          <Field label="类型">
+          <Field label={t('proxies.type')}>
             <Select value={form().type} options={[
               { value: 'http', label: 'HTTP' }, { value: 'socks5', label: 'SOCKS5' },
             ]} onChange={v => setForm(f => ({ ...f, type: v }))} />
           </Field>
-          <Field label="排除地址" hint="逗号分隔，直连不走代理">
+          <Field label={t('proxies.noProxy')} hint={t('proxies.noProxyHint')}>
             <Input value={form().noProxy} onInput={v => setForm(f => ({ ...f, noProxy: v }))} placeholder="localhost,127.0.0.1" />
           </Field>
-          <Field label="强制代理" hint="开启后该池的连接必须走代理，否则失败">
+          <Field label={t('proxies.strictProxy')} hint={t('proxies.strictProxyHint')}>
             <Toggle checked={form().strictProxy} onChange={v => setForm(f => ({ ...f, strictProxy: v }))} />
           </Field>
           <div class="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setOpen(false)}>取消</Button>
-            <Button variant="primary" loading={saving()} onClick={submit}>保存</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="primary" loading={saving()} onClick={submit}>{t('common.save')}</Button>
           </div>
         </div>
       </Modal>

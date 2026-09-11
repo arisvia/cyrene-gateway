@@ -60,23 +60,23 @@ interface Turn {
   b?: AssistantResponse
 }
 
-const SYSTEM_PRESETS = [
-  { label: '默认助手', text: '你是一个由 Cyrene Gateway 驱动的高性能、智能且诚恳的 AI 助手。' },
-  { label: '资深工程师', text: '你是一位资深全栈架构师与系统工程师。直接输出高质量、生产级、类型安全的代码与方案，分析利弊，拒绝多余客套。' },
-  { label: '创意写作', text: '你是一位极具洞察力与表现力的创意作家。擅长以精妙的比喻和深刻的见解展开阐述。' },
-  { label: '中英翻译', text: '你是一个精通中英文的同声传译专家。请直接将输入翻译为自然地道、符合母语习惯的对应语言。' },
-]
-
-const QUICK_PROMPTS = [
-  '你好！请做一段简短的自我介绍。',
-  '用 Go 语言编写一个线程安全且支持 TTL 过期的并发缓存。',
-  '简述分布式系统中的 CAP 定理，并在现代架构下给出权衡示例。',
-  '分析一下并列计算与并发执行（Concurrency vs Parallelism）的核心差异。',
-]
 
 const Playground: Component = () => {
-  const toast = useToast()
   const { t } = useI18n()
+  const toast = useToast()
+  const systemPresets = () => [
+    { label: t('playground.presets.defaultAssistant.label'), text: t('playground.presets.defaultAssistant.text') },
+    { label: t('playground.presets.seniorArchitect.label'), text: t('playground.presets.seniorArchitect.text') },
+    { label: t('playground.presets.creativeWriter.label'), text: t('playground.presets.creativeWriter.text') },
+    { label: t('playground.presets.translator.label'), text: t('playground.presets.translator.text') },
+  ]
+
+  const quickPrompts = () => [
+    t('playground.quickPrompts.p1'),
+    t('playground.quickPrompts.p2'),
+    t('playground.quickPrompts.p3'),
+    t('playground.quickPrompts.p4'),
+  ]
 
   // 模式：单模型 (single) / 双模型对比 (compare)
   const [mode, setMode] = createSignal<'single' | 'compare'>('single')
@@ -649,7 +649,7 @@ main();
               size="sm"
               class="gap-1.5"
               onClick={() => setCodeModalOpen(true)}
-              title="一键导出为 cURL / Python / Node.js 代码"
+              title={t('playground.exportCodeTitle')}
             >
               <IconCode size={14} />
               {t('playground.exportCode')}
@@ -659,7 +659,7 @@ main();
               size="sm"
               class="gap-1.5"
               onClick={() => setShowParams(!showParams())}
-              title="切换显示右侧高级参数配置"
+              title={t('playground.paramPanelTitle')}
             >
               <IconSliders size={14} />
               {t('playground.paramPanel')}
@@ -670,7 +670,7 @@ main();
               class="gap-1.5 text-danger hover:bg-danger/10"
               disabled={turns().length === 0}
               onClick={handleClear}
-              title="清空当前所有会话历史"
+              title={t('playground.clearHistoryTitle')}
             >
               <IconTrash size={14} />
               {t('playground.clearHistory')}
@@ -750,15 +750,11 @@ main();
                   <div class="space-y-1">
                     <h3 class="text-base font-semibold text-foreground">{t('playground.startInteraction')}</h3>
                     <p class="text-xs text-faint max-w-md mx-auto">
-                      {mode() === 'compare'
-                        ? (t('common.langZh') === '简体中文'
-                            ? '双模型竞技已激活：输入一个提示词，同时向两个模型并行派发，直观对比首字延迟 (TTFT)、生成耗时及文本质量。'
-                            : 'Arena mode active: send one prompt to both models in parallel to evaluate TTFT, latency, and response quality side-by-side.')
-                        : t('playground.startInteractionHint')}
+                      {mode() === 'compare' ? t('playground.arenaHint') : t('playground.startInteractionHint')}
                     </p>
                   </div>
                   <div class="flex flex-wrap items-center justify-center gap-2 max-w-xl mx-auto">
-                    <For each={QUICK_PROMPTS}>
+                    <For each={quickPrompts()}>
                       {q => (
                         <button
                           type="button"
@@ -797,7 +793,7 @@ main();
                               </span>
                               <Show when={turn.a.busy}>
                                 <span class="text-[11px] text-accent animate-pulse flex items-center gap-1">
-                                  <IconZap size={11} /> 生成中...
+                                  <IconZap size={11} /> {t('playground.generating')}
                                 </span>
                               </Show>
                             </div>
@@ -823,7 +819,7 @@ main();
                                 <button
                                   type="button"
                                   class="hover:text-accent p-1 transition-colors cursor-pointer"
-                                  title="查看原始请求与响应报文"
+                                  title={t('playground.viewRawJson')}
                                   onClick={() =>
                                     setRawJsonModal({
                                       title: turn.a.servedModel || turn.a.targetModel,
@@ -838,7 +834,7 @@ main();
                               <button
                                 type="button"
                                 class="hover:text-accent p-1 transition-colors cursor-pointer"
-                                title="复制回复内容"
+                                title={t('playground.copyContent')}
                                 onClick={() => copyText(turn.a.content, '助手回复')}
                               >
                                 <IconClipboard size={13} />
@@ -852,7 +848,7 @@ main();
                               <div class="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs flex items-start gap-2">
                                 <IconAlertCircle size={15} class="shrink-0 mt-0.5" />
                                 <div>
-                                  <div class="font-semibold">调用失败</div>
+                                  <div class="font-semibold">{t('playground.callFailed')}</div>
                                   <div class="font-mono mt-0.5">{turn.a.error}</div>
                                 </div>
                               </div>
@@ -1000,11 +996,7 @@ main();
               <textarea
                 class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[70px] max-h-[220px]"
                 placeholder={
-                  mode() === 'compare'
-                    ? (t('common.langZh') === '简体中文'
-                        ? '输入提示词，同时向模型 A 和模型 B 发起竞技对比... (Enter 发送，Shift+Enter 换行)'
-                        : 'Type prompt to compare Model A and Model B in real-time... (Enter to send, Shift+Enter for newline)')
-                    : t('playground.sendPlaceholder')
+                  mode() === 'compare' ? t('playground.sendComparePlaceholder') : t('playground.sendPlaceholder')
                 }
                 value={inputPrompt()}
                 onInput={e => setInputPrompt(e.currentTarget.value)}
@@ -1017,11 +1009,11 @@ main();
               />
               <div class="flex items-center justify-between pt-1 border-t border-subtle/40">
                 <div class="text-[11px] text-faint flex items-center gap-2">
-                  <span>{t('common.langZh') === '简体中文' ? 'Enter 发送 · Shift+Enter 换行' : 'Enter to send · Shift+Enter for newline'}</span>
+                  <span>{t('playground.enterHint')}</span>
                   <Show when={stream()}>
                     <span class="text-accent flex items-center gap-0.5">
                       <span class="w-1.5 h-1.5 rounded-full bg-accent animate-ping" />
-                      {t('playground.streamLabel')}
+                      {t('playground.streamingActive')}
                     </span>
                   </Show>
                 </div>
@@ -1062,7 +1054,7 @@ main();
                   <IconSliders size={14} />
                   推理参数配置
                 </span>
-                <span class="text-[11px] text-faint">自动保存</span>
+                <span class="text-[11px] text-faint">{t('playground.autoSaved')}</span>
               </div>
 
               {/* 系统提示词 (System Prompt) */}
@@ -1075,17 +1067,17 @@ main();
                     class={`text-[11px] leading-none text-faint hover:text-danger transition-opacity cursor-pointer ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                     onClick={() => setSystemPrompt('')}
                   >
-                    重置
+                    {t('playground.systemPromptReset')}
                   </button>
                 </div>
                 <textarea
                   class="w-full bg-black/4 dark:bg-white/6 border border-subtle rounded-control p-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-accent/40 min-h-[90px] resize-y"
-                  placeholder="设定模型的角色、输出格式或行为准则..."
+                  placeholder={t('playground.systemPromptPlaceholder')}
                   value={systemPrompt()}
                   onInput={e => setSystemPrompt(e.currentTarget.value)}
                 />
                 <div class="flex flex-wrap gap-1 pt-1">
-                  <For each={SYSTEM_PRESETS}>
+                  <For each={systemPresets()}>
                     {preset => (
                       <button
                         type="button"
@@ -1115,8 +1107,8 @@ main();
                   class="w-full accent-(--accent) cursor-pointer"
                 />
                 <div class="flex justify-between text-[10px] text-faint">
-                  <span>精确 / 严谨 (0.0)</span>
-                  <span>发散 / 创意 (2.0)</span>
+                  <span>{t('playground.tempPrecise')}</span>
+                  <span>{t('playground.tempCreative')}</span>
                 </div>
               </div>
 
@@ -1173,7 +1165,7 @@ main();
       {/* 导出代码弹窗 */}
       <Modal
         open={codeModalOpen()}
-        title="导出 API 客户端调用代码"
+        title={t('playground.exportCodeModalTitle')}
         onClose={() => setCodeModalOpen(false)}
       >
         <div class="space-y-4">
@@ -1218,13 +1210,13 @@ main();
         {data => (
           <Modal
             open={true}
-            title={`原始报文解析 - ${data().title}`}
+            title={`${t('playground.rawJsonModalTitle')} - ${data().title}`}
             onClose={() => setRawJsonModal(null)}
           >
             <div class="space-y-4">
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between text-xs font-medium text-muted">
-                  <span>客户端发送请求 (Request Payload)</span>
+                  <span>{t('playground.requestPayload')}</span>
                   <button
                     type="button"
                     class="text-accent hover:underline cursor-pointer"
@@ -1240,7 +1232,7 @@ main();
 
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between text-xs font-medium text-muted">
-                  <span>服务端原始返回 (Response Payload)</span>
+                  <span>{t('playground.responsePayload')}</span>
                   <button
                     type="button"
                     class="text-accent hover:underline cursor-pointer"

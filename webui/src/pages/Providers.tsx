@@ -1,6 +1,7 @@
 import {type Component, createMemo, createSignal, For, onCleanup, onMount, Show} from 'solid-js'
 import {A} from '@solidjs/router'
 import {useGatewayStore} from '@/stores/gateway'
+import {useI18n} from '@/i18n'
 import {
   Badge,
   Button,
@@ -58,6 +59,7 @@ export const CAPABILITY_CONFIG: Record<string, { label: string; tone: BadgeTone;
 
 const Providers: Component = () => {
   const store = useGatewayStore()
+  const { t } = useI18n()
   const toast = useToast()
 
   // 顶层视图切换：'connections' | 'catalog'
@@ -575,8 +577,8 @@ const Providers: Component = () => {
   return (
     <div class="space-y-5 stagger">
       <PageHeader
-        title="模型提供商接入"
-        subtitle="统一管理各大模型商用上游、OAuth 动态凭证与自定义接入端点"
+        title={t('providers.title')}
+        subtitle={t('providers.subtitle')}
         actions={
           <SegmentedControl
             value={activeTab()}
@@ -585,8 +587,8 @@ const Providers: Component = () => {
               setCatFilter('')
             }}
             options={[
-              { value: 'connections', label: `我的连接 (${store.providers().length})` },
-              { value: 'catalog', label: `提供商市场 (${store.registryList().length})` },
+              { value: 'connections', label: `${t('providers.tabs.connections')} (${store.providers().length})` },
+              { value: 'catalog', label: `${t('providers.tabs.catalog')} (${store.registryList().length})` },
             ]}
           />
         }
@@ -596,7 +598,7 @@ const Providers: Component = () => {
           <div class="flex flex-wrap items-center gap-3 flex-1">
             <Input
               class="w-64!"
-              placeholder={activeTab() === 'connections' ? '搜索已连接提供商…' : '搜索提供商市场/模型…'}
+              placeholder={activeTab() === 'connections' ? t('providers.searchConnPlaceholder') : t('providers.searchCatalogPlaceholder')}
               value={query()}
               onInput={setQuery}
             />
@@ -605,15 +607,15 @@ const Providers: Component = () => {
               value={capFilter()}
               onChange={setCapFilter}
               options={[
-                { value: '', label: '全部支持能力' },
-                { value: 'llm', label: 'LLM 对话' },
-                { value: 'image', label: '图像生成' },
-                { value: 'tts', label: '语音合成 (TTS)' },
-                { value: 'stt', label: '语音识别 (STT)' },
-                { value: 'video', label: '视频生成' },
-                { value: 'embedding', label: '文本向量' },
-                { value: 'web-search', label: '网络搜索' },
-                { value: 'web-fetch', label: '网页抓取' },
+                { value: '', label: t('providers.capabilities.all') },
+                { value: 'llm', label: t('providers.capabilities.llm') },
+                { value: 'image', label: t('providers.capabilities.image') },
+                { value: 'tts', label: t('providers.capabilities.tts') },
+                { value: 'stt', label: t('providers.capabilities.stt') },
+                { value: 'video', label: t('providers.capabilities.video') },
+                { value: 'embedding', label: t('providers.capabilities.embedding') },
+                { value: 'web-search', label: t('providers.capabilities.webSearch') },
+                { value: 'web-fetch', label: t('providers.capabilities.webFetch') },
               ]}
             />
 
@@ -621,9 +623,9 @@ const Providers: Component = () => {
               <Select
                 value={catFilter()}
                 options={[
-                  { value: '', label: '全部认证类型' },
-                  { value: 'api-key', label: 'API Key' },
-                  { value: 'oauth', label: 'OAuth 授权' },
+                  { value: '', label: t('providers.authTypes.all') },
+                  { value: 'api-key', label: t('providers.authTypes.apiKey') },
+                  { value: 'oauth', label: t('providers.authTypes.oauth') },
                 ]}
                 onChange={setCatFilter}
               />
@@ -633,12 +635,12 @@ const Providers: Component = () => {
               <Select
                 value={catFilter()}
                 options={[
-                  { value: '', label: '全部分类' },
-                  { value: 'apikey', label: 'API Key' },
-                  { value: 'oauth', label: 'OAuth 渠道' },
-                  { value: 'freeTier', label: '免费额度' },
-                  { value: 'custom', label: '自定义通用 API' },
-                  { value: 'media', label: '多模态与媒体 (Media)' },
+                  { value: '', label: t('providers.categories.all') },
+                  { value: 'apikey', label: t('providers.categories.apiKey') },
+                  { value: 'oauth', label: t('providers.categories.oauth') },
+                  { value: 'freeTier', label: t('providers.categories.freeTier') },
+                  { value: 'custom', label: t('providers.categories.custom') },
+                  { value: 'media', label: t('providers.categories.media') },
                 ]}
                 onChange={setCatFilter}
               />
@@ -652,10 +654,10 @@ const Providers: Component = () => {
                 }`}
                 title={hideAdded() ? '点击显示所有提供商（含已接入）' : '点击只看尚未接入的提供商'}
               >
-                <span class="flex items-center gap-1.5">{hideAdded() ? <><IconCheck size={12} /><span>已隐藏已接入</span></> : '显示全部市场'}</span>
+                <span class="flex items-center gap-1.5">{hideAdded() ? <><IconCheck size={12} /><span>{t('providers.hideAddedActive')}</span></> : t('providers.showAllMarket')}</span>
                 <Show when={connectedCount() > 0}>
                   <span class="text-[10px] opacity-75">
-                    ({hideAdded() ? `已藏 ${connectedCount()}` : `${connectedCount()} 已接入`})
+                    ({hideAdded() ? t('providers.hiddenCount', { count: connectedCount() }) : t('providers.connectedCount', { count: connectedCount() })})
                   </span>
                 </Show>
               </button>
@@ -664,14 +666,14 @@ const Providers: Component = () => {
 
           <div class="flex items-center gap-3 text-xs text-faint">
             <span class="hidden sm:inline">
-              匹配 <strong class="text-foreground font-mono">{activeTab() === 'connections' ? groupedConnections().length : brandGroups().length}</strong> 个{activeTab() === 'connections' ? '供应商' : '项目'}
+              {t('providers.matchedCount', { count: activeTab() === 'connections' ? groupedConnections().length : brandGroups().length })}
             </span>
             <Button size="sm" variant="secondary" loading={refreshing()} onClick={handleRefreshAll}>
-              刷新
+              {t('common.refresh')}
             </Button>
             <Show when={activeTab() === 'connections'}>
               <Button size="sm" variant="primary" onClick={() => setActiveTab('catalog')}>
-                + 接入新提供商
+                + {t('providers.addConnection')}
               </Button>
             </Show>
           </div>
@@ -684,13 +686,13 @@ const Providers: Component = () => {
           when={groupedConnections().length > 0}
           fallback={
             <Card class="p-12 text-center space-y-4">
-              <Empty message="还没有接入任何提供商连接" />
+              <Empty message={t('providers.emptyTitle')} />
               <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-                你可以前往「提供商市场」挑选主流商用大模型（OpenAI, Claude, Gemini, DeepSeek）或配置自定义通用 API。
+                {t('providers.emptyCatalogDesc')}
               </p>
               <div class="flex justify-center gap-3 pt-2">
                 <Button variant="primary" onClick={() => setActiveTab('catalog')}>
-                  前往市场选购提供商
+                  {t('providers.emptyAction')}
                 </Button>
               </div>
             </Card>

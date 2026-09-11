@@ -1,17 +1,19 @@
 import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
+import { useI18n } from '@/i18n'
 import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, SegmentedControl } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
 import type { RequestDetail, LiveUsageEvent } from '@/types/domain'
-const PERIODS = [
-  { value: '24h', label: '最近 24 小时' },
-  { value: '7d', label: '最近 7 天' },
-  { value: '30d', label: '最近 30 天' },
-]
 
 const Usage: Component = () => {
+  const { t } = useI18n()
+  const periods = () => [
+    { value: '24h', label: t('usage.periods.p24h') },
+    { value: '7d', label: t('usage.periods.p7d') },
+    { value: '30d', label: t('usage.periods.p30d') },
+  ]
   const store = useGatewayStore()
   const [subTab, setSubTab] = createSignal<'overview' | 'details'>('overview')
   const [selectedDetail, setSelectedDetail] = createSignal<RequestDetail | null>(null)
@@ -88,10 +90,10 @@ const Usage: Component = () => {
     return 10                   // 60d+：每隔 10 天展示
   })
   const kpis = createMemo(() => [
-    { label: '总请求', value: fmtNum(store.usageStats.totalRequests ?? 0) },
-    { label: '输入 Token', value: fmtNum(store.usageStats.totalPromptTokens ?? 0) },
-    { label: '输出 Token', value: fmtNum(store.usageStats.totalCompletionTokens ?? 0) },
-    { label: '估算成本', value: fmtCost(store.usageStats.totalCost ?? 0) },
+    { label: t('usage.totalRequests'), value: fmtNum(store.usageStats.totalRequests ?? 0) },
+    { label: t('usage.promptTokens'), value: fmtNum(store.usageStats.totalPromptTokens ?? 0) },
+    { label: t('usage.completionTokens'), value: fmtNum(store.usageStats.totalCompletionTokens ?? 0) },
+    { label: t('usage.estimatedCost'), value: fmtCost(store.usageStats.totalCost ?? 0) },
   ])
 
   const byProvider = createMemo(() =>
@@ -103,16 +105,16 @@ const Usage: Component = () => {
   return (
     <div class="space-y-5 stagger">
       <PageHeader
-        title="用量统计"
-        subtitle={`累计 ${fmtNum(store.usageStats.totalRequestsLifetime ?? 0)} 次请求 · 实时监控流量路由分发`}
+        title={t('usage.title')}
+        subtitle={t('usage.subtitle', { count: fmtNum(store.usageStats.totalRequestsLifetime ?? 0) })}
         actions={
           <>
             <SegmentedControl
               value={subTab()}
               onChange={setSubTab}
               options={[
-                { value: 'overview', label: '概览' },
-                { value: 'details', label: `请求明细 (${store.requestDetailsPagination().totalItems || 0})` },
+                { value: 'overview', label: t('usage.overview') },
+                { value: 'details', label: `${t('usage.requestDetails')} (${store.requestDetailsPagination().totalItems || 0})` },
               ]}
             />
 
@@ -122,7 +124,7 @@ const Usage: Component = () => {
                 tone={live() ? 'red' : 'accent'}
                 size="sm"
               />
-              <span>{live() ? '停止实时' : '实时事件'}</span>
+              <span>{live() ? t('usage.stopLive') : t('usage.liveEvents')}</span>
             </Button>
           </>
         }
@@ -160,7 +162,7 @@ const Usage: Component = () => {
           <div class="flex items-center justify-between gap-3 mb-4">
             <div>
               <h3 class="text-sm font-semibold flex items-center gap-2">
-                <span>Token 趋势</span>
+                <span>{t('usage.tokenTrend')}</span>
                 <Show when={hoveredPoint()}>
                   {pt => (
                     <Badge tone="blue" class="text-[11px] font-mono px-2 py-0.5">
@@ -175,7 +177,7 @@ const Usage: Component = () => {
                 </Show>
               </p>
             </div>
-            <Select value={period()} options={PERIODS} onChange={v => { setPeriod(v); load() }} align="right" />
+            <Select value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
           </div>
 
           <Show when={chart().length > 0} fallback={<Empty message="该周期暂无数据。" />}>
@@ -264,8 +266,8 @@ const Usage: Component = () => {
         <div class="grid lg:grid-cols-2 gap-4">
           {/* 按提供商 */}
           <Card class="p-5">
-            <h3 class="text-sm font-semibold mb-3">按提供商</h3>
-            <Show when={byProvider().length > 0} fallback={<Empty message="暂无数据" />}>
+            <h3 class="text-sm font-semibold mb-3">{t('usage.byProvider')}</h3>
+            <Show when={byProvider().length > 0} fallback={<Empty message={t('common.noData')} />}>
               <div class="space-y-2">
                 <For each={byProvider()}>
                   {p => (
@@ -313,7 +315,7 @@ const Usage: Component = () => {
       <Show when={subTab() === 'details'}>
         <Card class="p-5">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold">请求明细日志</h3>
+            <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
             <span class="text-xs text-faint">共 {store.requestDetailsPagination().totalItems} 条</span>
           </div>
           <Show when={store.requestDetails().length > 0} fallback={<Empty message="暂无请求记录。" />}>
@@ -321,13 +323,13 @@ const Usage: Component = () => {
               <table class="w-full text-xs">
                 <thead>
                   <tr class="text-faint text-left border-b border-subtle">
-                    <th class="pb-2 font-medium">时间</th>
-                    <th class="pb-2 font-medium">模型</th>
-                    <th class="pb-2 font-medium">状态</th>
-                    <th class="pb-2 font-medium text-right">输入</th>
-                    <th class="pb-2 font-medium text-right">输出</th>
-                    <th class="pb-2 font-medium text-right">耗时</th>
-                    <th class="pb-2 font-medium text-right">详情</th>
+                    <th class="pb-2 font-medium">{t('usage.tableHeaders.time')}</th>
+                    <th class="pb-2 font-medium">{t('usage.tableHeaders.model')}</th>
+                    <th class="pb-2 font-medium">{t('usage.tableHeaders.status')}</th>
+                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.prompt')}</th>
+                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.completion')}</th>
+                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.latency')}</th>
+                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.details')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -366,7 +368,7 @@ const Usage: Component = () => {
                 size="sm" variant="ghost"
                 disabled={!store.requestDetailsPagination().hasPrev}
                 onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 10)}
-              >上一页</Button>
+              >{t('common.prevPage')}</Button>
               <span class="text-xs text-faint">
                 {store.requestDetailsPagination().page} / {Math.max(1, store.requestDetailsPagination().totalPages)}
               </span>
@@ -374,7 +376,7 @@ const Usage: Component = () => {
                 size="sm" variant="ghost"
                 disabled={!store.requestDetailsPagination().hasNext}
                 onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 10)}
-              >下一页</Button>
+              >{t('common.nextPage')}</Button>
             </div>
           </Show>
         </Card>
