@@ -969,4 +969,16 @@ export const zhCN = {
     mediaCallSuccess: '{cap} 调用完成',
     requestFailed: '请求失败: {error}',
   },
+  login: {
+    title: '管理员登录',
+    subtitle: '控制台已开启访问保护，请输入管理密码',
+    passwordPlaceholder: '输入管理密码...',
+    submit: '登 录',
+    loggingIn: '正在验证...',
+    loginSuccess: '登录成功',
+    logout: '退出登录',
+    logoutSuccess: '已退出登录',
+    invalidPassword: '密码错误，请重新输入',
+    tooManyAttempts: '尝试次数过多，已被暂时锁定，请稍后再试',
+  },
 }

@@ -1,6 +1,6 @@
 import { createSignal, createRoot } from 'solid-js'
 import { createStore } from 'solid-js/store'
-import { api, apiPost, apiPut, apiPatch, apiDelete } from '@/lib/api'
+import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type {
   Provider, RegistryCategory, Combo, ApiKey, ApiKeyInput, ProxyPool, Endpoint,
@@ -64,7 +64,47 @@ function createGatewayStore() {
   const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>(getInitialRegistry())
   const [settings, setSettings] = createSignal<Record<string, unknown>>({})
   const [aliases, setAliases] = createSignal<Record<string, string>>({})
+  const [requireLogin, setRequireLogin] = createSignal(false)
+  const [authenticated, setAuthenticated] = createSignal(true)
+  const [authChecked, setAuthChecked] = createSignal(false)
 
+  setOnUnauthorized(() => {
+    if (requireLogin()) {
+      setAuthenticated(false)
+    }
+  })
+
+  async function checkAuth(): Promise<boolean> {
+    try {
+      const res = await api<{ requireLogin: boolean; authenticated: boolean }>('/api/auth/status')
+      if (res) {
+        setRequireLogin(!!res.requireLogin)
+        setAuthenticated(!!res.authenticated)
+        return !!res.authenticated
+      }
+    } catch {
+      // safe fallback
+    } finally {
+      setAuthChecked(true)
+    }
+    return true
+  }
+
+  async function login(password: string) {
+    const res = await apiPost<{ ok?: boolean; error?: string }>('/api/auth/login', { password })
+    setAuthenticated(true)
+    await loadCore()
+    return res
+  }
+
+  async function logout() {
+    try {
+      await apiPost('/api/auth/logout')
+    } catch {
+      // ignore
+    }
+    setAuthenticated(false)
+  }
   const [usageStats, setUsageStats] = createStore<UsageStats>({})
   const [usageChart, setUsageChart] = createSignal<{ label: string; tokens: number }[]>([])
   const [requestDetails, setRequestDetails] = createSignal<RequestDetail[]>([])
@@ -81,6 +121,10 @@ function createGatewayStore() {
 
   // ── loaders ──
   async function loadCore() {
+    const isAuthed = await checkAuth()
+    if (requireLogin() && !isAuthed) {
+      return
+    }
     try {
       const [v, h, p, c, reg, ep, a] = await Promise.all([
         api<{ version?: string }>('/api/version'),
@@ -400,6 +444,7 @@ function createGatewayStore() {
     return apiPost('/api/models/test', { model, connectionId })
   }
   return {
+    requireLogin, authenticated, authChecked, checkAuth, login, logout,
     version, health, providers, setProviders, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings, aliases,
     usageStats, usageChart, requestDetails, requestDetailsPagination,

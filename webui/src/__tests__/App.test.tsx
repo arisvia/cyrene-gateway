@@ -8,7 +8,8 @@ vi.mock('@/lib/api', () => ({
   apiPut: vi.fn(() => Promise.resolve(null)),
   apiPatch: vi.fn(() => Promise.resolve(null)),
   apiDelete: vi.fn(() => Promise.resolve(null)),
-}))
+  setOnUnauthorized: vi.fn(),
+ }))
 const mockToast = vi.hoisted(() => ({
   toasts: () => [],
   success: vi.fn(),

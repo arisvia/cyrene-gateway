@@ -7,6 +7,7 @@ vi.mock('@/lib/api', () => ({
   apiPut: vi.fn(),
   apiPatch: vi.fn(),
   apiDelete: vi.fn(),
+  setOnUnauthorized: vi.fn(),
 }))
 
 const mockToast = vi.hoisted(() => ({
@@ -52,15 +53,17 @@ describe('gateway store', () => {
     const mockProviders = [{ id: '1', provider: 'openai', isActive: true }]
     const mockRegistry = { categories: [{ category: 'apikey', count: 1, providers: [] }] }
 
-    vi.mocked(api)
-      .mockResolvedValueOnce({ version: '1.0.0' })
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce(mockProviders)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(mockRegistry)
-      .mockResolvedValueOnce({ endpoints: [] })
-      .mockResolvedValueOnce({})
-
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return Promise.resolve({ requireLogin: false, authenticated: true } as unknown)
+      if (path === '/api/version') return Promise.resolve({ version: '1.0.0' } as unknown)
+      if (path === '/api/health') return Promise.resolve({} as unknown)
+      if (path === '/api/providers') return Promise.resolve(mockProviders as unknown)
+      if (path === '/api/combos') return Promise.resolve([] as unknown)
+      if (path === '/api/registry') return Promise.resolve(mockRegistry as unknown)
+      if (path === '/api/endpoints') return Promise.resolve({ endpoints: [] } as unknown)
+      if (path === '/api/models/alias') return Promise.resolve({} as unknown)
+      return Promise.resolve(null as unknown)
+    })
     const store = useGatewayStore()
     await store.loadCore()
     expect(store.version()).toBe('1.0.0')
@@ -85,5 +88,36 @@ describe('gateway store', () => {
     await store.addProvider({ provider: 'gemini', name: 'g1' })
     expect(apiPost).toHaveBeenCalledWith('/api/providers', { provider: 'gemini', name: 'g1' })
     expect(store.providers().some(p => p.id === 'n1')).toBe(true)
+  })
+
+  it('auth flow updates login and authenticated state', async () => {
+    let authed = false
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return Promise.resolve({ requireLogin: true, authenticated: authed } as unknown)
+      return Promise.resolve(null as unknown)
+    })
+    vi.mocked(apiPost).mockImplementation((path: string) => {
+      if (path === '/api/auth/login') {
+        authed = true
+        return Promise.resolve({ ok: true } as unknown)
+      }
+      if (path === '/api/auth/logout') {
+        authed = false
+        return Promise.resolve({ ok: true } as unknown)
+      }
+      return Promise.resolve(null as unknown)
+    })
+    const store = useGatewayStore()
+    await store.checkAuth()
+    expect(store.requireLogin()).toBe(true)
+    expect(store.authenticated()).toBe(false)
+
+    await store.login('admin123')
+    expect(store.authenticated()).toBe(true)
+    expect(apiPost).toHaveBeenCalledWith('/api/auth/login', { password: 'admin123' })
+
+    await store.logout()
+    expect(store.authenticated()).toBe(false)
+    expect(apiPost).toHaveBeenCalledWith('/api/auth/logout')
   })
 })

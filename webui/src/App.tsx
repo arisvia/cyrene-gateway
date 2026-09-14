@@ -5,7 +5,7 @@ import { useBackgroundStore } from './stores/background'
 import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
 import { useI18n } from './i18n'
 import { ToastHost, ConfirmDialogHost, CyreneLogo } from './components/ui'
-
+import { LoginModal } from './components/layout/LoginModal'
 import Home from './pages/Home'
 const Providers = lazy(() => import('./pages/Providers'))
 const ProviderDetail = lazy(() => import('./pages/ProviderDetail'))
@@ -260,6 +260,21 @@ const App: Component = () => {
                 <span class="font-medium text-foreground">{store.activeConnections()}</span>
                 <span class="text-faint">{t('common.activeConns')}</span>
               </div>
+              <Show when={store.requireLogin() && store.authenticated()}>
+                <button
+                  type="button"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/60 border border-glass-border shadow-sm text-xs text-muted hover:text-danger hover:border-danger/40 transition-all cursor-pointer backdrop-blur-md"
+                  onClick={() => store.logout()}
+                  title={t('login.logout')}
+                >
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  <span class="hidden sm:inline">{t('login.logout')}</span>
+                </button>
+              </Show>
             </div>
           </div>
         </header>
@@ -267,6 +282,11 @@ const App: Component = () => {
           {props.children}
         </main>
       </div>
+
+      {/* 登录认证拦截弹窗 */}
+      <Show when={store.authChecked() && store.requireLogin() && !store.authenticated()}>
+        <LoginModal />
+      </Show>
     </div>
     )
   }

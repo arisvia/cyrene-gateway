@@ -9,8 +9,8 @@ import Quota from '@/pages/Quota'
 import Playground from '@/pages/Playground'
 
 vi.mock('@/lib/api', () => ({
-  api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(),
-}))
+  api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(), setOnUnauthorized: vi.fn(),
+ }))
 const mockToast = vi.hoisted(() => ({
   toasts: () => [],
   success: vi.fn(),

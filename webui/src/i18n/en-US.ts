@@ -971,4 +971,16 @@ export const enUS: TranslationDict = {
     mediaCallSuccess: '{cap} call completed',
     requestFailed: 'Request failed: {error}',
   },
+  login: {
+    title: 'Admin Login',
+    subtitle: 'Console protection is active, please enter admin password',
+    passwordPlaceholder: 'Enter admin password...',
+    submit: 'Login',
+    loggingIn: 'Verifying...',
+    loginSuccess: 'Login successful',
+    logout: 'Log Out',
+    logoutSuccess: 'Logged out successfully',
+    invalidPassword: 'Incorrect password, please try again',
+    tooManyAttempts: 'Too many failed attempts, temporarily locked. Please try later',
+  },
 }

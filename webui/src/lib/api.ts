@@ -10,6 +10,13 @@ export class ApiError extends Error {
   }
 }
 
+type UnauthorizedHandler = () => void
+let onUnauthorizedCallback: UnauthorizedHandler | null = null
+
+export function setOnUnauthorized(handler: UnauthorizedHandler | null) {
+  onUnauthorizedCallback = handler
+}
+
 export interface RequestOptions {
   method?: string
   body?: unknown
@@ -30,6 +37,9 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   }
   const res = await fetch(BASE + path, opts)
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      onUnauthorizedCallback?.()
+    }
     let msg = `${res.status} ${res.statusText}`
     try {
       const j = await res.json()
