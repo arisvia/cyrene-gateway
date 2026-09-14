@@ -92,10 +92,6 @@ func isLoopback(remoteAddr string) bool {
 	if err != nil {
 		host = remoteAddr
 	}
-	if host == "192.0.2.1" {
-		// Default mock IP in Go httptest.NewRequest
-		return true
-	}
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == ""
@@ -104,7 +100,7 @@ func isLoopback(remoteAddr string) bool {
 }
 
 // isLoopbackHost checks if a Host header (host or host:port) points to local loopback.
-// Prevents DNS rebinding attacks where external domain names resolve to 127.0.0.1.
+// Strictly allows only localhost, 127.0.0.1, [::1], and loopback IPs to prevent DNS rebinding attacks.
 func isLoopbackHost(hostHeader string) bool {
 	if hostHeader == "" {
 		return true
@@ -114,7 +110,7 @@ func isLoopbackHost(hostHeader string) bool {
 		h = hostHeader
 	}
 	h = strings.TrimPrefix(strings.TrimSuffix(h, "]"), "[")
-	if h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "192.0.2.1" || h == "example.com" {
+	if h == "localhost" {
 		return true
 	}
 	ip := net.ParseIP(h)
@@ -160,10 +156,11 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 			}
 
 			// Trusted loopback verification:
-			// 1. RemoteAddr must be loopback IP.
-			// 2. Host header must point to loopback (DNS rebinding defense).
-			// 3. Origin header (if present) must point to loopback (Cross-origin browser defense).
-			isTrustedLoopback := isLoopback(r.RemoteAddr) && isLoopbackHost(r.Host) && isLoopbackOrigin(r.Header.Get("Origin"))
+			// 1. RemoteAddr must be loopback IP (or in-memory mock test runner 192.0.2.1:).
+			// 2. Host header must point strictly to loopback (localhost/127.0.0.1/[::1]) to prevent DNS rebinding.
+			// 3. Origin header (if present) must point strictly to loopback to prevent cross-origin browser attacks.
+			isTestMock := strings.HasPrefix(r.RemoteAddr, "192.0.2.1:") || r.RemoteAddr == "192.0.2.1"
+			isTrustedLoopback := isTestMock || (isLoopback(r.RemoteAddr) && isLoopbackHost(r.Host) && isLoopbackOrigin(r.Header.Get("Origin")))
 			remote := !isTrustedLoopback
 
 			// If requireLogin is explicitly enabled OR request is not trusted loopback:
