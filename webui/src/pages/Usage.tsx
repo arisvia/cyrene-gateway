@@ -36,7 +36,7 @@ const Usage: Component = () => {
   }
   onMount(() => {
     load()
-    store.loadRequestDetails(1, 12)
+    store.loadRequestDetails(1, 10)
   })
 
   onCleanup(() => { es?.close(); es = null })
@@ -317,13 +317,13 @@ const Usage: Component = () => {
 
       {/* 请求明细视图 */}
       <Show when={subTab() === 'details'}>
-        <Card class="p-5 min-h-[calc(100dvh-200px)] lg:min-h-[calc(100dvh-215px)] flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-3 shrink-0">
+        <Card class="p-5">
+          <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
             <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>
           </div>
-          <Show when={store.requestDetails().length > 0} fallback={<div class="flex-1 flex items-center justify-center"><Empty message={t('usage.noRecords')} /></div>}>
-            <div class="overflow-x-auto flex-1 min-h-0">
+          <Show when={store.requestDetails().length > 0} fallback={<Empty message={t('usage.noRecords')} />}>
+            <div class="overflow-x-auto">
               <table class="w-full text-xs">
                 <thead>
                   <tr class="text-faint text-left border-b border-subtle">
@@ -367,7 +367,7 @@ const Usage: Component = () => {
               </table>
             </div>
             {/* 分页 */}
-            <div class="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-subtle/50 shrink-0">
+            <div class="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-subtle/50">
               <span class="text-xs text-faint">
                 {t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}
               </span>
@@ -375,7 +375,7 @@ const Usage: Component = () => {
                 <Button
                   size="sm" variant="ghost"
                   disabled={!store.requestDetailsPagination().hasPrev}
-                  onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 12)}
+                  onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 10)}
                 >{t('common.prevPage')}</Button>
                 <span class="text-xs text-faint font-mono">
                   {store.requestDetailsPagination().page} / {Math.max(1, store.requestDetailsPagination().totalPages)}
@@ -383,7 +383,7 @@ const Usage: Component = () => {
                 <Button
                   size="sm" variant="ghost"
                   disabled={!store.requestDetailsPagination().hasNext}
-                  onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 12)}
+                  onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 10)}
                 >{t('common.nextPage')}</Button>
               </div>
             </div>

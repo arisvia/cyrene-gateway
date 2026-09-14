@@ -638,9 +638,9 @@ main();
   }
 
   return (
-    <div class="flex flex-col h-[calc(100dvh-130px)] lg:h-[calc(100dvh-146px)] space-y-3 max-w-7xl mx-auto overflow-hidden">
+    <div class="space-y-4 max-w-7xl mx-auto pb-10">
       <PageHeader
-        class="shrink-0"
+        sticky={false}
         title={t('playground.title')}
         subtitle={t('playground.subtitle')}
         badge={
@@ -695,12 +695,12 @@ main();
         }
       />
 
-      {/* 主工作区布局：视口锁高，主工作区撑满剩余空间 */}
-      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch overflow-hidden">
+      {/* 主工作区布局 */}
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* 对话互动主体区 */}
-        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} flex flex-col h-full min-h-0 min-w-0 space-y-3 transition-all duration-300`}>
+        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} min-w-0 space-y-4 transition-all duration-300`}>
           {/* 顶部模型选择栏 */}
-          <Card class="p-3 shrink-0">
+          <Card class="p-3">
             <Show
               when={mode() === 'compare'}
               fallback={
@@ -754,16 +754,13 @@ main();
             </Show>
           </Card>
 
-          {/* 对话/横评主画布（局部独立自适应内滚动，彻底解除外部页面滚动条） */}
-          <div
-            ref={chatBoxRef}
-            class="flex-1 min-h-0 overflow-y-auto pr-1.5 space-y-3.5 scroll-smooth"
-          >
+          {/* 对话/横评主画布 */}
+          <div class="space-y-4 min-h-[420px]">
             <Show
               when={turns().length > 0}
               fallback={
-                <Card class="p-8 text-center space-y-5 border-dashed border-subtle h-full min-h-[280px] flex flex-col items-center justify-center">
-                  <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass shrink-0">
+                <Card class="p-12 text-center space-y-6 border-dashed border-subtle">
+                  <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
                     <IconChat size={24} />
                   </div>
                   <div class="space-y-1">
@@ -1009,8 +1006,8 @@ main();
             </Show>
           </div>
 
-          {/* 底部输入框区（自然锚定在工作区底部，非浮动） */}
-          <Card class="p-3 shrink-0 shadow-glass">
+          {/* 底部输入框区 */}
+          <Card class="p-3 sticky bottom-4 z-10 shadow-glass">
             <div class="space-y-2">
               <textarea
                 class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[52px] max-h-[140px]"
@@ -1070,8 +1067,8 @@ main();
             class="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-xs animate-fade-in"
             onClick={() => setShowParams(false)}
           />
-          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 h-full min-h-0 flex flex-col shadow-2xl lg:shadow-none animate-slide-up lg:animate-none">
-            <Card class="p-4 flex-1 min-h-0 overflow-y-auto space-y-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle bg-bg-elevated/95 lg:bg-card">
+          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col shadow-2xl lg:shadow-none animate-slide-up lg:animate-none space-y-4">
+            <Card class="p-4 space-y-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle bg-bg-elevated/95 lg:bg-card h-full lg:h-auto overflow-y-auto lg:overflow-visible">
               <div class="flex items-center justify-between border-b border-subtle/50 pb-2 shrink-0">
                 <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <IconSliders size={14} />

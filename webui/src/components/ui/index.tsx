@@ -33,10 +33,13 @@ export interface PageHeaderProps {
   actions?: JSX.Element
   children?: JSX.Element
   class?: string
+  sticky?: boolean
 }
 
-export const PageHeader: Component<PageHeaderProps> = props => (
-  <header class={`sticky top-19 z-20 rounded-2xl glass-sticky px-5 py-4 transition-all space-y-3 ${props.class ?? ''}`}>
+export const PageHeader: Component<PageHeaderProps> = props => {
+  const isSticky = () => props.sticky !== false
+  return (
+    <header class={`${isSticky() ? 'sticky top-19 z-20' : 'relative'} rounded-2xl glass-sticky px-5 py-4 transition-all space-y-3 ${props.class ?? ''}`}>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2.5 flex-wrap">
@@ -58,8 +61,9 @@ export const PageHeader: Component<PageHeaderProps> = props => (
         {props.children}
       </div>
     </Show>
-  </header>
-)
+    </header>
+  )
+}
 
 
 export const Badge: Component<{ tone?: BadgeTone; class?: string; children?: JSX.Element }> = props => {
