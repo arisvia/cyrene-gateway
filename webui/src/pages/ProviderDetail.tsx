@@ -1276,7 +1276,7 @@ const ProviderDetail: Component = () => {
 
             {/* 模型 */}
             <Show when={tab() === 'models'}>
-              <div class="flex flex-col gap-3.5 lg:h-[calc(100dvh-235px)] min-h-[500px]">
+              <div class="flex flex-col gap-3.5 min-h-[500px] lg:min-h-0 lg:h-[calc(100dvh-320px)]">
                 <Card class="shrink-0 p-3.5 sm:p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 flex-wrap min-w-0">
