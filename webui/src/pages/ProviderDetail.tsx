@@ -876,7 +876,76 @@ const ProviderDetail: Component = () => {
                 <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
             }
-          />
+          >
+            <Show when={tab() === 'models'}>
+              <div class="p-2.5 rounded-xl bg-black/4 dark:bg-white/6 border border-black/8 dark:border-white/10 flex flex-wrap items-center justify-between gap-2.5">
+                <div class="flex items-center gap-2 flex-1 min-w-[240px]">
+                  <Input
+                    class="w-full sm:w-64!"
+                    size="sm"
+                    value={modelSearch()}
+                    onInput={setModelSearch}
+                    placeholder={t('providerDetail.modelSearchPlaceholder')}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={syncingModels()}
+                    onClick={handleSyncModels}
+                    title={t('providerDetail.syncModelsTitle')}
+                  >
+                    {t('providerDetail.syncUpstreamModels')}
+                  </Button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                  <span class="text-faint">{t('providerDetail.batchOps')}</span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleEnableAll}
+                    title={t('providerDetail.tooltipEnableAll')}
+                  >
+                    {t('providerDetail.enableAllModels')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDisableAll}
+                    title={t('providerDetail.tooltipDisableAll')}
+                  >
+                    {t('providerDetail.disableAllModels')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={testingAll()}
+                    onClick={handleTestAll}
+                    title={t('providerDetail.tooltipTestAll')}
+                  >
+                    <IconZap size={12} class="mr-1 inline" />
+                    {t('providerDetail.testAllModels')}
+                  </Button>
+                  <Show when={testAllProgress()}>
+                    {prog => (
+                      <span class="text-[11px] text-faint font-mono">
+                        {t('providerDetail.progress', { current: prog().current, total: prog().total })}
+                      </span>
+                    )}
+                  </Show>
+                  <Show when={failedModelsList().length > 0}>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={handleDisableFailed}
+                      title={t('providerDetail.tooltipDisableFailed')}
+                    >
+                      {t('providerDetail.disableFailedModels')} ({failedModelsList().length})
+                    </Button>
+                  </Show>
+                </div>
+              </div>
+            </Show>
+          </PageHeader>
         )}
       </Show>
 
@@ -895,7 +964,7 @@ const ProviderDetail: Component = () => {
             <div class="flex gap-1 border-b border-subtle">
               <For each={[
                 { id: 'overview' as const, label: t('providerDetail.tabs.overview') },
-                { id: 'models' as const, label: t('providerDetail.tabs.models') },
+                { id: 'models' as const, label: `${t('providerDetail.tabs.models')} (${(modelsData().registryModels ?? models()?.registryModels ?? []).length})` },
                 { id: 'chat' as const, label: t('providerDetail.tabs.chat') },
               ]}>
                 {t => (
@@ -911,7 +980,6 @@ const ProviderDetail: Component = () => {
                 )}
               </For>
             </div>
-
             {/* 账号与连接配置 */}
             <Show when={tab() === 'overview'}>
               <div class="grid lg:grid-cols-12 gap-5 items-start">
@@ -1356,83 +1424,28 @@ const ProviderDetail: Component = () => {
                 </Card>
 
                 <Card class="p-4 sm:p-4.5 space-y-3">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <h3 class="text-sm font-semibold">{t('providerDetail.availableModels')}</h3>
-                      <span class="text-xs text-faint">
-                        {t('providerDetail.modelsCountSummary', { total: (modelsData().registryModels ?? models()?.registryModels ?? []).length, enabled: (modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length })}
+                  <div class="flex items-center justify-between gap-2 flex-wrap text-xs text-faint">
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-sm font-semibold text-foreground">{t('providerDetail.availableModels')}</h3>
+                      <span>
+                        {t('providerDetail.modelsCountSummary', {
+                          total: (modelsData().registryModels ?? models()?.registryModels ?? []).length,
+                          enabled: (modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length,
+                        })}
                       </span>
                     </div>
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
-                      <div class="flex-1 sm:w-64">
-                        <Input
-                          value={modelSearch()}
-                          onInput={setModelSearch}
-                          placeholder={t('providerDetail.modelSearchPlaceholder')}
-                          size="sm"
-                        />
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        loading={syncingModels()}
-                        onClick={handleSyncModels}
-                        title={t('providerDetail.syncModelsTitle')}
-                      >
-                        {t('providerDetail.syncUpstreamModels')}
-                      </Button>
-                    </div>
-                  </div>
-                  {/* 批量运维工具栏 */}
-                  <div class="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-subtle/40 text-xs">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <span class="text-faint">{t('providerDetail.batchOps')}</span>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleEnableAll}
-                        title={t('providerDetail.tooltipEnableAll')}
-                      >
-                        {t('providerDetail.enableAllModels')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleDisableAll}
-                        title={t('providerDetail.tooltipDisableAll')}
-                      >
-                        {t('providerDetail.disableAllModels')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        loading={testingAll()}
-                        onClick={handleTestAll}
-                        title={t('providerDetail.tooltipTestAll')}
-                      >
-                        <IconZap size={12} class="mr-1 inline" />
-                        {t('providerDetail.testAllModels')}
-                      </Button>
-                      <Show when={testAllProgress()}>
-                        {prog => (
-                          <span class="text-[11px] text-faint font-mono">
-                            {t('providerDetail.progress', { current: prog().current, total: prog().total })}
-                          </span>
-                        )}
-                      </Show>
-                    </div>
-                    <Show when={failedModelsList().length > 0}>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={handleDisableFailed}
-                        title={t('providerDetail.tooltipDisableFailed')}
-                      >
-                        {t('providerDetail.disableFailedModels')} ({failedModelsList().length})
-                      </Button>
+                    <Show when={modelSearch().trim()}>
+                      <span class="text-accent font-mono">
+                        {(() => {
+                          const count = (modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
+                            const q = modelSearch().trim().toLowerCase()
+                            return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
+                          }).length
+                          return `${count} / ${(modelsData().registryModels ?? models()?.registryModels ?? []).length}`
+                        })()}
+                      </span>
                     </Show>
                   </div>
-
                   <Show
                     when={(modelsData().registryModels ?? models()?.registryModels ?? []).length > 0}
                     fallback={<Empty message={t('providerDetail.noModels')} />}
