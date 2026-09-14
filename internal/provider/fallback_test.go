@@ -181,8 +181,15 @@ func TestApplyAndResetErrorState(t *testing.T) {
 	if conn.Data.TestStatus != "active" {
 		t.Errorf("expected status 'active', got %s", conn.Data.TestStatus)
 	}
+	// ResetAccountState should NOT clear model locks (so single model 429 locks are preserved across successful turns of other models)
+	if conn.Data.ProviderSpecificData["modelLock_claude-3-7-sonnet"] == nil {
+		t.Error("expected modelLock to be preserved across ResetAccountState")
+	}
+
+	// ClearModelLocks clears all model-specific locks (called upon re-testing/validating connection)
+	ClearModelLocks(conn)
 	if conn.Data.ProviderSpecificData["modelLock_claude-3-7-sonnet"] != nil {
-		t.Error("expected modelLock to be cleared by ResetAccountState")
+		t.Error("expected modelLock to be cleared by ClearModelLocks")
 	}
 }
 

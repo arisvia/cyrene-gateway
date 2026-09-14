@@ -245,13 +245,12 @@ func ApplyErrorState(conn *model.ProviderConnection, status int, errorText strin
 	conn.Data.TestStatus = "error"
 }
 
-// ResetAccountState clears cooldown, backoff, and model locks after a successful request or re-validation (9router#3810, #3830).
+// ResetAccountState clears cooldown and backoff after a successful request.
 func ResetAccountState(conn *model.ProviderConnection) {
 	conn.Data.RateLimitedUntil = ""
 	conn.Data.BackoffLevel = 0
 	conn.Data.LastError = ""
 	conn.Data.TestStatus = "active"
-	ClearModelLocks(conn)
 }
 
 // SetModelLock sets a model-specific lock on a connection.

@@ -269,6 +269,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		provider.ResetAccountState(conn)
+		provider.ClearModelLocks(conn)
 		if conn.ID != "" {
 			s.DB.UpdateConnection(conn)
 		}
