@@ -1113,7 +1113,7 @@ const ProviderDetail: Component = () => {
                       </Field>
 
                       <Field label={t('providerDetail.priorityLabel')} hint={t('providerDetail.priorityHint')}>
-                        <Input type="number" value={priority()} onInput={setPriority} class="!w-32" />
+                        <Input type="number" value={priority()} onInput={setPriority} class="w-32!" />
                       </Field>
 
                       {/* API Key / 凭据输入 (仅非纯 OAuth 模式显示) */}
@@ -1792,7 +1792,7 @@ const ProviderDetail: Component = () => {
               type="number"
               value={newAccountPriority()}
               onInput={setNewAccountPriority}
-              class="!w-32"
+              class="w-32!"
             />
           </Field>
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-subtle">

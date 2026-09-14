@@ -215,7 +215,7 @@ const Quota: Component = () => {
               placeholder={t('quota.searchPlaceholder')}
               value={search()}
               onInput={v => { setSearch(v); setPage(1); }}
-              class="w-40 sm:w-48 !text-[11px] !py-0.5 !h-7"
+              class="w-40 sm:w-48 text-[11px]! py-0.5! h-7!"
             />
             <div class="flex items-center gap-1.5 text-[11px] shrink-0 font-mono">
               <Button
@@ -223,7 +223,7 @@ const Quota: Component = () => {
                 variant="secondary"
                 disabled={effectivePage() <= 1}
                 onClick={() => setPage(p => Math.max(1, Math.min(p, totalPages()) - 1))}
-                class="!h-6 !px-1.5 !min-w-0"
+                class="h-6! px-1.5! min-w-0!"
                 title={t('quota.prevPage')}
               >
                 <IconChevronLeft size={12} />
@@ -234,7 +234,7 @@ const Quota: Component = () => {
                 variant="secondary"
                 disabled={effectivePage() >= totalPages()}
                 onClick={() => setPage(p => Math.min(totalPages(), Math.max(p, 1) + 1))}
-                class="!h-6 !px-1.5 !min-w-0"
+                class="h-6! px-1.5! min-w-0!"
                 title={t('quota.nextPage')}
               >
                 <IconChevronRight size={12} />
@@ -395,7 +395,7 @@ const Quota: Component = () => {
 
                         <div class="flex items-center gap-2 shrink-0">
                           <A href={`/providers/${conn.id}`} title={t('quota.editAccountTitle')}>
-                            <Button size="sm" variant="ghost" class="!p-1.5 text-faint hover:text-foreground">
+                            <Button size="sm" variant="ghost" class="p-1.5! text-faint hover:text-foreground">
                               <IconSettings size={14} />
                             </Button>
                           </A>

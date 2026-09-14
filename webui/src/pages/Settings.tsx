@@ -374,7 +374,7 @@ const Settings: Component = () => {
             <Field label={t('settings.access.rpmLimit')} hint={t('settings.access.rpmLimitHint')}>
               <Input
                 type="number"
-                class="!w-full sm:!w-36 mt-1"
+                class="w-full! sm:w-36! mt-1"
                 value={String(local().apiKeyRpm ?? 0)}
                 onInput={v => set('apiKeyRpm', Number(v) || 0)}
               />
@@ -400,7 +400,7 @@ const Settings: Component = () => {
                 value={pw()}
                 onInput={setPw}
                 placeholder={t('settings.pwPlaceholder')}
-                class="flex-1 !w-full"
+                class="flex-1 w-full!"
               />
               <Button
                 variant="secondary"
@@ -506,7 +506,7 @@ const Settings: Component = () => {
               <Field label={t('settings.cache.ttl')} hint={t('settings.cache.ttlHint')}>
                 <Input
                   type="number"
-                  class="!w-full sm:!w-36 mt-1"
+                  class="w-full! sm:w-36! mt-1"
                   value={String(local().responseCacheTTL ?? 3600)}
                   onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
                 />
@@ -612,7 +612,7 @@ const Settings: Component = () => {
             <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-black/4 dark:bg-white/6 border border-black/10 dark:border-white/12">
               <Show
                 when={excludedProviders().length > 0}
-                fallback={<span class="text-xs text-faint">{t('settings.tokenSaver.noExclusions')}</span>}
+                fallback={<span class="text-xs text-faint flex items-center gap-1.5"><IconInfo size={13} class="text-faint/80 shrink-0" />{t('settings.tokenSaver.noExclusions')}</span>}
               >
                 <For each={excludedProviders()}>
                   {p => (
@@ -636,7 +636,7 @@ const Settings: Component = () => {
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <Input
                 placeholder={t('settings.excludePlaceholder')}
-                class="flex-1 text-xs !w-full"
+                class="flex-1 text-xs w-full!"
                 value={excludeInput()}
                 onInput={setExcludeInput}
                 onKeyDown={e => {
@@ -727,7 +727,7 @@ const Settings: Component = () => {
                   value={bgUrlInput()}
                   placeholder="https://..."
                   onInput={setBgUrlInput}
-                  class="flex-1 !w-full"
+                  class="flex-1 w-full!"
                 />
                 <Button
                   variant="secondary"

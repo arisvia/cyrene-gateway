@@ -56,13 +56,13 @@ const Providers: Component = () => {
     // 8 项能力各用不同色相，避免同页出现重复色标识
     const meta: Record<string, { tone: BadgeTone; icon: Component<{ size?: number; class?: string }> }> = {
       llm: { tone: 'blue', icon: IconChat },
-      image: { tone: 'purple', icon: IconPalette },
+      image: { tone: 'violet', icon: IconPalette },
       tts: { tone: 'green', icon: IconVolume },
-      stt: { tone: 'pink', icon: IconMic },
-      video: { tone: 'red', icon: IconVideo },
-      embedding: { tone: 'cyan', icon: IconVector },
-      'web-search': { tone: 'amber', icon: IconSearch },
-      'web-fetch': { tone: 'gray', icon: IconGlobe },
+      stt: { tone: 'teal', icon: IconMic },
+      video: { tone: 'rose', icon: IconVideo },
+      embedding: { tone: 'orange', icon: IconVector },
+      'web-search': { tone: 'indigo', icon: IconSearch },
+      'web-fetch': { tone: 'cyan', icon: IconGlobe },
     }
     const capLabels: Record<string, string> = {
       llm: t('providers.capabilities.llm'),

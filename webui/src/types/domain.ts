@@ -160,7 +160,7 @@ export interface LiveUsageEvent {
   endpoint?: string
 }
 
-export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'purple' | 'cyan' | 'pink'
+export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'purple' | 'cyan' | 'pink' | 'violet' | 'teal' | 'rose' | 'orange' | 'indigo'
 export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
 export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'
 
