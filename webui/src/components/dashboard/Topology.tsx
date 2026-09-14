@@ -225,7 +225,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             'transform-origin': '0 0',
           }}
         >
-          {/* SVG 曲线连接层 (全向对称贝塞尔平滑流向曲线 + 9router 级高能激光流) */}
+          {/* SVG 曲线连接层 (全向对称贝塞尔平滑流向曲线 + 高能激光能量流) */}
           <svg
             class="absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 w-[1200px] h-[1200px] pointer-events-none overflow-visible -z-10"
             viewBox="-600 -600 1200 1200"
@@ -292,7 +292,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                       stroke-dasharray={node.isActive ? 'none' : '4 4'}
                     />
 
-                    {/* 激活命中或悬停时的 9router 级密集激光能量流 (Laser Energy Stream) */}
+                    {/* 激活命中或悬停时的密集激光能量流 (Laser Energy Stream) */}
                     <Show when={node.isHitting || isHovered()}>
                       {/* 1. 外层霓虹漫反射扩散光晕 */}
                       <path
@@ -322,7 +322,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                           repeatCount="indefinite"
                         />
                       </path>
-                      {/* 3. 三重错相密集彩色能量粒子流 (全息彩色能谱，对齐 9router 密集流光) */}
+                      {/* 3. 三重错相密集彩色能量粒子流 (全息彩色能谱激光流) */}
                       {/* 领头金阳粒子 */}
                       <circle r="4.5" fill="#fbbf24" filter="url(#laserGlow)">
                         <animateMotion path={d} dur="0.85s" repeatCount="indefinite" begin="0s" />
@@ -379,7 +379,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
             </Show>
           </svg>
 
-          {/* 1. 中心枢纽：Cyrene Gateway (命中时激活温暖金橙色光晕，对齐 9router) */}
+          {/* 1. 中心枢纽：Cyrene Gateway (命中时激活温暖金橙色光晕) */}
           <div
             class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl glass-float transition-all duration-300 cursor-default flex items-center gap-2 ${
               activeHit()

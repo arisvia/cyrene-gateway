@@ -1805,7 +1805,7 @@ const ProviderDetail: Component = () => {
           </div>
         </div>
       </Modal>
-      {/* 统一设备码 OAuth 授权弹窗 (9router 同款弹窗体验) */}
+      {/* 统一设备码 OAuth 授权弹窗 */}
       <Modal
         open={!!deviceFlow() || devicePolling() || isImportFlow() || !!deviceError()}
         title={isImportFlow() ? t('providerDetail.importTokenTitle', { name: providerDisplayName() }) : t('providerDetail.connectTitle', { name: providerDisplayName() })}

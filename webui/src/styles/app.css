@@ -2,11 +2,10 @@
 @custom-variant dark (&:where(html:not(.light), html:not(.light) *));
 
 /* ============================================================
-   Cyrene Gateway — 设计 token（语义化，参考 9router 面板）
+   Cyrene Gateway — 设计 token（语义化现代化毛玻璃面板）
    规则：所有基础样式必须放入 @layer base。
    原因：未分层的样式规则在 CSS cascade 中优先于 @layer utilities，
-   会击穿 Tailwind 的水平/垂直 padding 与纵向间距工具类 ——
-   上一次「全页挤在一起」的根因。
+   会击穿 Tailwind 的水平/垂直 padding 与纵向间距工具类。
    ============================================================ */
 
 /* ---- 原始变量（暗色为默认主题，.light 覆盖） ---- */
@@ -197,7 +196,7 @@
   .custom-background .app-root-shell {
     background-color: transparent !important;
   }
-  /* Tailwind v4 移除了 button 的 pointer 光标，按 9router 做法恢复 */
+  /* Tailwind v4 移除了 button 的 pointer 光标，在此显式规范恢复 */
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),
   label[for],

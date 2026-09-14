@@ -849,7 +849,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
   const [panel, setPanel] = createSignal<HTMLDivElement>()
   const { t } = useI18n()
 
-  // 打开时锁定页面滚动 + Esc 关闭（参考 9router Modal，避免全局未打开时锁死页面滚动）
+  // 打开时锁定页面滚动 + Esc 关闭（避免未打开时误锁页面滚动）
   createEffect(() => {
     if (props.open) {
       const onKey = (e: KeyboardEvent) => {

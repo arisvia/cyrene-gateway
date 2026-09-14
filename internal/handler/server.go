@@ -227,9 +227,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":    Version(),
-		"service":    "cyrene-gateway",
-		"refactored": "9router (Next.js) → Go",
+		"version": Version(),
+		"service": "cyrene-gateway",
 	})
 }
 
@@ -290,17 +289,15 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 			}
 			caps := getCapabilities(id, false)
 			list = append(list, EnrichedRegistryProvider{
-				ProviderInfo: provider.ProviderInfo{
-					ID:        id,
-					Name:      mp.Name,
-					BaseURL:   firstCfg.BaseURL,
-					APIType:   "media",
-					AuthType:  firstCfg.AuthType,
-					Category:  "media",
-					AuthHint:  fmt.Sprintf("支持能力: %s", strings.Join(kinds, ", ")),
-					AuthModes: []string{"api-key"},
-					APIKeyURL: media.APIKeyURLs[id],
-				},
+				ID:           id,
+				Name:         mp.Name,
+				BaseURL:      firstCfg.BaseURL,
+				APIType:      "media",
+				AuthType:     firstCfg.AuthType,
+				Category:     "media",
+				AuthHint:     fmt.Sprintf("支持能力: %s", strings.Join(kinds, ", ")),
+				AuthModes:    []string{"api-key"},
+				APIKeyURL:    media.APIKeyURLs[id],
 				Capabilities: caps,
 			})
 		}

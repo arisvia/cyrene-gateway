@@ -136,7 +136,7 @@ const Usage: Component = () => {
         }
       />
 
-      {/* 拓扑图 (9router 风格网关拓扑) */}
+      {/* 拓扑图 (网关核心拓扑) */}
       <Show when={subTab() === 'overview'}>
         <GatewayTopology
           providers={store.providers()}
