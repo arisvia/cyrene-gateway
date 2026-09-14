@@ -125,3 +125,26 @@ export function cleanupLegacyStorage(): void {
     }
   } catch {}
 }
+
+/**
+ * 远程图片拉取并转为 Base64 Data URL：
+ * 采用 no-referrer 策略绕过绝大部分图床/CDN 防盗链限制。
+ * 若遇跨域/网络故障返回 null，由上层安全降级使用原始 URL。
+ */
+export async function fetchRemoteImageDataUrl(url: string): Promise<string | null> {
+  if (!url || typeof window === 'undefined') return null
+  try {
+    const resp = await fetch(url, { referrerPolicy: 'no-referrer' })
+    if (!resp.ok) return null
+    const blob = await resp.blob()
+    if (!blob.type.startsWith('image/')) return null
+    const reader = new FileReader()
+    const { promise, resolve, reject } = Promise.withResolvers<string>()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+    return await promise
+  } catch {
+    return null
+  }
+}

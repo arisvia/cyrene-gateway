@@ -135,7 +135,7 @@ const App: Component = () => {
     return (
       <div class={`min-h-screen text-text relative selection:bg-accent/25 app-root-shell ${bgStore.hasCustomBg() ? '' : 'bg-bg'}`}>
         <Show when={bgStore.hasCustomBg()}>
-          <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+          <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-bg">
             <img
               src={bgStore.imageData()}
               alt=""

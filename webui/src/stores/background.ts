@@ -6,6 +6,7 @@ import {
   saveStoredWallpaper,
   clearStoredWallpaper,
   cleanupLegacyStorage,
+  fetchRemoteImageDataUrl,
   type WallpaperConfig,
   DEFAULT_WALLPAPER_CONFIG,
 } from '@/lib/backgroundStore'
@@ -54,12 +55,27 @@ function createCustomBgStore(): BackgroundStore {
       const cfg = getWallpaperConfig()
       setConfig(cfg)
       if (cfg.enabled) {
-        const data = await getStoredWallpaper()
+        let data = await getStoredWallpaper()
+        if (!data && cfg.remoteUrl?.trim()) {
+          // 容灾与自愈：
+          // 若 IndexedDB 缓存被清理（如浏览器隐私清理工具、清理垃圾缓存等），
+          // 但用户的远程图片 URL 依然保存在 localStorage 配置中：
+          // 1. 立即降级使用 remoteUrl 作为图像源，保证刷新即呈现壁纸，绝不误把 enabled 关闭
+          data = cfg.remoteUrl.trim()
+          // 2. 在后台异步重新拉取图片并回填至 IndexedDB，恢复离线能力与秒开体验
+          fetchRemoteImageDataUrl(data).then(async base64 => {
+            if (base64) {
+              await saveStoredWallpaper(base64)
+              setImageData(base64)
+            }
+          }).catch(() => {})
+        }
+
         if (data) {
           setImageData(data)
           applyAppearanceVariables(cfg, true)
         } else {
-          // 无图片数据时重置开关
+          // 仅在既无本地缓存也无远程 URL 时才重置开关
           const disabledCfg = { ...cfg, enabled: false }
           setConfig(disabledCfg)
           saveWallpaperConfig(disabledCfg)
@@ -93,6 +109,15 @@ function createCustomBgStore(): BackgroundStore {
     const next: WallpaperConfig = {
       ...config(),
       ...partial,
+    }
+    if (next.enabled && !imageData() && next.remoteUrl?.trim()) {
+      setImageData(next.remoteUrl.trim())
+      fetchRemoteImageDataUrl(next.remoteUrl.trim()).then(async base64 => {
+        if (base64) {
+          await saveStoredWallpaper(base64)
+          setImageData(base64)
+        }
+      }).catch(() => {})
     }
     setConfig(next)
     saveWallpaperConfig(next)

@@ -1,6 +1,7 @@
-import { type Component, For, Show, createSignal, onMount } from 'solid-js'
+import { type Component, For, Show, createSignal, createEffect, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
+import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
   Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload,
   IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
@@ -62,6 +63,12 @@ const Settings: Component = () => {
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal(bgStore.config().remoteUrl || '')
   const [loadingBgUrl, setLoadingBgUrl] = createSignal(false)
+  createEffect(() => {
+    const rUrl = bgStore.config().remoteUrl
+    if (rUrl && !bgUrlInput()) {
+      setBgUrlInput(rUrl)
+    }
+  })
   // 响应缓存状态
   const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
   const [clearingCache, setClearingCache] = createSignal(false)
@@ -756,18 +763,8 @@ const Settings: Component = () => {
 
                       let dataUrl = ''
                       try {
-                        const resp = await fetch(url, { referrerPolicy: 'no-referrer' })
-                        if (resp.ok) {
-                          const blob = await resp.blob()
-                          if (blob.type.startsWith('image/')) {
-                            const reader = new FileReader()
-                            const { promise, resolve, reject } = Promise.withResolvers<string>()
-                            reader.onload = () => resolve(reader.result as string)
-                            reader.onerror = () => reject(reader.error)
-                            reader.readAsDataURL(blob)
-                            dataUrl = await promise
-                          }
-                        }
+                        const base64 = await fetchRemoteImageDataUrl(url)
+                        if (base64) dataUrl = base64
                       } catch {
                         // 跨域或安全拦截直接拉取时，降级使用 direct url 保存进 IndexedDB
                       }
