@@ -1276,8 +1276,8 @@ const ProviderDetail: Component = () => {
 
             {/* 模型 */}
             <Show when={tab() === 'models'}>
-              <div class="flex flex-col gap-3.5 min-h-[500px] lg:min-h-0 lg:h-[calc(100dvh-320px)]">
-                <Card class="shrink-0 p-3.5 sm:p-4">
+              <div class="flex flex-col gap-3.5">
+                <Card class="p-3.5 sm:p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 flex-wrap min-w-0">
                       <h3 class="text-sm font-semibold whitespace-nowrap">{t('providerDetail.customModelsTitle')}</h3>
@@ -1355,8 +1355,8 @@ const ProviderDetail: Component = () => {
                   </Show>
                 </Card>
 
-                <Card class="flex-1 min-h-0 p-4 sm:p-4.5 flex flex-col">
-                  <div class="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
+                <Card class="p-4 sm:p-4.5 space-y-3">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                     <div class="flex items-center gap-2 flex-wrap">
                       <h3 class="text-sm font-semibold">{t('providerDetail.availableModels')}</h3>
                       <span class="text-xs text-faint">
@@ -1384,7 +1384,7 @@ const ProviderDetail: Component = () => {
                     </div>
                   </div>
                   {/* 批量运维工具栏 */}
-                  <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-subtle/40 mb-2.5 text-xs">
+                  <div class="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-subtle/40 text-xs">
                     <div class="flex items-center gap-2 flex-wrap">
                       <span class="text-faint">{t('providerDetail.batchOps')}</span>
                       <Button
@@ -1437,9 +1437,7 @@ const ProviderDetail: Component = () => {
                     when={(modelsData().registryModels ?? models()?.registryModels ?? []).length > 0}
                     fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
-                    {/* 独立可滚动区域：带对外开放开关的 Liquid Glass 卡片网格 */}
-                    <div class="flex-1 min-h-0 overflow-y-auto pr-1">
-                      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                         <For each={(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
                           const q = modelSearch().trim().toLowerCase()
                           if (!q) return true
@@ -1560,7 +1558,6 @@ const ProviderDetail: Component = () => {
                           )}
                         </For>
                       </div>
-                    </div>
                   </Show>
                 </Card>
               </div>
