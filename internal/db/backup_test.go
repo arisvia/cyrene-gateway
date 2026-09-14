@@ -6,7 +6,6 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
-
 func TestBackupAndRestore(t *testing.T) {
 	d := setupTestDB(t)
 

@@ -36,6 +36,7 @@ func init() {
 		isExplicit = true
 	}
 }
+
 // InitSecretFile loads the HMAC secret from <dir>/auth-secret, generating and
 // persisting one when absent. Must be called after flag parsing with the
 // resolved data directory. A secret already set via env or SetSecret wins.
@@ -80,6 +81,7 @@ func SetSecret(s string) {
 		secretMu.Unlock()
 	}
 }
+
 // GetSecret returns the current in-memory HMAC auth secret as string.
 func GetSecret() string {
 	return string(getSecret())
@@ -116,7 +118,6 @@ func PersistSecret(dir, secretStr string) error {
 	secret = []byte(trimmed)
 	return nil
 }
-
 
 func getSecret() []byte {
 	secretMu.RLock()

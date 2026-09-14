@@ -1820,6 +1820,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
+
 // refreshProxies re-syncs the in-memory ProxyManager with current database proxy pools.
 func (s *Server) refreshProxies() {
 	if s.Proxies == nil || s.DB == nil {
