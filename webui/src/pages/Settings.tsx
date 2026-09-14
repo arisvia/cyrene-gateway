@@ -3,7 +3,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
-  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload,
+  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse,
   IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDatabase, IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
@@ -313,11 +313,11 @@ const Settings: Component = () => {
               <span class="truncate">{t('settings.hosts.gateway')}</span>
             </Show>
             <Show when={activeTab() === 'appearance'}>
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span class="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
               <span class="truncate">{t('settings.hosts.appearance')}</span>
             </Show>
             <Show when={activeTab() === 'data'}>
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
               <span class="truncate">{t('settings.hosts.data')}</span>
             </Show>
           </div>
@@ -1007,7 +1007,7 @@ const Settings: Component = () => {
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint sm:justify-end">
             <div class="flex items-center gap-1 whitespace-nowrap">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <StatusPulse status={store.health().db === 'ok' ? 'active' : 'paused'} tone={store.health().db === 'ok' ? 'green' : 'amber'} size="xs" />
               <span>{t('common.database')}:</span>
               <span class="font-medium text-foreground">{store.health().db === 'ok' ? `${t('common.ready')} (WAL)` : t('common.checking')}</span>
             </div>

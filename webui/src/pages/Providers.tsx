@@ -754,7 +754,7 @@ const Providers: Component = () => {
                               {t('providers.accountsCount', { count: group.connections.length })}
                             </Badge>
                             <Show when={hasMultiple()}>
-                              <Badge tone="blue" class="bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/35 text-[10px] px-1.5 py-0.5 shrink-0">
+                              <Badge tone="purple" class="text-[10px] px-1.5 py-0.5 shrink-0">
                                 {t('providers.fallbackReady')}
                               </Badge>
                             </Show>

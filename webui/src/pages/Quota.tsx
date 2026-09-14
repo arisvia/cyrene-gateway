@@ -124,14 +124,14 @@ const Quota: Component = () => {
     }
     const isExhausted = () => props.quota.remaining <= 0 && props.quota.total > 0
 
-    // 梯度配额健康色彩：>=50% 翠绿充足，20%~49% 暖橙适中，<20% 警戒红，0% 或耗尽暗红警报
-    // text 需按主题分层（浅色用 600/700 级），dot/bar 是实心色块，任何主题下均可辨识，保持不变
+    // 梯度配额健康色彩：>=80% 翠绿充足，50%~79% 信息蓝，20%~49% 暖橙适中，<20% 警戒红，0% 或耗尽暗红警报
+    // 全面收敛为语义 Token（danger / warning / info / success），亮暗主题自适应
     const colorClass = () => {
-      if (isExhausted() || pct() <= 0) return { dot: 'bg-red-500 shadow-xs shadow-red-500/50', bar: 'bg-red-500', text: 'text-red-600 dark:text-red-500' }
-      if (pct() < 20) return { dot: 'bg-red-400 shadow-xs shadow-red-400/50', bar: 'bg-red-400', text: 'text-red-600 dark:text-red-400' }
-      if (pct() < 50) return { dot: 'bg-amber-400 shadow-xs shadow-amber-400/50', bar: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400' }
-      if (pct() < 80) return { dot: 'bg-cyan-400 shadow-xs shadow-cyan-400/50', bar: 'bg-cyan-400', text: 'text-cyan-600 dark:text-cyan-400' }
-      return { dot: 'bg-emerald-500 shadow-xs shadow-emerald-500/50', bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-500' }
+      if (isExhausted() || pct() <= 0) return { dot: 'bg-danger/80 shadow-xs shadow-danger/50', bar: 'bg-danger/80', text: 'text-danger font-semibold' }
+      if (pct() < 20) return { dot: 'bg-danger shadow-xs shadow-danger/50', bar: 'bg-danger', text: 'text-danger' }
+      if (pct() < 50) return { dot: 'bg-warning shadow-xs shadow-warning/50', bar: 'bg-warning', text: 'text-warning' }
+      if (pct() < 80) return { dot: 'bg-info shadow-xs shadow-info/50', bar: 'bg-info', text: 'text-info' }
+      return { dot: 'bg-success shadow-xs shadow-success/50', bar: 'bg-success', text: 'text-success' }
     }
 
     const resetHint = () => {

@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, onMount, onCleanup, createMemo } from 'solid-js'
 import { api } from '@/lib/api'
-import { Card, Button, Input, Select, PageHeader } from '@/components/ui'
+import { Card, Button, Input, Select, PageHeader, StatusPulse } from '@/components/ui'
 import { useI18n } from '@/i18n'
 
 interface LogItem {
@@ -135,11 +135,11 @@ const LogsPage: Component = () => {
 
   const levelColor = (level: string) => {
     switch (level.toUpperCase()) {
-      case 'ERROR': return 'text-red-400 font-bold'
-      case 'WARN': return 'text-amber-300 font-semibold'
-      case 'INFO': return 'text-cyan-300'
-      case 'DEBUG': return 'text-zinc-400'
-      default: return 'text-zinc-300'
+      case 'ERROR': return 'text-danger font-bold'
+      case 'WARN': return 'text-warning font-semibold'
+      case 'INFO': return 'text-info'
+      case 'DEBUG': return 'text-faint'
+      default: return 'text-muted'
     }
   }
 
@@ -156,7 +156,7 @@ const LogsPage: Component = () => {
     <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
       <PageHeader
         title={t('logs.title')}
-        badge={<span class={`inline-block w-2.5 h-2.5 rounded-full ${connected() ? 'bg-emerald-500 shadow-emerald-500/50 shadow-sm animate-pulse' : 'bg-zinc-600'}`} />}
+        badge={<StatusPulse status={connected() ? 'active' : 'idle'} tone={connected() ? 'green' : 'gray'} />}
         subtitle={t('logs.subtitle')}
         actions={
           <>
@@ -203,32 +203,32 @@ const LogsPage: Component = () => {
       {/* 实时终端日志视窗 */}
       <div
         ref={scrollContainer}
-        class="flex-1 min-h-0 bg-[#0d1117] border border-subtle rounded-2xl p-4 font-mono text-xs overflow-y-auto space-y-1.5 selection:bg-accent/30 shadow-inner"
+        class="flex-1 min-h-0 bg-code-bg border border-subtle rounded-2xl p-4 font-mono text-xs overflow-y-auto space-y-1.5 selection:bg-accent/30 shadow-inner"
       >
         <Show
           when={displayedLogs().length > 0}
           fallback={
-            <div class="h-full flex items-center justify-center text-zinc-400 text-sm">
+            <div class="h-full flex items-center justify-center text-faint text-sm">
               {t('logs.noLogs')}
             </div>
           }
         >
           <Show when={filteredLogs().length > RENDER_LIMIT}>
-            <div class="text-center py-1 text-[11px] text-zinc-500 border-b border-subtle/30 select-none">
+            <div class="text-center py-1 text-[11px] text-faint border-b border-subtle/30 select-none">
               {t('logs.renderedLimit', { limit: RENDER_LIMIT, total: filteredLogs().length })}
             </div>
           </Show>
           <For each={displayedLogs()}>
             {log => (
-              <div class="flex items-start gap-2.5 leading-relaxed hover:bg-white/2 px-1.5 py-0.5 rounded transition-colors break-all">
-                <span class="text-zinc-400 shrink-0 select-none">{formatTime(log.time)}</span>
+              <div class="flex items-start gap-2.5 leading-relaxed hover:bg-hover/50 px-1.5 py-0.5 rounded transition-colors break-all">
+                <span class="text-faint shrink-0 select-none">{formatTime(log.time)}</span>
                 <span class={`px-1.5 py-0.5 rounded text-[10px] shrink-0 uppercase select-none ${levelColor(log.level)}`}>
                   [{log.level}]
                 </span>
                 <div class="flex-1 min-w-0">
-                  <span class="text-zinc-200">{log.msg}</span>
+                  <span class="text-foreground">{log.msg}</span>
                   <Show when={log.attrs && Object.keys(log.attrs).length > 0}>
-                    <span class="text-zinc-400 ml-2">
+                    <span class="text-muted ml-2">
                       {Object.entries(log.attrs!).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' ')}
                     </span>
                   </Show>

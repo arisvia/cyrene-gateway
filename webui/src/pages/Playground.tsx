@@ -848,7 +848,7 @@ main();
                           <Show
                             when={!turn.a.error}
                             fallback={
-                              <div class="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-700 dark:text-rose-400 text-xs flex items-start gap-2">
+                              <div class="p-3 bg-danger/10 border border-danger/25 rounded-xl text-danger text-xs flex items-start gap-2">
                                 <IconAlertCircle size={15} class="shrink-0 mt-0.5" />
                                 <div>
                                   <div class="font-semibold">{t('playground.callFailed')}</div>
@@ -915,7 +915,7 @@ main();
                           <Show
                             when={!turn.a.error}
                             fallback={
-                              <div class="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-700 dark:text-rose-400 text-xs font-mono">
+                              <div class="p-2 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono">
                                 {turn.a.error}
                               </div>
                             }
@@ -975,7 +975,7 @@ main();
                           <Show
                             when={!turn.b?.error}
                             fallback={
-                              <div class="p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-700 dark:text-rose-400 text-xs font-mono">
+                              <div class="p-2 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono">
                                 {turn.b?.error}
                               </div>
                             }
