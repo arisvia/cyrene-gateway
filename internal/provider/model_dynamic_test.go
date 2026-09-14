@@ -96,3 +96,26 @@ func TestResolveModel_NamespacedVendorModel(t *testing.T) {
 		t.Errorf("expected model=liquid/lfm-2.5-2.6b:free, got %s", infoExplicit.Model)
 	}
 }
+
+func TestExtractModelReasoningEffort(t *testing.T) {
+	tests := []struct {
+		input       string
+		wantModel   string
+		wantEffort  string
+	}{
+		{"claude-3-7-sonnet(high)", "claude-3-7-sonnet", "high"},
+		{"antigravity/claude-3-7-sonnet(low)", "antigravity/claude-3-7-sonnet", "low"},
+		{"gpt-4o(medium)", "gpt-4o", "medium"},
+		{"gemini-2.5-flash(adaptive)", "gemini-2.5-flash", "adaptive"},
+		{"deepseek-r1", "deepseek-r1", ""},
+		{"custom-model(unknown)", "custom-model(unknown)", ""},
+	}
+
+	for _, tt := range tests {
+		gotModel, gotEffort := ExtractModelReasoningEffort(tt.input)
+		if gotModel != tt.wantModel || gotEffort != tt.wantEffort {
+			t.Errorf("ExtractModelReasoningEffort(%q) = (%q, %q), want (%q, %q)",
+				tt.input, gotModel, gotEffort, tt.wantModel, tt.wantEffort)
+		}
+	}
+}

@@ -11,8 +11,24 @@ import (
 
 // ParseModel splits "provider/model" into provider and model parts.
 // If no slash is present, provider is empty and will be inferred or resolved via alias.
+// ExtractModelReasoningEffort parses and strips reasoning effort suffixes like "(low)", "(medium)", "(high)", "(adaptive)", "(none)"
+// from model strings, e.g. "claude-3-7-sonnet(high)" -> ("claude-3-7-sonnet", "high").
+func ExtractModelReasoningEffort(modelStr string) (string, string) {
+	if idx := strings.LastIndex(modelStr, "("); idx != -1 && strings.HasSuffix(modelStr, ")") {
+		effort := strings.ToLower(modelStr[idx+1 : len(modelStr)-1])
+		switch effort {
+		case "low", "medium", "high", "max", "adaptive", "none", "off":
+			return modelStr[:idx], effort
+		}
+	}
+	return modelStr, ""
+}
+
+// ParseModel splits "provider/model" into provider and model parts.
+// If no slash is present, provider is empty and will be inferred or resolved via alias.
 func ParseModel(modelStr string) model.ModelInfo {
-	if before, after, ok := strings.Cut(modelStr, "/"); ok {
+	cleanModel, _ := ExtractModelReasoningEffort(modelStr)
+	if before, after, ok := strings.Cut(cleanModel, "/"); ok {
 		rawProv := before
 		canonicalProv := ResolveProviderAlias(rawProv)
 		return model.ModelInfo{
@@ -21,7 +37,7 @@ func ParseModel(modelStr string) model.ModelInfo {
 		}
 	}
 	// Bare model name - will need alias resolution or inference
-	return model.ModelInfo{Provider: "", Model: modelStr}
+	return model.ModelInfo{Provider: "", Model: cleanModel}
 }
 
 // ResolveModel resolves a model string to full ModelInfo using:

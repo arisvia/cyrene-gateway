@@ -155,25 +155,42 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 
 	// Support reasoning_effort & thinking conversion
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
-		var budget int
-		switch strings.ToLower(effort) {
-		case "low":
-			budget = 2048
-		case "medium":
-			budget = 8192
-		case "high":
-			budget = 16384
-		case "max":
-			budget = 32768
-		}
-		if budget > 0 {
+		effortLower := strings.ToLower(effort)
+		if effortLower == "adaptive" {
 			result["thinking"] = map[string]any{
-				"type":          "enabled",
-				"budget_tokens": budget,
+				"type": "adaptive",
+			}
+		} else {
+			var budget int
+			switch effortLower {
+			case "low":
+				budget = 2048
+			case "medium":
+				budget = 8192
+			case "high":
+				budget = 16384
+			case "max":
+				budget = 32768
+			}
+			if budget > 0 {
+				result["thinking"] = map[string]any{
+					"type":          "enabled",
+					"budget_tokens": budget,
+				}
 			}
 		}
 	} else if thinking, ok := body["thinking"].(map[string]any); ok {
 		result["thinking"] = thinking
+	}
+
+	// When thinking is enabled, Anthropic strictly rejects temperature != 1.0; drop it to avoid 400 Bad Request
+	if thinkingMap, ok := result["thinking"].(map[string]any); ok {
+		delete(result, "temperature")
+		if budget, ok := thinkingMap["budget_tokens"].(int); ok && budget > 0 {
+			if maxTokens, ok := result["max_tokens"].(int); ok && maxTokens <= budget {
+				result["max_tokens"] = budget + 4096
+			}
+		}
 	}
 
 	// Convert tools

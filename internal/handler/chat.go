@@ -84,6 +84,23 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Strip reasoning effort suffix from model name (e.g. "claude-3-7-sonnet(high)" -> effort="high")
+	if cleanModel, effort := provider.ExtractModelReasoningEffort(req.Model); effort != "" {
+		req.Model = cleanModel
+		if req.ReasoningEffort == "" {
+			req.ReasoningEffort = effort
+		}
+		var bodyMap map[string]any
+		if err := json.Unmarshal(rawBody, &bodyMap); err == nil {
+			bodyMap["model"] = cleanModel
+			if _, hasEffort := bodyMap["reasoning_effort"]; !hasEffort {
+				bodyMap["reasoning_effort"] = effort
+			}
+			if updated, err := json.Marshal(bodyMap); err == nil {
+				rawBody = updated
+			}
+		}
+	}
 	keyObj := auth.APIKeyFromContext(r.Context())
 	if keyObj != nil && !keyObj.IsModelAllowed(req.Model) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
