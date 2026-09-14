@@ -178,3 +178,93 @@ func TestAPIKeyAuth_StrictGatewayMode(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardAuth_SecurityAndRebinding(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Settings: RequireLogin = false (default local-first mode)
+	st, _ := database.GetSettings()
+	st.RequireLogin = false
+	_ = database.SaveSettings(st)
+
+	handler := DashboardAuth(database)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+
+	// 1. Trusted loopback request -> 200 OK
+	{
+		req := httptest.NewRequest("GET", "/api/providers", nil)
+		req.RemoteAddr = "127.0.0.1:54321"
+		req.Host = "localhost:20128"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for trusted loopback, got %d", rec.Code)
+		}
+	}
+
+	// 2. DNS rebinding attack (Host header evil.com on loopback IP) -> 401 Unauthorized
+	{
+		req := httptest.NewRequest("GET", "/api/providers", nil)
+		req.RemoteAddr = "127.0.0.1:54321"
+		req.Host = "evil.com:20128"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for DNS rebinding attack with Host evil.com, got %d", rec.Code)
+		}
+	}
+
+	// 3. Cross-origin attack (Origin header evil.com on loopback IP) -> 401 Unauthorized
+	{
+		req := httptest.NewRequest("GET", "/api/keys", nil)
+		req.RemoteAddr = "127.0.0.1:54321"
+		req.Host = "localhost:20128"
+		req.Header.Set("Origin", "http://evil.com")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for cross-origin request from evil.com, got %d", rec.Code)
+		}
+	}
+
+	// 4. Remote non-loopback IP -> 401 Unauthorized
+	{
+		req := httptest.NewRequest("GET", "/api/settings", nil)
+		req.RemoteAddr = "203.0.113.195:43210"
+		req.Host = "localhost:20128"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 for remote non-loopback IP, got %d", rec.Code)
+		}
+	}
+
+	// 5. Public path (/api/health) -> 200 OK even from remote IP with evil Host
+	{
+		req := httptest.NewRequest("GET", "/api/health", nil)
+		req.RemoteAddr = "203.0.113.195:43210"
+		req.Host = "evil.com:20128"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for public /api/health, got %d", rec.Code)
+		}
+	}
+
+	// 6. Valid session token -> 200 OK for remote IP
+	{
+		token, _ := auth.CreateSessionToken()
+		req := httptest.NewRequest("GET", "/api/providers", nil)
+		req.RemoteAddr = "203.0.113.195:43210"
+		req.Host = "mygateway.example.com"
+		req.AddCookie(&http.Cookie{Name: "auth_token", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for authenticated remote request, got %d", rec.Code)
+		}
+	}
+}

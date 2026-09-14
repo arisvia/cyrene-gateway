@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -51,12 +52,24 @@ func Recovery(next http.Handler) http.Handler {
 	})
 }
 
-// CORS adds permissive CORS headers for API compatibility.
+// CORS adds CORS headers. Permissive for /v1/* and public paths, loopback-only for protected /api/*.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		origin := r.Header.Get("Origin")
+		isProtectedAPI := strings.HasPrefix(r.URL.Path, "/api/") && !isPublicPath(r.URL.Path)
+
+		if isProtectedAPI {
+			// For protected management APIs, only allow loopback origins to access CORS
+			if origin != "" && isLoopbackOrigin(origin) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+		} else {
+			// For public LLM API routes (/v1/*) and public health/version endpoints, allow any origin
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-API-Key")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == http.MethodOptions {

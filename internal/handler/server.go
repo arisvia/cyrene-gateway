@@ -1161,10 +1161,12 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dto := pc.ToDTO()
+	pcCopy := *pc
 	// Trigger async dynamic model catalog discovery for the newly added connection
-	go s.syncConnectionModels(pc)
+	go s.syncConnectionModels(&pcCopy)
 
-	writeJSON(w, http.StatusCreated, pc.ToDTO())
+	writeJSON(w, http.StatusCreated, dto)
 }
 
 func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
@@ -1239,10 +1241,12 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dto := existing.ToDTO()
+	existingCopy := *existing
 	// Trigger async dynamic model catalog discovery for updated connection
-	go s.syncConnectionModels(existing)
+	go s.syncConnectionModels(&existingCopy)
 
-	writeJSON(w, http.StatusOK, existing.ToDTO())
+	writeJSON(w, http.StatusOK, dto)
 }
 
 func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {

@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -102,6 +103,37 @@ func isLoopback(remoteAddr string) bool {
 	return ip.IsLoopback()
 }
 
+// isLoopbackHost checks if a Host header (host or host:port) points to local loopback.
+// Prevents DNS rebinding attacks where external domain names resolve to 127.0.0.1.
+func isLoopbackHost(hostHeader string) bool {
+	if hostHeader == "" {
+		return true
+	}
+	h, _, err := net.SplitHostPort(hostHeader)
+	if err != nil {
+		h = hostHeader
+	}
+	h = strings.TrimPrefix(strings.TrimSuffix(h, "]"), "[")
+	if h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "192.0.2.1" || h == "example.com" {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
+}
+
+// isLoopbackOrigin checks if an Origin header (e.g. http://localhost:20128) points to local loopback.
+// Prevents cross-origin browser scripts on untrusted domains from calling /api/* without authentication.
+func isLoopbackOrigin(originHeader string) bool {
+	if originHeader == "" {
+		return true
+	}
+	u, err := url.Parse(originHeader)
+	if err != nil {
+		return false
+	}
+	return isLoopbackHost(u.Host)
+}
+
 // DashboardAuth protects /api/* management routes with session auth.
 // Non-loopback callers ALWAYS require authentication for management APIs to prevent unauthenticated remote takeover.
 func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
@@ -127,9 +159,14 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 				return
 			}
 
-			remote := !isLoopback(r.RemoteAddr)
+			// Trusted loopback verification:
+			// 1. RemoteAddr must be loopback IP.
+			// 2. Host header must point to loopback (DNS rebinding defense).
+			// 3. Origin header (if present) must point to loopback (Cross-origin browser defense).
+			isTrustedLoopback := isLoopback(r.RemoteAddr) && isLoopbackHost(r.Host) && isLoopbackOrigin(r.Header.Get("Origin"))
+			remote := !isTrustedLoopback
 
-			// If requireLogin is explicitly enabled OR request is remote non-loopback:
+			// If requireLogin is explicitly enabled OR request is not trusted loopback:
 			if settings.RequireLogin || remote {
 				cookie, err := r.Cookie("auth_token")
 				if err != nil || !auth.VerifySessionToken(cookie.Value) {

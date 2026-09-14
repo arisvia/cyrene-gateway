@@ -16,6 +16,7 @@ type Config struct {
 	Secret               string
 	Port                 int
 	AllowPrivateNetworks bool
+	ShowVersion          bool
 }
 
 func Load() *Config {
@@ -27,6 +28,8 @@ func Load() *Config {
 	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded)")
 	flag.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "Dashboard access password")
 	flag.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers)")
+	flag.BoolVar(&cfg.ShowVersion, "v", false, "Print version and exit")
+	flag.BoolVar(&cfg.ShowVersion, "version", false, "Print version and exit")
 	flag.Parse()
 
 	home, _ := os.UserHomeDir()

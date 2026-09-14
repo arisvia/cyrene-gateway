@@ -51,13 +51,14 @@ go build -o cyrene-gateway ./cmd/gateway
 
 | Flag | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
-| `-host` | `CYRENE_HOST` | `127.0.0.1` | 绑定地址(默认仅本机) |
+| `-host` | `CYRENE_HOST` | `0.0.0.0` | 绑定地址(默认监听全部网卡以支持容器) |
 | `-port` | `CYRENE_PORT` | `20128` | 网关端口 |
 | `-data-dir` | `CYRENE_DATA_DIR` | `~/.cyrene-gateway` | 数据目录(数据库、密钥与面板缓存) |
 | `-secret` | `CYRENE_SECRET` | 空 | 面板访问密码;空则自动生成并持久化 |
 | `-dashboard` | `CYRENE_DASHBOARD` | 空 | 本地面板目录(开发用),空则用嵌入式面板 |
 | `-panel-url` | `CYRENE_PANEL_URL` | 空 | 面板更新包 URL(dist.zip 或单 HTML),空则用嵌入式 |
 | `-allow-private-networks` | `CYRENE_ALLOW_PRIVATE_NETWORKS` | `false` | 允许出站访问私网地址(本地 mock 测试用) |
+| `-v`, `-version` | - | `false` | 打印当前构建版本并退出 |
 ### 使用示例
 
 ```bash
@@ -116,11 +117,12 @@ schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
 
 ## 安全要点
-- 默认只绑 `127.0.0.1`;管理 API(`/api/*`)对非环回来源**始终**要求会话认证。
-- `/v1/*` 可通过设置开启 API Key 强制校验(HMAC 签名 + 数据库白名单)。
-- 出站请求默认启用 SSRF 防护(解析期 + 拨号期双重校验,含重定向校验)。
-- 登录失败按 IP 指数锁定(30s → 30m);密码使用 Argon2id(兼容旧 HMAC 哈希自动迁移)。
 
+- **入站防御与 DNS 重绑定防护**：默认绑定 `0.0.0.0` 方便容器组网，但管理端 API（`/api/*`）强制实施**可信回环校验（Trusted Loopback）**——不仅校验 `RemoteAddr`，同时严格校验 HTTP `Host` 与 `Origin` 请求头（仅放行 localhost/127.0.0.1/[::1]）。任何指向 127.0.0.1 的外部域名（DNS Rebinding 攻击）或来自第三方网页的跨域脚本均会被拒发回环信任，强制要求 Session 登录鉴权（401 Unauthorized）；生产部署暴露于公网时，建议在「设置」中显式开启 `requireLogin`。
+- **CORS 隔离策略**：下游推理接口（`/v1/*`）及公有探活端点（`/api/health`、`/api/version`）对外部应用开放跨域；受保护的管理端 API（`/api/*`）仅对本地可信回环 Origin 开放 CORS。
+- **出站请求 SSRF 双重防御**：所有出站 HTTP 客户端统一经 `SafeHTTPClient` 托管，实施 Dial-time 解析期与拨号期 IP 校验，阻断针对内网、回环、链路本地与云元数据地址（如 169.254.169.254）的探测，并拦截 302 重定向逃逸。
+- **API Key 权限与限流**：`/v1/*` 可通过设置开启 API Key 强制校验（HMAC 签名 + 数据库白名单），支持细粒度模型白名单、System Context 注入与专属 RPM 限流。
+- **暴力破解防护**：登录失败按 IP 指数锁定（30s → 30m）；密码采用 Argon2id 单向加盐哈希（自动兼容旧版 HMAC 迁移）。
 ## License
 
 以 [MIT](LICENSE) 许可证开源。

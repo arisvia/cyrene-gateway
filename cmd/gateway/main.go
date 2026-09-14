@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -19,7 +20,10 @@ import (
 
 func main() {
 	cfg := config.Load()
-
+	if cfg.ShowVersion {
+		fmt.Printf("cyrene-gateway %s\n", handler.Version())
+		return
+	}
 	// Auth secret: -secret flag wins; else load/generate <data-dir>/auth-secret
 	auth.SetSecret(cfg.Secret)
 	auth.InitSecretFile(cfg.DataDir)
