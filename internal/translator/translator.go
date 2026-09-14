@@ -124,11 +124,26 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 			if cc, ok := msg["cache_control"]; ok {
 				toolBlock["cache_control"] = cc
 			}
-			toolResult := map[string]any{
-				"role":    "user",
-				"content": []any{toolBlock},
+			// Merge consecutive tool_result blocks into the preceding user message to ensure strict user/assistant alternation
+			merged := false
+			if len(claudeMessages) > 0 {
+				lastIdx := len(claudeMessages) - 1
+				if lastMsg, ok := claudeMessages[lastIdx].(map[string]any); ok && lastMsg["role"] == "user" {
+					if contentArr, ok := lastMsg["content"].([]any); ok && len(contentArr) > 0 {
+						if firstBlock, ok := contentArr[0].(map[string]any); ok && firstBlock["type"] == "tool_result" {
+							lastMsg["content"] = append(contentArr, toolBlock)
+							merged = true
+						}
+					}
+				}
 			}
-			claudeMessages = append(claudeMessages, toolResult)
+			if !merged {
+				toolResult := map[string]any{
+					"role":    "user",
+					"content": []any{toolBlock},
+				}
+				claudeMessages = append(claudeMessages, toolResult)
+			}
 		}
 	}
 	if len(systemParts) > 0 {
@@ -195,7 +210,50 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		result["tool_choice"] = convertToolChoiceToClaude(tc)
 	}
 
+	// Cap cache_control markers at 4 to comply with Anthropic strict budget
+	trimClaudeCacheControl(result)
+
 	return result, nil
+}
+
+// trimClaudeCacheControl ensures the request does not exceed Anthropic's hard limit of 4 cache_control blocks.
+func trimClaudeCacheControl(result map[string]any) {
+	const maxMarkers = 4
+	count := 0
+
+	// 1. Check tools
+	if tools, ok := result["tools"].([]any); ok {
+		for _, t := range tools {
+			if tm, ok := t.(map[string]any); ok {
+				if _, hasCC := tm["cache_control"]; hasCC {
+					count++
+					if count > maxMarkers {
+						delete(tm, "cache_control")
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Check messages
+	if msgs, ok := result["messages"].([]any); ok {
+		for _, m := range msgs {
+			if mm, ok := m.(map[string]any); ok {
+				if content, ok := mm["content"].([]any); ok {
+					for _, b := range content {
+						if bm, ok := b.(map[string]any); ok {
+							if _, hasCC := bm["cache_control"]; hasCC {
+								count++
+								if count > maxMarkers {
+									delete(bm, "cache_control")
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func convertMessageToClaude(msg map[string]any) map[string]any {
@@ -209,37 +267,52 @@ func convertMessageToClaude(msg map[string]any) map[string]any {
 	var blocks []any
 
 	// Handle string content
+	var parts []any
 	if text, ok := content.(string); ok && text != "" {
 		blocks = append(blocks, map[string]any{"type": "text", "text": text})
+	} else if singleMap, ok := content.(map[string]any); ok {
+		parts = []any{singleMap}
 	} else if arr, ok := content.([]any); ok {
-		for _, part := range arr {
-			p, ok := part.(map[string]any)
-			if !ok {
-				continue
+		parts = arr
+	}
+
+	for _, part := range parts {
+		p, ok := part.(map[string]any)
+		if !ok {
+			continue
+		}
+		pType, _ := p["type"].(string)
+		switch pType {
+		case "text":
+			textBlock := map[string]any{"type": "text", "text": p["text"]}
+			if cc, ok := p["cache_control"]; ok {
+				textBlock["cache_control"] = cc
 			}
-			switch p["type"] {
-			case "text":
-				textBlock := map[string]any{"type": "text", "text": p["text"]}
-				if cc, ok := p["cache_control"]; ok {
-					textBlock["cache_control"] = cc
-				}
-				blocks = append(blocks, textBlock)
-				if imgURL, ok := p["image_url"].(map[string]any); ok {
-					url, _ := imgURL["url"].(string)
-					if strings.HasPrefix(url, "data:") {
-						mediaType, data := parseDataURI(url)
-						blocks = append(blocks, map[string]any{
-							"type":   "image",
-							"source": map[string]any{"type": "base64", "media_type": mediaType, "data": data},
-						})
-					} else {
-						blocks = append(blocks, map[string]any{
-							"type":   "image",
-							"source": map[string]any{"type": "url", "url": url},
-						})
+			blocks = append(blocks, textBlock)
+		case "image_url":
+			if imgURL, ok := p["image_url"].(map[string]any); ok {
+				url, _ := imgURL["url"].(string)
+				var imgBlock map[string]any
+				if strings.HasPrefix(url, "data:") {
+					mediaType, data := parseDataURI(url)
+					imgBlock = map[string]any{
+						"type":   "image",
+						"source": map[string]any{"type": "base64", "media_type": mediaType, "data": data},
+					}
+				} else {
+					imgBlock = map[string]any{
+						"type":   "image",
+						"source": map[string]any{"type": "url", "url": url},
 					}
 				}
+				if cc, ok := p["cache_control"]; ok {
+					imgBlock["cache_control"] = cc
+				}
+				blocks = append(blocks, imgBlock)
 			}
+		case "image":
+			// Direct Anthropic image block passthrough
+			blocks = append(blocks, p)
 		}
 	}
 
@@ -449,29 +522,35 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 
 func convertContentToGeminiParts(content any) []any {
 	var parts []any
+	var rawParts []any
 	switch c := content.(type) {
 	case string:
 		if c != "" {
-			parts = append(parts, map[string]any{"text": c})
+			return []any{map[string]any{"text": c}}
 		}
+		return parts
+	case map[string]any:
+		rawParts = []any{c}
 	case []any:
-		for _, part := range c {
-			p, ok := part.(map[string]any)
-			if !ok {
-				continue
-			}
-			switch p["type"] {
-			case "text":
-				parts = append(parts, map[string]any{"text": p["text"]})
-			case "image_url":
-				if imgURL, ok := p["image_url"].(map[string]any); ok {
-					url, _ := imgURL["url"].(string)
-					if strings.HasPrefix(url, "data:") {
-						mediaType, data := parseDataURI(url)
-						parts = append(parts, map[string]any{
-							"inlineData": map[string]any{"mimeType": mediaType, "data": data},
-						})
-					}
+		rawParts = c
+	}
+
+	for _, part := range rawParts {
+		p, ok := part.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch p["type"] {
+		case "text":
+			parts = append(parts, map[string]any{"text": p["text"]})
+		case "image_url":
+			if imgURL, ok := p["image_url"].(map[string]any); ok {
+				url, _ := imgURL["url"].(string)
+				if strings.HasPrefix(url, "data:") {
+					mediaType, data := parseDataURI(url)
+					parts = append(parts, map[string]any{
+						"inlineData": map[string]any{"mimeType": mediaType, "data": data},
+					})
 				}
 			}
 		}

@@ -973,6 +973,14 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
 		return
 	}
+	// Unwrap {success: true, data: {...}} envelope (Cline, ClinePass, proxy wrappers)
+	var env struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err == nil && env.Success && len(env.Data) > 0 {
+		body = env.Data
+	}
 
 	// Extract usage before translation
 	var u usage.Usage
@@ -1245,6 +1253,18 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Set the resolved model name
 	reqBody["model"] = modelInfo.Model
+
+	// Strip output_config.format for non-official Anthropic endpoints to prevent 400 Bad Request
+	// (Claude Code sends output_config.format json_schema for session titles which third-party gateways reject)
+	if modelInfo.Provider != "anthropic" && modelInfo.Provider != "claude" && modelInfo.Provider != "cc" {
+		if oc, ok := reqBody["output_config"].(map[string]any); ok {
+			delete(oc, "format")
+			if len(oc) == 0 {
+				delete(reqBody, "output_config")
+			}
+		}
+	}
+
 	translatedBody, _ := json.Marshal(reqBody)
 
 	// Phase 30: resolve transport for URL building + auth injection.

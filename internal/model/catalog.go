@@ -60,6 +60,11 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "o1", DisplayName: "O1", ContextLength: 200000, MaxOutput: 100000, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "o-series"},
 
 	// OpenAI image/embedding/audio
+	{Pattern: "gpt-image-2.5-flare", DisplayName: "GPT Image 2.5 Flare", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
+	{Pattern: "gpt-image-2.5-sunburst", DisplayName: "GPT Image 2.5 Sunburst", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
+	{Pattern: "gpt-image-2.5", DisplayName: "GPT Image 2.5", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
+	{Pattern: "gpt-image-2", DisplayName: "GPT Image 2", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
+	{Pattern: "gpt-image-1.5", DisplayName: "GPT Image 1.5", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
 	{Pattern: "gpt-image-1", DisplayName: "GPT Image 1", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
 	{Pattern: "dall-e-3", DisplayName: "DALL-E 3", Capabilities: []string{"image-generation"}, Modalities: []string{"text", "image"}, Family: "image"},
 	{Pattern: "text-embedding-3-large", DisplayName: "Text Embedding 3 Large", ContextLength: 8191, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "embedding"},
@@ -73,6 +78,8 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "claude-fable-5", DisplayName: "Claude Fable 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-sonnet-5", DisplayName: "Claude Sonnet 5", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-haiku-4-5", DisplayName: "Claude 4.5 Haiku", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-opus-4.8", DisplayName: "Claude Opus 4.8", ContextLength: 1000000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-opus-4.7", DisplayName: "Claude Opus 4.7", ContextLength: 1000000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-opus-4", DisplayName: "Claude Opus 4", ContextLength: 200000, MaxOutput: 32768, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-sonnet-4", DisplayName: "Claude Sonnet 4", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
@@ -97,6 +104,7 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "gemma-4", DisplayName: "Gemma 4", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gemma"},
 
 	// DeepSeek
+	{Pattern: "deepseek-v4.1-flash", DisplayName: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v4-pro-max", DisplayName: "DeepSeek V4 Pro Max", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v4-pro", DisplayName: "DeepSeek V4 Pro", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v4-flash", DisplayName: "DeepSeek V4 Flash", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
@@ -122,6 +130,7 @@ var StaticCatalog = []CatalogEntry{
 
 	// Kimi (Moonshot)
 	{Pattern: "kimi-k3", DisplayName: "Kimi K3", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
+	{Pattern: "kimi-k2.7-code", DisplayName: "Kimi K2.7 Code", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.7", DisplayName: "Kimi K2.7", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.6", DisplayName: "Kimi K2.6", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.5", DisplayName: "Kimi K2.5", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},

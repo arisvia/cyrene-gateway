@@ -18,6 +18,10 @@ func TestLookupCatalog(t *testing.T) {
 		{"glm-5.2", "GLM 5.2", 128000, "glm"},
 		{"o3", "O3", 200000, "o-series"},
 		{"text-embedding-3-large", "Text Embedding 3 Large", 8191, "embedding"},
+		{"deepseek-v4.1-flash", "DeepSeek V4.1 Flash", 1000000, "deepseek"},
+		{"claude-opus-4.8", "Claude Opus 4.8", 1000000, "claude"},
+		{"kimi-k2.7-code", "Kimi K2.7 Code", 256000, "kimi"},
+		{"gpt-image-2.5", "GPT Image 2.5", 0, "image"},
 		{"unknown-model-xyz", "", 0, ""},
 	}
 

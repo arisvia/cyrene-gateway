@@ -302,6 +302,207 @@ func TestMessagesEndpoint(t *testing.T) {
 	}
 }
 
+func TestMessagesOutputConfigFormatStrippedForNonAnthropic(t *testing.T) {
+	var receivedBody map[string]any
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+		resp := map[string]any{
+			"id":   "msg_test_compat",
+			"type": "message",
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "text", "text": "Hello from MiniMax!"},
+			},
+			"model":       "MiniMax-Text-01",
+			"stop_reason": "end_turn",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockUpstream.Close()
+
+	srv, database := setupTestServer(t)
+	conn := &model.ProviderConnection{
+		Provider: "minimax",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-minimax-test",
+			BaseURL: mockUpstream.URL,
+		},
+	}
+	database.CreateConnection(conn)
+
+	// Request with output_config containing both format (JSON schema) and effort (thinking)
+	body := `{
+		"model":"minimax/MiniMax-Text-01",
+		"messages":[{"role":"user","content":"hello"}],
+		"output_config":{
+			"format":{"type":"json_schema","schema":{"type":"object"}},
+			"effort":"high"
+		},
+		"max_tokens":1024
+	}`
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	oc, ok := receivedBody["output_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected output_config to be preserved, got %+v", receivedBody)
+	}
+	if _, hasFormat := oc["format"]; hasFormat {
+		t.Errorf("expected format to be stripped for non-Anthropic provider, but it was present: %+v", oc)
+	}
+	if oc["effort"] != "high" {
+		t.Errorf("expected effort='high' to be retained, got %v", oc["effort"])
+	}
+}
+
+func TestMessagesOutputConfigFormatRetainedForOfficialClaude(t *testing.T) {
+	var receivedBody map[string]any
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&receivedBody)
+		resp := map[string]any{
+			"id":   "msg_test_official",
+			"type": "message",
+			"role": "assistant",
+			"content": []any{
+				map[string]any{"type": "text", "text": "Hello from official Claude!"},
+			},
+			"model":       "claude-sonnet-4-20250514",
+			"stop_reason": "end_turn",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockUpstream.Close()
+
+	srv, database := setupTestServer(t)
+	conn := &model.ProviderConnection{
+		Provider: "claude",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-ant-test",
+			BaseURL: mockUpstream.URL,
+		},
+	}
+	database.CreateConnection(conn)
+
+	body := `{
+		"model":"claude/claude-sonnet-4-20250514",
+		"messages":[{"role":"user","content":"hello"}],
+		"output_config":{
+			"format":{"type":"json_schema","schema":{"type":"object"}},
+			"effort":"high"
+		},
+		"max_tokens":1024
+	}`
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	oc, ok := receivedBody["output_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected output_config in official Claude request, got %+v", receivedBody)
+	}
+	if _, hasFormat := oc["format"]; !hasFormat {
+		t.Errorf("expected format to be retained for official Claude provider, but it was stripped: %+v", oc)
+	}
+	if oc["effort"] != "high" {
+		t.Errorf("expected effort='high', got %v", oc["effort"])
+	}
+}
+
+func TestProxyNonStreamingUnwrapsSuccessEnvelope(t *testing.T) {
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return Cline-style wrapped envelope
+		wrapped := map[string]any{
+			"success": true,
+			"data": map[string]any{
+				"id":      "chatcmpl-cline-123",
+				"object":  "chat.completion",
+				"created": 1234567890,
+				"model":   "gpt-4o",
+				"choices": []any{
+					map[string]any{
+						"index": 0,
+						"message": map[string]any{
+							"role":    "assistant",
+							"content": "Unwrapped hello!",
+						},
+						"finish_reason": "stop",
+					},
+				},
+				"usage": map[string]any{
+					"prompt_tokens":     15,
+					"completion_tokens": 10,
+					"total_tokens":      25,
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(wrapped)
+	}))
+	defer mockUpstream.Close()
+
+	srv, database := setupTestServer(t)
+	conn := &model.ProviderConnection{
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-openai-test",
+			BaseURL: mockUpstream.URL,
+		},
+	}
+	database.CreateConnection(conn)
+
+	body := `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"hello"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp["id"] != "chatcmpl-cline-123" {
+		t.Errorf("expected unwrapped id chatcmpl-cline-123, got %v", resp["id"])
+	}
+	choices, ok := resp["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		t.Fatalf("expected choices array, got %v", resp["choices"])
+	}
+	msg := choices[0].(map[string]any)["message"].(map[string]any)
+	if msg["content"] != "Unwrapped hello!" {
+		t.Errorf("expected 'Unwrapped hello!', got %v", msg["content"])
+	}
+	usageObj, ok := resp["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected usage object in unwrapped response, got %+v", resp)
+	}
+	if promptTokens, _ := usageObj["prompt_tokens"].(float64); promptTokens != 15 {
+		t.Errorf("expected prompt_tokens=15 extracted before translation, got %v", promptTokens)
+	}
+}
+
 func TestCORSHeaders(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
