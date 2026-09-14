@@ -22,6 +22,7 @@ import {
   IconPlay,
   IconAlertCircle,
   IconSparkles,
+  IconClose,
 } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { confirm } from '@/lib/confirm'
@@ -96,13 +97,24 @@ const Playground: Component = () => {
   const [maxTokens, setMaxTokens] = createSignal(2048)
   const [stream, setStream] = createSignal(true)
 
-  // 参数抽屉显示状态
-  const [showParams, setShowParams] = createSignal(true)
+  // 参数抽屉显示状态（桌面端默认展开，移动端默认收起）
+  const [showParams, setShowParams] = createSignal(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
 
-  // 对话历史
+  // 对话历史与内部滚动引用
   const [turns, setTurns] = createSignal<Turn[]>([])
   const [inputPrompt, setInputPrompt] = createSignal('')
+  let chatBoxRef: HTMLDivElement | undefined
 
+  createEffect(() => {
+    // 监听 turns 状态更新并平滑/自动置底滚动
+    const currentTurns = turns()
+    if (currentTurns.length === 0) return
+    requestAnimationFrame(() => {
+      if (chatBoxRef) {
+        chatBoxRef.scrollTop = chatBoxRef.scrollHeight
+      }
+    })
+  })
   // 控制器以便中断流式传输
   let abortControllerA: AbortController | null = null
   let abortControllerB: AbortController | null = null
@@ -626,8 +638,9 @@ main();
   }
 
   return (
-    <div class="space-y-4 max-w-7xl mx-auto pb-10">
+    <div class="flex flex-col h-[calc(100dvh-130px)] lg:h-[calc(100dvh-146px)] space-y-3 max-w-7xl mx-auto overflow-hidden">
       <PageHeader
+        class="shrink-0"
         title={t('playground.title')}
         subtitle={t('playground.subtitle')}
         badge={
@@ -682,12 +695,12 @@ main();
         }
       />
 
-      {/* 主工作区布局 */}
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      {/* 主工作区布局：视口锁高，主工作区撑满剩余空间 */}
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch overflow-hidden">
         {/* 对话互动主体区 */}
-        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} min-w-0 space-y-4 transition-all duration-300`}>
+        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} flex flex-col h-full min-h-0 min-w-0 space-y-3 transition-all duration-300`}>
           {/* 顶部模型选择栏 */}
-          <Card class="p-3">
+          <Card class="p-3 shrink-0">
             <Show
               when={mode() === 'compare'}
               fallback={
@@ -741,13 +754,16 @@ main();
             </Show>
           </Card>
 
-          {/* 对话/横评主画布 */}
-          <div class="space-y-4 min-h-[420px]">
+          {/* 对话/横评主画布（局部独立自适应内滚动，彻底解除外部页面滚动条） */}
+          <div
+            ref={chatBoxRef}
+            class="flex-1 min-h-0 overflow-y-auto pr-1.5 space-y-3.5 scroll-smooth"
+          >
             <Show
               when={turns().length > 0}
               fallback={
-                <Card class="p-12 text-center space-y-6 border-dashed border-subtle">
-                  <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
+                <Card class="p-8 text-center space-y-5 border-dashed border-subtle h-full min-h-[280px] flex flex-col items-center justify-center">
+                  <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass shrink-0">
                     <IconChat size={24} />
                   </div>
                   <div class="space-y-1">
@@ -777,7 +793,7 @@ main();
                   <div class="space-y-3">
                     {/* 用户提问气泡 */}
                     <div class="flex justify-end">
-                      <div class="max-w-[85%] rounded-2xl bg-accent text-accent-foreground px-4 py-2.5 text-sm shadow-sm whitespace-pre-wrap">
+                      <div class="max-w-[85%] rounded-2xl bg-accent text-on-accent px-4 py-2.5 text-sm shadow-sm whitespace-pre-wrap">
                         {turn.user}
                       </div>
                     </div>
@@ -993,11 +1009,11 @@ main();
             </Show>
           </div>
 
-          {/* 底部输入框区 */}
-          <Card class="p-3 sticky bottom-4 z-10 shadow-glass">
+          {/* 底部输入框区（自然锚定在工作区底部，非浮动） */}
+          <Card class="p-3 shrink-0 shadow-glass">
             <div class="space-y-2">
               <textarea
-                class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[70px] max-h-[220px]"
+                class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[52px] max-h-[140px]"
                 placeholder={
                   mode() === 'compare' ? t('playground.sendComparePlaceholder') : t('playground.sendPlaceholder')
                 }
@@ -1048,18 +1064,30 @@ main();
           </Card>
         </div>
 
-        {/* 右侧高级参数面板 (Inspector) */}
+        {/* 右侧高级参数面板 (Inspector)：大屏并列内滚动，小屏侧滑抽屉 */}
         <Show when={showParams()}>
-          <div class="lg:col-span-4 xl:col-span-3 space-y-4">
-            <Card class="p-4 space-y-4">
-              <div class="flex items-center justify-between border-b border-subtle/50 pb-2">
+          <div
+            class="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-xs animate-fade-in"
+            onClick={() => setShowParams(false)}
+          />
+          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 h-full min-h-0 flex flex-col shadow-2xl lg:shadow-none animate-slide-up lg:animate-none">
+            <Card class="p-4 flex-1 min-h-0 overflow-y-auto space-y-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle bg-bg-elevated/95 lg:bg-card">
+              <div class="flex items-center justify-between border-b border-subtle/50 pb-2 shrink-0">
                 <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <IconSliders size={14} />
                   {t('playground.paramsConfig')}
                 </span>
-                <span class="text-[11px] text-faint">{t('playground.autoSaved')}</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] text-faint">{t('playground.autoSaved')}</span>
+                  <button
+                    type="button"
+                    class="lg:hidden p-1 rounded-md text-faint hover:text-foreground hover:bg-hover cursor-pointer"
+                    onClick={() => setShowParams(false)}
+                  >
+                    <IconClose size="xs" />
+                  </button>
+                </div>
               </div>
-
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between h-5">
