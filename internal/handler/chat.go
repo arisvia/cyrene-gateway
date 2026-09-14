@@ -640,6 +640,21 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			loopguard.InjectTerminationPrompt(bodyMap, "openai")
 		}
 
+		// Codex rejects Unicode property patterns in tool parameter schemas (9router#3922)
+		if modelInfo.Provider == "codex" {
+			if tools, ok := bodyMap["tools"].([]any); ok {
+				for _, t := range tools {
+					if tm, ok := t.(map[string]any); ok {
+						if fn, ok := tm["function"].(map[string]any); ok {
+							if params, ok := fn["parameters"].(map[string]any); ok {
+								translator.StripCodexUnsupportedPatterns(params)
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Max_tokens clamping for specific providers
 		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
 

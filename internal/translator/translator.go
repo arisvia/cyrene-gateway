@@ -505,7 +505,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 		}
 	}
 
-	result["contents"] = contents
+	result["contents"] = normalizeGeminiContents(contents)
 
 	// Convert tools (sanitize schemas for Gemini compatibility — 9router#2877)
 	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
@@ -573,6 +573,60 @@ func convertContentToGeminiParts(content any) []any {
 		}
 	}
 	return parts
+}
+
+// normalizeGeminiContents ensures Gemini multi-turn conversation rules:
+// 1. Alternating turns: merges adjacent same-role messages ("user" + "user", "model" + "model").
+// 2. Initial turn: ensures conversation starts with role "user" (prepends placeholder if starting with "model").
+// 3. Drops turns with empty parts.
+func normalizeGeminiContents(contents []any) []any {
+	var out []any
+	for _, c := range contents {
+		cm, ok := c.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := cm["role"].(string)
+		if role == "" {
+			continue
+		}
+		rawParts, _ := cm["parts"].([]any)
+		var validParts []any
+		for _, p := range rawParts {
+			if pm, ok := p.(map[string]any); ok && len(pm) > 0 {
+				validParts = append(validParts, pm)
+			}
+		}
+		if len(validParts) == 0 {
+			continue
+		}
+
+		if len(out) > 0 {
+			last := out[len(out)-1].(map[string]any)
+			if last["role"] == role {
+				lastParts, _ := last["parts"].([]any)
+				last["parts"] = append(lastParts, validParts...)
+				continue
+			}
+		}
+
+		out = append(out, map[string]any{
+			"role":  role,
+			"parts": validParts,
+		})
+	}
+
+	if len(out) > 0 {
+		first := out[0].(map[string]any)
+		if first["role"] != "user" {
+			placeholder := map[string]any{
+				"role":  "user",
+				"parts": []any{map[string]any{"text": "..."}},
+			}
+			out = append([]any{placeholder}, out...)
+		}
+	}
+	return out
 }
 
 // --- Claude → OpenAI response ---

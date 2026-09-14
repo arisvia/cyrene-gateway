@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+- **Claude Code 1M 上下文标记剥离**：自动剥离客户端传递的 `[1m]` / `[1M]` 上下文后缀（如 `claude-opus-5[1m]`），避免上游报 404 模型未找到（对标 9router#3690）。
+- **Codex Tool Schema Unicode 正则清洗**：拦截并清洗 Tool Schema 中包含未转义 `\p{...}` 的正则约束，彻底解决 Codex 上游 WAF/校验器 400 Invalid Schema 报错（对标 9router#3922）。
+
+### Fixed
+- **Gemini / Antigravity 多轮对话结构归一化**：自动合并相邻同角色消息，确保首轮为 `user` 角色并过滤空 parts，规避 400 INVALID_ARGUMENT 轮次报错（对标 9router@e7b5f09）。
+- **Gemini Schema 兼容性增强**：实现 `prefixItems` 元组模式向 `items` 的自动平铺映射，为缺失 `items` 的 `type: "array"` 提供安全占位，杜绝 400 模式校验中断（对标 9router@f6c59d3）。
+- **连接重验与状态重置闭环**：`ResetAccountState` 增加对 `modelLock_*` 细粒度模型锁的自动清理，保证连接重测或成功请求后彻底重置全部陈旧熔断标记（对标 9router#3810, #3830）。
+
 ## [1.0.0] - 2026-09-14
 
 ### Security

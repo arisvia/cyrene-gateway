@@ -153,6 +153,12 @@ func TestApplyAndResetErrorState(t *testing.T) {
 		Data:     model.ConnectionData{},
 	}
 
+	// Set model lock
+	SetModelLock(conn, "claude-3-7-sonnet", 5*time.Minute)
+	if conn.Data.ProviderSpecificData["modelLock_claude-3-7-sonnet"] == nil {
+		t.Fatal("expected model lock to be set")
+	}
+
 	// Apply error
 	ApplyErrorState(conn, 429, "rate limit exceeded")
 	if conn.Data.RateLimitedUntil == "" {
@@ -164,7 +170,6 @@ func TestApplyAndResetErrorState(t *testing.T) {
 	if conn.Data.TestStatus != "error" {
 		t.Errorf("expected status 'error', got %s", conn.Data.TestStatus)
 	}
-
 	// Reset
 	ResetAccountState(conn)
 	if conn.Data.RateLimitedUntil != "" {
@@ -175,6 +180,9 @@ func TestApplyAndResetErrorState(t *testing.T) {
 	}
 	if conn.Data.TestStatus != "active" {
 		t.Errorf("expected status 'active', got %s", conn.Data.TestStatus)
+	}
+	if conn.Data.ProviderSpecificData["modelLock_claude-3-7-sonnet"] != nil {
+		t.Error("expected modelLock to be cleared by ResetAccountState")
 	}
 }
 

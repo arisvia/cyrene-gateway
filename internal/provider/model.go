@@ -11,17 +11,34 @@ import (
 
 // ParseModel splits "provider/model" into provider and model parts.
 // If no slash is present, provider is empty and will be inferred or resolved via alias.
-// ExtractModelReasoningEffort parses and strips reasoning effort suffixes like "(low)", "(medium)", "(high)", "(adaptive)", "(none)"
-// from model strings, e.g. "claude-3-7-sonnet(high)" -> ("claude-3-7-sonnet", "high").
-func ExtractModelReasoningEffort(modelStr string) (string, string) {
-	if idx := strings.LastIndex(modelStr, "("); idx != -1 && strings.HasSuffix(modelStr, ")") {
-		effort := strings.ToLower(modelStr[idx+1 : len(modelStr)-1])
-		switch effort {
-		case "low", "medium", "high", "max", "adaptive", "none", "off":
-			return modelStr[:idx], effort
-		}
+// StripModelContextMarker removes trailing context window markers such as "[1m]" or "[1M]"
+// appended by clients like Claude Code with the 1M-context beta enabled.
+func StripModelContextMarker(modelStr string) (string, string) {
+	trimmed := strings.TrimSpace(modelStr)
+	lower := strings.ToLower(trimmed)
+	if strings.HasSuffix(lower, "[1m]") {
+		return trimmed[:len(trimmed)-4], "1m"
 	}
 	return modelStr, ""
+}
+
+// ExtractModelReasoningEffort parses and strips reasoning effort suffixes like "(low)", "(medium)", "(high)", "(adaptive)", "(none)"
+// as well as context markers like "[1m]" from model strings,
+// e.g. "claude-3-7-sonnet(high)" -> ("claude-3-7-sonnet", "high")
+// and "claude-opus-5[1m]" -> ("claude-opus-5", "").
+func ExtractModelReasoningEffort(modelStr string) (string, string) {
+	clean, _ := StripModelContextMarker(modelStr)
+	effort := ""
+	if idx := strings.LastIndex(clean, "("); idx != -1 && strings.HasSuffix(clean, ")") {
+		cand := strings.ToLower(clean[idx+1 : len(clean)-1])
+		switch cand {
+		case "low", "medium", "high", "max", "adaptive", "none", "off":
+			clean = clean[:idx]
+			effort = cand
+		}
+	}
+	clean, _ = StripModelContextMarker(clean)
+	return clean, effort
 }
 
 // ParseModel splits "provider/model" into provider and model parts.

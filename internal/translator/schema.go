@@ -29,11 +29,13 @@ func cleanJSONSchemaForGemini(schema map[string]any) map[string]any {
 
 	// Phase 2: Flatten complex structures
 	mergeAllOf(schema)
+	convertPrefixItems(schema)
 	flattenAnyOfOneOf(schema)
 	flattenTypeArrays(schema)
 
 	// Phase 2.5: Infer missing type=object when properties exist
 	ensureObjectType(schema)
+	ensureArrayItems(schema)
 
 	// Phase 3: Remove unsupported keywords
 	removeUnsupportedKeywords(schema)
@@ -81,7 +83,8 @@ var unsupportedSchemaKeywords = map[string]bool{
 	"uniqueItems": true, "contains": true,
 	// 2020-12 keywords with no Gemini equivalent
 	"unevaluatedProperties": true, "unevaluatedItems": true, "contentSchema": true,
-	// Claude VALIDATED mode rejects these
+	// Tuple-array keywords (converted to items first, leftovers stripped)
+	"prefixItems": true, "additionalItems": true,
 	"default": true, "examples": true,
 	// JSON Schema meta keywords
 	"$schema": true, "$defs": true, "definitions": true, "const": true, "$ref": true, "$comment": true,
@@ -280,6 +283,49 @@ func ensureObjectTypeWalk(obj map[string]any, isSchema bool) {
 		}
 	}
 	walkChildren(obj, isSchema, ensureObjectTypeWalk)
+}
+
+func convertPrefixItems(obj map[string]any) {
+	convertPrefixItemsWalk(obj, true)
+}
+
+func convertPrefixItemsWalk(obj map[string]any, isSchema bool) {
+	if isSchema {
+		if rawPrefix, ok := obj["prefixItems"].([]any); ok && len(rawPrefix) > 0 {
+			var variants []any
+			for _, item := range rawPrefix {
+				if im, ok := item.(map[string]any); ok {
+					if t, _ := im["type"].(string); t != "null" {
+						variants = append(variants, im)
+					}
+				}
+			}
+			if _, hasItems := obj["items"]; !hasItems {
+				if len(variants) == 1 {
+					obj["items"] = variants[0]
+				} else if len(variants) > 1 {
+					obj["items"] = map[string]any{"anyOf": variants}
+				}
+			}
+			delete(obj, "prefixItems")
+		}
+	}
+	walkChildren(obj, isSchema, convertPrefixItemsWalk)
+}
+
+func ensureArrayItems(obj map[string]any) {
+	ensureArrayItemsWalk(obj, true)
+}
+
+func ensureArrayItemsWalk(obj map[string]any, isSchema bool) {
+	if isSchema {
+		if t, _ := obj["type"].(string); t == "array" {
+			if _, hasItems := obj["items"]; !hasItems {
+				obj["items"] = map[string]any{"type": "string"}
+			}
+		}
+	}
+	walkChildren(obj, isSchema, ensureArrayItemsWalk)
 }
 
 func cleanupRequired(obj map[string]any) {

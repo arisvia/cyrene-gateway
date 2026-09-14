@@ -107,10 +107,14 @@ func TestExtractModelReasoningEffort(t *testing.T) {
 		{"antigravity/claude-3-7-sonnet(low)", "antigravity/claude-3-7-sonnet", "low"},
 		{"gpt-4o(medium)", "gpt-4o", "medium"},
 		{"gemini-2.5-flash(adaptive)", "gemini-2.5-flash", "adaptive"},
+		{"claude-opus-5[1m]", "claude-opus-5", ""},
+		{"claude-opus-5[1M]", "claude-opus-5", ""},
+		{"claude-3-7-sonnet[1m](high)", "claude-3-7-sonnet", "high"},
+		{"claude-3-7-sonnet(high)[1m]", "claude-3-7-sonnet", "high"},
+		{"cc/claude-sonnet-4.5[1m]", "cc/claude-sonnet-4.5", ""},
 		{"deepseek-r1", "deepseek-r1", ""},
 		{"custom-model(unknown)", "custom-model(unknown)", ""},
 	}
-
 	for _, tt := range tests {
 		gotModel, gotEffort := ExtractModelReasoningEffort(tt.input)
 		if gotModel != tt.wantModel || gotEffort != tt.wantEffort {

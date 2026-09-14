@@ -729,3 +729,93 @@ func TestCleanJSONSchemaGeminiArrayKeywords(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeGeminiContents(t *testing.T) {
+	// Case 1: Adjacent user turns merged
+	contents := []any{
+		map[string]any{"role": "user", "parts": []any{map[string]any{"text": "hello"}}},
+		map[string]any{"role": "user", "parts": []any{map[string]any{"text": "world"}}},
+		map[string]any{"role": "model", "parts": []any{map[string]any{"text": "reply"}}},
+	}
+	normalized := normalizeGeminiContents(contents)
+	if len(normalized) != 2 {
+		t.Fatalf("expected 2 turns after merging adjacent user turns, got %d", len(normalized))
+	}
+	firstParts := normalized[0].(map[string]any)["parts"].([]any)
+	if len(firstParts) != 2 {
+		t.Errorf("expected 2 parts in merged user turn, got %d", len(firstParts))
+	}
+
+	// Case 2: Starts with model turn -> prepends user placeholder
+	modelFirst := []any{
+		map[string]any{"role": "model", "parts": []any{map[string]any{"text": "greeting"}}},
+	}
+	normModelFirst := normalizeGeminiContents(modelFirst)
+	if len(normModelFirst) != 2 {
+		t.Fatalf("expected 2 turns, got %d", len(normModelFirst))
+	}
+	if normModelFirst[0].(map[string]any)["role"] != "user" {
+		t.Errorf("expected initial role to be user, got %v", normModelFirst[0].(map[string]any)["role"])
+	}
+
+	// Case 3: Empty parts dropped
+	emptyParts := []any{
+		map[string]any{"role": "user", "parts": []any{}},
+		map[string]any{"role": "user", "parts": []any{map[string]any{"text": "real"}}},
+	}
+	normEmpty := normalizeGeminiContents(emptyParts)
+	if len(normEmpty) != 1 {
+		t.Fatalf("expected 1 turn after dropping empty parts, got %d", len(normEmpty))
+	}
+}
+
+func TestCleanJSONSchemaGeminiPrefixItemsAndArrayItems(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"tupleSingle": map[string]any{
+				"type": "array",
+				"prefixItems": []any{
+					map[string]any{"type": "string"},
+				},
+			},
+			"tupleMultiple": map[string]any{
+				"type": "array",
+				"prefixItems": []any{
+					map[string]any{"type": "string"},
+					map[string]any{"type": "number"},
+				},
+			},
+			"bareArray": map[string]any{
+				"type": "array",
+			},
+		},
+	}
+
+	cleaned := cleanJSONSchemaForGemini(schema)
+	props := cleaned["properties"].(map[string]any)
+
+	// tupleSingle should convert prefixItems to items
+	single := props["tupleSingle"].(map[string]any)
+	if _, ok := single["prefixItems"]; ok {
+		t.Fatal("prefixItems should be removed from tupleSingle")
+	}
+	if items, ok := single["items"].(map[string]any); !ok || items["type"] != "string" {
+		t.Fatalf("expected items.type=string, got %v", single["items"])
+	}
+
+	// tupleMultiple should convert prefixItems to items (flattened to single type for Gemini)
+	multi := props["tupleMultiple"].(map[string]any)
+	if _, ok := multi["prefixItems"]; ok {
+		t.Fatal("prefixItems should be removed from tupleMultiple")
+	}
+	if items, ok := multi["items"].(map[string]any); !ok || items["type"] == nil {
+		t.Fatalf("expected items with valid type, got %v", multi["items"])
+	}
+
+	// bareArray should have default items added
+	bare := props["bareArray"].(map[string]any)
+	if items, ok := bare["items"].(map[string]any); !ok || items["type"] != "string" {
+		t.Fatalf("expected default items.type=string on bareArray, got %v", bare["items"])
+	}
+}
