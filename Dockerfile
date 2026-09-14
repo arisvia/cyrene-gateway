@@ -1,7 +1,7 @@
 # 多阶段构建：Node 构建面板 → Go 构建静态二进制 → 最小运行镜像
 
 # ---------- 1) 面板构建 ----------
-FROM node:24-alpine AS webui
+FROM --platform=$BUILDPLATFORM node:24-alpine AS webui
 WORKDIR /src/webui
 COPY webui/package*.json ./
 RUN npm ci
@@ -9,15 +9,16 @@ COPY webui/ ./
 RUN npm run build
 
 # ---------- 2) Go 构建 ----------
-FROM golang:1.27-alpine AS build
-WORKDIR /src
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY webui/embed.go webui/embed.go
 COPY --from=webui /src/webui/dist webui/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/cyrene-gateway ./cmd/gateway
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /out/cyrene-gateway ./cmd/gateway
 
 # ---------- 3) 运行镜像 ----------
 FROM alpine:3.21
