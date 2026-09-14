@@ -78,6 +78,21 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 	messages, _ := body["messages"].([]any)
 	var systemParts []string
 	var claudeMessages []any
+	// Index all declared tool_calls in assistant messages to salvage orphaned tool results (9router#2237)
+	declaredToolIDs := make(map[string]bool)
+	for _, m := range messages {
+		if mm, ok := m.(map[string]any); ok && mm["role"] == "assistant" {
+			if tcList, ok := mm["tool_calls"].([]any); ok {
+				for _, tc := range tcList {
+					if tcm, ok := tc.(map[string]any); ok {
+						if id, _ := tcm["id"].(string); id != "" {
+							declaredToolIDs[id] = true
+						}
+					}
+				}
+			}
+		}
+	}
 
 	for _, msgRaw := range messages {
 		msg, ok := msgRaw.(map[string]any)
@@ -112,6 +127,22 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 				claudeMessages = append(claudeMessages, claudeMsg)
 			}
 		case "tool":
+			toolCallID, _ := msg["tool_call_id"].(string)
+			// Salvage orphaned tool results: if tool calls were declared in the conversation
+			// but this result's call_id is missing (e.g. truncated away), salvage as user text (9router#2237).
+			if len(declaredToolIDs) > 0 && toolCallID != "" && !declaredToolIDs[toolCallID] {
+				content := extractText(msg["content"])
+				claudeMessages = append(claudeMessages, map[string]any{
+					"role": "user",
+					"content": []any{
+						map[string]any{
+							"type": "text",
+							"text": fmt.Sprintf("[Tool Result for %s]: %s", toolCallID, content),
+						},
+					},
+				})
+				continue
+			}
 			// Tool results become user messages with tool_result content
 			toolBlock := map[string]any{
 				"type":        "tool_result",

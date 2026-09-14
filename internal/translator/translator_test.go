@@ -2,6 +2,7 @@ package translator
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -817,5 +818,59 @@ func TestCleanJSONSchemaGeminiPrefixItemsAndArrayItems(t *testing.T) {
 	bare := props["bareArray"].(map[string]any)
 	if items, ok := bare["items"].(map[string]any); !ok || items["type"] != "string" {
 		t.Fatalf("expected default items.type=string on bareArray, got %v", bare["items"])
+	}
+}
+
+func TestSalvageOrphanedToolResults(t *testing.T) {
+	// Case: tool message has a tool_call_id not declared in assistant message (truncated away)
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{
+				"role":    "user",
+				"content": "What did the tool return?",
+			},
+			map[string]any{
+				"role": "assistant",
+				"tool_calls": []any{
+					map[string]any{
+						"id":   "call_valid_1",
+						"type": "function",
+						"function": map[string]any{
+							"name": "search",
+						},
+					},
+				},
+			},
+			map[string]any{
+				"role":         "tool",
+				"tool_call_id": "call_orphaned_123",
+				"content":      "Orphaned tool result payload",
+			},
+		},
+	}
+
+	result, err := TranslateRequest(FormatAnthropic, "claude-3-7-sonnet", body, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := result["messages"].([]any)
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+
+	// Third message should be salvaged as user text, NOT type: "tool_result"
+	thirdMsg := msgs[2].(map[string]any)
+	if thirdMsg["role"] != "user" {
+		t.Errorf("expected role 'user' for salvaged tool result, got %v", thirdMsg["role"])
+	}
+	parts := thirdMsg["content"].([]any)
+	firstPart := parts[0].(map[string]any)
+	if firstPart["type"] != "text" {
+		t.Errorf("expected type 'text' for salvaged content, got %v", firstPart["type"])
+	}
+	text := firstPart["text"].(string)
+	if !strings.Contains(text, "call_orphaned_123") || !strings.Contains(text, "Orphaned tool result payload") {
+		t.Errorf("unexpected text content: %s", text)
 	}
 }

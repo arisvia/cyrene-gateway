@@ -71,6 +71,16 @@ func (s *Server) handleAntigravityChat(
 			"thinkingLevel":   tier,
 			"includeThoughts": true,
 		}
+		// Ensure maxOutputTokens strictly exceeds thinking budget to prevent 400 INVALID_ARGUMENT (9router#3981)
+		minBudget := 4096
+		if tier == "high" {
+			minBudget = 16384
+		} else if tier == "medium" {
+			minBudget = 8192
+		}
+		if mt, ok := genConfig["maxOutputTokens"].(int); ok && mt <= minBudget {
+			genConfig["maxOutputTokens"] = minBudget + 8192
+		}
 	}
 	if len(genConfig) > 0 {
 		innerRequest["generationConfig"] = genConfig
@@ -348,6 +358,7 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 	scanner.Buffer(make([]byte, 1024*1024), 5*1024*1024)
 
 	fullText := ""
+	reasoningText := ""
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data:") {
@@ -377,7 +388,9 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 
 		for _, cand := range payload.Response.Candidates {
 			for _, part := range cand.Content.Parts {
-				if !part.Thought {
+				if part.Thought {
+					reasoningText += part.Text
+				} else {
 					fullText += part.Text
 				}
 			}
@@ -392,10 +405,16 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 		"choices": []map[string]any{
 			{
 				"index": 0,
-				"message": map[string]any{
-					"role":    "assistant",
-					"content": fullText,
-				},
+				"message": func() map[string]any {
+					m := map[string]any{
+						"role":    "assistant",
+						"content": fullText,
+					}
+					if reasoningText != "" {
+						m["reasoning_content"] = reasoningText
+					}
+					return m
+				}(),
 				"finish_reason": "stop",
 			},
 		},
