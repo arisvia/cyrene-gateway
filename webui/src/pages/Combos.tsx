@@ -97,7 +97,14 @@ const Combos: Component = () => {
       />
 
       <Show when={store.combos().length > 0} fallback={
-        <Card class="p-6"><Empty message={t('combos.emptyTitle')} /></Card>
+        <Card class="p-10 text-center space-y-4 border-dashed border-subtle">
+          <Empty message={t('combos.emptyTitle')} />
+          <div class="flex justify-center pt-1">
+            <Button variant="primary" size="sm" onClick={openCreate}>
+              + {t('combos.newCombo')}
+            </Button>
+          </div>
+        </Card>
       }>
         <div class="grid gap-3">
           <For each={store.combos()}>

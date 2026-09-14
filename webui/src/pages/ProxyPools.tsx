@@ -51,7 +51,14 @@ const ProxyPools: Component = () => {
         actions={<Button variant="primary" onClick={openCreate}>+ {t('proxies.newPool')}</Button>}
       />
       <Show when={store.proxyPools().length > 0} fallback={
-        <Card class="p-6"><Empty message={t('proxies.emptyTitle')} /></Card>
+        <Card class="p-10 text-center space-y-4 border-dashed border-subtle">
+          <Empty message={t('proxies.emptyTitle')} />
+          <div class="flex justify-center pt-1">
+            <Button variant="primary" size="sm" onClick={openCreate}>
+              + {t('proxies.newPool')}
+            </Button>
+          </div>
+        </Card>
       }>
         <div class="grid gap-3">
           <For each={store.proxyPools()}>

@@ -136,7 +136,7 @@ const Media: Component = () => {
   }
 
   return (
-    <div class="space-y-5 stagger pb-16">
+    <div class="space-y-5 stagger">
       <PageHeader
         title={t('media.title')}
         subtitle={t('media.subtitle')}
