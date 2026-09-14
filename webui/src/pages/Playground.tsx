@@ -106,12 +106,12 @@ const Playground: Component = () => {
   let chatBoxRef: HTMLDivElement | undefined
 
   createEffect(() => {
-    // 监听 turns 状态更新并平滑/自动置底滚动
+    // 监听 turns 状态更新并平滑保持对话底部可见
     const currentTurns = turns()
     if (currentTurns.length === 0) return
     requestAnimationFrame(() => {
       if (chatBoxRef) {
-        chatBoxRef.scrollTop = chatBoxRef.scrollHeight
+        chatBoxRef.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
       }
     })
   })
@@ -1003,6 +1003,7 @@ main();
                   </div>
                 )}
               </For>
+              <div ref={chatBoxRef} class="h-px" />
             </Show>
           </div>
 
