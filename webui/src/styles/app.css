@@ -180,7 +180,6 @@
 
   html {
     font-size: 15px;
-    overflow-x: hidden;
   }
   body {
     font-family: var(--font);
@@ -190,10 +189,6 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
-    overflow-x: hidden;
-  }
-  .app-root-shell {
-    overflow-x: hidden;
   }
 
   html.custom-background,
