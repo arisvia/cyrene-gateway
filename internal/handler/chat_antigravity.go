@@ -76,21 +76,21 @@ func (s *Server) handleAntigravityChat(
 		innerRequest["generationConfig"] = genConfig
 	}
 
-	reqType := "agent"
 	upstreamAction := "streamGenerateContent?alt=sse"
 	if isImage {
-		reqType = "image_gen"
 		upstreamAction = "generateContent"
 	}
 
 	reqID := fmt.Sprintf("agent-%d-%s", time.Now().UnixMilli(), randomHex(4))
 	envelope := map[string]any{
-		"project":     projectID,
-		"model":       targetModel,
-		"request":     innerRequest,
-		"requestType": reqType,
-		"userAgent":   "antigravity",
-		"requestId":   reqID,
+		"project":   projectID,
+		"model":     targetModel,
+		"request":   innerRequest,
+		"userAgent": "antigravity",
+		"requestId": reqID,
+	}
+	if isImage {
+		envelope["requestType"] = "image_gen"
 	}
 
 	envelopeBytes, err := json.Marshal(envelope)
