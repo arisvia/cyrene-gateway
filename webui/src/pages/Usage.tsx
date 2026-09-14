@@ -36,7 +36,7 @@ const Usage: Component = () => {
   }
   onMount(() => {
     load()
-    store.loadRequestDetails(1, 10)
+    store.loadRequestDetails(1, 12)
   })
 
   onCleanup(() => { es?.close(); es = null })
@@ -317,39 +317,39 @@ const Usage: Component = () => {
 
       {/* 请求明细视图 */}
       <Show when={subTab() === 'details'}>
-        <Card class="p-5">
-          <div class="flex items-center justify-between mb-3">
+        <Card class="p-5 min-h-[calc(100dvh-200px)] lg:min-h-[calc(100dvh-215px)] flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-3 shrink-0">
             <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
             <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>
           </div>
-          <Show when={store.requestDetails().length > 0} fallback={<Empty message={t('usage.noRecords')} />}>
-            <div class="overflow-x-auto">
+          <Show when={store.requestDetails().length > 0} fallback={<div class="flex-1 flex items-center justify-center"><Empty message={t('usage.noRecords')} /></div>}>
+            <div class="overflow-x-auto flex-1 min-h-0">
               <table class="w-full text-xs">
                 <thead>
                   <tr class="text-faint text-left border-b border-subtle">
-                    <th class="pb-2 font-medium">{t('usage.tableHeaders.time')}</th>
-                    <th class="pb-2 font-medium">{t('usage.tableHeaders.model')}</th>
-                    <th class="pb-2 font-medium">{t('usage.tableHeaders.status')}</th>
-                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.prompt')}</th>
-                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.completion')}</th>
-                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.latency')}</th>
-                    <th class="pb-2 font-medium text-right">{t('usage.tableHeaders.details')}</th>
+                    <th class="pb-2.5 font-medium">{t('usage.tableHeaders.time')}</th>
+                    <th class="pb-2.5 font-medium">{t('usage.tableHeaders.model')}</th>
+                    <th class="pb-2.5 font-medium">{t('usage.tableHeaders.status')}</th>
+                    <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.prompt')}</th>
+                    <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.completion')}</th>
+                    <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.latency')}</th>
+                    <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.details')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   <For each={store.requestDetails()}>
                     {d => (
                       <tr class="border-b border-subtle/40 last:border-0 hover:bg-hover/30 transition-colors">
-                        <td class="py-1.5 text-faint font-mono">{fmtTime(d.timestamp, timeUnits())}</td>
-                        <td class="py-1.5 truncate max-w-[200px] font-medium">{d.model || '-'}</td>
-                        <td class="py-1.5"><Badge tone={d.status === 'ok' ? 'green' : 'red'}>{d.status || '-'}</Badge></td>
-                        <td class="py-1.5 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
-                        <td class="py-1.5 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
-                        <td class="py-1.5 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
-                        <td class="py-1.5 text-right">
+                        <td class="py-2.5 text-faint font-mono">{fmtTime(d.timestamp, timeUnits())}</td>
+                        <td class="py-2.5 truncate max-w-[200px] font-medium">{d.model || '-'}</td>
+                        <td class="py-2.5"><Badge tone={d.status === 'ok' ? 'green' : 'red'}>{d.status || '-'}</Badge></td>
+                        <td class="py-2.5 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
+                        <td class="py-2.5 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
+                        <td class="py-2.5 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
+                        <td class="py-2.5 text-right">
                           <button
                             type="button"
-                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors"
+                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors cursor-pointer"
                             onClick={() => setSelectedDetail(d)}
                             title={t('usage.viewDetailTitle')}
                             aria-label={t('usage.viewDetailTitle')}
@@ -367,20 +367,25 @@ const Usage: Component = () => {
               </table>
             </div>
             {/* 分页 */}
-            <div class="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-subtle/50">
-              <Button
-                size="sm" variant="ghost"
-                disabled={!store.requestDetailsPagination().hasPrev}
-                onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 10)}
-              >{t('common.prevPage')}</Button>
+            <div class="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-subtle/50 shrink-0">
               <span class="text-xs text-faint">
-                {store.requestDetailsPagination().page} / {Math.max(1, store.requestDetailsPagination().totalPages)}
+                {t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}
               </span>
-              <Button
-                size="sm" variant="ghost"
-                disabled={!store.requestDetailsPagination().hasNext}
-                onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 10)}
-              >{t('common.nextPage')}</Button>
+              <div class="flex items-center gap-2">
+                <Button
+                  size="sm" variant="ghost"
+                  disabled={!store.requestDetailsPagination().hasPrev}
+                  onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page - 1, 12)}
+                >{t('common.prevPage')}</Button>
+                <span class="text-xs text-faint font-mono">
+                  {store.requestDetailsPagination().page} / {Math.max(1, store.requestDetailsPagination().totalPages)}
+                </span>
+                <Button
+                  size="sm" variant="ghost"
+                  disabled={!store.requestDetailsPagination().hasNext}
+                  onClick={() => store.loadRequestDetails(store.requestDetailsPagination().page + 1, 12)}
+                >{t('common.nextPage')}</Button>
+              </div>
             </div>
           </Show>
         </Card>
