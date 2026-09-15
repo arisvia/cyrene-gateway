@@ -1135,9 +1135,11 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
   const [current, setCurrent] = createSignal<T>(props.value)
   const [direction, setDirection] = createSignal<'forward' | 'backward'>('forward')
   const [isTransitioning, setIsTransitioning] = createSignal(false)
+  const [incomingKey, setIncomingKey] = createSignal(0)
+  const [outgoingSnapshot, setOutgoingSnapshot] = createSignal<{ id: number; dir: 'forward' | 'backward'; el: HTMLElement } | null>(null)
   let incomingRef: HTMLDivElement | undefined
-  let outgoingSlotRef: HTMLDivElement | undefined
   let timer: number | undefined
+  let transitionCount = 0
 
   createEffect(
     on(
@@ -1150,29 +1152,33 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
         if (timer) clearTimeout(timer)
 
         // 1. Snapshot outgoing DOM to freeze current state before reactivity shifts
-        if (incomingRef && outgoingSlotRef) {
-          outgoingSlotRef.innerHTML = ''
-          const clone = incomingRef.cloneNode(true) as HTMLElement
-          outgoingSlotRef.appendChild(clone)
+        let clone: HTMLElement | null = null
+        if (incomingRef) {
+          clone = incomingRef.cloneNode(true) as HTMLElement
         }
 
         // 2. Determine direction
+        let dir: 'forward' | 'backward' = 'forward'
         if (props.order && props.order.length > 0) {
           const oldIdx = props.order.indexOf(oldVal)
           const newIdx = props.order.indexOf(newVal)
-          setDirection(newIdx >= oldIdx ? 'forward' : 'backward')
-        } else {
-          setDirection('forward')
+          dir = newIdx >= oldIdx ? 'forward' : 'backward'
+        }
+        setDirection(dir)
+
+        // 3. Increment keys and mount frozen snapshot
+        transitionCount++
+        const id = transitionCount
+        if (clone) {
+          setOutgoingSnapshot({ id, dir, el: clone })
         }
 
-        // 3. Switch current tab and trigger animation
         setCurrent(() => newVal)
+        setIncomingKey(k => k + 1)
         setIsTransitioning(true)
 
         timer = window.setTimeout(() => {
-          if (outgoingSlotRef) {
-            outgoingSlotRef.innerHTML = ''
-          }
+          setOutgoingSnapshot(null)
           setIsTransitioning(false)
           timer = undefined
         }, 260)
@@ -1197,28 +1203,34 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
 
   return (
     <div class={`grid grid-cols-1 overflow-x-hidden ${props.class ?? ''}`}>
-      {/* Outgoing snapshot slot (displays frozen clone during transition) */}
-      <div
-        ref={outgoingSlotRef}
-        class={`col-start-1 row-start-1 w-full pointer-events-none ${
-          isTransitioning()
-            ? (direction() === 'forward' ? 'animate-tab-slide-out-left' : 'animate-tab-slide-out-right')
-            : 'hidden'
-        }`}
-      />
-      {/* Incoming live slot */}
-      <div
-        ref={incomingRef}
-        class={`col-start-1 row-start-1 w-full ${
-          isTransitioning()
-            ? (direction() === 'forward' ? 'animate-tab-slide-in-right' : 'animate-tab-slide-in-left')
-            : ''
-        }`}
-      >
-        <Show when={current()} keyed>
-          {tab => renderTab(tab)}
-        </Show>
-      </div>
+      {/* Outgoing snapshot slot (keyed to guarantee fresh animation on rapid clicks) */}
+      <Show when={outgoingSnapshot()} keyed>
+        {snap => (
+          <div
+            class={`col-start-1 row-start-1 w-full pointer-events-none ${
+              snap.dir === 'forward' ? 'animate-tab-slide-out-left' : 'animate-tab-slide-out-right'
+            }`}
+            ref={el => {
+              el.appendChild(snap.el)
+            }}
+          />
+        )}
+      </Show>
+      {/* Incoming live slot (keyed to guarantee fresh animation on rapid clicks) */}
+      <Show when={{ tab: current(), key: incomingKey(), dir: direction(), anim: isTransitioning() }} keyed>
+        {item => (
+          <div
+            ref={incomingRef}
+            class={`col-start-1 row-start-1 w-full ${
+              item.anim
+                ? (item.dir === 'forward' ? 'animate-tab-slide-in-right' : 'animate-tab-slide-in-left')
+                : ''
+            }`}
+          >
+            {renderTab(item.tab)}
+          </div>
+        )}
+      </Show>
     </div>
   )
 }

@@ -114,27 +114,26 @@ const Usage: Component = () => {
         title={t('usage.title')}
         subtitle={t('usage.subtitle', { count: fmtNum(store.usageStats.totalRequestsLifetime ?? 0) })}
         actions={
-          <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
-            <StatusPulse
-              status={live() ? 'active' : 'paused'}
-              tone={live() ? 'red' : 'accent'}
-              size="sm"
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <SegmentedControl
+              value={subTab()}
+              onChange={setSubTab}
+              options={[
+                { value: 'overview', label: t('usage.overview') },
+                { value: 'details', label: `${t('usage.requestDetails')} (${store.requestDetailsPagination().totalItems || 0})` },
+              ]}
             />
-            <span>{live() ? t('usage.stopLive') : t('usage.liveEvents')}</span>
-          </Button>
+            <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
+              <StatusPulse
+                status={live() ? 'active' : 'paused'}
+                tone={live() ? 'red' : 'accent'}
+                size="sm"
+              />
+              <span>{live() ? t('usage.stopLive') : t('usage.liveEvents')}</span>
+            </Button>
+          </div>
         }
-      >
-        <div class="pt-2.5 border-t border-subtle/40 flex items-center justify-between gap-3">
-          <SegmentedControl
-            value={subTab()}
-            onChange={setSubTab}
-            options={[
-              { value: 'overview', label: t('usage.overview') },
-              { value: 'details', label: `${t('usage.requestDetails')} (${store.requestDetailsPagination().totalItems || 0})` },
-            ]}
-          />
-        </div>
-      </PageHeader>
+      />
 
       <TabTransition
         value={subTab()}
