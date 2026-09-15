@@ -704,7 +704,7 @@ main();
             <Show
               when={mode() === 'compare'}
               fallback={
-                <div class="flex items-center gap-3 min-w-0">
+                <div class="flex items-center gap-3 min-w-0 animate-fade-in">
                   <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
                     <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
                     {t('playground.selectEvalModel')}
@@ -723,7 +723,7 @@ main();
                 </div>
               }
             >
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fade-in">
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
                     {t('playground.modelA')}

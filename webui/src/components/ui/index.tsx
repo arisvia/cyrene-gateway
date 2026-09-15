@@ -39,7 +39,7 @@ export interface PageHeaderProps {
 export const PageHeader: Component<PageHeaderProps> = props => {
   const isSticky = () => props.sticky !== false
   return (
-    <header class={`${isSticky() ? 'sticky top-19 z-20' : 'relative'} rounded-2xl glass-sticky px-5 py-4 transition-all space-y-3 ${props.class ?? ''}`}>
+    <header class={`${isSticky() ? 'sticky top-19 z-20' : 'relative'} rounded-2xl glass-sticky px-5 py-4 transition-all space-y-3 overflow-hidden ${props.class ?? ''}`}>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div class="min-w-0">
         <div class="flex items-center gap-2.5 flex-wrap">

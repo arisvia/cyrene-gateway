@@ -525,7 +525,8 @@ const ProviderDetail: Component = () => {
   const allDisplayModels = () =>
     (modelsData().registryModels ?? models()?.registryModels ?? [])
       .concat(modelsData().customModels ?? models()?.customModels ?? [])
-
+  const enabledModelsCount = () => allDisplayModels().filter(m => m.enabled !== false).length
+  const disabledModelsCount = () => allDisplayModels().filter(m => m.enabled === false).length
   async function testSingleModel(modelId: string) {
     if (!conn() || testingModels()[modelId]) return
     const p = conn()!.provider
@@ -891,10 +892,10 @@ const ProviderDetail: Component = () => {
 
               {/* 仅在 models 视图下激活的快捷操作工具组 */}
               <Show when={tab() === 'models'}>
-                <div class="animate-fade-in flex flex-wrap items-center gap-2 text-xs">
+                <div class="animate-slide-up flex flex-wrap items-center gap-2 text-xs">
                   <div class="flex items-center gap-2">
                     <Input
-                      class="w-44 sm:w-56!"
+                      class="w-40 sm:w-52!"
                       size="sm"
                       value={modelSearch()}
                       onInput={setModelSearch}
@@ -912,23 +913,43 @@ const ProviderDetail: Component = () => {
                   </div>
                   <div class="hidden xl:block h-3.5 w-px bg-subtle/60 mx-0.5" />
                   <div class="flex items-center gap-1.5 flex-wrap">
-                    <span class="text-faint hidden sm:inline">{t('providerDetail.batchOps')}</span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={handleEnableAll}
-                      title={t('providerDetail.tooltipEnableAll')}
-                    >
-                      {t('providerDetail.enableAllModels')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleDisableAll}
-                      title={t('providerDetail.tooltipDisableAll')}
-                    >
-                      {t('providerDetail.disableAllModels')}
-                    </Button>
+                    {/* 状态联动批量启停控制器（带实时数字反馈与状态色） */}
+                    <div class="inline-flex rounded-lg p-0.5 bg-black/5 dark:bg-white/8 border border-subtle text-xs select-none">
+                      <button
+                        type="button"
+                        class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
+                          disabledModelsCount() === 0
+                            ? 'opacity-40 cursor-not-allowed text-faint'
+                            : 'text-foreground hover:text-success hover:bg-success/10 cursor-pointer'
+                        }`}
+                        disabled={disabledModelsCount() === 0}
+                        onClick={handleEnableAll}
+                        title={disabledModelsCount() === 0 ? t('toast.allModelsEnabled') : t('providerDetail.tooltipEnableAll')}
+                      >
+                        <span class={`w-1.5 h-1.5 rounded-full ${disabledModelsCount() === 0 ? 'bg-success' : 'bg-accent'}`} />
+                        <span>{t('providerDetail.enableAllModels')}</span>
+                        <Show when={disabledModelsCount() > 0}>
+                          <span class="font-mono text-[10px] opacity-75">({disabledModelsCount()})</span>
+                        </Show>
+                      </button>
+                      <button
+                        type="button"
+                        class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
+                          enabledModelsCount() === 0
+                            ? 'opacity-40 cursor-not-allowed text-faint'
+                            : 'text-faint hover:text-danger hover:bg-danger/10 cursor-pointer'
+                        }`}
+                        disabled={enabledModelsCount() === 0}
+                        onClick={handleDisableAll}
+                        title={enabledModelsCount() === 0 ? t('toast.allModelsDisabled') : t('providerDetail.tooltipDisableAll')}
+                      >
+                        <span class={`w-1.5 h-1.5 rounded-full ${enabledModelsCount() === 0 ? 'bg-faint' : 'bg-danger/70'}`} />
+                        <span>{t('providerDetail.disableAllModels')}</span>
+                        <Show when={enabledModelsCount() > 0 && disabledModelsCount() > 0}>
+                          <span class="font-mono text-[10px] opacity-75">({enabledModelsCount()})</span>
+                        </Show>
+                      </button>
+                    </div>
                     <Button
                       size="sm"
                       variant="secondary"
