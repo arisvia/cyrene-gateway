@@ -44,6 +44,10 @@ npm run build
 3. **出站安全**：所有出站 HTTP 客户端必须通过 `SafeHTTPClient` 实施 SSRF 校验，严防私网与云元数据地址逃逸。
 4. **提交规约**：遵循 `docs/git-commits.md`（Conventional Commits），保持提交粒度单一、原子化。
 5. **动态模型同步纪律**：所有提供商（Provider）严禁在 `internal/provider/registry_data.go` 中硬编码静态 `Models` 列表（除纯离线/专有无 catalog 协议端点外）。所有模型必须保持与上游动态拉取与缓存机制同步（统一配置 `ModelsURL` 或专属动态抓取器），杜绝由于本地写死模型列表导致与上游最新目录漂移。
+6. **UI 组件一致性纪律**：
+   - 页面与卡片空状态一律复用 `@/components/ui` 的 `<Empty />`（Rich 模式传 `icon`、`title`、`description`、`action`；紧凑模式传 `message`），严禁各业务页面私造空状态 DOM 或重复放置 CTA 按钮。
+   - 严禁在业务组件中内联书写 Raw `<svg>` 路径，所有图标统一收口至 `@/components/ui` (`icons.tsx`) 导出。
+   - 严禁散落使用原生 HTML 表单元素（如裸 `<input>`、裸 `<button>` 及自定义 spinner），必须使用统一的 `Input`、`Button`、`Select`、`Alert`。
 
 - 严禁在代码与测试用例中提交真实的 API Key、OAuth Client Secret 等敏感凭证。
 - 未经明确指示，不得破坏 CI 门禁（`build.yml`）与多架构发布流程（`release.yml`）。
