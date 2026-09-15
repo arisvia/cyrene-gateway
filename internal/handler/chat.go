@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -671,7 +670,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		var bodyMap map[string]any
 		json.Unmarshal(rawBody, &bodyMap)
 		// Pre-compression of tool messages before translation ensures all formats (Anthropic/Gemini) inherit compressed outputs
-		if settings, err := s.DB.GetSettings(); err == nil && settings.RTKEnabled && !slices.Contains(settings.TokenSaverExclude, modelInfo.Provider) {
+		if settings, err := s.DB.GetSettings(); err == nil && settings.RTKEnabled && !isTokenSaverExcluded(settings, modelInfo.Provider, modelInfo.Model) {
 			if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
 				slog.Debug("RTK pre-compressed tool results before translation", slog.Int("bytes_saved", saved))
 			}
@@ -1622,6 +1621,31 @@ func (s *Server) selectAvailableConnection(conns []model.ProviderConnection, mod
 	return provider.SelectCredentialWithQuota(conns, modelName, excludeIDs, s.quotaChecker())
 }
 
+func isTokenSaverExcluded(settings *db.Settings, providerID, model string) bool {
+	if settings == nil || len(settings.TokenSaverExclude) == 0 {
+		return false
+	}
+	candidates := []string{providerID}
+	if model != "" {
+		candidates = append(candidates, model)
+		if idx := strings.Index(model, "/"); idx > 0 {
+			candidates = append(candidates, model[:idx])
+		}
+	}
+	for _, cand := range candidates {
+		candLower := strings.ToLower(strings.TrimSpace(cand))
+		if candLower == "" {
+			continue
+		}
+		for _, ex := range settings.TokenSaverExclude {
+			if strings.ToLower(strings.TrimSpace(ex)) == candLower {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // applyTokenSaver applies RTK compression, caveman, and ponytail based on settings.
 func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, providerID string) {
 	settings, err := s.DB.GetSettings()
@@ -1629,21 +1653,10 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 		return
 	}
 
-	// Check per-provider exclusion (9router#2767)
-	// Check explicitly passed providerID, or model prefix if available
-	candidates := []string{providerID}
-	if m, _ := bodyMap["model"].(string); m != "" {
-		candidates = append(candidates, m)
-		if idx := strings.Index(m, "/"); idx > 0 {
-			candidates = append(candidates, m[:idx])
-		}
+	model, _ := bodyMap["model"].(string)
+	if isTokenSaverExcluded(settings, providerID, model) {
+		return
 	}
-	for _, cand := range candidates {
-		if cand != "" && slices.Contains(settings.TokenSaverExclude, cand) {
-			return
-		}
-	}
-
 	// RTK compression of tool results
 	if settings.RTKEnabled {
 		if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
