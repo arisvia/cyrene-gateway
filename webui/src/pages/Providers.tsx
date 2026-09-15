@@ -1,4 +1,4 @@
-import {type Component, createMemo, createSignal, For, onCleanup, onMount, Show} from 'solid-js'
+import {type Component, createMemo, createSignal, For, onCleanup, onMount, Show, Switch, Match} from 'solid-js'
 import {A} from '@solidjs/router'
 import {useGatewayStore} from '@/stores/gateway'
 import {useI18n} from '@/i18n'
@@ -14,6 +14,7 @@ import {
   ProviderAvatar,
   SegmentedControl,
   Select,
+  TabTransition,
   IconChat,
   IconPalette,
   IconVolume,
@@ -699,8 +700,14 @@ const Providers: Component = () => {
         </div>
       </PageHeader>
 
-      {/* 视窗 1：我的连接列表 */}
-      <Show when={activeTab() === 'connections'}>
+      {/* 视窗切换（带双向横向滑动转场过渡） */}
+      <TabTransition
+        value={activeTab()}
+        order={['connections', 'catalog']}
+      >
+        {tab => (
+          <Switch>
+            <Match when={tab === 'connections'}>
         <Show
           when={groupedConnections().length > 0}
           fallback={
@@ -717,7 +724,7 @@ const Providers: Component = () => {
             </Card>
           }
         >
-          <div class="grid gap-4 animate-fade-in">
+          <div class="grid gap-4">
             <For each={groupedConnections()}>
               {group => {
                 const reg = () => registryFor(group.providerId)
@@ -809,11 +816,9 @@ const Providers: Component = () => {
             </For>
           </div>
         </Show>
-      </Show>
-
-      {/* 视窗 2：提供商市场 (Catalog Grid) */}
-      <Show when={activeTab() === 'catalog'}>
-        <div class="space-y-6 pb-16 animate-fade-in">
+            </Match>
+            <Match when={tab === 'catalog'}>
+        <div class="space-y-6 pb-16">
           {/* 自定义通用兼容协议 (OpenAI Compatible & Anthropic Compatible) */}
           <Show when={customBrandGroups().length > 0}>
             <div class="space-y-3">
@@ -1023,7 +1028,10 @@ const Providers: Component = () => {
             </div>
           </div>
         </div>
-      </Show>
+            </Match>
+          </Switch>
+        )}
+      </TabTransition>
 
       {/* 接入配置向导 Modal */}
       <Modal

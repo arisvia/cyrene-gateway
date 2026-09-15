@@ -168,6 +168,10 @@
   --animate-slide-up: slideUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-scale-in: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-stagger: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  --animate-tab-slide-in-right: tabSlideInRight 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-tab-slide-out-left: tabSlideOutLeft 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-tab-slide-in-left: tabSlideInLeft 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-tab-slide-out-right: tabSlideOutRight 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ---- 基础样式：全部进 @layer base（v4 会自动追加到 preflight 之后） ---- */
@@ -281,6 +285,37 @@
   @keyframes scaleIn {
     from { opacity: 0; transform: scale(0.96); }
     to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes tabSlideInRight {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes tabSlideOutLeft {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-20px); }
+  }
+  @keyframes tabSlideInLeft {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes tabSlideOutRight {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(20px); }
+  }
+
+  .animate-tab-slide-in-right { animation: var(--animate-tab-slide-in-right); }
+  .animate-tab-slide-out-left { animation: var(--animate-tab-slide-out-left); }
+  .animate-tab-slide-in-left { animation: var(--animate-tab-slide-in-left); }
+  .animate-tab-slide-out-right { animation: var(--animate-tab-slide-out-right); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-tab-slide-in-right,
+    .animate-tab-slide-out-left,
+    .animate-tab-slide-in-left,
+    .animate-tab-slide-out-right {
+      animation: none !important;
+      transform: none !important;
+    }
   }
 
   /* 页面入场：配合 --animate-stagger 做子项瀑布 */

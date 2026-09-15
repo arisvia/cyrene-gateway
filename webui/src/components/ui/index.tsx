@@ -1,4 +1,4 @@
-import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps, on } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
@@ -1119,6 +1119,106 @@ export const FileUpload: Component<FileUploadProps> = props => {
           </div>
         </Show>
       </Show>
+    </div>
+  )
+}
+
+export interface TabTransitionProps<T extends string = string> {
+  value: T
+  order?: T[]
+  class?: string
+  views?: Partial<Record<T, () => JSX.Element>>
+  children?: (tab: T) => JSX.Element
+}
+
+export function TabTransition<T extends string = string>(props: TabTransitionProps<T>) {
+  const [current, setCurrent] = createSignal<T>(props.value)
+  const [direction, setDirection] = createSignal<'forward' | 'backward'>('forward')
+  const [isTransitioning, setIsTransitioning] = createSignal(false)
+  let incomingRef: HTMLDivElement | undefined
+  let outgoingSlotRef: HTMLDivElement | undefined
+  let timer: number | undefined
+
+  createEffect(
+    on(
+      () => props.value,
+      (newVal, oldVal) => {
+        if (oldVal === undefined || newVal === oldVal) {
+          setCurrent(() => newVal)
+          return
+        }
+        if (timer) clearTimeout(timer)
+
+        // 1. Snapshot outgoing DOM to freeze current state before reactivity shifts
+        if (incomingRef && outgoingSlotRef) {
+          outgoingSlotRef.innerHTML = ''
+          const clone = incomingRef.cloneNode(true) as HTMLElement
+          outgoingSlotRef.appendChild(clone)
+        }
+
+        // 2. Determine direction
+        if (props.order && props.order.length > 0) {
+          const oldIdx = props.order.indexOf(oldVal)
+          const newIdx = props.order.indexOf(newVal)
+          setDirection(newIdx >= oldIdx ? 'forward' : 'backward')
+        } else {
+          setDirection('forward')
+        }
+
+        // 3. Switch current tab and trigger animation
+        setCurrent(() => newVal)
+        setIsTransitioning(true)
+
+        timer = window.setTimeout(() => {
+          if (outgoingSlotRef) {
+            outgoingSlotRef.innerHTML = ''
+          }
+          setIsTransitioning(false)
+          timer = undefined
+        }, 260)
+      },
+      { defer: true }
+    )
+  )
+
+  onCleanup(() => {
+    if (timer) clearTimeout(timer)
+  })
+
+  const renderTab = (tab: T) => {
+    if (props.views && props.views[tab]) {
+      return props.views[tab]!()
+    }
+    if (typeof props.children === 'function') {
+      return props.children(tab)
+    }
+    return null
+  }
+
+  return (
+    <div class={`grid grid-cols-1 overflow-x-hidden ${props.class ?? ''}`}>
+      {/* Outgoing snapshot slot (displays frozen clone during transition) */}
+      <div
+        ref={outgoingSlotRef}
+        class={`col-start-1 row-start-1 w-full pointer-events-none ${
+          isTransitioning()
+            ? (direction() === 'forward' ? 'animate-tab-slide-out-left' : 'animate-tab-slide-out-right')
+            : 'hidden'
+        }`}
+      />
+      {/* Incoming live slot */}
+      <div
+        ref={incomingRef}
+        class={`col-start-1 row-start-1 w-full ${
+          isTransitioning()
+            ? (direction() === 'forward' ? 'animate-tab-slide-in-right' : 'animate-tab-slide-in-left')
+            : ''
+        }`}
+      >
+        <Show when={current()} keyed>
+          {tab => renderTab(tab)}
+        </Show>
+      </div>
     </div>
   )
 }

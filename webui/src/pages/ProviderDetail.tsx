@@ -1,11 +1,11 @@
-import { type Component, For, Show, createSignal, createResource, createEffect, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createResource, createEffect, onMount, onCleanup } from 'solid-js'
 import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -1046,8 +1046,14 @@ const ProviderDetail: Component = () => {
         {c => (
           <div class="space-y-5">
             {/* 账号与连接配置 */}
-            <Show when={tab() === 'overview'}>
-              <div class="grid lg:grid-cols-12 gap-5 items-start animate-fade-in">
+            <TabTransition
+              value={tab()}
+              order={['overview', 'models', 'chat']}
+            >
+              {currentTab => (
+                <Switch>
+                  <Match when={currentTab === 'overview'}>
+                    <div class="grid lg:grid-cols-12 gap-5 items-start">
                 {/* 左侧 (5 cols)：多账号与调度看板 (带独立滚动区，不会被挤出视野) */}
                 <div class="lg:col-span-5 space-y-3">
                   <Card class="p-4 space-y-3">
@@ -1405,11 +1411,9 @@ const ProviderDetail: Component = () => {
                   </Card>
                 </div>
               </div>
-            </Show>
-
-            {/* 模型 */}
-            <Show when={tab() === 'models'}>
-              <div class="flex flex-col gap-3.5 animate-fade-in">
+            </Match>
+            <Match when={currentTab === 'models'}>
+              <div class="flex flex-col gap-3.5">
                 <Card class="p-3.5 sm:p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 flex-wrap min-w-0">
@@ -1639,10 +1643,9 @@ const ProviderDetail: Component = () => {
                   </Show>
                 </Card>
               </div>
-            </Show>
-            {/* 会话测试 */}
-            <Show when={tab() === 'chat'}>
-              <div class="space-y-4 animate-fade-in">
+            </Match>
+            <Match when={currentTab === 'chat'}>
+              <div class="space-y-4">
                 <Card class="p-4 flex flex-wrap items-center justify-between gap-3">
                   <div class="flex items-center gap-3 flex-1 min-w-[240px]">
                     <span class="text-xs text-faint shrink-0">{t('providerDetail.chatModel')}</span>
@@ -1738,7 +1741,10 @@ const ProviderDetail: Component = () => {
                   </Button>
                 </Card>
               </div>
-            </Show>
+            </Match>
+          </Switch>
+        )}
+      </TabTransition>
           </div>
         )}
       </Show>

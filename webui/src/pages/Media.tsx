@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconBulb, IconPlug, IconSparkles } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconPlug, IconSparkles, IconClipboard, TabTransition } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 
@@ -84,6 +84,17 @@ const Media: Component = () => {
     }
     setWorkbenchOpen(true)
   }
+  const currentCap = () => caps().find(c => c.id === active())
+
+  async function copyEndpoint(ep: string) {
+    if (!ep) return
+    try {
+      await navigator.clipboard.writeText(ep)
+      toast.success(t('media.endpointCopied', { endpoint: ep }))
+    } catch {
+      toast.info(ep)
+    }
+  }
 
   // 提取响应中的图片 URL 或 base64
   const imageUrls = () => {
@@ -147,117 +158,139 @@ const Media: Component = () => {
             </Button>
           </A>
         }
-      />
-      {/* 顶部能力分类 Tab */}
-      <SegmentedControl
+      >
+        <div class="pt-2.5 border-t border-subtle/40 flex flex-wrap items-center justify-between gap-3">
+          <SegmentedControl
+            value={active()}
+            onChange={handleTabChange}
+            options={caps().map(c => ({ value: c.id, label: c.label }))}
+            class="w-fit"
+          />
+
+          <div class="flex items-center gap-2.5 text-xs">
+            <span class="text-faint hidden lg:inline max-w-sm truncate">
+              {currentCap()?.hint}
+            </span>
+            <button
+              type="button"
+              onClick={() => copyEndpoint(currentCap()?.endpoint || '')}
+              class="inline-flex items-center gap-1.5 font-mono text-[11px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/8 hover:bg-black/10 dark:hover:bg-white/12 border border-subtle text-foreground transition-all cursor-pointer group shrink-0"
+              title={t('media.copyEndpointTitle')}
+            >
+              <IconClipboard size={12} class="text-accent group-hover:scale-110 transition-transform" />
+              <span>{currentCap()?.endpoint}</span>
+            </button>
+          </div>
+        </div>
+      </PageHeader>
+
+      {/* 提供商能力主视窗（带双向横向滑动转场过渡） */}
+      <TabTransition
         value={active()}
-        onChange={handleTabChange}
-        options={caps().map(c => ({ value: c.id, label: c.label }))}
-        class="w-fit"
-      />
-
-      <div class="text-xs text-faint flex items-center gap-2">
-        <span class="flex items-center gap-1.5"><IconBulb size={14} class="text-accent" /> {caps().find(c => c.id === active())?.hint}</span>
-        <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-black/5 dark:bg-white/8 border border-black/10 dark:border-white/12">
-          {caps().find(c => c.id === active())?.endpoint}
-        </span>
-      </div>
-
-      {/* 提供商能力卡片网格 */}
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <For each={providers()}>
-          {p => (
-            <Card class="p-4 flex flex-col justify-between space-y-3 hover:border-accent/40 transition">
-              <div class="space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <ProviderAvatar provider={p.provider} name={p.name} size="md" />
-                    <div class="min-w-0">
-                      <h3 class="text-sm font-semibold text-foreground truncate">{p.name}</h3>
-                      <p class="text-[11px] font-mono text-faint truncate">{p.provider}</p>
+        order={['image', 'search', 'tts', 'stt', 'embeddings']}
+      >
+        {() => (
+          <div class="space-y-4">
+            <Show
+              when={providers().length > 0}
+              fallback={
+                <Show when={!loadingProviders()}>
+                  <Card class="p-12 text-center space-y-4 border-dashed border-subtle">
+                    <div class="flex justify-center text-accent/80">
+                      <IconPlug size={36} />
                     </div>
-                  </div>
-                  <div class="flex items-center gap-1.5 shrink-0">
-                    <StatusPulse status={p.hasConnection ? 'active' : 'idle'} size="xs" />
-                    <span class="text-[11px] text-faint">
-                      {p.hasConnection ? t('media.accountsCount', { count: p.activeConnections ?? 0 }) : t('media.notConnected')}
-                    </span>
-                  </div>
-                </div>
+                    <div class="space-y-1">
+                      <h3 class="text-sm font-semibold text-foreground">
+                        {t('media.emptyTitle', { cap: currentCap()?.label || '' })}
+                      </h3>
+                      <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
+                        {t('media.emptyDesc')}
+                      </p>
+                    </div>
+                    <div class="pt-2">
+                      <A href="/providers?tab=catalog&category=media">
+                        <Button variant="primary" size="sm">
+                          {t('media.emptyAction')}
+                        </Button>
+                      </A>
+                    </div>
+                  </Card>
+                </Show>
+              }
+            >
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <For each={providers()}>
+                  {p => (
+                    <Card class="p-4 flex flex-col justify-between space-y-3 hover:border-accent/40 transition">
+                      <div class="space-y-2.5">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center gap-2.5 min-w-0">
+                            <ProviderAvatar provider={p.provider} name={p.name} size="md" />
+                            <div class="min-w-0">
+                              <h3 class="text-sm font-semibold text-foreground truncate">{p.name}</h3>
+                              <p class="text-[11px] font-mono text-faint truncate">{p.provider}</p>
+                            </div>
+                          </div>
+                          <div class="flex items-center gap-1.5 shrink-0">
+                            <StatusPulse status={p.hasConnection ? 'active' : 'idle'} size="xs" />
+                            <span class="text-[11px] text-faint">
+                              {p.hasConnection ? t('media.accountsCount', { count: p.activeConnections ?? 0 }) : t('media.notConnected')}
+                            </span>
+                          </div>
+                        </div>
 
-                <div class="space-y-1">
-                  <div class="text-[11px] text-faint">{t('media.supportedModelsEndpoints')}</div>
-                  <div class="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
-                    <Show
-                      when={p.models && p.models.length > 0}
-                      fallback={
-                        <span class="text-[11px] font-mono text-muted bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
-                          {t('media.defaultEndpoint')}
+                        <div class="space-y-1">
+                          <div class="text-[11px] text-faint">{t('media.supportedModelsEndpoints')}</div>
+                          <div class="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                            <Show
+                              when={p.models && p.models.length > 0}
+                              fallback={
+                                <span class="text-[11px] font-mono text-muted bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
+                                  {t('media.defaultEndpoint')}
+                                </span>
+                              }
+                            >
+                              <For each={p.models}>
+                                {m => (
+                                  <span class="text-[11px] font-mono text-foreground bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
+                                    {m.name || m.id}
+                                  </span>
+                                )}
+                              </For>
+                            </Show>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="pt-2.5 border-t border-subtle flex items-center justify-between gap-2">
+                        <span class="text-[11px] text-faint">
+                          {t('media.readyToCall')}
                         </span>
-                      }
-                    >
-                      <For each={p.models}>
-                        {m => (
-                          <span class="text-[11px] font-mono text-foreground bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
-                            {m.name || m.id}
-                          </span>
-                        )}
-                      </For>
-                    </Show>
-                  </div>
-                </div>
+                        <div class="flex items-center gap-2">
+                          <Show when={p.primaryConnectionId}>
+                            <A href={`/providers/${p.primaryConnectionId}`}>
+                              <Button size="sm" variant="secondary" title={t('media.manageAccountTitle')}>
+                                {t('media.manage')}
+                              </Button>
+                            </A>
+                          </Show>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => openWorkbench(p)}
+                          >
+                            {t('media.tryWorkbench')} {currentCap()?.label}
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  )}
+                </For>
               </div>
-
-              <div class="pt-2.5 border-t border-subtle flex items-center justify-between gap-2">
-                <span class="text-[11px] text-faint">
-                  {t('media.readyToCall')}
-                </span>
-                <div class="flex items-center gap-2">
-                  <Show when={p.primaryConnectionId}>
-                    <A href={`/providers/${p.primaryConnectionId}`}>
-                      <Button size="sm" variant="secondary" title={t('media.manageAccountTitle')}>
-                        {t('media.manage')}
-                      </Button>
-                    </A>
-                  </Show>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onClick={() => openWorkbench(p)}
-                  >
-                    {t('media.tryWorkbench')} {caps().find(c => c.id === active())?.label}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-        </For>
-      </div>
-
-      <Show when={providers().length === 0 && !loadingProviders()}>
-        <Card class="p-12 text-center space-y-4 border-dashed border-subtle">
-          <div class="flex justify-center text-accent/80">
-            <IconPlug size={36} />
+            </Show>
           </div>
-          <div class="space-y-1">
-            <h3 class="text-sm font-semibold text-foreground">
-              {t('media.emptyTitle', { cap: caps().find(c => c.id === active())?.label || '' })}
-            </h3>
-            <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-              {t('media.emptyDesc')}
-            </p>
-          </div>
-          <div class="pt-2">
-            <A href="/providers?tab=catalog&category=media">
-              <Button variant="primary" size="sm">
-                {t('media.emptyAction')}
-              </Button>
-            </A>
-          </div>
-        </Card>
-      </Show>
-
-      {/* 专属试用交互工作台 (Workbench Modal) */}
+        )}
+      </TabTransition>
       <Modal
         open={workbenchOpen()}
         title={`${selectedProvider()?.name || ''} · ${caps().find(c => c.id === active())?.label || ''}`}

@@ -754,6 +754,8 @@ export const zhCN = {
     manageAccountTitle: "管理账号与参数",
     defaultEndpoint: "默认端点驱动",
     readyToCall: "就绪可调用",
+    endpointCopied: '端点 {endpoint} 已复制到剪贴板',
+    copyEndpointTitle: '点击复制 API 标准端点',
     viewOriginal: "查看原图",
     promptLabelImage: "生成提示词 (Prompt)",
     promptLabelSearch: "搜索关键词 (Query)",

@@ -1,9 +1,9 @@
-import { type Component, For, Show, createSignal, createEffect, onMount } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createEffect, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
-  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse,
+  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition,
   IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
@@ -324,11 +324,14 @@ const Settings: Component = () => {
         </div>
       </PageHeader>
 
-      {/* ── Tab 1：网关核心设置 ── */}
-      <Show when={activeTab() === 'gateway'}>
-
-      {/* ── 分组 1：安全与访问控制 ── */}
-      <div class="space-y-3.5 animate-fade-in">
+      <TabTransition
+        value={activeTab()}
+        order={['gateway', 'appearance', 'data']}
+      >
+        {tab => (
+          <Switch>
+            <Match when={tab === 'gateway'}>
+              <div class="space-y-3.5">
 
         {/* 访问控制卡片 */}
         <Card class="p-5 space-y-4">
@@ -669,14 +672,10 @@ const Settings: Component = () => {
             </Show>
           </div>
         </Card>
-      </div>
-      </Show>
-
-      {/* ── Tab 2：界面与外观偏好 ── */}
-      <Show when={activeTab() === 'appearance'}>
-
-      {/* ── 分组 3：外观与系统偏好 ── */}
-      <div class="space-y-3.5 animate-fade-in">
+              </div>
+            </Match>
+            <Match when={tab === 'appearance'}>
+              <div class="space-y-3.5">
 
         {/* 界面与壁纸卡片 */}
         <Card class="p-5 space-y-4">
@@ -837,12 +836,10 @@ const Settings: Component = () => {
             </div>
           </Show>
         </Card>
-      </div>
-    </Show>
-
-      {/* ── Tab 3：数据管理与备份恢复 ── */}
-      <Show when={activeTab() === 'data'}>
-        <div class="space-y-3.5 animate-fade-in">
+              </div>
+            </Match>
+            <Match when={tab === 'data'}>
+              <div class="space-y-3.5">
 
           {/* 数据备份导出卡片 */}
           <Card class="p-5 space-y-4">
@@ -967,8 +964,11 @@ const Settings: Component = () => {
               </Button>
             </div>
           </Card>
-        </div>
-      </Show>
+              </div>
+            </Match>
+          </Switch>
+        )}
+      </TabTransition>
 
       {/* ── 底部通用系统与存储信息 ── */}
       <Card class="p-4 text-xs text-faint">

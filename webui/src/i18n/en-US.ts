@@ -756,6 +756,8 @@ export const enUS: TranslationDict = {
     manageAccountTitle: "Manage accounts and parameters",
     defaultEndpoint: "Default endpoint driver",
     readyToCall: "Ready",
+    endpointCopied: 'Endpoint {endpoint} copied to clipboard',
+    copyEndpointTitle: 'Click to copy standard API endpoint',
     viewOriginal: "View original",
     promptLabelImage: "Prompt",
     promptLabelSearch: "Search query",

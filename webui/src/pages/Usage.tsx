@@ -1,7 +1,7 @@
-import { type Component, For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, SegmentedControl } from '@/components/ui'
+import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, SegmentedControl, TabTransition } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -114,38 +114,42 @@ const Usage: Component = () => {
         title={t('usage.title')}
         subtitle={t('usage.subtitle', { count: fmtNum(store.usageStats.totalRequestsLifetime ?? 0) })}
         actions={
-          <>
-            <SegmentedControl
-              value={subTab()}
-              onChange={setSubTab}
-              options={[
-                { value: 'overview', label: t('usage.overview') },
-                { value: 'details', label: `${t('usage.requestDetails')} (${store.requestDetailsPagination().totalItems || 0})` },
-              ]}
+          <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
+            <StatusPulse
+              status={live() ? 'active' : 'paused'}
+              tone={live() ? 'red' : 'accent'}
+              size="sm"
             />
-
-            <Button variant={live() ? 'danger' : 'secondary'} size="sm" onClick={toggleLive} class="flex items-center gap-2">
-              <StatusPulse
-                status={live() ? 'active' : 'paused'}
-                tone={live() ? 'red' : 'accent'}
-                size="sm"
-              />
-              <span>{live() ? t('usage.stopLive') : t('usage.liveEvents')}</span>
-            </Button>
-          </>
+            <span>{live() ? t('usage.stopLive') : t('usage.liveEvents')}</span>
+          </Button>
         }
-      />
+      >
+        <div class="pt-2.5 border-t border-subtle/40 flex items-center justify-between gap-3">
+          <SegmentedControl
+            value={subTab()}
+            onChange={setSubTab}
+            options={[
+              { value: 'overview', label: t('usage.overview') },
+              { value: 'details', label: `${t('usage.requestDetails')} (${store.requestDetailsPagination().totalItems || 0})` },
+            ]}
+          />
+        </div>
+      </PageHeader>
 
-      {/* 拓扑图 (网关核心拓扑) */}
-      <Show when={subTab() === 'overview'}>
-        <GatewayTopology
-          providers={store.providers()}
-          activeConnections={store.activeConnections()}
-          liveEvents={liveEvents()}
-        />
-      </Show>
-      {/* 概览视图：KPI、Token 趋势、按提供商与实时事件 */}
-      <Show when={subTab() === 'overview'}>
+      <TabTransition
+        value={subTab()}
+        order={['overview', 'details']}
+      >
+        {tab => (
+          <Switch>
+            <Match when={tab === 'overview'}>
+              <div class="space-y-5">
+                <GatewayTopology
+                  providers={store.providers()}
+                  activeConnections={store.activeConnections()}
+                  liveEvents={liveEvents()}
+                />
+                {/* 概览视图：KPI、Token 趋势、按提供商与实时事件 */}
         {/* KPI */}
         <Show when={!loading()} fallback={
           <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -313,11 +317,10 @@ const Usage: Component = () => {
             </Show>
           </Card>
         </div>
-      </Show>
-
-      {/* 请求明细视图 */}
-      <Show when={subTab() === 'details'}>
-        <Card class="p-5 animate-fade-in">
+              </div>
+            </Match>
+            <Match when={tab === 'details'}>
+              <Card class="p-5">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
             <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>
@@ -388,8 +391,11 @@ const Usage: Component = () => {
               </div>
             </div>
           </Show>
-        </Card>
-      </Show>
+              </Card>
+            </Match>
+          </Switch>
+        )}
+      </TabTransition>
 
       {/* 请求明细详情弹窗 */}
       <RequestDetailModal
