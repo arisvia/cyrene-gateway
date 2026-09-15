@@ -23,6 +23,7 @@ import {
   IconAlertCircle,
   IconSparkles,
   IconClose,
+  TabTransition,
 } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { confirm } from '@/lib/confirm'
@@ -638,7 +639,7 @@ main();
   }
 
   return (
-    <div class="space-y-4 max-w-7xl mx-auto pb-10">
+    <div class="space-y-4 max-w-7xl mx-auto pb-10 stagger">
       <PageHeader
         sticky={false}
         title={t('playground.title')}
@@ -701,57 +702,61 @@ main();
         <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} min-w-0 space-y-4 transition-all duration-300`}>
           {/* 顶部模型选择栏 */}
           <Card class="p-3">
-            <Show
-              when={mode() === 'compare'}
-              fallback={
-                <div class="flex items-center gap-3 min-w-0 animate-fade-in">
-                  <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
-                    <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
-                    {t('playground.selectEvalModel')}
-                  </span>
-                  <div class="flex-1 min-w-0">
-                    <Select
-                      class="w-full"
-                      value={modelA()}
-                      options={modelOptions()}
-                      onChange={setModelA}
-                    />
+            <TabTransition
+              value={mode()}
+              order={['single', 'compare']}
+              views={{
+                single: () => (
+                  <div class="flex items-center gap-3 min-w-0">
+                    <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
+                      <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
+                      {t('playground.selectEvalModel')}
+                    </span>
+                    <div class="flex-1 min-w-0">
+                      <Select
+                        class="w-full"
+                        value={modelA()}
+                        options={modelOptions()}
+                        onChange={setModelA}
+                      />
+                    </div>
+                    <Show when={loadingModels()}>
+                      <span class="text-xs text-faint shrink-0">{t('common.syncing')}</span>
+                    </Show>
                   </div>
-                  <Show when={loadingModels()}>
-                    <span class="text-xs text-faint shrink-0">{t('common.syncing')}</span>
-                  </Show>
-                </div>
-              }
-            >
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fade-in">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
-                    {t('playground.modelA')}
-                  </span>
-                  <div class="flex-1 min-w-0">
-                    <Select
-                      class="w-full"
-                      value={modelA()}
-                      options={modelOptions()}
-                      onChange={setModelA}
-                    />
+                ),
+                compare: () => (
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
+                        {t('playground.modelA')}
+                      </span>
+                      <div class="flex-1 min-w-0">
+                        <Select
+                          class="w-full"
+                          value={modelA()}
+                          options={modelOptions()}
+                          onChange={setModelA}
+                        />
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                        {t('playground.modelB')}
+                      </span>
+                      <div class="flex-1 min-w-0">
+                        <Select
+                          class="w-full"
+                          value={modelB()}
+                          options={modelOptions()}
+                          onChange={setModelB}
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0">
-                    {t('playground.modelB')}
-                  </span>
-                  <div class="flex-1 min-w-0">
-                    <Select
-                      class="w-full"
-                      value={modelB()}
-                      options={modelOptions()}
-                      onChange={setModelB}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Show>
+                ),
+              }}
+            />
           </Card>
 
           {/* 对话/横评主画布 */}

@@ -1,4 +1,4 @@
-import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps, on } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
@@ -1140,52 +1140,48 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
   let incomingRef: HTMLDivElement | undefined
   let timer: number | undefined
   let transitionCount = 0
+  let prevVal = props.value
 
-  createEffect(
-    on(
-      () => props.value,
-      (newVal, oldVal) => {
-        if (oldVal === undefined || newVal === oldVal) {
-          setCurrent(() => newVal)
-          return
-        }
-        if (timer) clearTimeout(timer)
+  createEffect(() => {
+    const newVal = props.value
+    const oldVal = prevVal
+    if (newVal === oldVal) return
+    prevVal = newVal
 
-        // 1. Snapshot outgoing DOM to freeze current state before reactivity shifts
-        let clone: HTMLElement | null = null
-        if (incomingRef) {
-          clone = incomingRef.cloneNode(true) as HTMLElement
-        }
+    if (timer) clearTimeout(timer)
 
-        // 2. Determine direction
-        let dir: 'forward' | 'backward' = 'forward'
-        if (props.order && props.order.length > 0) {
-          const oldIdx = props.order.indexOf(oldVal)
-          const newIdx = props.order.indexOf(newVal)
-          dir = newIdx >= oldIdx ? 'forward' : 'backward'
-        }
-        setDirection(dir)
+    // 1. Snapshot outgoing DOM to freeze current state before reactivity shifts
+    let clone: HTMLElement | null = null
+    if (incomingRef) {
+      clone = incomingRef.cloneNode(true) as HTMLElement
+    }
 
-        // 3. Increment keys and mount frozen snapshot
-        transitionCount++
-        const id = transitionCount
-        if (clone) {
-          setOutgoingSnapshot({ id, dir, el: clone })
-        }
+    // 2. Determine direction
+    let dir: 'forward' | 'backward' = 'forward'
+    if (props.order && props.order.length > 0) {
+      const oldIdx = props.order.indexOf(oldVal)
+      const newIdx = props.order.indexOf(newVal)
+      dir = newIdx >= oldIdx ? 'forward' : 'backward'
+    }
+    setDirection(dir)
 
-        setCurrent(() => newVal)
-        setIncomingKey(k => k + 1)
-        setIsTransitioning(true)
+    // 3. Increment keys and mount frozen snapshot
+    transitionCount++
+    const id = transitionCount
+    if (clone) {
+      setOutgoingSnapshot({ id, dir, el: clone })
+    }
 
-        timer = window.setTimeout(() => {
-          setOutgoingSnapshot(null)
-          setIsTransitioning(false)
-          timer = undefined
-        }, 260)
-      },
-      { defer: true }
-    )
-  )
+    setCurrent(() => newVal)
+    setIncomingKey(k => k + 1)
+    setIsTransitioning(true)
+
+    timer = window.setTimeout(() => {
+      setOutgoingSnapshot(null)
+      setIsTransitioning(false)
+      timer = undefined
+    }, 260)
+  })
 
   onCleanup(() => {
     if (timer) clearTimeout(timer)
