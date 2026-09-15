@@ -586,6 +586,59 @@ func TestDisabledModelExcludedFromV1Models(t *testing.T) {
 	}
 }
 
+func TestBatchDisabledModelsAPI(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// 1. Batch disable
+	body := `{"models":["openai/gpt-4o","openai/gpt-4o-mini"],"disabled":true}`
+	req := httptest.NewRequest("POST", "/api/models/disabled/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for batch disable, got %d", w.Code)
+	}
+
+	list, err := database.KVList("disabledModels")
+	if err != nil {
+		t.Fatalf("KVList failed: %v", err)
+	}
+	if list["openai/gpt-4o"] != "true" || list["openai/gpt-4o-mini"] != "true" {
+		t.Fatalf("expected both models disabled, got %+v", list)
+	}
+
+	// 2. Batch enable (delete)
+	body = `{"models":["openai/gpt-4o"],"disabled":false}`
+	req = httptest.NewRequest("POST", "/api/models/disabled/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for batch enable, got %d", w.Code)
+	}
+
+	list, err = database.KVList("disabledModels")
+	if err != nil {
+		t.Fatalf("KVList failed: %v", err)
+	}
+	if _, ok := list["openai/gpt-4o"]; ok {
+		t.Fatalf("openai/gpt-4o should be enabled, but still in disabledModels")
+	}
+	if list["openai/gpt-4o-mini"] != "true" {
+		t.Fatalf("openai/gpt-4o-mini should still be disabled")
+	}
+
+	// 3. Empty models slice
+	body = `{"models":[],"disabled":true}`
+	req = httptest.NewRequest("POST", "/api/models/disabled/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty slice, got %d", w.Code)
+	}
+}
+
 func TestOpenCodeHeadersInjection(t *testing.T) {
 	var capturedHeaders http.Header
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

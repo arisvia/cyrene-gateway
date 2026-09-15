@@ -440,6 +440,10 @@ function createGatewayStore() {
     if (disabled) return apiPost('/api/models/disabled', { model })
     return apiDelete('/api/models/disabled', { model })
   }
+  async function batchSetModelsDisabled(models: string[], disabled: boolean) {
+    if (models.length === 0) return { ok: true, count: 0 }
+    return apiPost('/api/models/disabled/batch', { models, disabled })
+  }
   async function testModel(model: string, connectionId?: string): Promise<{ ok: boolean; latency?: string; code?: number; error?: string }> {
     return apiPost('/api/models/test', { model, connectionId })
   }
@@ -462,7 +466,7 @@ function createGatewayStore() {
     saveProviderModelMeta, resetProviderModelMeta,
     oauthStart, oauthPoll, oauthImport, oauthStatus, oauthRefresh,
     loadNodes, saveNode, deleteNode,
-    loadDisabledModels, setModelDisabled, testModel,
+    loadDisabledModels, setModelDisabled, batchSetModelsDisabled, testModel,
   }
 }
 

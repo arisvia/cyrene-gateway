@@ -557,23 +557,15 @@ const ProviderDetail: Component = () => {
   }
   const [batchBusy, setBatchBusy] = createSignal(false)
 
-  async function runBatchToggle(items: ProviderModel[], disabled: boolean) {
-    if (!conn()) return
-    const p = conn()!.provider
-    const chunkSize = 25
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize)
-      await Promise.all(chunk.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, disabled)))
-    }
-  }
-
   async function handleEnableAll() {
     if (!conn() || batchBusy()) return
+    const p = conn()!.provider
     const toEnable = allDisplayModels().filter(m => m.enabled === false)
     if (toEnable.length === 0) {
       toast.info(t('toast.allModelsEnabled'))
       return
     }
+    const modelKeys = toEnable.map(m => `${p}/${m.id || m.name}`)
     setBatchBusy(true)
     setModelsData(prev => ({
       ...prev,
@@ -581,7 +573,7 @@ const ProviderDetail: Component = () => {
       customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: true })),
     }))
     try {
-      await runBatchToggle(toEnable, false)
+      await store.batchSetModelsDisabled(modelKeys, false)
       toast.success(t('toast.batchEnableSuccess', { count: toEnable.length }))
     } catch {
       toast.error(t('toast.batchEnableFailed'))
@@ -593,12 +585,14 @@ const ProviderDetail: Component = () => {
 
   async function handleDisableAll() {
     if (!conn() || batchBusy()) return
+    const p = conn()!.provider
     const toDisable = allDisplayModels().filter(m => m.enabled !== false)
     if (toDisable.length === 0) {
       toast.info(t('toast.allModelsDisabled'))
       return
     }
     if (!await confirm(t('providerDetail.confirmDisableAll', { count: toDisable.length }))) return
+    const modelKeys = toDisable.map(m => `${p}/${m.id || m.name}`)
     setBatchBusy(true)
     setModelsData(prev => ({
       ...prev,
@@ -606,7 +600,7 @@ const ProviderDetail: Component = () => {
       customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: false })),
     }))
     try {
-      await runBatchToggle(toDisable, true)
+      await store.batchSetModelsDisabled(modelKeys, true)
       toast.success(t('toast.batchDisableSuccess', { count: toDisable.length }))
     } catch {
       toast.error(t('toast.batchDisableFailed'))
@@ -687,7 +681,7 @@ const ProviderDetail: Component = () => {
   }
 
   async function handleDisableFailed() {
-    if (!conn()) return
+    if (!conn() || batchBusy()) return
     const p = conn()!.provider
     const failedList = failedModelsList()
     if (failedList.length === 0) {
@@ -696,17 +690,21 @@ const ProviderDetail: Component = () => {
     }
     if (!await confirm(t('providerDetail.confirmDisableFailed', { count: failedList.length }))) return
     const failedIds = new Set(failedList.map(m => m.id || m.name).filter((id): id is string => Boolean(id)))
+    const modelKeys = failedList.map(m => `${p}/${m.id || m.name}`)
+    setBatchBusy(true)
     setModelsData(prev => ({
       ...prev,
       registryModels: (prev.registryModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
       customModels: (prev.customModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
     }))
     try {
-      await Promise.all(failedList.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, true)))
+      await store.batchSetModelsDisabled(modelKeys, true)
       toast.success(t('toast.batchDisableSuccess', { count: failedList.length }))
     } catch {
       toast.error(t('toast.batchDisableFailed'))
       refetchModels()
+    } finally {
+      setBatchBusy(false)
     }
   }
   const [, { refetch: refetchOAuth }] = createResource(
@@ -1005,6 +1003,7 @@ const ProviderDetail: Component = () => {
                       <Button
                         size="sm"
                         variant="danger"
+                        disabled={batchBusy()}
                         onClick={handleDisableFailed}
                         title={t('providerDetail.tooltipDisableFailed')}
                       >

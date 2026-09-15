@@ -108,6 +108,54 @@ func (d *DB) KVDelete(scope, key string) error {
 	return err
 }
 
+func (d *DB) KVBatchSet(scope string, keys []string, value string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`INSERT INTO kv (scope, key, value) VALUES (?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, k := range keys {
+		if _, err := stmt.Exec(scope, k, value); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (d *DB) KVBatchDelete(scope string, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`DELETE FROM kv WHERE scope = ? AND key = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, k := range keys {
+		if _, err := stmt.Exec(scope, k); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (d *DB) KVList(scope string) (map[string]string, error) {
 	rows, err := d.conn.Query(`SELECT key, value FROM kv WHERE scope = ?`, scope)
 	if err != nil {
