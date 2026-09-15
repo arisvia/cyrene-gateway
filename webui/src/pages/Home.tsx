@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, Modal, Field, confirm } from '@/components/ui'
+import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, confirm } from '@/components/ui'
 import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 
@@ -114,10 +114,7 @@ const Home: Component = () => {
           <Card class="p-6 space-y-4">
             <div class="flex items-center justify-between">
               <h2 class="text-base font-semibold text-foreground flex items-center gap-2">
-                <svg class="w-4 h-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                </svg>
+                <IconLink size={16} class="text-accent" />
                 <span>{t('home.unifiedEndpoints')}</span>
               </h2>
               <Badge tone="blue">{t('home.multiProtocol')}</Badge>
@@ -161,11 +158,7 @@ const Home: Component = () => {
             <div class="flex items-center justify-between">
               <div>
                 <h2 class="text-base font-semibold text-foreground flex items-center gap-2">
-                  <svg class="w-4 h-4 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="7.5" cy="15.5" r="5.5" />
-                    <path d="m21 2-9.6 9.6" />
-                    <path d="m15.5 7.5 3 3L22 7l-3-3" />
-                  </svg>
+                  <IconKey size={16} class="text-accent" />
                   <span>{t('home.apiKeys')}</span>
                 </h2>
                 <p class="text-xs text-faint mt-0.5">{t('home.apiKeysHint')}</p>

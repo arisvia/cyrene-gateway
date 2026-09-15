@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
-import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconPlug, IconSparkles, IconClipboard, TabTransition } from '@/components/ui'
+import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconPlug, IconSparkles, IconClipboard, TabTransition, Empty } from '@/components/ui'
 import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 
@@ -195,25 +195,19 @@ const Media: Component = () => {
               when={providers().length > 0}
               fallback={
                 <Show when={!loadingProviders()}>
-                  <Card class="p-12 text-center space-y-4 border-dashed border-subtle">
-                    <div class="flex justify-center text-accent/80">
-                      <IconPlug size={36} />
-                    </div>
-                    <div class="space-y-1">
-                      <h3 class="text-sm font-semibold text-foreground">
-                        {t('media.emptyTitle', { cap: currentCap()?.label || '' })}
-                      </h3>
-                      <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-                        {t('media.emptyDesc')}
-                      </p>
-                    </div>
-                    <div class="pt-2">
-                      <A href="/providers?tab=catalog&category=media">
-                        <Button variant="primary" size="sm">
-                          {t('media.emptyAction')}
-                        </Button>
-                      </A>
-                    </div>
+                  <Card class="p-12 border-dashed border-subtle">
+                    <Empty
+                      icon={<IconPlug size={24} />}
+                      title={t('media.emptyTitle', { cap: currentCap()?.label || '' })}
+                      description={t('media.emptyDesc')}
+                      action={
+                        <A href="/providers?tab=catalog&category=media">
+                          <Button variant="primary" size="sm">
+                            {t('media.emptyAction')}
+                          </Button>
+                        </A>
+                      }
+                    />
                   </Card>
                 </Show>
               }

@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import type { Combo } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Modal, Field, PageHeader, IconClose, IconLayers, IconExternalLink, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Modal, Field, Empty, PageHeader, IconClose, IconLayers, IconExternalLink, confirm } from '@/components/ui'
 
 const Combos: Component = () => {
   const store = useGatewayStore()
@@ -99,29 +99,25 @@ const Combos: Component = () => {
       />
 
       <Show when={store.combos().length > 0} fallback={
-        <Card class="p-12 text-center space-y-4 border-dashed border-subtle">
-          <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
-            <IconLayers size={24} />
-          </div>
-          <div class="space-y-1">
-            <h3 class="text-base font-semibold text-foreground">
-              {t('combos.emptyTitle')}
-            </h3>
-            <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-              {t('combos.emptyDesc')}
-            </p>
-          </div>
-          <div class="flex items-center justify-center gap-3 pt-2">
-            <Button variant="primary" size="sm" onClick={openCreate} class="gap-1.5">
-              <span>+ {t('combos.newCombo')}</span>
-            </Button>
-            <A href="/providers?tab=catalog">
-              <Button variant="secondary" size="sm" class="gap-1.5">
-                <span>{t('combos.browseMarket')}</span>
-                <IconExternalLink size={13} />
-              </Button>
-            </A>
-          </div>
+        <Card class="p-12 border-dashed border-subtle">
+          <Empty
+            icon={<IconLayers size={24} />}
+            title={t('combos.emptyTitle')}
+            description={t('combos.emptyDesc')}
+            action={
+              <>
+                <Button variant="primary" size="sm" onClick={openCreate} class="gap-1.5">
+                  <span>+ {t('combos.newCombo')}</span>
+                </Button>
+                <A href="/providers?tab=catalog">
+                  <Button variant="secondary" size="sm" class="gap-1.5">
+                    <span>{t('combos.browseMarket')}</span>
+                    <IconExternalLink size={13} />
+                  </Button>
+                </A>
+              </>
+            }
+          />
         </Card>
       }>
         <div class="grid gap-3">

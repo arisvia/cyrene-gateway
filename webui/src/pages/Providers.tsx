@@ -24,6 +24,7 @@ import {
   IconSearch,
   IconGlobe,
   IconZap,
+  IconPlug,
   IconCheck,
   IconClose,
   Alert,
@@ -711,16 +712,17 @@ const Providers: Component = () => {
         <Show
           when={groupedConnections().length > 0}
           fallback={
-            <Card class="p-12 text-center space-y-4">
-              <Empty message={t('providers.emptyTitle')} />
-              <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
-                {t('providers.emptyCatalogDesc')}
-              </p>
-              <div class="flex justify-center gap-3 pt-2">
-                <Button variant="primary" onClick={() => setActiveTab('catalog')}>
-                  {t('providers.emptyAction')}
-                </Button>
-              </div>
+            <Card class="p-12 border-dashed border-subtle">
+              <Empty
+                icon={<IconPlug size={24} />}
+                title={t('providers.emptyTitle')}
+                description={t('providers.emptyCatalogDesc')}
+                action={
+                  <Button variant="primary" size="sm" onClick={() => setActiveTab('catalog')}>
+                    {t('providers.emptyAction')}
+                  </Button>
+                }
+              />
             </Card>
           }
         >

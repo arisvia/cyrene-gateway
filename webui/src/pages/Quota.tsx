@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, createMemo, createEffect, onMo
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, PageHeader } from '@/components/ui'
+import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, IconZap, PageHeader } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
 import { A } from '@solidjs/router'
 import type { ProviderUsage } from '@/types/domain'
@@ -344,7 +344,22 @@ const Quota: Component = () => {
         {/* 一行两个的账号配额卡片网格 (2-Column Grid) */}
         <Show
           when={filteredConnections().length > 0}
-          fallback={<Card class="p-8"><Empty message={t('quota.noConnectionsShort')} /></Card>}
+          fallback={
+            <Card class="p-12 border-dashed border-subtle">
+              <Empty
+                icon={<IconZap size={24} />}
+                title={t('quota.noConnectionsShort')}
+                description={t('quota.emptyDesc')}
+                action={
+                  <A href="/providers">
+                    <Button variant="primary" size="sm">
+                      {t('quota.connectProviderAction')}
+                    </Button>
+                  </A>
+                }
+              />
+            </Card>
+          }
         >
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <For each={filteredConnections()}>

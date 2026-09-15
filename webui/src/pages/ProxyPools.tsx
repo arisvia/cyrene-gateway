@@ -3,7 +3,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, IconGlobe, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
@@ -48,16 +48,24 @@ const ProxyPools: Component = () => {
       <PageHeader
         title={t('proxies.title')}
         subtitle={t('proxies.subtitle')}
-        actions={<Button variant="primary" onClick={openCreate}>+ {t('proxies.newPool')}</Button>}
+        actions={
+          <Show when={store.proxyPools().length > 0}>
+            <Button variant="primary" size="sm" onClick={openCreate}>+ {t('proxies.newPool')}</Button>
+          </Show>
+        }
       />
       <Show when={store.proxyPools().length > 0} fallback={
-        <Card class="p-10 text-center space-y-4 border-dashed border-subtle">
-          <Empty message={t('proxies.emptyTitle')} />
-          <div class="flex justify-center pt-1">
-            <Button variant="primary" size="sm" onClick={openCreate}>
-              + {t('proxies.newPool')}
-            </Button>
-          </div>
+        <Card class="p-12 border-dashed border-subtle">
+          <Empty
+            icon={<IconGlobe size={24} />}
+            title={t('proxies.emptyTitle')}
+            description={t('proxies.emptyDesc')}
+            action={
+              <Button variant="primary" size="sm" onClick={openCreate} class="gap-1.5">
+                <span>+ {t('proxies.newPool')}</span>
+              </Button>
+            }
+          />
         </Card>
       }>
         <div class="grid gap-3">

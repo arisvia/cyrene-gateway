@@ -92,9 +92,55 @@ export const Badge: Component<{ tone?: BadgeTone; class?: string; children?: JSX
   )
 }
 
-export const Empty: Component<{ message: string; children?: JSX.Element }> = props => (
-  <div class="py-16 text-center text-sm text-faint">{props.message}</div>
-)
+export interface EmptyProps {
+  message?: string
+  title?: string
+  description?: string
+  icon?: JSX.Element
+  action?: JSX.Element
+  class?: string
+  children?: JSX.Element
+}
+
+export const Empty: Component<EmptyProps> = props => {
+  return (
+    <Show
+      when={props.icon || props.title || props.description || props.action}
+      fallback={
+        <div class={`py-12 text-center text-sm text-faint ${props.class ?? ''}`}>
+          {props.message}
+          {props.children}
+        </div>
+      }
+    >
+      <div class={`text-center space-y-4 ${props.class ?? ''}`}>
+        <Show when={props.icon}>
+          <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
+            {props.icon}
+          </div>
+        </Show>
+        <div class="space-y-1">
+          <Show when={props.title || props.message}>
+            <h3 class="text-base font-semibold text-foreground">
+              {props.title || props.message}
+            </h3>
+          </Show>
+          <Show when={props.description}>
+            <p class="text-xs text-faint max-w-md mx-auto leading-relaxed">
+              {props.description}
+            </p>
+          </Show>
+        </div>
+        <Show when={props.action}>
+          <div class="flex items-center justify-center gap-3 pt-2">
+            {props.action}
+          </div>
+        </Show>
+        {props.children}
+      </div>
+    </Show>
+  )
+}
 
 export const Spinner: Component<{ size?: 'sm' | 'md' | 'lg' }> = props => {
   const sizes = { sm: 'h-3.5 w-3.5', md: 'h-4 w-4', lg: 'h-5 w-5' }
