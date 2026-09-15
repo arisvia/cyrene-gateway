@@ -328,7 +328,7 @@ const Settings: Component = () => {
       <Show when={activeTab() === 'gateway'}>
 
       {/* ── 分组 1：安全与访问控制 ── */}
-      <div class="space-y-3.5">
+      <div class="space-y-3.5 animate-fade-in">
         <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
           <IconShield size={14} class="text-accent shrink-0" />
           <span>{t('settings.access.groupTitle')}</span>
@@ -688,7 +688,7 @@ const Settings: Component = () => {
       <Show when={activeTab() === 'appearance'}>
 
       {/* ── 分组 3：外观与系统偏好 ── */}
-      <div class="space-y-3.5">
+      <div class="space-y-3.5 animate-fade-in">
         <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
           <IconPalette size={14} class="text-accent shrink-0" />
           <span>{t('settings.appearance.groupTitle')}</span>
@@ -858,7 +858,7 @@ const Settings: Component = () => {
 
       {/* ── Tab 3：数据管理与备份恢复 ── */}
       <Show when={activeTab() === 'data'}>
-        <div class="space-y-3.5">
+        <div class="space-y-3.5 animate-fade-in">
           <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
             <IconDatabase size={14} class="text-accent shrink-0" />
             <span>{t('settings.data.groupTitle')}</span>

@@ -5,7 +5,7 @@ import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -877,74 +877,105 @@ const ProviderDetail: Component = () => {
               </div>
             }
           >
-            <Show when={tab() === 'models'}>
-              <div class="p-2.5 rounded-xl bg-black/4 dark:bg-white/6 border border-black/8 dark:border-white/10 flex flex-wrap items-center justify-between gap-2.5">
-                <div class="flex items-center gap-2 flex-1 min-w-[240px]">
-                  <Input
-                    class="w-full sm:w-64!"
-                    size="sm"
-                    value={modelSearch()}
-                    onInput={setModelSearch}
-                    placeholder={t('providerDetail.modelSearchPlaceholder')}
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    loading={syncingModels()}
-                    onClick={handleSyncModels}
-                    title={t('providerDetail.syncModelsTitle')}
-                  >
-                    {t('providerDetail.syncUpstreamModels')}
-                  </Button>
-                </div>
-                <div class="flex flex-wrap items-center gap-2 text-xs">
-                  <span class="text-faint">{t('providerDetail.batchOps')}</span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleEnableAll}
-                    title={t('providerDetail.tooltipEnableAll')}
-                  >
-                    {t('providerDetail.enableAllModels')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleDisableAll}
-                    title={t('providerDetail.tooltipDisableAll')}
-                  >
-                    {t('providerDetail.disableAllModels')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    loading={testingAll()}
-                    onClick={handleTestAll}
-                    title={t('providerDetail.tooltipTestAll')}
-                  >
-                    <IconZap size={12} class="mr-1 inline" />
-                    {t('providerDetail.testAllModels')}
-                  </Button>
-                  <Show when={testAllProgress()}>
-                    {prog => (
-                      <span class="text-[11px] text-faint font-mono">
-                        {t('providerDetail.progress', { current: prog().current, total: prog().total })}
-                      </span>
-                    )}
-                  </Show>
-                  <Show when={failedModelsList().length > 0}>
+            {/* 顶栏控制区：Tab 切换栏与快捷操作工具条融合吸顶 */}
+            <div class="pt-2.5 border-t border-subtle/40 flex flex-wrap items-center justify-between gap-3">
+              <SegmentedControl<'overview' | 'models' | 'chat'>
+                value={tab()}
+                onChange={setTab}
+                options={[
+                  { value: 'overview', label: t('providerDetail.tabs.overview') },
+                  { value: 'models', label: `${t('providerDetail.tabs.models')} (${(modelsData().registryModels ?? models()?.registryModels ?? []).length})` },
+                  { value: 'chat', label: t('providerDetail.tabs.chat') },
+                ]}
+              />
+
+              {/* 仅在 models 视图下激活的快捷操作工具组 */}
+              <Show when={tab() === 'models'}>
+                <div class="animate-fade-in flex flex-wrap items-center gap-2 text-xs">
+                  <div class="flex items-center gap-2">
+                    <Input
+                      class="w-44 sm:w-56!"
+                      size="sm"
+                      value={modelSearch()}
+                      onInput={setModelSearch}
+                      placeholder={t('providerDetail.modelSearchPlaceholder')}
+                    />
                     <Button
                       size="sm"
-                      variant="danger"
-                      onClick={handleDisableFailed}
-                      title={t('providerDetail.tooltipDisableFailed')}
+                      variant="secondary"
+                      loading={syncingModels()}
+                      onClick={handleSyncModels}
+                      title={t('providerDetail.syncModelsTitle')}
                     >
-                      {t('providerDetail.disableFailedModels')} ({failedModelsList().length})
+                      {t('providerDetail.syncUpstreamModels')}
                     </Button>
-                  </Show>
+                  </div>
+                  <div class="hidden xl:block h-3.5 w-px bg-subtle/60 mx-0.5" />
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-faint hidden sm:inline">{t('providerDetail.batchOps')}</span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleEnableAll}
+                      title={t('providerDetail.tooltipEnableAll')}
+                    >
+                      {t('providerDetail.enableAllModels')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDisableAll}
+                      title={t('providerDetail.tooltipDisableAll')}
+                    >
+                      {t('providerDetail.disableAllModels')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={testingAll()}
+                      onClick={handleTestAll}
+                      title={t('providerDetail.tooltipTestAll')}
+                    >
+                      <IconZap size={12} class="mr-1 inline" />
+                      {t('providerDetail.testAllModels')}
+                    </Button>
+                    <Show when={testAllProgress()}>
+                      {prog => (
+                        <span class="text-[11px] text-faint font-mono">
+                          {t('providerDetail.progress', { current: prog().current, total: prog().total })}
+                        </span>
+                      )}
+                    </Show>
+                    <Show when={failedModelsList().length > 0}>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={handleDisableFailed}
+                        title={t('providerDetail.tooltipDisableFailed')}
+                      >
+                        {t('providerDetail.disableFailedModels')} ({failedModelsList().length})
+                      </Button>
+                    </Show>
+                  </div>
                 </div>
-              </div>
-            </Show>
+              </Show>
+
+              {/* 在 overview 视图下：右侧展示轻量指示 */}
+              <Show when={tab() === 'overview'}>
+                <div class="animate-fade-in text-xs text-faint hidden sm:flex items-center gap-2">
+                  <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                  <span>{t('providerDetail.accountsAndPool')}</span>
+                </div>
+              </Show>
+
+              {/* 在 chat 视图下：右侧展示轻量指示 */}
+              <Show when={tab() === 'chat'}>
+                <div class="animate-fade-in text-xs text-faint hidden sm:flex items-center gap-2">
+                  <span class="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                  <span>{t('providerDetail.tabs.chat')}</span>
+                </div>
+              </Show>
+            </div>
           </PageHeader>
         )}
       </Show>
@@ -960,29 +991,9 @@ const ProviderDetail: Component = () => {
       <Show when={!loading() && conn()}>
         {c => (
           <div class="space-y-5">
-            {/* Tab */}
-            <div class="flex gap-1 border-b border-subtle">
-              <For each={[
-                { id: 'overview' as const, label: t('providerDetail.tabs.overview') },
-                { id: 'models' as const, label: `${t('providerDetail.tabs.models')} (${(modelsData().registryModels ?? models()?.registryModels ?? []).length})` },
-                { id: 'chat' as const, label: t('providerDetail.tabs.chat') },
-              ]}>
-                {t => (
-                  <button
-                    type="button"
-                    class={`px-3.5 py-2 text-sm font-medium border-b-2 transition-colors ${tab() === t.id
-                      ? 'border-[color:var(--accent)] text-foreground font-semibold'
-                      : 'border-transparent text-faint hover:text-muted'}`}
-                    onClick={() => setTab(t.id)}
-                  >
-                    {t.label}
-                  </button>
-                )}
-              </For>
-            </div>
             {/* 账号与连接配置 */}
             <Show when={tab() === 'overview'}>
-              <div class="grid lg:grid-cols-12 gap-5 items-start">
+              <div class="grid lg:grid-cols-12 gap-5 items-start animate-fade-in">
                 {/* 左侧 (5 cols)：多账号与调度看板 (带独立滚动区，不会被挤出视野) */}
                 <div class="lg:col-span-5 space-y-3">
                   <Card class="p-4 space-y-3">
@@ -1344,7 +1355,7 @@ const ProviderDetail: Component = () => {
 
             {/* 模型 */}
             <Show when={tab() === 'models'}>
-              <div class="flex flex-col gap-3.5">
+              <div class="flex flex-col gap-3.5 animate-fade-in">
                 <Card class="p-3.5 sm:p-4">
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 flex-wrap min-w-0">
@@ -1364,7 +1375,7 @@ const ProviderDetail: Component = () => {
                     </Button>
                   </div>
                   <Show when={showCustomModels()}>
-                    <div class="pt-3 border-t border-subtle/50 mt-2.5 space-y-2.5">
+                    <div class="pt-3 border-t border-subtle/50 mt-2.5 space-y-2.5 animate-fade-in">
                       <div class="flex gap-2">
                         <Input
                           value={newCustomModelId()}
@@ -1577,7 +1588,7 @@ const ProviderDetail: Component = () => {
             </Show>
             {/* 会话测试 */}
             <Show when={tab() === 'chat'}>
-              <div class="space-y-4">
+              <div class="space-y-4 animate-fade-in">
                 <Card class="p-4 flex flex-wrap items-center justify-between gap-3">
                   <div class="flex items-center gap-3 flex-1 min-w-[240px]">
                     <span class="text-xs text-faint shrink-0">{t('providerDetail.chatModel')}</span>

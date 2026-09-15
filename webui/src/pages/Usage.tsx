@@ -317,7 +317,7 @@ const Usage: Component = () => {
 
       {/* 请求明细视图 */}
       <Show when={subTab() === 'details'}>
-        <Card class="p-5">
+        <Card class="p-5 animate-fade-in">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
             <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>

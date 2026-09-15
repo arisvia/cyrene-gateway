@@ -717,7 +717,7 @@ const Providers: Component = () => {
             </Card>
           }
         >
-          <div class="grid gap-4">
+          <div class="grid gap-4 animate-fade-in">
             <For each={groupedConnections()}>
               {group => {
                 const reg = () => registryFor(group.providerId)
@@ -813,7 +813,7 @@ const Providers: Component = () => {
 
       {/* 视窗 2：提供商市场 (Catalog Grid) */}
       <Show when={activeTab() === 'catalog'}>
-        <div class="space-y-6 pb-16">
+        <div class="space-y-6 pb-16 animate-fade-in">
           {/* 自定义通用兼容协议 (OpenAI Compatible & Anthropic Compatible) */}
           <Show when={customBrandGroups().length > 0}>
             <div class="space-y-3">
