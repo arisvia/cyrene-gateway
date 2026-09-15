@@ -9,10 +9,12 @@
 - **Codex Tool Schema Unicode 正则清洗**：拦截并清洗 Tool Schema 中包含未转义 `\p{...}` 的正则约束，彻底解决 Codex 上游 WAF/校验器 400 Invalid Schema 报错（对标 9router#3922）。
 
 ### Fixed
+- **令牌节省引擎多执行器全链路闭环**：为 Google Antigravity 与 Qoder 等独立握手协议执行器补齐 `applyTokenSaver` 调度，彻底解决专有通道下 RTK 工具结果压缩与 Caveman/Ponytail 提示词静默失效的问题。
+- **令牌节省排除名单大小写与模型前缀归一化**：提炼 `isTokenSaverExcluded` 统一匹配逻辑，支持大小写不敏感匹配以及模型厂商前缀匹配（如 `anthropic/*`），并在预翻译前工具压缩阶段保持统一。
+- **WebUI 核心空状态组件升级与全站视觉归一化**：全面升级 `<Empty />` 组件支持微光悬浮图标与富操作布局，统一收口 Combos、ProxyPools、Providers、Media、Quota 5 处空状态，消除散落原生控件与内联 Raw SVG。
 - **Gemini / Antigravity 多轮对话结构归一化**：自动合并相邻同角色消息，确保首轮为 `user` 角色并过滤空 parts，规避 400 INVALID_ARGUMENT 轮次报错（对标 9router@e7b5f09）。
 - **Gemini Schema 兼容性增强**：实现 `prefixItems` 元组模式向 `items` 的自动平铺映射，为缺失 `items` 的 `type: "array"` 提供安全占位，杜绝 400 模式校验中断（对标 9router@f6c59d3）。
 - **连接重验与状态重置闭环**：`ResetAccountState` 增加对 `modelLock_*` 细粒度模型锁的自动清理，保证连接重测或成功请求后彻底重置全部陈旧熔断标记（对标 9router#3810, #3830）。
-
 ## [1.0.0] - 2026-09-14
 
 ### Security
