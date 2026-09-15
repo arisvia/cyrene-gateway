@@ -4,8 +4,8 @@ import { useBackgroundStore } from '@/stores/background'
 import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
   Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse,
-  IconLock, IconKey, IconShield, IconZap, IconSparkles, IconPalette, IconInfo,
-  IconDatabase, IconDownload, IconUpload, IconAlertTriangle,
+  IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
+  IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
 import { formatUptime, formatVersion, type UptimeUnits } from '@/lib/format'
 import { useToast } from '@/lib/toast'
@@ -329,10 +329,6 @@ const Settings: Component = () => {
 
       {/* ── 分组 1：安全与访问控制 ── */}
       <div class="space-y-3.5 animate-fade-in">
-        <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          <IconShield size={14} class="text-accent shrink-0" />
-          <span>{t('settings.access.groupTitle')}</span>
-        </div>
 
         {/* 访问控制卡片 */}
         <Card class="p-5 space-y-4">
@@ -420,14 +416,6 @@ const Settings: Component = () => {
             </div>
           </Field>
         </Card>
-      </div>
-
-      {/* ── 分组 2：效能与节省引擎 ── */}
-      <div class="space-y-3.5">
-        <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          <IconZap size={14} class="text-accent shrink-0" />
-          <span>{t('settings.cache.groupTitle')}</span>
-        </div>
 
         {/* 响应精确缓存卡片 */}
         <Card class="p-5 space-y-4">
@@ -689,10 +677,6 @@ const Settings: Component = () => {
 
       {/* ── 分组 3：外观与系统偏好 ── */}
       <div class="space-y-3.5 animate-fade-in">
-        <div class="flex items-center gap-1.5 px-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-faint">
-          <IconPalette size={14} class="text-accent shrink-0" />
-          <span>{t('settings.appearance.groupTitle')}</span>
-        </div>
 
         {/* 界面与壁纸卡片 */}
         <Card class="p-5 space-y-4">
@@ -859,10 +843,6 @@ const Settings: Component = () => {
       {/* ── Tab 3：数据管理与备份恢复 ── */}
       <Show when={activeTab() === 'data'}>
         <div class="space-y-3.5 animate-fade-in">
-          <div class="flex items-center gap-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wider text-faint">
-            <IconDatabase size={14} class="text-accent shrink-0" />
-            <span>{t('settings.data.groupTitle')}</span>
-          </div>
 
           {/* 数据备份导出卡片 */}
           <Card class="p-5 space-y-4">
