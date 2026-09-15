@@ -2,20 +2,7 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
-
-### Added
-- **Claude Code 1M 上下文标记剥离**：自动剥离客户端传递的 `[1m]` / `[1M]` 上下文后缀（如 `claude-opus-5[1m]`），避免上游报 404 模型未找到（对标 9router#3690）。
-- **Codex Tool Schema Unicode 正则清洗**：拦截并清洗 Tool Schema 中包含未转义 `\p{...}` 的正则约束，彻底解决 Codex 上游 WAF/校验器 400 Invalid Schema 报错（对标 9router#3922）。
-
-### Fixed
-- **令牌节省引擎多执行器全链路闭环**：为 Google Antigravity 与 Qoder 等独立握手协议执行器补齐 `applyTokenSaver` 调度，彻底解决专有通道下 RTK 工具结果压缩与 Caveman/Ponytail 提示词静默失效的问题。
-- **令牌节省排除名单大小写与模型前缀归一化**：提炼 `isTokenSaverExcluded` 统一匹配逻辑，支持大小写不敏感匹配以及模型厂商前缀匹配（如 `anthropic/*`），并在预翻译前工具压缩阶段保持统一。
-- **WebUI 核心空状态组件升级与全站视觉归一化**：全面升级 `<Empty />` 组件支持微光悬浮图标与富操作布局，统一收口 Combos、ProxyPools、Providers、Media、Quota 5 处空状态，消除散落原生控件与内联 Raw SVG。
-- **Gemini / Antigravity 多轮对话结构归一化**：自动合并相邻同角色消息，确保首轮为 `user` 角色并过滤空 parts，规避 400 INVALID_ARGUMENT 轮次报错（对标 9router@e7b5f09）。
-- **Gemini Schema 兼容性增强**：实现 `prefixItems` 元组模式向 `items` 的自动平铺映射，为缺失 `items` 的 `type: "array"` 提供安全占位，杜绝 400 模式校验中断（对标 9router@f6c59d3）。
-- **连接重验与状态重置闭环**：`ResetAccountState` 增加对 `modelLock_*` 细粒度模型锁的自动清理，保证连接重测或成功请求后彻底重置全部陈旧熔断标记（对标 9router#3810, #3830）。
-## [1.0.0] - 2026-09-14
+## [1.0.0] - 2026-09-15
 
 ### Security
 - **DNS Rebinding 与跨域本地劫持防御（P0）**：在管理端中间件 `DashboardAuth` 引入可信回环校验（`Trusted Loopback`），强制联合校验客户端 `RemoteAddr`、HTTP `Host` 及 `Origin` 请求头；任何将域名指向 127.0.0.1 的外部重绑定请求或第三方网页跨域请求将被直接拒发回环信任，强制实施 Session 登录校验（401 Unauthorized）。
@@ -26,6 +13,8 @@
 - **暴力破解防护**：登录失败按 IP 指数锁定（30s → 30m）；密码存储采用 Argon2id 单向加盐哈希（自动兼容旧版 HMAC 迁移）。
 
 ### Added
+- **Claude Code 1M 上下文标记剥离**：自动剥离客户端传递的 `[1m]` / `[1M]` 上下文后缀（如 `claude-opus-5[1m]`），避免上游报 404 模型未找到（对标 9router#3690）。
+- **Codex Tool Schema Unicode 正则清洗**：拦截并清洗 Tool Schema 中包含未转义 `\p{...}` 的正则约束，彻底解决 Codex 上游 WAF/校验器 400 Invalid Schema 报错（对标 9router#3922）。
 - **Claude Code 官方兼容与私有协议剥离**：针对 Claude Code 2.1.270+ 会话初始化发送私有 `output_config.format` 导致第三方网关 400 熔断的问题，对非官方 Anthropic 节点实施 `.format` 自动剔除并保留 `effort` 思考等级；对官方 Anthropic/Claude 通道实施三重锁豁免保护。
 - **并行工具结果连续聚合**：在 `openAIToClaude` 协议转换中加入前序消息类型嗅探，严格遵守 Anthropic 交替轮次协议，将连续并行的 `role: "tool"` 结果自动聚合成单条 `role: "user"` 消息。
 - **Anthropic Cache Control 预算限制**：引入 `trimClaudeCacheControl`，严格限制单请求最多保留 4 个 `cache_control` 标记，自动丢弃多余 marker 防止 400 报错。
@@ -46,6 +35,12 @@
 - **数据目录灵活配置**：新增 `-data-dir` 命令行参数与 `CYRENE_DATA_DIR` 环境变量，实现运行与存储目录彻底隔离。
 
 ### Fixed
+- **令牌节省引擎多执行器全链路闭环**：为 Google Antigravity 与 Qoder 等独立握手协议执行器补齐 `applyTokenSaver` 调度，彻底解决专有通道下 RTK 工具结果压缩与 Caveman/Ponytail 提示词静默失效的问题。
+- **令牌节省排除名单大小写与模型前缀归一化**：提炼 `isTokenSaverExcluded` 统一匹配逻辑，支持大小写不敏感匹配以及模型厂商前缀匹配（如 `anthropic/*`），并在预翻译前工具压缩阶段保持统一。
+- **WebUI 核心空状态组件升级与全站视觉归一化**：全面升级 `<Empty />` 组件支持微光悬浮图标与富操作布局，统一收口 Combos、ProxyPools、Providers、Media、Quota 5 处空状态，消除散落原生控件与内联 Raw SVG。
+- **Gemini / Antigravity 多轮对话结构归一化**：自动合并相邻同角色消息，确保首轮为 `user` 角色并过滤空 parts，规避 400 INVALID_ARGUMENT 轮次报错（对标 9router@e7b5f09）。
+- **Gemini Schema 兼容性增强**：实现 `prefixItems` 元组模式向 `items` 的自动平铺映射，为缺失 `items` 的 `type: "array"` 提供安全占位，杜绝 400 模式校验中断（对标 9router@f6c59d3）。
+- **连接重验与状态重置闭环**：`ResetAccountState` 增加对 `modelLock_*` 细粒度模型锁的自动清理，保证连接重测或成功请求后彻底重置全部陈旧熔断标记（对标 9router#3810, #3830）。
 - **面板白屏治理（P0）**：干净克隆构建出的二进制，管理面板因 `webui/dist/assets` 未纳入版本控制而白屏的问题彻底解决；`/assets/*` 缺失时正确返回 404，新增回归测试 `TestDashboardAssetMissIs404NotSPA`。
 - **前端构建兼容性**：治理 `typescript 7` 兼容性，钉回 `~5.9.3`。
 - **Tailwind CSS v4 样式与主题 Token 修复**：补齐 `--color-foreground` 与 `--color-code-bg` 映射，激活全局页面 `text-foreground` 样式。
@@ -55,5 +50,4 @@
 - **媒体凭证验证与连接隔离**：`/api/media-providers` 接口支持 `connected=true` 服务端过滤。
 - **CSS 注释解析警告消除**：消除 Lightning CSS 的 `Unexpected token Delim('*')` 构建警告。
 
-[Unreleased]: https://github.com/arisvia/cyrene-gateway/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/arisvia/cyrene-gateway/releases/tag/v1.0.0
