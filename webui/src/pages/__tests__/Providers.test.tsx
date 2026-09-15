@@ -58,7 +58,7 @@ describe('Providers 页面渲染', () => {
     const text = document.body.textContent || ''
     expect(text).toContain('提供商')
     expect(text).toContain('还没有接入任何提供商连接')
-    expect(text).toContain('前往市场选购提供商')
+    expect(text).toContain('前往提供商市场接入渠道')
   })
 
   it('有数据时渲染卡片、凭证状态与能力标签', async () => {

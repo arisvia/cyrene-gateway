@@ -156,6 +156,17 @@ export const IconPlug: Component<IconProps> = props => {
     </svg>
   )
 }
+// 图层/组合 (Layers)
+export const IconLayers: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+      <polyline points="2 17 12 22 22 17" />
+      <polyline points="2 12 12 17 22 12" />
+    </svg>
+  )
+}
 // 星星/AI 魔法 (Sparkles)
 export const IconSparkles: Component<IconProps> = props => {
   const [local, others] = splitProps(props, ['size', 'class'])

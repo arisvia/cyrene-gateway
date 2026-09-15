@@ -47,7 +47,7 @@ describe('Combos 页', () => {
     mount(Combos)
     await tick()
     expect(document.body.textContent).toContain('模型组合')
-    expect(document.body.textContent).toContain('还没有组合')
+    expect(document.body.textContent).toContain('暂无模型编排组合')
   })
 
   it('渲染已有组合及其模型与策略', async () => {
