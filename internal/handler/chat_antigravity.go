@@ -63,6 +63,9 @@ func (s *Server) handleAntigravityChat(
 	availableModels := s.getAntigravityAvailableModels()
 	targetModel, tier, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
 
+	if !isImage {
+		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider)
+	}
 	if isImage {
 		genConfig["maxOutputTokens"] = 8192
 		genConfig["imageConfig"] = map[string]any{"aspectRatio": "1:1"}

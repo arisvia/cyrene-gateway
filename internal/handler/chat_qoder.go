@@ -85,6 +85,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	// Build the request body map from the raw body to preserve unknown fields
 	var bodyMap map[string]any
 	json.Unmarshal(rawBody, &bodyMap)
+	s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider)
 
 	start := time.Now()
 	encodedBody, qoderKey, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
