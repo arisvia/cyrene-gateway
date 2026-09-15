@@ -99,9 +99,9 @@ func TestResolveModel_NamespacedVendorModel(t *testing.T) {
 
 func TestExtractModelReasoningEffort(t *testing.T) {
 	tests := []struct {
-		input       string
-		wantModel   string
-		wantEffort  string
+		input      string
+		wantModel  string
+		wantEffort string
 	}{
 		{"claude-3-7-sonnet(high)", "claude-3-7-sonnet", "high"},
 		{"antigravity/claude-3-7-sonnet(low)", "antigravity/claude-3-7-sonnet", "low"},
