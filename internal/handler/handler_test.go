@@ -586,12 +586,12 @@ func TestDisabledModelExcludedFromV1Models(t *testing.T) {
 	}
 }
 
-func TestBatchDisabledModelsAPI(t *testing.T) {
+func TestSetDisabledModelsAPI(t *testing.T) {
 	srv, database := setupTestServer(t)
 
-	// 1. Batch disable
+	// 1. Batch disable via models array
 	body := `{"models":["openai/gpt-4o","openai/gpt-4o-mini"],"disabled":true}`
-	req := httptest.NewRequest("POST", "/api/models/disabled/batch", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/api/models/disabled", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -607,14 +607,14 @@ func TestBatchDisabledModelsAPI(t *testing.T) {
 		t.Fatalf("expected both models disabled, got %+v", list)
 	}
 
-	// 2. Batch enable (delete)
-	body = `{"models":["openai/gpt-4o"],"disabled":false}`
-	req = httptest.NewRequest("POST", "/api/models/disabled/batch", strings.NewReader(body))
+	// 2. Single enable via model string fallback
+	body = `{"model":"openai/gpt-4o","disabled":false}`
+	req = httptest.NewRequest("POST", "/api/models/disabled", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 for batch enable, got %d", w.Code)
+		t.Fatalf("expected 200 for single enable, got %d", w.Code)
 	}
 
 	list, err = database.KVList("disabledModels")
@@ -628,9 +628,9 @@ func TestBatchDisabledModelsAPI(t *testing.T) {
 		t.Fatalf("openai/gpt-4o-mini should still be disabled")
 	}
 
-	// 3. Empty models slice
+	// 3. Empty payload
 	body = `{"models":[],"disabled":true}`
-	req = httptest.NewRequest("POST", "/api/models/disabled/batch", strings.NewReader(body))
+	req = httptest.NewRequest("POST", "/api/models/disabled", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)

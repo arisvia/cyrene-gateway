@@ -145,9 +145,7 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /api/models/alias", s.handleSetAlias)
 	s.Router.HandleFunc("DELETE /api/models/alias", s.handleDeleteAlias)
 	s.Router.HandleFunc("GET /api/models/disabled", s.handleListDisabledModels)
-	s.Router.HandleFunc("POST /api/models/disabled", s.handleDisableModel)
-	s.Router.HandleFunc("DELETE /api/models/disabled", s.handleEnableModel)
-	s.Router.HandleFunc("POST /api/models/disabled/batch", s.handleBatchDisabledModels)
+	s.Router.HandleFunc("POST /api/models/disabled", s.handleSetDisabledModels)
 	s.Router.HandleFunc("POST /api/models/test", s.handleTestModel)
 	s.Router.HandleFunc("GET /api/proxy-pools", s.handleListProxyPools)
 	s.Router.HandleFunc("POST /api/proxy-pools", s.handleCreateProxyPool)
@@ -1624,43 +1622,9 @@ func (s *Server) handleListDisabledModels(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, disabled)
 }
-
-func (s *Server) handleDisableModel(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSetDisabledModels(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model string `json:"model"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
-	if req.Model == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model required"})
-		return
-	}
-	if err := s.DB.KVSet("disabledModels", req.Model, "true"); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to disable model"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
-}
-
-func (s *Server) handleEnableModel(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Model string `json:"model"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
-	if err := s.DB.KVDelete("disabledModels", req.Model); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to enable model"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
-}
-
-func (s *Server) handleBatchDisabledModels(w http.ResponseWriter, r *http.Request) {
-	var req struct {
+		Model    string   `json:"model"`
 		Models   []string `json:"models"`
 		Disabled bool     `json:"disabled"`
 	}
@@ -1668,23 +1632,28 @@ func (s *Server) handleBatchDisabledModels(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-	if len(req.Models) == 0 {
+
+	targets := req.Models
+	if len(targets) == 0 && req.Model != "" {
+		targets = []string{req.Model}
+	}
+	if len(targets) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": 0})
 		return
 	}
 
 	var err error
 	if req.Disabled {
-		err = s.DB.KVBatchSet("disabledModels", req.Models, "true")
+		err = s.DB.KVBatchSet("disabledModels", targets, "true")
 	} else {
-		err = s.DB.KVBatchDelete("disabledModels", req.Models)
+		err = s.DB.KVBatchDelete("disabledModels", targets)
 	}
 
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to batch update disabled models"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update disabled models"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": len(req.Models)})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": len(targets)})
 }
 
 func (s *Server) handleListProxyPools(w http.ResponseWriter, r *http.Request) {
