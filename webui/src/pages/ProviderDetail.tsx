@@ -555,49 +555,64 @@ const ProviderDetail: Component = () => {
       setTestingModels(prev => ({ ...prev, [modelId]: false }))
     }
   }
+  const [batchBusy, setBatchBusy] = createSignal(false)
 
-  async function handleEnableAll() {
+  async function runBatchToggle(items: ProviderModel[], disabled: boolean) {
     if (!conn()) return
     const p = conn()!.provider
+    const chunkSize = 25
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize)
+      await Promise.all(chunk.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, disabled)))
+    }
+  }
+
+  async function handleEnableAll() {
+    if (!conn() || batchBusy()) return
     const toEnable = allDisplayModels().filter(m => m.enabled === false)
     if (toEnable.length === 0) {
       toast.info(t('toast.allModelsEnabled'))
       return
     }
+    setBatchBusy(true)
     setModelsData(prev => ({
       ...prev,
       registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: true })),
       customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: true })),
     }))
     try {
-      await Promise.all(toEnable.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, false)))
+      await runBatchToggle(toEnable, false)
       toast.success(t('toast.batchEnableSuccess', { count: toEnable.length }))
     } catch {
       toast.error(t('toast.batchEnableFailed'))
       refetchModels()
+    } finally {
+      setBatchBusy(false)
     }
   }
 
   async function handleDisableAll() {
-    if (!conn()) return
-    const p = conn()!.provider
+    if (!conn() || batchBusy()) return
     const toDisable = allDisplayModels().filter(m => m.enabled !== false)
     if (toDisable.length === 0) {
       toast.info(t('toast.allModelsDisabled'))
       return
     }
     if (!await confirm(t('providerDetail.confirmDisableAll', { count: toDisable.length }))) return
+    setBatchBusy(true)
     setModelsData(prev => ({
       ...prev,
       registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: false })),
       customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: false })),
     }))
     try {
-      await Promise.all(toDisable.map(m => store.setModelDisabled(`${p}/${m.id || m.name}`, true)))
+      await runBatchToggle(toDisable, true)
       toast.success(t('toast.batchDisableSuccess', { count: toDisable.length }))
     } catch {
       toast.error(t('toast.batchDisableFailed'))
       refetchModels()
+    } finally {
+      setBatchBusy(false)
     }
   }
 
@@ -913,16 +928,35 @@ const ProviderDetail: Component = () => {
                   </div>
                   <div class="hidden xl:block h-3.5 w-px bg-subtle/60 mx-0.5" />
                   <div class="flex items-center gap-1.5 flex-wrap">
+                    {/* 实时状态指示徽章 */}
+                    <span
+                      class={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono border transition-colors ${
+                        enabledModelsCount() === allDisplayModels().length
+                          ? 'bg-success/10 text-success border-success/30'
+                          : (enabledModelsCount() === 0
+                              ? 'bg-black/5 dark:bg-white/5 text-faint border-subtle'
+                              : 'bg-accent/10 text-accent border-accent/30')
+                      }`}
+                      title={t('providerDetail.modelsCountSummary', { total: allDisplayModels().length, enabled: enabledModelsCount() })}
+                    >
+                      <span class={`w-1.5 h-1.5 rounded-full ${
+                        enabledModelsCount() === allDisplayModels().length
+                          ? 'bg-success'
+                          : (enabledModelsCount() === 0 ? 'bg-faint' : 'bg-accent animate-pulse')
+                      }`} />
+                      <span>{enabledModelsCount()}/{allDisplayModels().length}</span>
+                    </span>
+
                     {/* 状态联动批量启停控制器（带实时数字反馈与状态色） */}
                     <div class="inline-flex rounded-lg p-0.5 bg-black/5 dark:bg-white/8 border border-subtle text-xs select-none">
                       <button
                         type="button"
                         class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
-                          disabledModelsCount() === 0
+                          disabledModelsCount() === 0 || batchBusy()
                             ? 'opacity-40 cursor-not-allowed text-faint'
                             : 'text-foreground hover:text-success hover:bg-success/10 cursor-pointer'
                         }`}
-                        disabled={disabledModelsCount() === 0}
+                        disabled={disabledModelsCount() === 0 || batchBusy()}
                         onClick={handleEnableAll}
                         title={disabledModelsCount() === 0 ? t('toast.allModelsEnabled') : t('providerDetail.tooltipEnableAll')}
                       >
@@ -935,11 +969,11 @@ const ProviderDetail: Component = () => {
                       <button
                         type="button"
                         class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
-                          enabledModelsCount() === 0
+                          enabledModelsCount() === 0 || batchBusy()
                             ? 'opacity-40 cursor-not-allowed text-faint'
                             : 'text-faint hover:text-danger hover:bg-danger/10 cursor-pointer'
                         }`}
-                        disabled={enabledModelsCount() === 0}
+                        disabled={enabledModelsCount() === 0 || batchBusy()}
                         onClick={handleDisableAll}
                         title={enabledModelsCount() === 0 ? t('toast.allModelsDisabled') : t('providerDetail.tooltipDisableAll')}
                       >
