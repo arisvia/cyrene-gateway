@@ -37,7 +37,9 @@ type Server struct {
 	Metrics     *metrics.M
 	Config      *config.Config
 	Cache       *cache.Cache
-	startTime   time.Time
+	startTime    time.Time
+	onRestart    func()
+	ShutdownFunc func(ctx context.Context) error
 }
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {
@@ -155,6 +157,14 @@ func (s *Server) registerRoutes() {
 	// System Backup & Restore
 	s.Router.HandleFunc("GET /api/system/backup", s.handleExportBackup)
 	s.Router.HandleFunc("POST /api/system/restore", s.handleRestoreBackup)
+
+	// System Ops & Maintenance
+	s.Router.HandleFunc("GET /api/system/stats", s.handleSystemStats)
+	s.Router.HandleFunc("POST /api/system/maintenance", s.handleSystemMaintenance)
+	s.Router.HandleFunc("GET /api/system/update/check", s.handleSystemUpdateCheck)
+	s.Router.HandleFunc("POST /api/system/update", s.handleSystemUpdate)
+	s.Router.HandleFunc("POST /api/system/restart", s.handleSystemRestart)
+	s.Router.HandleFunc("POST /api/system/rollback", s.handleSystemRollback)
 
 	// Provider connection testing
 	s.Router.HandleFunc("POST /api/providers/{id}/test", s.handleTestProvider)

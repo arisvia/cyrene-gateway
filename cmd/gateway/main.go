@@ -16,6 +16,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/handler"
+	"github.com/arisvia/cyrene-gateway/internal/updater"
 )
 
 func main() {
@@ -24,6 +25,9 @@ func main() {
 		fmt.Printf("cyrene-gateway %s\n", handler.Version())
 		return
 	}
+	// Clean up stale backup binary from previous updates (.old)
+	updater.CleanupOldBinary("")
+
 	// Auth secret: -secret flag wins; else load/generate <data-dir>/auth-secret
 	auth.SetSecret(cfg.Secret)
 	auth.InitSecretFile(cfg.DataDir)
@@ -61,14 +65,36 @@ func main() {
 	defer bgCancel()
 	srv.StartBackgroundModelSync(bgCtx, 6*time.Hour)
 
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
+	isRestart := os.Getenv("CYRENE_RESTART") == "1"
+	maxRetries := 1
+	if isRestart {
+		maxRetries = 30 // retry for up to 6 seconds during restart port handover
+	}
+
+	var ln net.Listener
+	for i := range maxRetries {
+		var err error
+		ln, err = net.Listen("tcp", addr)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			slog.Error("Failed to bind gateway port", "addr", addr, "error", err)
+			os.Exit(1)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
 	httpServer := &http.Server{
-		Addr:              net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Addr:              addr,
 		Handler:           srv.Handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      5 * time.Minute,
 		IdleTimeout:       120 * time.Second,
 	}
+	srv.ShutdownFunc = httpServer.Shutdown
 
 	// Graceful shutdown
 	done := make(chan os.Signal, 1)
@@ -76,8 +102,8 @@ func main() {
 	serverErr := make(chan error, 1)
 
 	go func() {
-		slog.Info("Gateway listening", slog.String("addr", httpServer.Addr))
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		slog.Info("Gateway listening", slog.String("addr", addr))
+		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
 	}()

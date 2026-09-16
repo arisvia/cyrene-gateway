@@ -5,7 +5,7 @@ import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
   Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition,
   IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
-  IconDownload, IconUpload, IconAlertTriangle,
+  IconDownload, IconUpload, IconAlertTriangle, IconDatabase, IconServer, IconRotateCcw, IconActivity,
 } from '@/components/ui'
 import { formatUptime, formatVersion, formatBytes, type UptimeUnits } from '@/lib/format'
 import { useToast } from '@/lib/toast'
@@ -70,11 +70,202 @@ const Settings: Component = () => {
 
   // TokenSaver 排除项状态
   // 设置分类 Tab
-  const [activeTab, setActiveTab] = createSignal<'gateway' | 'appearance' | 'data'>('gateway')
-  function handleTabChange(tab: 'gateway' | 'appearance' | 'data') {
+  type ActiveTabType = 'gateway' | 'appearance' | 'data' | 'ops'
+  const [activeTab, setActiveTab] = createSignal<ActiveTabType>('gateway')
+  function handleTabChange(tab: ActiveTabType) {
     setActiveTab(tab)
+    if (tab === 'ops') {
+      void fetchSystemStats()
+    }
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
+
+  // ── 系统运维与监控状态 ──
+  interface SystemStatsData {
+    version: string
+    uptimeSeconds: number
+    startTime: string
+    pid: number
+    os: string
+    arch: string
+    numCPU: number
+    goVersion: string
+    goroutines: number
+    inDocker: boolean
+    memory: {
+      allocBytes: number
+      totalAllocBytes: number
+      sysBytes: number
+      heapAllocBytes: number
+      heapInuseBytes: number
+      numGC: number
+    }
+    storage?: {
+      dbSizeBytes: number
+      walSizeBytes: number
+      pageCount: number
+      pageSize: number
+      totalRequests: number
+      totalDetails: number
+    }
+  }
+
+  interface UpdateCheckData {
+    currentVersion: string
+    latestVersion: string
+    hasUpdate: boolean
+    releaseNotes: string
+    publishedAt: string
+    assetName?: string
+    assetSize?: number
+  }
+
+  const [systemStats, setSystemStats] = createSignal<SystemStatsData | null>(null)
+  const [loadingStats, setLoadingStats] = createSignal(false)
+  const [updateInfo, setUpdateInfo] = createSignal<UpdateCheckData | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = createSignal(false)
+  const [applyingUpdate, setApplyingUpdate] = createSignal(false)
+  const [restarting, setRestarting] = createSignal(false)
+  const [pruneDays, setPruneDays] = createSignal(30)
+  const [runningMaint, setRunningMaint] = createSignal<string | null>(null)
+
+  async function fetchSystemStats() {
+    setLoadingStats(true)
+    try {
+      const data = await api<SystemStatsData>('/api/system/stats')
+      setSystemStats(data)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to fetch system stats')
+    } finally {
+      setLoadingStats(false)
+    }
+  }
+
+  async function handleCheckUpdate() {
+    setCheckingUpdate(true)
+    try {
+      const data = await api<UpdateCheckData>('/api/system/update/check')
+      setUpdateInfo(data)
+      if (data.hasUpdate) {
+        toast.info(`${t('settings.ops.hasUpdateBadge')}: v${data.latestVersion}`)
+      } else {
+        toast.success(t('settings.ops.upToDateBadge'))
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to check update')
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
+
+  async function handleApplyUpdate() {
+    if (!updateInfo()?.hasUpdate) return
+    const confirmed = await confirm({
+      title: t('settings.ops.updateTitle'),
+      message: `${t('settings.ops.updateNow')} (v${updateInfo()?.latestVersion})?`,
+      variant: 'primary',
+    })
+    if (!confirmed) return
+
+    setApplyingUpdate(true)
+    try {
+      await apiPost('/api/system/update', {})
+      toast.success(t('settings.ops.updateSuccess'))
+      const shouldRestart = await confirm({
+        title: t('settings.ops.restartTitle'),
+        message: t('settings.ops.restartConfirm'),
+        variant: 'primary',
+      })
+      if (shouldRestart) {
+        await handleTriggerRestart()
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to apply update')
+    } finally {
+      setApplyingUpdate(false)
+    }
+  }
+
+  async function handleTriggerRestart() {
+    const confirmed = await confirm({
+      title: t('settings.ops.restartTitle'),
+      message: t('settings.ops.restartConfirm'),
+      variant: 'danger',
+    })
+    if (!confirmed) return
+
+    setRestarting(true)
+    try {
+      await apiPost('/api/system/restart', {})
+    } catch {
+      // Ignore network abort if server closes instantly
+    }
+
+    let attempts = 0
+    const maxAttempts = 30
+    const interval = setInterval(async () => {
+      attempts++
+      try {
+        const h = await api<{ status: string }>('/api/health')
+        if (h && h.status === 'ok') {
+          clearInterval(interval)
+          setRestarting(false)
+          toast.success(t('settings.ops.reconnectSuccess'))
+          void fetchSystemStats()
+          void store.loadSettings()
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          clearInterval(interval)
+          setRestarting(false)
+          toast.error('Reconnection timed out. Please refresh the page manually.')
+        }
+      }
+    }, 1000)
+  }
+
+  async function handleRollback() {
+    const confirmed = await confirm({
+      title: t('settings.ops.rollbackBtn'),
+      message: t('settings.ops.rollbackConfirm'),
+      variant: 'danger',
+    })
+    if (!confirmed) return
+
+    try {
+      await apiPost('/api/system/rollback', {})
+      toast.success(t('settings.ops.rollbackSuccess'))
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Rollback failed')
+    }
+  }
+
+  async function handleMaintenance(action: 'checkpoint' | 'vacuum' | 'prune_logs') {
+    setRunningMaint(action)
+    try {
+      const res = await apiPost<{ success: boolean; prunedHistory?: number; prunedDetails?: number }>(
+        '/api/system/maintenance',
+        { action, retentionDays: pruneDays() }
+      )
+      if (action === 'checkpoint') {
+        toast.success(t('settings.ops.checkpointSuccess'))
+      } else if (action === 'vacuum') {
+        toast.success(t('settings.ops.vacuumSuccess'))
+      } else if (action === 'prune_logs') {
+        toast.success(
+          t('settings.ops.pruneSuccess', {
+            history: String(res.prunedHistory ?? 0),
+            details: String(res.prunedDetails ?? 0),
+          })
+        )
+      }
+      void fetchSystemStats()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Maintenance action failed')
+    } finally {
+      setRunningMaint(null)
     }
   }
 
@@ -297,6 +488,7 @@ const Settings: Component = () => {
               { value: 'gateway', label: t('settings.tabs.gateway') },
               { value: 'appearance', label: t('settings.tabs.appearance') },
               { value: 'data', label: t('settings.tabs.data') },
+              { value: 'ops', label: t('settings.tabs.ops') },
             ]}
             value={activeTab()}
             onChange={handleTabChange}
@@ -314,13 +506,17 @@ const Settings: Component = () => {
               <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
               <span class="truncate">{t('settings.hosts.data')}</span>
             </Show>
+            <Show when={activeTab() === 'ops'}>
+              <span class="w-1.5 h-1.5 rounded-full bg-info shrink-0" />
+              <span class="truncate">{t('settings.hosts.ops')}</span>
+            </Show>
           </div>
         </div>
       </PageHeader>
 
       <TabTransition
         value={activeTab()}
-        order={['gateway', 'appearance', 'data']}
+        order={['gateway', 'appearance', 'data', 'ops']}
       >
         {tab => (
           <Switch>
@@ -960,6 +1156,327 @@ const Settings: Component = () => {
           </Card>
               </div>
             </Match>
+            <Match when={tab === 'ops'}>
+              <div class="space-y-4">
+                {/* 1. 系统运行指标卡片 */}
+                <Card class="p-5 space-y-4">
+                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+                    <div class="flex items-center gap-2">
+                      <IconActivity size={16} class="text-accent shrink-0" />
+                      <div>
+                        <h3 class="text-sm font-semibold">{t('settings.ops.statsTitle')}</h3>
+                        <p class="text-xs text-faint mt-0.5">{t('settings.ops.statsSubtitle')}</p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={loadingStats()}
+                      onClick={fetchSystemStats}
+                      class="flex items-center gap-1 text-xs"
+                    >
+                      <IconRotateCcw size={12} />
+                      <span>{t('settings.ops.refreshStats')}</span>
+                    </Button>
+                  </div>
+
+                  <Show
+                    when={systemStats()}
+                    fallback={
+                      <div class="py-8 text-center text-xs text-faint space-y-2">
+                        <p>尚未加载运行指标</p>
+                        <Button variant="secondary" size="sm" onClick={fetchSystemStats}>
+                          {t('settings.ops.refreshStats')}
+                        </Button>
+                      </div>
+                    }
+                  >
+                    {stats => (
+                      <div class="space-y-4">
+                        {/* 状态徽标与基础环境 */}
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
+                            <span class="text-[11px] text-faint">{t('settings.ops.osArch')}</span>
+                            <div class="text-xs font-mono font-medium text-foreground truncate">
+                              {stats().os} / {stats().arch}
+                            </div>
+                          </div>
+                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
+                            <span class="text-[11px] text-faint">{t('settings.ops.uptime')}</span>
+                            <div class="text-xs font-mono font-medium text-foreground">
+                              {formatUptime(stats().uptimeSeconds, uptimeUnits())}
+                            </div>
+                          </div>
+                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
+                            <span class="text-[11px] text-faint">{t('settings.ops.pid')} / CPU</span>
+                            <div class="text-xs font-mono font-medium text-foreground">
+                              PID {stats().pid} · {stats().numCPU} Cores
+                            </div>
+                          </div>
+                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
+                            <span class="text-[11px] text-faint">{t('settings.ops.goroutines')}</span>
+                            <div class="text-xs font-mono font-medium text-foreground">
+                              {stats().goroutines}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 内存与存储仪表 */}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-subtle/40">
+                          {/* 内存 */}
+                          <div class="p-3.5 rounded-lg bg-surface/30 border border-subtle/40 space-y-2">
+                            <div class="flex items-center justify-between text-xs font-medium">
+                              <span class="flex items-center gap-1.5 text-accent">
+                                <IconServer size={14} />
+                                <span>Go Runtime 内存</span>
+                              </span>
+                              <Badge tone="blue">GC: {stats().memory.numGC}</Badge>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                              <div>
+                                <span class="text-[11px] text-faint block">{t('settings.ops.memoryAlloc')}</span>
+                                <span class="font-mono font-medium">{formatBytes(stats().memory.allocBytes)}</span>
+                              </div>
+                              <div>
+                                <span class="text-[11px] text-faint block">{t('settings.ops.memorySys')}</span>
+                                <span class="font-mono font-medium">{formatBytes(stats().memory.sysBytes)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* SQLite 存储 */}
+                          <div class="p-3.5 rounded-lg bg-surface/30 border border-subtle/40 space-y-2">
+                            <div class="flex items-center justify-between text-xs font-medium">
+                              <span class="flex items-center gap-1.5 text-warning">
+                                <IconDatabase size={14} />
+                                <span>SQLite 物理存储</span>
+                              </span>
+                              <Badge tone={stats().inDocker ? 'amber' : 'green'}>
+                                {stats().inDocker ? t('settings.ops.inDockerBadge') : t('settings.ops.nativeBadge')}
+                              </Badge>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                              <div>
+                                <span class="text-[11px] text-faint block">{t('settings.ops.dbSize')}</span>
+                                <span class="font-mono font-medium">{formatBytes(stats().storage?.dbSizeBytes ?? 0)}</span>
+                              </div>
+                              <div>
+                                <span class="text-[11px] text-faint block">{t('settings.ops.walSize')}</span>
+                                <span class="font-mono font-medium">{formatBytes(stats().storage?.walSizeBytes ?? 0)}</span>
+                              </div>
+                              <div>
+                                <span class="text-[11px] text-faint block">{t('settings.ops.totalRequests')}</span>
+                                <span class="font-mono font-medium">{stats().storage?.totalRequests ?? 0}</span>
+                              </div>
+                              <div>
+                                <span class="text-[11px] text-faint block">{t('settings.ops.totalDetails')}</span>
+                                <span class="font-mono font-medium">{stats().storage?.totalDetails ?? 0}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </Show>
+                </Card>
+
+                {/* 2. 在线自更新卡片 */}
+                <Card class="p-5 space-y-4">
+                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+                    <div class="flex items-center gap-2">
+                      <IconDownload size={16} class="text-accent shrink-0" />
+                      <div>
+                        <h3 class="text-sm font-semibold">{t('settings.ops.updateTitle')}</h3>
+                        <p class="text-xs text-faint mt-0.5">{t('settings.ops.updateSubtitle')}</p>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={checkingUpdate()}
+                        onClick={handleCheckUpdate}
+                        class="flex items-center gap-1 text-xs"
+                      >
+                        <IconRotateCcw size={12} />
+                        <span>{t('settings.ops.checkUpdate')}</span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Show
+                    when={!systemStats()?.inDocker}
+                    fallback={
+                      <div class="p-3.5 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning leading-relaxed flex items-start gap-2">
+                        <IconAlertTriangle size={15} class="shrink-0 mt-0.5" />
+                        <span>{t('settings.ops.dockerNotice')}</span>
+                      </div>
+                    }
+                  >
+                    <div class="space-y-3.5">
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                        <div class="space-y-1">
+                          <div class="flex items-center gap-2">
+                            <span class="text-xs text-faint">{t('settings.ops.currentVersion')}:</span>
+                            <span class="font-mono text-xs font-semibold">v{store.version()}</span>
+                            <Show when={updateInfo()}>
+                              <Show
+                                when={updateInfo()?.hasUpdate}
+                                fallback={<Badge tone="green">{t('settings.ops.upToDateBadge')}</Badge>}
+                              >
+                                <Badge tone="amber">{t('settings.ops.hasUpdateBadge')} v{updateInfo()?.latestVersion}</Badge>
+                              </Show>
+                            </Show>
+                          </div>
+                          <Show when={updateInfo()?.hasUpdate}>
+                            <p class="text-[11px] text-faint">
+                              {updateInfo()?.assetName} ({formatBytes(updateInfo()?.assetSize ?? 0)}) · {updateInfo()?.publishedAt?.slice(0, 10)}
+                            </p>
+                          </Show>
+                        </div>
+
+                        <div class="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleRollback}
+                            class="text-xs text-muted"
+                          >
+                            {t('settings.ops.rollbackBtn')}
+                          </Button>
+                          <Show when={updateInfo()?.hasUpdate}>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              loading={applyingUpdate()}
+                              onClick={handleApplyUpdate}
+                              class="text-xs"
+                            >
+                              {t('settings.ops.updateNow')}
+                            </Button>
+                          </Show>
+                        </div>
+                      </div>
+
+                      <Show when={updateInfo()?.hasUpdate && updateInfo()?.releaseNotes}>
+                        <div class="p-3 rounded-lg bg-surface/20 border border-subtle/30 text-xs font-mono text-muted max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                          {updateInfo()?.releaseNotes}
+                        </div>
+                      </Show>
+                    </div>
+                  </Show>
+                </Card>
+
+                {/* 3. 服务控制与平滑重启 */}
+                <Card class="p-5 space-y-4">
+                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+                    <div class="flex items-center gap-2">
+                      <IconRotateCcw size={16} class="text-warning shrink-0" />
+                      <div>
+                        <h3 class="text-sm font-semibold">{t('settings.ops.restartTitle')}</h3>
+                        <p class="text-xs text-faint mt-0.5">{t('settings.ops.restartSubtitle')}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                    <div class="text-xs text-faint leading-relaxed max-w-lg">
+                      重启网关将平滑交接当前监听端口并重新加载配置，正在处理的长连接流式输出将先行排空后退出，前台控制台将在重启后自动重新连接。
+                    </div>
+                    <Button
+                      variant="danger"
+                      disabled={systemStats()?.inDocker}
+                      onClick={handleTriggerRestart}
+                      class="flex items-center gap-1.5 shrink-0"
+                    >
+                      <IconRotateCcw size={14} />
+                      <span>{t('settings.ops.restartBtn')}</span>
+                    </Button>
+                  </div>
+                </Card>
+
+                {/* 4. 存储与数据库维护 */}
+                <Card class="p-5 space-y-4">
+                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
+                    <div class="flex items-center gap-2">
+                      <IconDatabase size={16} class="text-accent shrink-0" />
+                      <div>
+                        <h3 class="text-sm font-semibold">{t('settings.ops.maintTitle')}</h3>
+                        <p class="text-xs text-faint mt-0.5">{t('settings.ops.maintSubtitle')}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="space-y-3.5">
+                    {/* Checkpoint */}
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                      <div class="space-y-0.5">
+                        <div class="text-xs font-semibold">{t('settings.ops.checkpointBtn')}</div>
+                        <div class="text-[11px] text-faint">{t('settings.ops.checkpointDesc')}</div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={runningMaint() === 'checkpoint'}
+                        onClick={() => handleMaintenance('checkpoint')}
+                        class="shrink-0 text-xs"
+                      >
+                        {t('settings.ops.checkpointBtn')}
+                      </Button>
+                    </div>
+
+                    {/* Vacuum */}
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                      <div class="space-y-0.5">
+                        <div class="text-xs font-semibold">{t('settings.ops.vacuumBtn')}</div>
+                        <div class="text-[11px] text-faint">{t('settings.ops.vacuumDesc')}</div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={runningMaint() === 'vacuum'}
+                        onClick={() => handleMaintenance('vacuum')}
+                        class="shrink-0 text-xs"
+                      >
+                        {t('settings.ops.vacuumBtn')}
+                      </Button>
+                    </div>
+
+                    {/* Prune Logs */}
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                      <div class="space-y-1">
+                        <div class="text-xs font-semibold">{t('settings.ops.pruneBtn')}</div>
+                        <div class="text-[11px] text-faint">{t('settings.ops.pruneDesc')}</div>
+                        <div class="flex items-center gap-2 pt-1">
+                          <span class="text-[11px] text-muted">{t('settings.ops.retentionDaysLabel')}:</span>
+                          <Select
+                            options={[
+                              { value: '7', label: '7 天' },
+                              { value: '14', label: '14 天' },
+                              { value: '30', label: '30 天' },
+                              { value: '60', label: '60 天' },
+                              { value: '90', label: '90 天' },
+                            ]}
+                            value={String(pruneDays())}
+                            onChange={v => setPruneDays(Number(v))}
+                            class="!w-24 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        loading={runningMaint() === 'prune_logs'}
+                        onClick={() => handleMaintenance('prune_logs')}
+                        class="shrink-0 text-xs"
+                      >
+                        {t('settings.ops.pruneBtn')}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            </Match>
           </Switch>
         )}
       </TabTransition>
@@ -998,6 +1515,25 @@ const Settings: Component = () => {
           </div>
         </div>
       </Card>
+
+      {/* ── 重启全屏探活与重连遮罩 ── */}
+      <Show when={restarting()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card class="max-w-md w-full p-6 text-center space-y-4 shadow-2xl border border-accent/30">
+            <div class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto text-accent">
+              <IconRotateCcw size={24} class="animate-spin" />
+            </div>
+            <div class="space-y-1.5">
+              <h3 class="text-base font-semibold">{t('settings.ops.restartingModalTitle')}</h3>
+              <p class="text-xs text-faint leading-relaxed">{t('settings.ops.restartingModalDesc')}</p>
+            </div>
+            <div class="flex items-center justify-center gap-2 text-xs font-mono text-accent pt-1">
+              <span class="inline-block w-2 h-2 rounded-full bg-accent animate-ping" />
+              <span>正在探活重连中...</span>
+            </div>
+          </Card>
+        </div>
+      </Show>
     </div>
   )
 }
