@@ -42,7 +42,7 @@ npm run build
 1. **类型安全**：前端严禁使用 `any` 或 `as any`，使用 `unknown` 配合类型守卫（Type Guard）或标准领域接口。
 2. **样式层纪律**：Tailwind CSS v4 基础元素重置与样式必须放入 `@layer base` 中，避免未分层样式击穿 `@layer utilities`。
 3. **出站安全**：所有出站 HTTP 客户端必须通过 `SafeHTTPClient` 实施 SSRF 校验，严防私网与云元数据地址逃逸。
-4. **提交规约**：遵循 `docs/git-commits.md`（Conventional Commits），保持提交粒度单一、原子化。
+4. **提交规约**：遵循 Conventional Commits（`feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`），保持提交粒度单一、原子化。
 5. **动态模型同步纪律**：所有提供商（Provider）严禁在 `internal/provider/registry_data.go` 中硬编码静态 `Models` 列表（除纯离线/专有无 catalog 协议端点外）。所有模型必须保持与上游动态拉取与缓存机制同步（统一配置 `ModelsURL` 或专属动态抓取器），杜绝由于本地写死模型列表导致与上游最新目录漂移。
 6. **UI 组件一致性纪律**：
    - 页面与卡片空状态一律复用 `@/components/ui` 的 `<Empty />`（Rich 模式传 `icon`、`title`、`description`、`action`；紧凑模式传 `message`），严禁各业务页面私造空状态 DOM 或重复放置 CTA 按钮。
@@ -63,6 +63,28 @@ npm run build
 10. **系统级端口交接与容器防呆（Process Handover & Container Safety）**：
     - 服务自重启与端口平滑交接时，必须先关闭旧 HTTP Listener 释放端口，再启动带 `CYRENE_RESTART=1` 的子进程进行重试绑定，杜绝 Windows/Linux 下的 `EADDRINUSE` 端口冲突。
     - 凡涉及物理二进制覆盖、原地重启或宿主系统级别操作，必须优先通过 `system.IsRunningInDocker()` 探测，容器环境下坚决阻断并给出拉取镜像提示，避免容器内 PID 1 退出导致的死循环崩溃。
+11. **本地预提交与 CI 门禁一致性纪律（Strict Pre-Commit & CI Consistency）**：
+    - 每次 git commit 之前，必须在本地完整执行与 GitHub Actions `build.yml` 严格一致的全套门禁命令：
+      ```sh
+      # 1. Go 代码格式化与静态检查（绝对零容忍格式差异）
+      gofmt -w .
+      if [ -n "$(gofmt -l .)" ]; then echo "Unformatted Go code found:"; gofmt -d .; exit 1; fi
+      go vet ./...
+      # 2. 前端类型检查、单元测试与生产打包
+      cd webui && npm run typecheck && npm test && npm run build && cd ..
+      # 3. 后端全量测试、竞争检测与编译验证
+      go test -count=1 ./...
+      go test -race ./...
+      go build ./...
+      ```
+    - 严禁未经本地全套检验盲目提交，杜绝把未格式化（`gofmt`）或破坏静态检查的代码推入仓库。
+12. **滚动容器防裁切与焦点环纪律（Scroll Container & Focus Ring Discipline）**：
+    - 凡 `overflow-y-auto` 等产生 CSS 滚动条的容器，严禁单侧只加 `pr-*`，必须使用对称的 `px-*`（如 `px-1`、`px-1.5`），为子元素向外扩散的 `focus:ring`（`box-shadow`）预留呼吸缓冲区，杜绝左边缘被裁剪。
+    - 凡包裹交互控件的转场过渡容器（如 `TabTransition`），严禁全时段硬编码 `overflow-x-hidden`，必须仅在活跃动画期间按需激活（`isTransitioning() ? 'overflow-x-hidden' : ''`），静态状态下保持自然的 `visible` 溢出。
+    - 表单项组件（如带步进器的输入框）本身已常驻展示当前数值时，上层标题标签行严禁重复显示相同的动态数值，保持单一数据源。
+13. **文档极简与单一事实源（Lean Documentation & Zero Noise）**：
+    - 严禁将一次性临时会话流水账、过期草稿、历史迁移蓝图或废弃接口文档遗留在代码库中。
+    - 维护精简统一的权威事实源：架构看 `docs/ARCHITECTURE.md`，规约看 `AGENTS.md`，版本看 `CHANGELOG.md`，对外能力看 `docs/skills/`，杜绝相互冲突的多重文档增加 AI Agent 的上下文消耗与幻觉误导。
 
 - 严禁在代码与测试用例中提交真实的 API Key、OAuth Client Secret 等敏感凭证。
 - 未经明确指示，不得破坏 CI 门禁（`build.yml`）与多架构发布流程（`release.yml`）。
