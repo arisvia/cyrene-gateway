@@ -80,7 +80,7 @@ func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) 
 	qoderCatalogMu.Unlock()
 
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = SafeHTTPClient(15*time.Second, false)
 	}
 
 	// Fetch model list with COSY signing (empty body). jt- tokens must use

@@ -232,7 +232,7 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 		return nil, fmt.Errorf("provider %s has no token URL configured", providerID)
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = SafeHTTPClient(30*time.Second, false)
 	}
 
 	var resp *http.Response
@@ -321,7 +321,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		return nil, fmt.Errorf("provider %s does not support device code flow", providerID)
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = SafeHTTPClient(30*time.Second, false)
 	}
 
 	var resp *http.Response
@@ -526,7 +526,7 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		return nil, fmt.Errorf("provider %s has no token URL configured", providerID)
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = SafeHTTPClient(30*time.Second, false)
 	}
 
 	var resp *http.Response
@@ -845,12 +845,12 @@ func decodeJWTPayload(b64 string) (map[string]any, error) {
 	if pad := len(b64) % 4; pad != 0 {
 		b64 += strings.Repeat("=", 4-pad)
 	}
-	decoded, err := base64.StdEncoding.DecodeString(b64)
+	data, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
 		return nil, err
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(decoded, &payload); err != nil {
+	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
 	return payload, nil

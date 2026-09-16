@@ -213,7 +213,7 @@ var (
 func discoverXaiTokenURL() string {
 	xaiDiscoveryOnce.Do(func() {
 		xaiTokenURL = "https://auth.x.ai/oauth2/token" // static fallback
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := SafeHTTPClient(10*time.Second, false)
 		resp, err := client.Get("https://auth.x.ai/.well-known/openid-configuration")
 		if err != nil {
 			return
@@ -243,7 +243,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 		return nil, fmt.Errorf("no refresh token available")
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = SafeHTTPClient(30*time.Second, false)
 	}
 
 	// Providers with no refresh support (long-lived tokens or device-code only).
@@ -484,7 +484,7 @@ func ExchangeCopilotToken(githubAccessToken string, client *http.Client) (*Refre
 		return nil, fmt.Errorf("github access token is required")
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = SafeHTTPClient(30*time.Second, false)
 	}
 
 	req, err := http.NewRequest("GET", CopilotTokenURL, nil)

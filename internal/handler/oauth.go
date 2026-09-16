@@ -110,14 +110,14 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	provider.ClearSession(state)
 
 	// Exchange code for tokens
-	tokens, err := provider.ExchangeCode(providerID, code, redirectURI, codeVerifier, nil)
+	tokens, err := provider.ExchangeCode(providerID, code, redirectURI, codeVerifier, s.getHTTPClient(30*time.Second))
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	// Antigravity requires discovering the Cloud AI Companion project ID
 	if providerID == "antigravity" && tokens.AccessToken != "" {
-		projID, err := DiscoverAntigravityProject(r.Context(), nil, tokens.AccessToken)
+		projID, err := DiscoverAntigravityProject(r.Context(), s.getHTTPClient(15*time.Second), tokens.AccessToken)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": fmt.Sprintf("failed to discover Antigravity project: %v", err),
@@ -232,7 +232,7 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 		}
 		provider.ClearSession(req.State)
 	}
-	tokens, err := provider.ExchangeCode(providerID, req.Code, req.RedirectURI, req.CodeVerifier, nil)
+	tokens, err := provider.ExchangeCode(providerID, req.Code, req.RedirectURI, req.CodeVerifier, s.getHTTPClient(30*time.Second))
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -286,7 +286,7 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := provider.RequestDeviceCode(providerID, nil)
+	result, err := provider.RequestDeviceCode(providerID, s.getHTTPClient(30*time.Second))
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -328,13 +328,13 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 	}
 	// Qoder custom poll: GET with nonce + verifier
 	if providerID == "qoder" {
-		result, err := provider.PollQoderDeviceToken(req.Nonce, req.CodeVerifier, nil)
+		result, err := provider.PollQoderDeviceToken(req.Nonce, req.CodeVerifier, s.getHTTPClient(15*time.Second))
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
 		if result.Status == "ok" {
-			name, email := provider.FetchQoderUserInfo(result.AccessToken, nil)
+			name, email := provider.FetchQoderUserInfo(result.AccessToken, s.getHTTPClient(15*time.Second))
 			expiresAt := ""
 			if result.ExpiresAt > 0 {
 				expiresAt = time.UnixMilli(result.ExpiresAt).UTC().Format(time.RFC3339)
@@ -388,7 +388,7 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	result, err := provider.PollDeviceCode(providerID, req.DeviceCode, req.CodeVerifier, req.ExtraData, nil)
+	result, err := provider.PollDeviceCode(providerID, req.DeviceCode, req.CodeVerifier, req.ExtraData, s.getHTTPClient(30*time.Second))
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
@@ -554,7 +554,7 @@ func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, refreshErr := provider.DedupRefresh(providerID, conn.Data.AccessToken, func() (*provider.RefreshResult, error) {
-		return provider.RefreshCredentials(providerID, conn, nil)
+		return provider.RefreshCredentials(providerID, conn, s.getHTTPClient(30*time.Second))
 	})
 	if refreshErr != nil {
 		status := http.StatusBadGateway

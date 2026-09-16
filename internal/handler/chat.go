@@ -242,7 +242,7 @@ func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 	}
 	oldToken := conn.Data.AccessToken
 	result, err := provider.DedupRefresh(conn.Provider, oldToken, func() (*provider.RefreshResult, error) {
-		return provider.RefreshCredentials(conn.Provider, conn, nil)
+		return provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
 	})
 	if err != nil {
 		slog.Warn("Token refresh failed", slog.String("provider", conn.Provider), "error", err)
@@ -290,7 +290,7 @@ func (s *Server) tryRefreshCopilotToken(conn *model.ProviderConnection) bool {
 	}
 
 	result, err := provider.DedupRefresh("copilot", githubToken, func() (*provider.RefreshResult, error) {
-		return provider.ExchangeCopilotToken(githubToken, nil)
+		return provider.ExchangeCopilotToken(githubToken, s.getHTTPClient(30*time.Second))
 	})
 	if err != nil {
 		slog.Warn("Copilot token exchange failed", "error", err)
@@ -751,7 +751,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		io.ReadAll(resp.Body)
 		resp.Body.Close()
 
-		result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, nil)
+		result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
 		if refreshErr == nil {
 			provider.ApplyRefreshResult(conn, result)
 			if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {

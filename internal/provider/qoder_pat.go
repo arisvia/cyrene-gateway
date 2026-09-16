@@ -93,7 +93,7 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 	}
 
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = SafeHTTPClient(30*time.Second, false)
 	}
 
 	// Fast path: cached and not near expiry.

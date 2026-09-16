@@ -338,7 +338,7 @@ func PollQoderDeviceToken(nonce, codeVerifier string, client *http.Client) (*Qod
 		return nil, fmt.Errorf("pollQoderDeviceToken: missing nonce or code verifier")
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = SafeHTTPClient(15*time.Second, false)
 	}
 
 	pollURL := fmt.Sprintf("%s?nonce=%s&verifier=%s&challenge_method=S256",
@@ -407,7 +407,7 @@ func PollQoderDeviceToken(nonce, codeVerifier string, client *http.Client) (*Qod
 // FetchQoderUserInfo fetches profile info for a Qoder token (best-effort).
 func FetchQoderUserInfo(accessToken string, client *http.Client) (name, email string) {
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = SafeHTTPClient(15*time.Second, false)
 	}
 	req, err := http.NewRequest("GET", QoderUserinfoURL, nil)
 	if err != nil {

@@ -88,9 +88,9 @@ func qoderPATMockServers(t *testing.T, exchangeStatus int, jobToken string) *htt
 func TestResolveQoderCredential_PATExchange(t *testing.T) {
 	pat := "pt-test-exchange-1"
 	InvalidateQoderPATCache(pat)
-	qoderPATMockServers(t, http.StatusOK, "jt-exchanged")
+	srv := qoderPATMockServers(t, http.StatusOK, "jt-exchanged")
 
-	cred, err := ResolveQoderCredential(pat, "", nil)
+	cred, err := ResolveQoderCredential(pat, "", srv.Client())
 	if err != nil {
 		t.Fatalf("ResolveQoderCredential failed: %v", err)
 	}
@@ -151,9 +151,9 @@ func TestResolveQoderCredential_Cached(t *testing.T) {
 func TestResolveQoderCredential_ExchangeFailure(t *testing.T) {
 	pat := "pt-test-fail-1"
 	InvalidateQoderPATCache(pat)
-	qoderPATMockServers(t, http.StatusForbidden, "")
+	srv := qoderPATMockServers(t, http.StatusForbidden, "")
 
-	_, err := ResolveQoderCredential(pat, "", nil)
+	_, err := ResolveQoderCredential(pat, "", srv.Client())
 	if err == nil {
 		t.Fatal("expected error for failed exchange")
 	}
