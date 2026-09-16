@@ -1244,11 +1244,8 @@ main();
               </div>
 
               {/* 最大输出 Tokens */}
-              <div class="space-y-1">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-muted font-medium">{t('playground.paramMaxTokens')}</span>
-                  <span class="font-mono text-foreground">{maxTokens()}</span>
-                </div>
+              <div class="space-y-1.5">
+                <label class="block text-xs font-medium text-muted leading-none">{t('playground.paramMaxTokens')}</label>
                 <Input
                   type="number"
                   min={64}
