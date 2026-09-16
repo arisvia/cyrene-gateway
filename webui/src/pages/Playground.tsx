@@ -102,20 +102,51 @@ const Playground: Component = () => {
   // 参数抽屉显示状态（桌面端默认展开，移动端默认收起）
   const [showParams, setShowParams] = createSignal(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
 
-  // 对话历史与内部滚动引用
-  const [turns, setTurns] = createSignal<Turn[]>([])
+  // 对话历史：按模式隔离（单模型测试与双模型对比各自保持独立消息流与上下文，切换模式不串流）
+  const [turnsAll, setTurnsAll] = createSignal<Turn[]>([])
+  const turns = () => turnsAll().filter(t => t.mode === mode())
+  const setTurns = (updater: Turn[] | ((prev: Turn[]) => Turn[])) => {
+    setTurnsAll(updater)
+  }
+
   const [inputPrompt, setInputPrompt] = createSignal('')
-  let chatBoxRef: HTMLDivElement | undefined
+  let chatContainerRef: HTMLDivElement | undefined
+  let isNearBottom = true
+
+  function handleScroll() {
+    if (!chatContainerRef) return
+    const threshold = 120
+    const distanceToBottom = chatContainerRef.scrollHeight - chatContainerRef.scrollTop - chatContainerRef.clientHeight
+    isNearBottom = distanceToBottom <= threshold
+  }
 
   createEffect(() => {
-    // 监听 turns 状态更新并平滑保持对话底部可见
+    // 监听当前模式下的 turns 状态更新并在内部容器中平滑保持对话底部可见（带用户主动向上回溯时的阅读防拉扯保护）
     const currentTurns = turns()
     if (currentTurns.length === 0) return
     requestAnimationFrame(() => {
-      if (chatBoxRef) {
-        chatBoxRef.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      if (chatContainerRef && isNearBottom) {
+        chatContainerRef.scrollTo({
+          top: chatContainerRef.scrollHeight,
+          behavior: 'smooth',
+        })
       }
     })
+  })
+
+  createEffect(() => {
+    // 切换单/双模型模式时，重置贴底并滚动到对应模式会话底部
+    mode()
+    isNearBottom = true
+    if (chatContainerRef) {
+      requestAnimationFrame(() => {
+        if (chatContainerRef) {
+          chatContainerRef.scrollTo({
+            top: chatContainerRef.scrollHeight,
+          })
+        }
+      })
+    }
   })
   // 控制器以便中断流式传输
   let abortControllerA: AbortController | null = null
@@ -233,8 +264,37 @@ const Playground: Component = () => {
       }
     })
   )
+  function getResponseModelLabel(resp?: AssistantResponse): string {
+    if (!resp) return ''
+    const opt = modelOptions().find(o => o.value === resp.targetModel)
+    if (opt?.label) return opt.label
+
+    const targetEntry = models().find(m => m.id === resp.targetModel)
+    if (targetEntry?.display_name && targetEntry.display_name.trim() !== targetEntry.id) {
+      return targetEntry.display_name.trim()
+    }
+
+    if (resp.servedModel && resp.servedModel !== 'auto' && resp.servedModel !== 'default') {
+      const servedEntry = models().find(m => m.id === resp.servedModel || m.id.endsWith('/' + resp.servedModel))
+      if (servedEntry?.display_name && servedEntry.display_name.trim() !== servedEntry.id) {
+        return servedEntry.display_name.trim()
+      }
+      return resp.servedModel.includes('/') ? resp.servedModel.slice(resp.servedModel.indexOf('/') + 1) : resp.servedModel
+    }
+
+    const fallback = resp.targetModel
+    return fallback.includes('/') ? fallback.slice(fallback.indexOf('/') + 1) : fallback
+  }
+
+  function getResponseProvider(resp?: AssistantResponse): string {
+    if (!resp) return ''
+    const opt = modelOptions().find(o => o.value === resp.targetModel)
+    if (opt?.badge) return opt.badge
+    const providerId = resp.targetModel.split('/')[0]
+    return getProviderBadge(providerId)
+  }
   const isBusy = () =>
-    turns().some(t => t.a.busy || (t.b && t.b.busy))
+    turnsAll().some(t => t.a.busy || (t.b && t.b.busy))
 
   function stopAll() {
     if (abortControllerA) {
@@ -262,7 +322,7 @@ const Playground: Component = () => {
     if (turns().length === 0) return
     if (!await confirm(t('playground.clearConfirm'))) return
     stopAll()
-    setTurns([])
+    setTurnsAll(prev => prev.filter(t => t.mode !== mode()))
     toast.info(t('toast.clearHistorySuccess'))
   }
 
@@ -407,7 +467,7 @@ const Playground: Component = () => {
   async function handleSend(customPrompt?: string) {
     const text = (customPrompt || inputPrompt()).trim()
     if (!text || isBusy()) return
-
+    isNearBottom = true
     if (!modelA()) {
       toast.error(t('toast.selectValidModel'))
       return
@@ -644,9 +704,10 @@ main();
   }
 
   return (
-    <div class="space-y-4 max-w-7xl mx-auto pb-10 stagger">
+    <div class="flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-w-7xl mx-auto gap-3 stagger">
       <PageHeader
         sticky={false}
+        class="shrink-0 py-2.5 px-4"
         title={t('playground.title')}
         subtitle={t('playground.subtitle')}
         badge={
@@ -701,12 +762,12 @@ main();
         }
       />
 
-      {/* 主工作区布局 */}
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        {/* 对话互动主体区 */}
-        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} min-w-0 space-y-4 transition-all duration-300`}>
+      {/* 主工作区布局：铺满视口剩余高度，左右列独立滚动与自适应 */}
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+        {/* 对话互动主体区：纵向弹性布局，顶部选择器、中间可滚动对话流、底部固定输入框 */}
+        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} flex flex-col min-h-0 h-full gap-3 transition-all duration-300`}>
           {/* 顶部模型选择栏 */}
-          <Card class="p-3">
+          <Card class="p-2.5 shrink-0 shadow-xs">
             <TabTransition
               value={mode()}
               order={['single', 'compare']}
@@ -764,12 +825,16 @@ main();
             />
           </Card>
 
-          {/* 对话/横评主画布 */}
-          <div class="space-y-4 min-h-[420px]">
+          {/* 对话消息滚动流（仅在内部滚动，不驱动页面全局滚动） */}
+          <div
+            ref={chatContainerRef}
+            onScroll={handleScroll}
+            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1.5 scroll-smooth custom-scrollbar"
+          >
             <Show
               when={turns().length > 0}
               fallback={
-                <Card class="p-12 text-center space-y-6 border-dashed border-subtle">
+                <Card class="p-8 text-center space-y-4 border-dashed border-subtle h-full flex flex-col items-center justify-center my-auto">
                   <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
                     <IconChat size={24} />
                   </div>
@@ -800,7 +865,7 @@ main();
                   <div class="space-y-3">
                     {/* 用户提问气泡 */}
                     <div class="flex justify-end">
-                      <div class="max-w-[85%] rounded-2xl bg-accent text-on-accent px-4 py-2.5 text-sm shadow-sm whitespace-pre-wrap">
+                      <div class="max-w-[85%] rounded-2xl bg-accent text-on-accent px-4 py-2.5 text-sm shadow-sm whitespace-pre-wrap leading-relaxed">
                         {turn.user}
                       </div>
                     </div>
@@ -810,15 +875,20 @@ main();
                       when={Boolean(turn.b && turn.mode === 'compare')}
                       fallback={
                         /* 单模型回答卡片 */
-                        <Card class="p-4 space-y-3">
-                          <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2">
+                        <Card class="p-4 space-y-3 border-t-2 border-t-accent/60 bg-card/60 backdrop-blur-md">
+                          <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2 shrink-0">
                             <div class="flex items-center gap-2 min-w-0">
-                              <ProviderAvatar provider={(turn.a.servedModel || turn.a.targetModel).split('/')[0]} size="sm" />
-                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[320px]" title={turn.a.servedModel || turn.a.targetModel}>
-                                {turn.a.servedModel || turn.a.targetModel}
-                              </span>
+                              <ProviderAvatar provider={turn.a.targetModel.split('/')[0]} size="sm" />
+                              <div class="flex flex-col min-w-0 leading-tight">
+                                <span class="text-xs font-semibold text-foreground truncate max-w-[260px] sm:max-w-[340px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
+                                  {getResponseModelLabel(turn.a)}
+                                </span>
+                                <span class="text-[10px] text-faint truncate max-w-[260px]">
+                                  {getResponseProvider(turn.a)}
+                                </span>
+                              </div>
                               <Show when={turn.a.busy}>
-                                <span class="text-[11px] text-accent animate-pulse flex items-center gap-1">
+                                <span class="text-[11px] text-accent animate-pulse flex items-center gap-1 ml-1 shrink-0">
                                   <IconZap size={11} /> {t('playground.generating')}
                                 </span>
                               </Show>
@@ -848,7 +918,7 @@ main();
                                   title={t('playground.viewRawJson')}
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: turn.a.servedModel || turn.a.targetModel,
+                                      title: `${getResponseModelLabel(turn.a)} (${turn.a.targetModel})`,
                                       request: turn.a.rawRequest,
                                       response: turn.a.rawResponse,
                                     })
@@ -890,17 +960,23 @@ main();
                       {/* 双模型并排横评展示 (Side-by-Side) */}
                       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {/* 左侧：模型 A */}
-                        <Card class="p-3.5 space-y-2.5 border-t-2 border-t-blue-500/50">
-                          <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5">
-                            <div class="flex items-center gap-1.5 min-w-0">
-                              <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 shrink-0">
+                        <Card class="p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-blue-500/60 bg-card/60 backdrop-blur-md">
+                          <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5 shrink-0">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <span class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30">
                                 A
                               </span>
-                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.a.servedModel || turn.a.targetModel}>
-                                {turn.a.servedModel || turn.a.targetModel}
-                              </span>
+                              <ProviderAvatar provider={turn.a.targetModel.split('/')[0]} size="sm" />
+                              <div class="flex flex-col min-w-0 leading-tight">
+                                <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
+                                  {getResponseModelLabel(turn.a)}
+                                </span>
+                                <span class="text-[10px] text-faint truncate max-w-[150px]">
+                                  {getResponseProvider(turn.a)}
+                                </span>
+                              </div>
                               <Show when={turn.a.busy}>
-                                <span class="text-[10px] text-accent animate-pulse">{t('playground.generating')}</span>
+                                <span class="text-[10px] text-accent animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
                               </Show>
                             </div>
                             <div class="flex items-center gap-1 text-[10px] font-mono text-faint">
@@ -916,7 +992,7 @@ main();
                                   class="hover:text-accent p-1 cursor-pointer"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: `${t('playground.modelA')} (${turn.a.servedModel || turn.a.targetModel})`,
+                                      title: `${t('playground.modelA')} · ${getResponseModelLabel(turn.a)} (${turn.a.targetModel})`,
                                       request: turn.a.rawRequest,
                                       response: turn.a.rawResponse,
                                     })
@@ -950,17 +1026,23 @@ main();
                         </Card>
 
                         {/* 右侧：模型 B */}
-                        <Card class="p-3.5 space-y-2.5 border-t-2 border-t-purple-500/50">
-                          <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5">
-                            <div class="flex items-center gap-1.5 min-w-0">
-                              <span class="px-1 py-0.2 rounded text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 shrink-0">
+                        <Card class="p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-purple-500/60 bg-card/60 backdrop-blur-md">
+                          <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5 shrink-0">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <span class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30">
                                 B
                               </span>
-                              <span class="text-xs font-mono font-medium text-foreground truncate max-w-[140px]" title={turn.b?.servedModel || turn.b?.targetModel}>
-                                {turn.b?.servedModel || turn.b?.targetModel}
-                              </span>
+                              <ProviderAvatar provider={(turn.b?.targetModel || '').split('/')[0]} size="sm" />
+                              <div class="flex flex-col min-w-0 leading-tight">
+                                <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.b?.servedModel ? `${turn.b?.targetModel} (served: ${turn.b?.servedModel})` : turn.b?.targetModel}>
+                                  {getResponseModelLabel(turn.b)}
+                                </span>
+                                <span class="text-[10px] text-faint truncate max-w-[150px]">
+                                  {getResponseProvider(turn.b)}
+                                </span>
+                              </div>
                               <Show when={turn.b?.busy}>
-                                <span class="text-[10px] text-accent animate-pulse">{t('playground.generating')}</span>
+                                <span class="text-[10px] text-accent animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
                               </Show>
                             </div>
                             <div class="flex items-center gap-1 text-[10px] font-mono text-faint">
@@ -976,7 +1058,7 @@ main();
                                   class="hover:text-accent p-1 cursor-pointer"
                                   onClick={() =>
                                     setRawJsonModal({
-                                      title: `${t('playground.modelB')} (${turn.b?.servedModel || turn.b?.targetModel})`,
+                                      title: `${t('playground.modelB')} · ${getResponseModelLabel(turn.b)} (${turn.b?.targetModel})`,
                                       request: turn.b?.rawRequest,
                                       response: turn.b?.rawResponse,
                                     })
@@ -1013,15 +1095,14 @@ main();
                   </div>
                 )}
               </For>
-              <div ref={chatBoxRef} class="h-px" />
             </Show>
           </div>
 
-          {/* 底部输入框区 */}
-          <Card class="p-3 sticky bottom-4 z-10 shadow-glass">
+          {/* 底部输入框区（作为弹性容器底部固定子节点，彻底杜绝悬浮遮挡内容） */}
+          <Card class="p-3 shrink-0 shadow-glass border border-subtle/50 transition-all duration-200 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-ring-soft">
             <div class="space-y-2">
               <textarea
-                class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[52px] max-h-[140px]"
+                class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[48px] max-h-[120px]"
                 placeholder={
                   mode() === 'compare' ? t('playground.sendComparePlaceholder') : t('playground.sendPlaceholder')
                 }
@@ -1078,8 +1159,8 @@ main();
             class="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-xs animate-fade-in"
             onClick={() => setShowParams(false)}
           />
-          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col shadow-2xl lg:shadow-none animate-slide-up lg:animate-none space-y-4">
-            <Card class="p-4 space-y-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle bg-bg-elevated/95 lg:bg-card h-full lg:h-auto overflow-y-auto lg:overflow-visible">
+          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col h-full min-h-0 shadow-2xl lg:shadow-none animate-slide-up lg:animate-none">
+            <Card class="flex flex-col h-full min-h-0 p-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle/50">
               <div class="flex items-center justify-between border-b border-subtle/50 pb-2 shrink-0">
                 <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <IconSliders size={14} />
@@ -1096,6 +1177,8 @@ main();
                   </button>
                 </div>
               </div>
+              {/* 参数项独立滚动容器 */}
+              <div class="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 pt-2 custom-scrollbar">
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between h-5">
@@ -1133,7 +1216,7 @@ main();
               {/* Temperature (温度) */}
               <div class="space-y-1">
                 <Slider
-                  label="Temperature"
+                  label={t('playground.paramTemperature')}
                   min={0}
                   max={2}
                   step={0.05}
@@ -1150,7 +1233,7 @@ main();
               {/* Top P */}
               <div class="space-y-1">
                 <Slider
-                  label="Top P"
+                  label={t('playground.paramTopP')}
                   min={0}
                   max={1}
                   step={0.05}
@@ -1163,7 +1246,7 @@ main();
               {/* 最大输出 Tokens */}
               <div class="space-y-1">
                 <div class="flex items-center justify-between text-xs">
-                  <span class="text-muted font-medium">Max Tokens</span>
+                  <span class="text-muted font-medium">{t('playground.paramMaxTokens')}</span>
                   <span class="font-mono text-foreground">{maxTokens()}</span>
                 </div>
                 <Input
@@ -1188,6 +1271,7 @@ main();
                   checked={stream()}
                   onChange={setStream}
                 />
+              </div>
               </div>
             </Card>
           </div>

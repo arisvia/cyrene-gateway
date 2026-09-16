@@ -50,7 +50,7 @@ npm run build
    - 严禁散落使用原生 HTML 表单元素（如裸 `<input>`、裸 `<button>` 及自定义 spinner），必须使用统一的 `Input`、`Button`、`Select`、`Alert`。
 7. **反重复造轮子与工具函数统一步调（Deduplication & Zero Redundant Wheels）**：
    - 严禁各模块散落手写 Base64URL 编解码、PKCE 签名生成、UUID 生成；统一收口至 `internal/handler/helpers.go` 或 `uuid.New().String()`。
-   - 严禁各流式转发模块私造 SSE 数据行解析；统一使用 `internal/translator/sse.go` 的 `translator.ParseSSEDataLine(line)`（兼容带空格与无空格规范）。
+   - 严禁各流式转发模块私造 SSE 数据行解析；统一使用 `internal/translator/translator.go` 的 `translator.ParseSSEDataLine(line)` 或 `ParseSSEDataLineString(line)`（兼容带空格与无空格规范）。
    - 前端严禁在组件中私自实现 `formatBytes`、`copyToClipboard` 等基础功能；统一收口至 `@/lib/format` 与 `@/lib/clipboard`（并保留 `document.execCommand` 降级容灾）。
    - 测试用例中严禁手写 contains 字符串或切片搜索辅助函数；一律优先使用 Go 标准库 `slices.Contains` 与 `strings.Contains`。
 8. **全量国际化与文案纪律（Zero Hardcoded Strings & Strict i18n）**：

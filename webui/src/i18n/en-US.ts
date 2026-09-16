@@ -430,6 +430,9 @@ export const enUS: TranslationDict = {
     autoSaved: 'Auto-saved',
     tempPrecise: 'Precise / Deterministic (0.0)',
     tempCreative: 'Creative / Exploratory (2.0)',
+    paramTemperature: 'Temperature',
+    paramTopP: 'Top P',
+    paramMaxTokens: 'Max Tokens',
     presets: {
       defaultAssistant: {
         label: 'General Assistant',

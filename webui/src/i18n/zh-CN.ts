@@ -428,6 +428,9 @@ export const zhCN = {
     autoSaved: '自动保存',
     tempPrecise: '精确 / 严谨 (0.0)',
     tempCreative: '发散 / 创意 (2.0)',
+    paramTemperature: '温度',
+    paramTopP: 'Top P',
+    paramMaxTokens: '最大输出 Tokens',
     presets: {
       defaultAssistant: {
         label: '默认助手',
