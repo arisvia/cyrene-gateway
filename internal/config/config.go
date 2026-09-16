@@ -22,8 +22,22 @@ type Config struct {
 
 func Load() *Config {
 	cfg := &Config{}
-	flag.Usage = func() {
-		out := flag.CommandLine.Output()
+	registerFlags(flag.CommandLine, cfg)
+	flag.Parse()
+
+	home, _ := os.UserHomeDir()
+	defaultDir := filepath.Join(home, ".cyrene-gateway")
+	if cfg.DataDir == "" {
+		cfg.DataDir = defaultDir
+	}
+	cfg.DBPath = filepath.Join(cfg.DataDir, "data.sqlite")
+
+	return cfg
+}
+
+func registerFlags(fs *flag.FlagSet, cfg *Config) {
+	fs.Usage = func() {
+		out := fs.Output()
 		fmt.Fprintf(out, "Cyrene Gateway - High-performance LLM API gateway with embedded Solid.js console\n\n")
 		fmt.Fprintf(out, "Usage:\n  %s [flags]\n\n", filepath.Base(os.Args[0]))
 		fmt.Fprintf(out, "Server Flags:\n")
@@ -41,25 +55,15 @@ func Load() *Config {
 		fmt.Fprintf(out, "  -h, -help\n    \tShow this help message\n")
 	}
 
-	flag.StringVar(&cfg.Host, "host", envOrDefault("CYRENE_HOST", "0.0.0.0"), "Host/IP to bind the gateway (env: CYRENE_HOST)")
-	flag.StringVar(&cfg.DataDir, "data-dir", envOrDefault("CYRENE_DATA_DIR", ""), "Data directory for database, panel cache and secrets (default ~/.cyrene-gateway, env: CYRENE_DATA_DIR)")
-	flag.IntVar(&cfg.Port, "port", envIntOrDefault("CYRENE_PORT", 20128), "Port to bind the gateway (env: CYRENE_PORT)")
-	flag.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local directory to serve dashboard from for dev mode (empty=use embedded, env: CYRENE_DASHBOARD)")
-	flag.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded, env: CYRENE_PANEL_URL)")
-	flag.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "HMAC master secret for signing API keys and session tokens (env: CYRENE_SECRET)")
-	flag.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers, env: CYRENE_ALLOW_PRIVATE_NETWORKS)")
-	flag.BoolVar(&cfg.ShowVersion, "v", false, "Print version and exit")
-	flag.BoolVar(&cfg.ShowVersion, "version", false, "Print version and exit")
-	flag.Parse()
-
-	home, _ := os.UserHomeDir()
-	defaultDir := filepath.Join(home, ".cyrene-gateway")
-	if cfg.DataDir == "" {
-		cfg.DataDir = defaultDir
-	}
-	cfg.DBPath = filepath.Join(cfg.DataDir, "data.sqlite")
-
-	return cfg
+	fs.StringVar(&cfg.Host, "host", envOrDefault("CYRENE_HOST", "0.0.0.0"), "Host/IP to bind the gateway (env: CYRENE_HOST)")
+	fs.StringVar(&cfg.DataDir, "data-dir", envOrDefault("CYRENE_DATA_DIR", ""), "Data directory for database, panel cache and secrets (default ~/.cyrene-gateway, env: CYRENE_DATA_DIR)")
+	fs.IntVar(&cfg.Port, "port", envIntOrDefault("CYRENE_PORT", 20128), "Port to bind the gateway (env: CYRENE_PORT)")
+	fs.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local directory to serve dashboard from for dev mode (empty=use embedded, env: CYRENE_DASHBOARD)")
+	fs.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded, env: CYRENE_PANEL_URL)")
+	fs.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "HMAC master secret for signing API keys and session tokens (env: CYRENE_SECRET)")
+	fs.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers, env: CYRENE_ALLOW_PRIVATE_NETWORKS)")
+	fs.BoolVar(&cfg.ShowVersion, "v", false, "Print version and exit")
+	fs.BoolVar(&cfg.ShowVersion, "version", false, "Print version and exit")
 }
 
 func envOrDefault(key, fallback string) string {
