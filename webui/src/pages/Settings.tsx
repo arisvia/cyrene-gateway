@@ -182,7 +182,7 @@ const Settings: Component = () => {
         await handleTriggerRestart()
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to apply update')
+      toast.error(e instanceof Error ? e.message : t('settings.ops.updateFailed'))
     } finally {
       setApplyingUpdate(false)
     }
@@ -220,7 +220,7 @@ const Settings: Component = () => {
         if (attempts >= maxAttempts) {
           clearInterval(interval)
           setRestarting(false)
-          toast.error('Reconnection timed out. Please refresh the page manually.')
+          toast.error(t('settings.ops.reconnectTimeout'))
         }
       }
     }, 1000)
@@ -238,7 +238,7 @@ const Settings: Component = () => {
       await apiPost('/api/system/rollback', {})
       toast.success(t('settings.ops.rollbackSuccess'))
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Rollback failed')
+      toast.error(e instanceof Error ? e.message : t('settings.ops.rollbackFailed'))
     }
   }
 
@@ -263,7 +263,7 @@ const Settings: Component = () => {
       }
       void fetchSystemStats()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Maintenance action failed')
+      toast.error(e instanceof Error ? e.message : t('settings.ops.maintFailed'))
     } finally {
       setRunningMaint(null)
     }
@@ -1184,7 +1184,7 @@ const Settings: Component = () => {
                     when={systemStats()}
                     fallback={
                       <div class="py-8 text-center text-xs text-faint space-y-2">
-                        <p>尚未加载运行指标</p>
+                        <p>{t('settings.ops.noStatsLoaded')}</p>
                         <Button variant="secondary" size="sm" onClick={fetchSystemStats}>
                           {t('settings.ops.refreshStats')}
                         </Button>
@@ -1228,7 +1228,7 @@ const Settings: Component = () => {
                             <div class="flex items-center justify-between text-xs font-medium">
                               <span class="flex items-center gap-1.5 text-accent">
                                 <IconServer size={14} />
-                                <span>Go Runtime 内存</span>
+                                <span>{t('settings.ops.goRuntimeMemory')}</span>
                               </span>
                               <Badge tone="blue">GC: {stats().memory.numGC}</Badge>
                             </div>
@@ -1249,7 +1249,7 @@ const Settings: Component = () => {
                             <div class="flex items-center justify-between text-xs font-medium">
                               <span class="flex items-center gap-1.5 text-warning">
                                 <IconDatabase size={14} />
-                                <span>SQLite 物理存储</span>
+                                <span>{t('settings.ops.sqlitePhysicalStorage')}</span>
                               </span>
                               <Badge tone={stats().inDocker ? 'amber' : 'green'}>
                                 {stats().inDocker ? t('settings.ops.inDockerBadge') : t('settings.ops.nativeBadge')}
@@ -1381,7 +1381,7 @@ const Settings: Component = () => {
 
                   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                     <div class="text-xs text-faint leading-relaxed max-w-lg">
-                      重启网关将平滑交接当前监听端口并重新加载配置，正在处理的长连接流式输出将先行排空后退出，前台控制台将在重启后自动重新连接。
+                      {t('settings.ops.restartDesc')}
                     </div>
                     <Button
                       variant="danger"
@@ -1450,13 +1450,7 @@ const Settings: Component = () => {
                         <div class="flex items-center gap-2 pt-1">
                           <span class="text-[11px] text-muted">{t('settings.ops.retentionDaysLabel')}:</span>
                           <Select
-                            options={[
-                              { value: '7', label: '7 天' },
-                              { value: '14', label: '14 天' },
-                              { value: '30', label: '30 天' },
-                              { value: '60', label: '60 天' },
-                              { value: '90', label: '90 天' },
-                            ]}
+                            options={[7, 14, 30, 60, 90].map(n => ({ value: String(n), label: t('settings.ops.days', { n }) }))}
                             value={String(pruneDays())}
                             onChange={v => setPruneDays(Number(v))}
                             class="!w-24 text-xs"
@@ -1529,7 +1523,7 @@ const Settings: Component = () => {
             </div>
             <div class="flex items-center justify-center gap-2 text-xs font-mono text-accent pt-1">
               <span class="inline-block w-2 h-2 rounded-full bg-accent animate-ping" />
-              <span>正在探活重连中...</span>
+              <span>{t('settings.ops.reconnecting')}</span>
             </div>
           </Card>
         </div>

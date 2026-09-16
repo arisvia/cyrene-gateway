@@ -48,6 +48,21 @@ npm run build
    - 页面与卡片空状态一律复用 `@/components/ui` 的 `<Empty />`（Rich 模式传 `icon`、`title`、`description`、`action`；紧凑模式传 `message`），严禁各业务页面私造空状态 DOM 或重复放置 CTA 按钮。
    - 严禁在业务组件中内联书写 Raw `<svg>` 路径，所有图标统一收口至 `@/components/ui` (`icons.tsx`) 导出。
    - 严禁散落使用原生 HTML 表单元素（如裸 `<input>`、裸 `<button>` 及自定义 spinner），必须使用统一的 `Input`、`Button`、`Select`、`Alert`。
+7. **反重复造轮子与工具函数统一步调（Deduplication & Zero Redundant Wheels）**：
+   - 严禁各模块散落手写 Base64URL 编解码、PKCE 签名生成、UUID 生成；统一收口至 `internal/handler/helpers.go` 或 `uuid.New().String()`。
+   - 严禁各流式转发模块私造 SSE 数据行解析；统一使用 `internal/translator/sse.go` 的 `translator.ParseSSEDataLine(line)`（兼容带空格与无空格规范）。
+   - 前端严禁在组件中私自实现 `formatBytes`、`copyToClipboard` 等基础功能；统一收口至 `@/lib/format` 与 `@/lib/clipboard`（并保留 `document.execCommand` 降级容灾）。
+   - 测试用例中严禁手写 contains 字符串或切片搜索辅助函数；一律优先使用 Go 标准库 `slices.Contains` 与 `strings.Contains`。
+8. **全量国际化与文案纪律（Zero Hardcoded Strings & Strict i18n）**：
+   - 前端所有页面、组件、模态框、通知与选项一律严禁在 JSX/TSX 中硬编码中/英文自然语言字符串。
+   - 所有文案必须在 `webui/src/i18n/zh-CN.ts` 与 `webui/src/i18n/en-US.ts` 中双向严格对齐，通过 TypeScript `NestedKeyOf<typeof zhCN>` 静态类型门禁检查。
+9. **极简架构与反代码堆砌（Anti-Bloat & Lazy Engineering）**：
+   - 严禁编写“为了未来可能用到”的无引用抽象层、单实现接口、多余中间转换或空壳工厂模式（坚持 YAGNI 原则）。
+   - 坚决优先使用平台原生与标准库方案（如 Go 标准库 `flag` 单/双横杠自动等价、SQLite WAL checkpoint TRUNCATE、CSS 原生毛玻璃），拒绝无评估引入非必要第三方库。
+   - 保持重构干净切割（Clean Cutover）：废弃旧方案时必须同步移除全部过时注释、僵尸辅助函数与历史死分支。
+10. **系统级端口交接与容器防呆（Process Handover & Container Safety）**：
+    - 服务自重启与端口平滑交接时，必须先关闭旧 HTTP Listener 释放端口，再启动带 `CYRENE_RESTART=1` 的子进程进行重试绑定，杜绝 Windows/Linux 下的 `EADDRINUSE` 端口冲突。
+    - 凡涉及物理二进制覆盖、原地重启或宿主系统级别操作，必须优先通过 `system.IsRunningInDocker()` 探测，容器环境下坚决阻断并给出拉取镜像提示，避免容器内 PID 1 退出导致的死循环崩溃。
 
 - 严禁在代码与测试用例中提交真实的 API Key、OAuth Client Secret 等敏感凭证。
 - 未经明确指示，不得破坏 CI 门禁（`build.yml`）与多架构发布流程（`release.yml`）。
