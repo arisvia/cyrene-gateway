@@ -24,19 +24,19 @@ import (
 )
 
 type Server struct {
-	DB          *db.DB
-	Router      *http.ServeMux
-	Handler     http.Handler // Router wrapped with middleware
-	Combos      *provider.ComboManager
-	Proxies     *provider.ProxyManager
-	MediaClient *media.Client
-	Dashboard   *DashboardHandler
-	Auth        *AuthHandler
-	Endpoints   *EndpointHandler
-	Events      *EventBroadcaster
-	Metrics     *metrics.M
-	Config      *config.Config
-	Cache       *cache.Cache
+	DB           *db.DB
+	Router       *http.ServeMux
+	Handler      http.Handler // Router wrapped with middleware
+	Combos       *provider.ComboManager
+	Proxies      *provider.ProxyManager
+	MediaClient  *media.Client
+	Dashboard    *DashboardHandler
+	Auth         *AuthHandler
+	Endpoints    *EndpointHandler
+	Events       *EventBroadcaster
+	Metrics      *metrics.M
+	Config       *config.Config
+	Cache        *cache.Cache
 	startTime    time.Time
 	onRestart    func()
 	ShutdownFunc func(ctx context.Context) error

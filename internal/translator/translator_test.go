@@ -877,11 +877,11 @@ func TestSalvageOrphanedToolResults(t *testing.T) {
 
 func TestParseSSEDataLine(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
-		want    string
-		isDone  bool
-		wantOK  bool
+		name   string
+		input  string
+		want   string
+		isDone bool
+		wantOK bool
 	}{
 		{"with space", "data: {\"foo\":\"bar\"}\n", "{\"foo\":\"bar\"}", false, true},
 		{"without space", "data:{\"foo\":\"bar\"}\r\n", "{\"foo\":\"bar\"}", false, true},

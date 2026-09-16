@@ -82,12 +82,12 @@ func (s *Server) handleSystemMaintenance(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"success":        true,
-			"action":         "prune_logs",
-			"retentionDays":  days,
-			"prunedHistory":  histCount,
+			"success":       true,
+			"action":        "prune_logs",
+			"retentionDays": days,
+			"prunedHistory": histCount,
 			"prunedDetails": detailCount,
-			"message":        "Old logs pruned successfully",
+			"message":       "Old logs pruned successfully",
 		})
 
 	default:
