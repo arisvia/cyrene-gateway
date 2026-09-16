@@ -1240,8 +1240,7 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
   }
 
   return (
-    <div class={`grid grid-cols-1 overflow-x-hidden ${props.class ?? ''}`}>
-      {/* Outgoing snapshot slot (keyed to guarantee fresh animation on rapid clicks) */}
+    <div class={`grid grid-cols-1 ${isTransitioning() ? 'overflow-x-hidden' : ''} ${props.class ?? ''}`}>
       <Show when={outgoingSnapshot()} keyed>
         {snap => (
           <div
