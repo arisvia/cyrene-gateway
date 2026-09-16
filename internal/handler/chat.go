@@ -1388,8 +1388,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			default:
 			}
 			line := scanner.Bytes()
-			if after, ok0 := bytes.CutPrefix(line, []byte("data: ")); ok0 {
-				data := after
+			if data, _, ok0 := translator.ParseSSEDataLine(line); ok0 {
 				if u := usage.ExtractFromClaudeSSE(data); u.TotalTokens > 0 {
 					if u.PromptTokens > 0 {
 						totalUsage.PromptTokens = u.PromptTokens

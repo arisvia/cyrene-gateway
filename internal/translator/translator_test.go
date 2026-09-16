@@ -874,3 +874,42 @@ func TestSalvageOrphanedToolResults(t *testing.T) {
 		t.Errorf("unexpected text content: %s", text)
 	}
 }
+
+func TestParseSSEDataLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		isDone  bool
+		wantOK  bool
+	}{
+		{"with space", "data: {\"foo\":\"bar\"}\n", "{\"foo\":\"bar\"}", false, true},
+		{"without space", "data:{\"foo\":\"bar\"}\r\n", "{\"foo\":\"bar\"}", false, true},
+		{"done with space", "data: [DONE]\n", "", true, true},
+		{"done without space", "data:[DONE]\r\n", "", true, true},
+		{"empty line", "\r\n", "", false, false},
+		{"event line", "event: ping\n", "", false, false},
+		{"empty data line", "data: \n", "", false, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, isDone, ok := ParseSSEDataLine([]byte(tc.input))
+			if ok != tc.wantOK {
+				t.Errorf("ParseSSEDataLine(%q) ok = %v, want %v", tc.input, ok, tc.wantOK)
+			}
+			if isDone != tc.isDone {
+				t.Errorf("ParseSSEDataLine(%q) isDone = %v, want %v", tc.input, isDone, tc.isDone)
+			}
+			if string(got) != tc.want {
+				t.Errorf("ParseSSEDataLine(%q) = %q, want %q", tc.input, string(got), tc.want)
+			}
+
+			gotStr, isDoneStr, okStr := ParseSSEDataLineString(tc.input)
+			if okStr != tc.wantOK || isDoneStr != tc.isDone || gotStr != tc.want {
+				t.Errorf("ParseSSEDataLineString(%q) = (%q, %v, %v), want (%q, %v, %v)",
+					tc.input, gotStr, isDoneStr, okStr, tc.want, tc.isDone, tc.wantOK)
+			}
+		})
+	}
+}

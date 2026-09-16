@@ -16,7 +16,6 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -255,19 +254,17 @@ type QoderDeviceFlow struct {
 }
 
 // InitiateQoderDeviceFlow generates PKCE + nonce + machineId and returns
-// the URL the user must open in a browser.
 func InitiateQoderDeviceFlow() *QoderDeviceFlow {
-	verifierBytes := make([]byte, 32)
-	rand.Read(verifierBytes)
-	verifier := base64.RawURLEncoding.EncodeToString(verifierBytes)
-	h := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(h[:])
+	pkce, err := GeneratePKCE()
+	if err != nil {
+		return nil
+	}
 
 	nonce := uuid.New().String()
 	machineID := uuid.New().String()
 
 	params := url.Values{
-		"challenge":        {challenge},
+		"challenge":        {pkce.CodeChallenge},
 		"challenge_method": {"S256"},
 		"machine_id":       {machineID},
 		"nonce":            {nonce},
@@ -275,7 +272,7 @@ func InitiateQoderDeviceFlow() *QoderDeviceFlow {
 
 	return &QoderDeviceFlow{
 		VerificationURI: QoderLoginURL + "?" + params.Encode(),
-		CodeVerifier:    verifier,
+		CodeVerifier:    pkce.CodeVerifier,
 		Nonce:           nonce,
 		MachineID:       machineID,
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
 
@@ -266,12 +267,8 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	chatCmpleID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "" || data == "[DONE]" {
+		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
+		if !ok || isDone {
 			continue
 		}
 
@@ -363,12 +360,8 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 	fullText := ""
 	reasoningText := ""
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "" || data == "[DONE]" {
+		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
+		if !ok || isDone {
 			continue
 		}
 

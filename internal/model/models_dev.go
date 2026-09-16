@@ -54,6 +54,9 @@ type modelsDevProvider struct {
 // any) or an error.
 func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error) {
 	if client == nil {
+		// pony-tail: model package cannot import provider.SafeHTTPClient due to import cycle (provider imports model).
+		// Production callers (server.go) always inject s.getHTTPClient(); nil client is exclusively used in isolated unit tests
+		// against hardcoded ModelsDevURL ("https://models.dev/api.json").
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"io"
 	"log/slog"
 	"net/http"
@@ -640,12 +641,8 @@ func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *
 
 	var b64Images []string
 	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "" || data == "[DONE]" {
+		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
+		if !ok || isDone {
 			continue
 		}
 

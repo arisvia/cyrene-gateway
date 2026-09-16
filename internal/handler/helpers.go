@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"runtime/debug"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // version is set via ldflags at build time: -ldflags "-X .../handler.version=v0.3.0"
@@ -29,9 +30,8 @@ func Version() string {
 }
 
 func generateID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	id := uuid.New()
+	return hex.EncodeToString(id[:])
 }
 
 // wrapErrorWithHint enriches upstream error responses with actionable hints (Phase 26 Error UX).

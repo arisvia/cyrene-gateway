@@ -268,6 +268,11 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 	// Qoder uses a custom device-token flow (local PKCE + browser login + GET poll)
 	if providerID == "qoder" {
 		flow := provider.InitiateQoderDeviceFlow()
+		if flow == nil {
+			slog.Warn("Failed to initiate Qoder device flow")
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to initiate Qoder device flow"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"verificationUri":         flow.VerificationURI,
 			"verificationUriComplete": flow.VerificationURI,

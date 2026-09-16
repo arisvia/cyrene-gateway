@@ -1,6 +1,7 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -59,6 +60,41 @@ func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, 
 	default:
 		return data, false, nil
 	}
+}
+
+// ParseSSEDataLine parses a single line from an SSE stream.
+// It handles optional leading "data:" with or without space ("data: " or "data:"),
+// strips trailing \r / whitespace, and reports whether the line is [DONE].
+// Returns (payload, isDone, ok). If ok is false, the line was not a data line or was empty.
+func ParseSSEDataLine(line []byte) (payload []byte, isDone bool, ok bool) {
+	line = bytes.TrimSpace(bytes.TrimSuffix(line, []byte("\r")))
+	if !bytes.HasPrefix(line, []byte("data:")) {
+		return nil, false, false
+	}
+	payload = bytes.TrimSpace(line[5:])
+	if len(payload) == 0 {
+		return nil, false, false
+	}
+	if bytes.Equal(payload, []byte("[DONE]")) {
+		return nil, true, true
+	}
+	return payload, false, true
+}
+
+// ParseSSEDataLineString is the string variant of ParseSSEDataLine.
+func ParseSSEDataLineString(line string) (payload string, isDone bool, ok bool) {
+	line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+	if !strings.HasPrefix(line, "data:") {
+		return "", false, false
+	}
+	payload = strings.TrimSpace(line[5:])
+	if len(payload) == 0 {
+		return "", false, false
+	}
+	if payload == "[DONE]" {
+		return "", true, true
+	}
+	return payload, false, true
 }
 
 // --- OpenAI → Claude ---

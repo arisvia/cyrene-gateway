@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // OAuthFlowType represents the type of OAuth flow a provider supports.
@@ -838,19 +840,15 @@ func mapTokenResponse(providerID string, raw map[string]any) *TokenExchangeResul
 
 // decodeJWTPayload decodes the payload (second part) of a JWT.
 func decodeJWTPayload(b64 string) (map[string]any, error) {
-	// Convert base64url to standard base64
-	b64 = strings.ReplaceAll(b64, "-", "+")
-	b64 = strings.ReplaceAll(b64, "_", "/")
-	// Add padding
-	if pad := len(b64) % 4; pad != 0 {
-		b64 += strings.Repeat("=", 4-pad)
-	}
-	data, err := base64.StdEncoding.DecodeString(b64)
+	decoded, err := base64.RawURLEncoding.DecodeString(b64)
 	if err != nil {
-		return nil, err
+		decoded, err = base64.URLEncoding.DecodeString(b64)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var payload map[string]any
-	if err := json.Unmarshal(data, &payload); err != nil {
+	if err := json.Unmarshal(decoded, &payload); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -858,9 +856,7 @@ func decodeJWTPayload(b64 string) (map[string]any, error) {
 
 // generateDeviceID creates a random device ID for providers that need one.
 func generateDeviceID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	return uuid.New().String()
 }
 
 // getString safely extracts a string value from a map.

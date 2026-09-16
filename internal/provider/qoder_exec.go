@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/arisvia/cyrene-gateway/internal/translator"
 )
 
 // --- Model config cache (from services/qoderModels.js) ---
@@ -368,13 +370,11 @@ func toInt(v any) int {
 //   - data: the unwrapped OpenAI chunk JSON (empty if line should be skipped)
 //   - done: true when the stream has ended ([DONE])
 func UnwrapQoderSSELine(line, model string) (data string, done bool) {
-	trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
-	if trimmed == "" || !strings.HasPrefix(trimmed, "data:") {
+	payload, isDone, ok := translator.ParseSSEDataLineString(line)
+	if !ok {
 		return "", false
 	}
-
-	payload := strings.TrimSpace(trimmed[len("data:"):])
-	if payload == "[DONE]" {
+	if isDone {
 		return "", true
 	}
 
