@@ -13,6 +13,13 @@ export function formatCost(cost: number | undefined | null): string {
   return '$' + cost.toFixed(2)
 }
 
+export function formatBytes(bytes: number | undefined | null): string {
+  const b = Number(bytes) || 0
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
+  return `${(b / (1024 * 1024)).toFixed(2)} MB`
+}
+
 export type TimeAgoUnits = {
   justNow: string
   minutesAgo: (m: number) => string

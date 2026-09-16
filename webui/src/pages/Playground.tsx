@@ -26,6 +26,7 @@ import {
   TabTransition,
 } from '@/components/ui'
 import { useToast } from '@/lib/toast'
+import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
@@ -565,9 +566,13 @@ const Playground: Component = () => {
     await Promise.allSettled([promiseA, promiseB])
   }
 
-  function copyText(text: string, label = t('playground.copyDefault')) {
-    navigator.clipboard?.writeText(text)
-    toast.success(t('toast.copySuccess', { label }))
+  async function copyText(text: string, label = t('playground.copyDefault')) {
+    const ok = await copyToClipboard(text)
+    if (ok) {
+      toast.success(t('toast.copySuccess', { label }))
+    } else {
+      toast.info(text)
+    }
   }
 
   // 生成代码片段

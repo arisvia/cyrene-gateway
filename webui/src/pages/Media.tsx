@@ -3,6 +3,7 @@ import { A } from '@solidjs/router'
 import { api, apiPost } from '@/lib/api'
 import { Card, Button, Input, Field, Select, Modal, StatusPulse, ProviderAvatar, Alert, PageHeader, SegmentedControl, IconPlug, IconSparkles, IconClipboard, TabTransition, Empty } from '@/components/ui'
 import { useToast } from '@/lib/toast'
+import { copyToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/i18n'
 
 type Cap = 'image' | 'search' | 'tts' | 'stt' | 'embeddings'
@@ -88,10 +89,10 @@ const Media: Component = () => {
 
   async function copyEndpoint(ep: string) {
     if (!ep) return
-    try {
-      await navigator.clipboard.writeText(ep)
+    const ok = await copyToClipboard(ep)
+    if (ok) {
       toast.success(t('media.endpointCopied', { endpoint: ep }))
-    } catch {
+    } else {
       toast.info(ep)
     }
   }

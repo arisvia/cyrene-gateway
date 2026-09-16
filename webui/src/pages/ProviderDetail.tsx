@@ -3,6 +3,7 @@ import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import { copyToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
@@ -1995,12 +1996,16 @@ const ProviderDetail: Component = () => {
                           type="button"
                           class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
                           title={t('providerDetail.copyCodeTitle')}
-                          onClick={() => {
+                          onClick={async () => {
                             if (flow().userCode) {
-                              navigator.clipboard.writeText(flow().userCode!)
-                              setCopiedCode(true)
-                              toast.success(t('providerDetail.codeCopied'))
-                              setTimeout(() => setCopiedCode(false), 2000)
+                              const ok = await copyToClipboard(flow().userCode!)
+                              if (ok) {
+                                setCopiedCode(true)
+                                toast.success(t('providerDetail.codeCopied'))
+                                setTimeout(() => setCopiedCode(false), 2000)
+                              } else {
+                                toast.info(flow().userCode!)
+                              }
                             }
                           }}
                         >
@@ -2020,11 +2025,15 @@ const ProviderDetail: Component = () => {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => {
+                        onClick={async () => {
                           const url = flow().verificationUriComplete || flow().verificationUri
                           if (url) {
-                            navigator.clipboard.writeText(url)
-                            toast.success(t('providerDetail.copyUrlSuccess'))
+                            const ok = await copyToClipboard(url)
+                            if (ok) {
+                              toast.success(t('providerDetail.copyUrlSuccess'))
+                            } else {
+                              toast.info(url)
+                            }
                           }
                         }}
                       >

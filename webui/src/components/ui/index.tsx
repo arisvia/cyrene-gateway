@@ -2,6 +2,7 @@ import { type Component, type JSX, For, Show, createSignal, createMemo, createEf
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
+import { formatBytes } from '@/lib/format'
 import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
 import type { BadgeTone } from '@/types/domain'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
@@ -1061,11 +1062,6 @@ export const FileUpload: Component<FileUploadProps> = props => {
     props.onChange?.(f)
   }
 
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  }
 
   return (
     <div class={`w-full ${props.class ?? ''}`}>
@@ -1139,7 +1135,7 @@ export const FileUpload: Component<FileUploadProps> = props => {
               </div>
               <div class="min-w-0">
                 <div class="text-xs font-semibold text-foreground truncate">{props.value!.name}</div>
-                <div class="text-[11px] text-faint font-mono mt-0.5">{formatSize(props.value!.size)}</div>
+                <div class="text-[11px] text-faint font-mono mt-0.5">{formatBytes(props.value!.size)}</div>
               </div>
             </div>
             <div class="flex items-center gap-2 shrink-0">

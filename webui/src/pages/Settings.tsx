@@ -7,7 +7,7 @@ import {
   IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDownload, IconUpload, IconAlertTriangle,
 } from '@/components/ui'
-import { formatUptime, formatVersion, type UptimeUnits } from '@/lib/format'
+import { formatUptime, formatVersion, formatBytes, type UptimeUnits } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { api, apiPost } from '@/lib/api'
 import { useI18n } from '@/i18n'
@@ -20,12 +20,6 @@ interface CacheStats {
   maxEntries: number
   bytesUsed: number
   tokensSaved: number
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 const Settings: Component = () => {

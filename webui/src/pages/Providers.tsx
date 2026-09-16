@@ -31,6 +31,7 @@ import {
 } from '@/components/ui'
 import {api, apiPost} from '@/lib/api'
 import {useToast} from '@/lib/toast'
+import {copyToClipboard} from '@/lib/clipboard'
 import type {BadgeTone, Provider, RegistryProvider} from '@/types/domain'
 
 
@@ -1228,11 +1229,15 @@ const Providers: Component = () => {
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (flow().userCode) {
-                                      navigator.clipboard.writeText(flow().userCode!)
-                                      setWizardOAuthCopied(true)
-                                      setTimeout(() => setWizardOAuthCopied(false), 2000)
+                                      const ok = await copyToClipboard(flow().userCode!)
+                                      if (ok) {
+                                        setWizardOAuthCopied(true)
+                                        setTimeout(() => setWizardOAuthCopied(false), 2000)
+                                      } else {
+                                        toast.info(flow().userCode!)
+                                      }
                                     }
                                   }}
                                 >

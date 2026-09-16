@@ -4,6 +4,7 @@ import { useI18n } from '@/i18n'
 import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, confirm } from '@/components/ui'
 import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
+import { copyToClipboard } from '@/lib/clipboard'
 
 const Home: Component = () => {
   const store = useGatewayStore()
@@ -58,9 +59,13 @@ const Home: Component = () => {
     store.loadKeys()
   })
 
-  const copyText = (text: string, label: string) => {
-    navigator.clipboard?.writeText(text)
-    toast.success(t('toast.copySuccess', { label }))
+  const copyText = async (text: string, label: string) => {
+    const ok = await copyToClipboard(text)
+    if (ok) {
+      toast.success(t('toast.copySuccess', { label }))
+    } else {
+      toast.info(text)
+    }
   }
 
   return (
