@@ -2,6 +2,30 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-09-16
+
+### Security
+- **OAuth 出站流 SSRF 防护增强**：统一 `oauth.go`、`oauth_flow.go`、`qoder.go`、`qoder_exec.go` 以及 `qoder_pat.go` 出站 HTTP 请求经 `SafeHTTPClient`（或 `Server.getHTTPClient()`）代理与校验，阻断针对内网与私网元数据地址的探测逃逸；在 `InitiateQoderDeviceFlow` 中补充空指针安全防护。
+
+### Added
+- **`-dashboard` 命令行参数与本地开发模式支持**：在 `config.Load` 中激活 `-dashboard`（及 `CYRENE_DASHBOARD` 环境变量），支持本地挂载未打包的前端静态目录进行热开发。
+- **结构化 CLI 帮助文案与环境变量对照**：按 Server、Security、Dashboard、General 分组输出清晰的命令行参数指引，修正 `-secret` 的 HMAC Master Secret 语义说明，并标注对应的 `CYRENE_*` 环境变量。
+
+### Refactored
+- **核心算法与轮子去重**：
+  - 统一全库 Base64URL 编解码于 `provider/oauth.go` 标准库实现，消除重复手写转换。
+  - 统一 RFC 7636 PKCE 代码验证码与挑战码计算逻辑。
+  - 提取标准 `translator.ParseSSEDataLine` 解析器，统一处理 `data:` 与 `data: ` 差异，收口所有 SSE 行解析。
+  - 统一 UUID 随机 ID 生成逻辑至 `google/uuid`。
+- **前端工具函数收口与图标规范化**：
+  - 消除前端业务组件散落内联的 raw `<svg>` 路径，在 `@/components/ui/icons.tsx` 集中导出标准化 SVG 图标。
+  - 统一字节格式化函数 `formatBytes` 至 `webui/src/lib/format.ts`。
+  - 抽离通用跨平台剪贴板复制工具 `copyToClipboard`（支持现代 Clipboard API 与 `document.execCommand` 降级兜底）。
+
+### Testing
+- **配置契约测试**：重构 `config.Load` 委托至 `registerFlags`，引入 `TestFlagContract` 测试全量 9 个 CLI 参数在单横杠 `-` 与双横杠 `--` 混合输入下的解析契约。
+- **清理重复字符串匹配测试辅助函数**：移除手写 `contains` 辅助逻辑，替换为标准库 `strings.Contains` 与 `slices.Contains`。
+
 ## [1.0.0] - 2026-09-15
 
 ### Security
@@ -50,4 +74,5 @@
 - **媒体凭证验证与连接隔离**：`/api/media-providers` 接口支持 `connected=true` 服务端过滤。
 - **CSS 注释解析警告消除**：消除 Lightning CSS 的 `Unexpected token Delim('*')` 构建警告。
 
+[1.1.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/arisvia/cyrene-gateway/releases/tag/v1.0.0
