@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { A } from '@solidjs/router'
-import { Card, Badge, ProviderAvatar, CyreneLogo } from '@/components/ui'
+import { Card, Badge, ProviderAvatar, CyreneLogo, IconRotateCcw } from '@/components/ui'
 import type { Provider, LiveUsageEvent } from '@/types/domain'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
@@ -512,10 +512,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
           onClick={resetView}
           title={t('topology.reset')}
         >
-          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
-          </svg>
+          <IconRotateCcw size={14} />
         </button>
         <span class="text-[10px] text-faint px-1.5 tabular-nums font-mono">
           {Math.round(zoom() * 100)}%

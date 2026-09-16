@@ -1,4 +1,5 @@
 import { type Component, Show, createSignal, createEffect } from 'solid-js'
+import { IconServer } from './icons'
 interface ProviderIconProps {
   provider: string
   name?: string
@@ -34,12 +35,7 @@ export const ProviderBrandIcon: Component<{ provider: string; name?: string; siz
     <Show
       when={label() !== '?'}
       fallback={
-        <svg width={sz()} height={sz()} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={props.class}>
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-          <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-          <line x1="6" y1="6" x2="6.01" y2="6" />
-          <line x1="6" y1="18" x2="6.01" y2="18" />
-        </svg>
+        <IconServer size={sz()} class={props.class} />
       }
     >
       <span class={`font-bold font-mono select-none tracking-tighter text-foreground/90 ${props.class ?? ''}`}>

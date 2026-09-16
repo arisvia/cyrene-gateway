@@ -525,3 +525,111 @@ export const IconMoon: Component<IconProps> = props => {
     </svg>
   )
 }
+
+// 首页 (Home)
+export const IconHome: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  )
+}
+
+// 服务器/提供商 (Server)
+export const IconServer: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+      <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+      <line x1="6" y1="6" x2="6.01" y2="6" />
+      <line x1="6" y1="18" x2="6.01" y2="18" />
+    </svg>
+  )
+}
+
+// 调测/演练场 (Playground)
+export const IconPlayground: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="m18 8-8 8" />
+      <path d="m14 4 4 4" />
+      <path d="m6 16-2 4 4-2" />
+      <path d="M12 2v4" />
+      <path d="m4.93 4.93 2.83 2.83" />
+      <path d="M2 12h4" />
+    </svg>
+  )
+}
+
+// 用量趋势/统计 (Activity / TrendingUp)
+export const IconActivity: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M3 3v18h18" />
+      <path d="m19 9-5 5-4-4-3 3" />
+    </svg>
+  )
+}
+
+// 额度/时钟 (Clock)
+export const IconClock: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  )
+}
+
+// 日志/文件文本 (FileText)
+export const IconFileText: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  )
+}
+
+// 登出 (Logout)
+export const IconLogout: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  )
+}
+
+// 消息框 (MessageSquare)
+export const IconMessageSquare: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+// 旋转重置 (RotateCcw)
+export const IconRotateCcw: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  )
+}

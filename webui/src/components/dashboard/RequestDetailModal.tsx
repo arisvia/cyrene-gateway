@@ -1,6 +1,6 @@
 import { type Component, Show, createSignal, createResource } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { Badge, Button, ProviderAvatar, Spinner, SegmentedControl } from '@/components/ui'
+import { Badge, Button, ProviderAvatar, Spinner, SegmentedControl, IconClose, IconMessageSquare, IconSparkles } from '@/components/ui'
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -96,10 +96,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               title={t('requestDetail.closeEsc')}
               aria-label={t('requestDetail.close')}
             >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <IconClose size={16} />
             </button>
           </div>
 
@@ -187,9 +184,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                 {/* 客户端输入 */}
                 <div class="space-y-1.5">
                   <div class="font-semibold text-foreground flex items-center gap-1.5 text-xs">
-                    <svg class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
+                    <IconMessageSquare size={14} class="text-accent" />
                     {t('requestDetail.inputContent')}
                   </div>
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
@@ -202,9 +197,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                 {/* 模型回复 */}
                 <div class="space-y-1.5">
                   <div class="font-semibold text-foreground flex items-center gap-1.5 text-xs">
-                    <svg class="w-3.5 h-3.5 text-accent-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                    </svg>
+                    <IconSparkles size={14} class="text-accent-2" />
                     {t('requestDetail.outputContent')}
                   </div>
                   <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
