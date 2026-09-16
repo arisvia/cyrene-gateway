@@ -2,6 +2,7 @@ package loopguard
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -108,7 +109,7 @@ func TestInjectTerminationPrompt_OpenAI(t *testing.T) {
 	msgs := body["messages"].([]any)
 	sys := msgs[0].(map[string]any)
 	content := sys["content"].(string)
-	if !contains(content, TerminationPrompt) {
+	if !strings.Contains(content, TerminationPrompt) {
 		t.Error("expected termination prompt in system message")
 	}
 
@@ -133,7 +134,7 @@ func TestInjectTerminationPrompt_Anthropic(t *testing.T) {
 	}
 	InjectTerminationPrompt(body, "anthropic")
 	sys := body["system"].(string)
-	if !contains(sys, TerminationPrompt) {
+	if !strings.Contains(sys, TerminationPrompt) {
 		t.Error("expected termination prompt in anthropic system field")
 	}
 }
@@ -169,17 +170,4 @@ func TestInjectLoopHint_NoSystemMessage(t *testing.T) {
 	if sys["role"] != "system" || sys["content"] != "STOP looping" {
 		t.Error("expected prepended system message with loop hint")
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
-}
-
-func containsSubstr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }

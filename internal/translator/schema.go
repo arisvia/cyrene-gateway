@@ -188,7 +188,7 @@ func mergeAllOfWalk(obj map[string]any, isSchema bool) {
 					}
 					if req, ok := item["required"].([]any); ok {
 						for _, r := range req {
-							if !containsAny(mergedRequired, r) {
+							if !slices.Contains(mergedRequired, r) {
 								mergedRequired = append(mergedRequired, r)
 							}
 						}
@@ -411,8 +411,4 @@ func selectBestSchema(items []map[string]any) int {
 		}
 	}
 	return bestIdx
-}
-
-func containsAny(slice []any, item any) bool {
-	return slices.Contains(slice, item)
 }

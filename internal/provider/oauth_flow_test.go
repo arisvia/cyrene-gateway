@@ -74,13 +74,13 @@ func TestBuildAuthorizeURL_Claude(t *testing.T) {
 	if url == "" {
 		t.Fatal("URL should not be empty")
 	}
-	if !contains(url, "claude.ai/oauth/authorize") {
+	if !strings.Contains(url, "claude.ai/oauth/authorize") {
 		t.Error("URL should contain claude authorize endpoint")
 	}
-	if !contains(url, "code_challenge=") {
+	if !strings.Contains(url, "code_challenge=") {
 		t.Error("URL should contain code_challenge")
 	}
-	if !contains(url, "state=") {
+	if !strings.Contains(url, "state=") {
 		t.Error("URL should contain state")
 	}
 }
@@ -90,10 +90,10 @@ func TestBuildAuthorizeURL_Antigravity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildAuthorizeURL failed: %v", err)
 	}
-	if !contains(url, "code_challenge=") {
+	if !strings.Contains(url, "code_challenge=") {
 		t.Error("Antigravity URL should contain code_challenge")
 	}
-	if !contains(url, "code_challenge_method=S256") {
+	if !strings.Contains(url, "code_challenge_method=S256") {
 		t.Error("Antigravity URL should contain code_challenge_method=S256")
 	}
 }
@@ -104,10 +104,10 @@ func TestBuildAuthorizeURL_Codex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildAuthorizeURL failed: %v", err)
 	}
-	if !contains(url, "auth.openai.com/oauth/authorize") {
+	if !strings.Contains(url, "auth.openai.com/oauth/authorize") {
 		t.Error("URL should contain OpenAI authorize endpoint")
 	}
-	if !contains(url, "code_challenge_method=S256") {
+	if !strings.Contains(url, "code_challenge_method=S256") {
 		t.Error("URL should contain S256 challenge method")
 	}
 }
@@ -403,19 +403,6 @@ func TestDeviceCodeResponse_JSONCamelCase(t *testing.T) {
 	if strings.Contains(s, `"device_code"`) || strings.Contains(s, `"verification_uri"`) {
 		t.Errorf("unexpected snake_case keys in %s", s)
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))
-}
-
-func containsSubstr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestMapTokenResponse_MalformedIDToken(t *testing.T) {
