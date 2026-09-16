@@ -697,7 +697,7 @@ export const Select: Component<{
               </div>
             </Show>
             <div
-              class="max-h-60 overflow-y-auto space-y-0.5 pr-0.5"
+              class="max-h-60 overflow-y-auto space-y-0.5 px-0.5"
               onScroll={handleListScroll}
             >
               <For each={visibleOptions()}>

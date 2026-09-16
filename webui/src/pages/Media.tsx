@@ -291,7 +291,7 @@ const Media: Component = () => {
         title={`${selectedProvider()?.name || ''} · ${caps().find(c => c.id === active())?.label || ''}`}
         onClose={() => setWorkbenchOpen(false)}
       >
-        <div class="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+        <div class="space-y-4 max-h-[80vh] overflow-y-auto px-1">
           <Show when={selectedProvider()?.models && selectedProvider()!.models!.length > 0}>
             <Field label={t('media.selectModel')}>
               <Select

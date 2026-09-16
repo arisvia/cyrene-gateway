@@ -1085,7 +1085,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 账号列表滚动容器 */}
-                    <div class="max-h-[360px] lg:max-h-[calc(100vh-340px)] overflow-y-auto pr-1 space-y-2">
+                    <div class="max-h-[360px] lg:max-h-[calc(100vh-340px)] overflow-y-auto px-1 space-y-2">
                       <For each={accounts()}>
                         {(acc, idx) => {
                           const isCurrent = () => acc.id === c().id
@@ -1243,7 +1243,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 表单内容滚动区 */}
-                    <div class="flex-1 overflow-y-auto pr-1 py-3 space-y-4">
+                    <div class="flex-1 overflow-y-auto px-1 py-3 space-y-4">
                       <Field label={t('providerDetail.accountNameLabel2')} hint={t('providerDetail.accountNameHint2')}>
                         <Input
                           value={name()}

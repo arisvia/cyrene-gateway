@@ -243,7 +243,7 @@ const Quota: Component = () => {
           </div>
         </Show>
 
-        <div class="space-y-0.5 max-h-[360px] overflow-y-auto pr-0.5 scrollbar-thin">
+        <div class="space-y-0.5 max-h-[360px] overflow-y-auto px-0.5 scrollbar-thin">
           <For each={currentKeys()}>
             {k => {
               const b = props.quotasObj[k]

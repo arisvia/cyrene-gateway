@@ -829,7 +829,7 @@ main();
           <div
             ref={chatContainerRef}
             onScroll={handleScroll}
-            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 pr-1.5 scroll-smooth custom-scrollbar"
+            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 px-1.5 scroll-smooth custom-scrollbar"
           >
             <Show
               when={turns().length > 0}
@@ -1178,7 +1178,7 @@ main();
                 </div>
               </div>
               {/* 参数项独立滚动容器 */}
-              <div class="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1 pt-2 custom-scrollbar">
+              <div class="flex-1 min-h-0 overflow-y-auto space-y-4 px-1 pt-2 custom-scrollbar">
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between h-5">
