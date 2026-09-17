@@ -199,7 +199,10 @@ const Usage: Component = () => {
               </div>
 
               {/* 柱状主体：固定高度，flex-col 撑满，绝对防止子级高度崩塌 */}
-              <div class="relative z-10 h-36 w-full flex items-stretch gap-1 sm:gap-1.5">
+              <div
+                class="relative z-10 h-36 w-full flex items-stretch gap-1 sm:gap-1.5"
+                onMouseLeave={() => setHoveredPoint(null)}
+              >
                 <For each={chart()}>
                   {(c, i) => {
                     const hasTokens = () => (c.tokens || 0) > 0
@@ -211,7 +214,6 @@ const Usage: Component = () => {
                       <div
                         class="flex-1 h-full flex flex-col items-center justify-end min-w-0 group cursor-pointer"
                         onMouseEnter={() => setHoveredPoint(c)}
-                        onMouseLeave={() => setHoveredPoint(null)}
                       >
                         {/* 柱状高度轨道 */}
                         <div class="relative w-full flex-1 flex items-end justify-center px-0.5">

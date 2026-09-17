@@ -63,8 +63,8 @@ jobs:
             index($0, "## [" ver "]") == 1 { flag=1; print; next }
             index($0, "## [") == 1 && flag { flag=0; exit }
             flag { print }
-          ' CHANGELOG.md > dist/RELEASE_NOTES.md
-          if [ ! -s dist/RELEASE_NOTES.md ]; then
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
             echo "Error: Release notes for ${GITHUB_REF_NAME} not found or empty in CHANGELOG.md"
             exit 1
           fi
@@ -72,7 +72,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
-          body_path: dist/RELEASE_NOTES.md
+          body_path: RELEASE_NOTES.md
 
   docker:
     name: Build & Push Multi-Arch Docker Image
