@@ -1,6 +1,9 @@
 package model
 
-// ModelMetadata holds rich metadata for a single model.
+import (
+	"strings"
+)
+
 type ModelMetadata struct {
 	ID            string   `json:"id"`
 	DisplayName   string   `json:"display_name,omitempty"`
@@ -87,8 +90,13 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude", DisplayName: "Claude", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	// Google Gemini
+	{Pattern: "gemini-3.8-flash-tiered", DisplayName: "Gemini 3.8 Flash (Tiered)", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
+	{Pattern: "gemini-3.8-flash", DisplayName: "Gemini 3.8 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
+	{Pattern: "gemini-3.7-flash-tiered", DisplayName: "Gemini 3.7 Flash (Tiered)", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
+	{Pattern: "gemini-3.7-flash", DisplayName: "Gemini 3.7 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
 	{Pattern: "gemini-3.6-flash", DisplayName: "Gemini 3.6 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
 	{Pattern: "gemini-3.5-flash-lite", DisplayName: "Gemini 3.5 Flash Lite", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
+	{Pattern: "gemini-3.5-flash", DisplayName: "Gemini 3.5 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
 	{Pattern: "gemini-3.1-pro", DisplayName: "Gemini 3.1 Pro", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
 	{Pattern: "gemini-3.1-flash-lite", DisplayName: "Gemini 3.1 Flash Lite", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
 	{Pattern: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "image-generation", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
@@ -102,7 +110,8 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "gemini-2.0-flash", DisplayName: "Gemini 2.0 Flash", ContextLength: 1048576, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image", "audio"}, Family: "gemini"},
 	{Pattern: "gemini-embedding", DisplayName: "Gemini Embedding", ContextLength: 2048, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "gemini"},
 	{Pattern: "gemma-4", DisplayName: "Gemma 4", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gemma"},
-
+	{Pattern: "gemma-3", DisplayName: "Gemma 3", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gemma"},
+	{Pattern: "gpt-oss-120b", DisplayName: "GPT-OSS 120B", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gpt-oss"},
 	// DeepSeek
 	{Pattern: "deepseek-v4.1-flash", DisplayName: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v4-pro-max", DisplayName: "DeepSeek V4 Pro Max", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
@@ -205,6 +214,69 @@ func LookupCatalog(modelID string) *ModelMetadata {
 		}
 	}
 	return nil
+}
+
+// FormatFallbackDisplayName formats an arbitrary model ID into a readable display name
+// when upstream returns an empty name and static catalog does not match.
+// E.g. "gemini-3.7-flash-tiered" -> "Gemini 3.7 Flash (Tiered)"
+func FormatFallbackDisplayName(modelID string) string {
+	if cat := LookupCatalog(modelID); cat != nil && cat.DisplayName != "" && cat.DisplayName != modelID {
+		return cat.DisplayName
+	}
+	parts := strings.Split(modelID, "-")
+	var titleParts []string
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		lower := strings.ToLower(p)
+		switch lower {
+		case "gpt":
+			titleParts = append(titleParts, "GPT")
+		case "oss":
+			titleParts = append(titleParts, "OSS")
+		case "claude":
+			titleParts = append(titleParts, "Claude")
+		case "gemini":
+			titleParts = append(titleParts, "Gemini")
+		case "gemma":
+			titleParts = append(titleParts, "Gemma")
+		case "deepseek":
+			titleParts = append(titleParts, "DeepSeek")
+		case "qwen":
+			titleParts = append(titleParts, "Qwen")
+		case "glm":
+			titleParts = append(titleParts, "GLM")
+		case "kimi":
+			titleParts = append(titleParts, "Kimi")
+		case "minimax":
+			titleParts = append(titleParts, "MiniMax")
+		case "tiered":
+			titleParts = append(titleParts, "(Tiered)")
+		case "high":
+			titleParts = append(titleParts, "(High)")
+		case "medium":
+			titleParts = append(titleParts, "(Medium)")
+		case "low":
+			titleParts = append(titleParts, "(Low)")
+		case "pro":
+			titleParts = append(titleParts, "Pro")
+		case "flash":
+			titleParts = append(titleParts, "Flash")
+		case "lite":
+			titleParts = append(titleParts, "Lite")
+		case "image":
+			titleParts = append(titleParts, "Image")
+		default:
+			if len(p) > 0 {
+				titleParts = append(titleParts, strings.ToUpper(p[:1])+p[1:])
+			}
+		}
+	}
+	if len(titleParts) == 0 {
+		return modelID
+	}
+	return strings.Join(titleParts, " ")
 }
 
 func toLower(s string) string {

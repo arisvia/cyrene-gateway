@@ -81,8 +81,8 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 					continue
 				}
 				name := m.DisplayName
-				if name == "" {
-					name = m.ID
+				if name == "" || name == m.ID {
+					name = model.FormatFallbackDisplayName(m.ID)
 				}
 				seen[m.ID] = true
 				unifiedModels = append(unifiedModels, provider.ModelRef{

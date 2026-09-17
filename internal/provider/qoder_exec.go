@@ -156,7 +156,7 @@ func InvalidateQoderCatalog(userID string) {
 
 // BuildQoderRequestBody maps an OpenAI-style request into the shape Qoder
 // expects. Returns the encoded body bytes (latin1) and the model key.
-func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCreds, client *http.Client) (encodedBody []byte, qoderKey string, err error) {
+func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCreds, client *http.Client) (encodedBody []byte, qoderKey string, modelSource string, err error) {
 	qoderKey = strings.TrimPrefix(model, "qoder/")
 
 	// Fetch live model config
@@ -173,7 +173,7 @@ func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCre
 		}
 	}
 	if modelConfig == nil {
-		return nil, "", fmt.Errorf("qoder: model_config for %q not yet known (check upstream connectivity)", qoderKey)
+		return nil, "", "", fmt.Errorf("qoder: model_config for %q not yet known (check upstream connectivity)", qoderKey)
 	}
 
 	messages, systemText := qoderNormalizeMessages(body)
@@ -197,12 +197,10 @@ func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCre
 	sessionID := qoderStableHash("qoder-session", creds.UserID, qoderKey)
 	recordID := qoderStableChatRecordID(qoderKey, messages, maxTokens)
 
-	modelSource := "system"
+	modelSource = "system"
 	if s, ok := modelConfig["source"].(string); ok && s != "" {
 		modelSource = s
 	}
-	_ = modelSource
-
 	payload := map[string]any{
 		"request_id":       uuid.New().String(),
 		"request_set_id":   recordID,
@@ -250,11 +248,11 @@ func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCre
 
 	plainBody, err := json.Marshal(payload)
 	if err != nil {
-		return nil, "", fmt.Errorf("qoder: failed to marshal payload: %w", err)
+		return nil, "", "", fmt.Errorf("qoder: failed to marshal payload: %w", err)
 	}
 
 	encoded := QoderEncodeBody(plainBody)
-	return []byte(encoded), qoderKey, nil
+	return []byte(encoded), qoderKey, modelSource, nil
 }
 
 // qoderNormalizeMessages hoists system messages out of the array (Qoder

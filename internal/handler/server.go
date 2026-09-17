@@ -484,11 +484,11 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			seenFullIDs[fullID] = true
 			meta := model.MergeMetadata(m.ID, nil, cacheIndex[fullID])
 			displayName := meta.DisplayName
-			if (displayName == "" || displayName == m.ID) && m.Name != "" {
+			if (displayName == "" || displayName == m.ID) && m.Name != "" && m.Name != m.ID {
 				displayName = m.Name
 			}
-			if displayName == "" {
-				displayName = m.ID
+			if displayName == "" || displayName == m.ID {
+				displayName = model.FormatFallbackDisplayName(m.ID)
 			}
 			if overrides != nil {
 				ovRaw := overrides[fullID]

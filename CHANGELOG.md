@@ -2,6 +2,15 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.1] - 2026-09-17
+
+### Fixed
+- **Qoder 模型来源透传修复**：完整透传 `model_config.source` 至请求头 `X-Model-Source`，消除退回兜底值。
+- **Antigravity 动态模型自适应命名**：自动格式化 `gemini-3.7-flash-tiered` 等自适应端点展示名，补齐 2026 最新模型目录收录。
+
+### Added
+- **Antigravity 周度与共享配额支持**：支持 `retrieveUserQuotaSummary` 提取 5 小时与每周额度窗口，合并 Claude 与 GPT 共享配额池。
+
 ## [1.2.0] - 2026-09-17
 
 ### Added

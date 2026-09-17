@@ -142,8 +142,8 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 						var out []model.ModelMetadata
 						for _, m := range res.Models {
 							name := m.Name
-							if name == "" {
-								name = m.ID
+							if name == "" || name == m.ID {
+								name = model.FormatFallbackDisplayName(m.ID)
 							}
 							out = append(out, model.ModelMetadata{ID: m.ID, DisplayName: name})
 						}
@@ -208,12 +208,11 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					continue
 				}
 				name := m.DisplayName
-				if name == "" {
-					name = id
+				if name == "" || name == id {
+					name = model.FormatFallbackDisplayName(id)
 				}
 				var caps []string
 				var mods []string
-
 				// Distinguish dedicated image generation models (e.g. gemini-3.1-flash-image)
 				isImageGen := strings.Contains(strings.ToLower(id), "-image")
 				if isImageGen {
@@ -272,8 +271,8 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					continue
 				}
 				name := m.DisplayName
-				if name == "" {
-					name = m.ID
+				if name == "" || name == m.ID {
+					name = model.FormatFallbackDisplayName(m.ID)
 				}
 				out = append(out, model.ModelMetadata{
 					ID:          m.ID,

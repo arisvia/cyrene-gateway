@@ -88,7 +88,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider)
 
 	start := time.Now()
-	encodedBody, qoderKey, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
+	encodedBody, qoderKey, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -105,9 +105,6 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		})
 		return
 	}
-
-	modelSource := "system"
-
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", chatURL, bytes.NewReader(encodedBody))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
