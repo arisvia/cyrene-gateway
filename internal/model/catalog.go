@@ -28,7 +28,8 @@ type CatalogEntry struct {
 // StaticCatalog is a curated list of mainstream model metadata.
 // Ordered by specificity: more specific patterns first.
 var StaticCatalog = []CatalogEntry{
-	// OpenAI GPT-5.x & GPT-OSS
+	// OpenAI GPT-6.x & GPT-5.x & GPT-OSS
+	{Pattern: "gpt-6-astra", DisplayName: "GPT-6 Astra", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-6"},
 	{Pattern: "gpt-5.6-sol", DisplayName: "GPT-5.6 Sol", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
 	{Pattern: "gpt-5.6-terra", DisplayName: "GPT-5.6 Terra", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
 	{Pattern: "gpt-5.6-luna", DisplayName: "GPT-5.6 Luna", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
@@ -130,10 +131,12 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "grok-4.6", DisplayName: "Grok 4.6", ContextLength: 500000, MaxOutput: 450000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
 	{Pattern: "grok-4.5", DisplayName: "Grok 4.5", ContextLength: 500000, MaxOutput: 450000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
 	{Pattern: "grok-4.3", DisplayName: "Grok 4.3", ContextLength: 1000000, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
+	{Pattern: "grok-4.2-fast", DisplayName: "Grok 4.2 Fast", ContextLength: 2000000, MaxOutput: 30000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
 	{Pattern: "grok-4.1-fast", DisplayName: "Grok 4.1 Fast", ContextLength: 2000000, MaxOutput: 2000000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
 	{Pattern: "grok-4-fast", DisplayName: "Grok 4 Fast", ContextLength: 2000000, MaxOutput: 2000000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
 	{Pattern: "grok-4", DisplayName: "Grok 4", ContextLength: 256000, MaxOutput: 256000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
-	{Pattern: "grok-code-fast", DisplayName: "Grok Code Fast", ContextLength: 256000, MaxOutput: 256000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-build", DisplayName: "Grok Build", ContextLength: 256000, MaxOutput: 256000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-code-fast", DisplayName: "Grok Code Fast", ContextLength: 256000, MaxOutput: 10000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
 	{Pattern: "grok-3-mini", DisplayName: "Grok 3 Mini", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
 	{Pattern: "grok-3", DisplayName: "Grok 3", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
 
@@ -157,6 +160,7 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "kimi-k2.7-code", DisplayName: "Kimi K2.7 Code", ContextLength: 262144, MaxOutput: 262144, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.7", DisplayName: "Kimi K2.7", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.6", DisplayName: "Kimi K2.6", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
+	{Pattern: "kimi-k2-thinking", DisplayName: "Kimi K2 Thinking", ContextLength: 262144, MaxOutput: 65536, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.5", DisplayName: "Kimi K2.5", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 
 	// GLM (Zhipu)
@@ -173,34 +177,66 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "minimax-m2.7", DisplayName: "MiniMax M2.7", ContextLength: 204800, MaxOutput: 131072, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
 	{Pattern: "minimax-m2.5", DisplayName: "MiniMax M2.5", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
 	{Pattern: "minimax-m2", DisplayName: "MiniMax M2", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
-	{Pattern: "codestral", DisplayName: "Codestral", ContextLength: 256000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+
+	// Mistral AI
+	{Pattern: "mistral-large-3", DisplayName: "Mistral Large 3", ContextLength: 262144, MaxOutput: 256000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "mistral-large", DisplayName: "Mistral Large", ContextLength: 128000, MaxOutput: 102400, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "mistral-small-4", DisplayName: "Mistral Small 4", ContextLength: 262144, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "mistral-small-3.2", DisplayName: "Mistral Small 3.2", ContextLength: 128000, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "mistral-medium-3.5", DisplayName: "Mistral Medium 3.5", ContextLength: 262144, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
 	{Pattern: "mistral-medium", DisplayName: "Mistral Medium", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "devstral-2", DisplayName: "Devstral 2", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "devstral", DisplayName: "Devstral", ContextLength: 32768, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "codestral-2508", DisplayName: "Codestral 2508", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "codestral", DisplayName: "Codestral", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "ministral-14b", DisplayName: "Ministral 14B", ContextLength: 262144, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "ministral-3b", DisplayName: "Ministral 3B", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
+	{Pattern: "pixtral-12b", DisplayName: "Pixtral 12B", ContextLength: 128000, MaxOutput: 4096, Capabilities: []string{"chat", "vision"}, Modalities: []string{"text", "image"}, Family: "mistral"},
 	{Pattern: "mistral-embed", DisplayName: "Mistral Embed", ContextLength: 8192, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "mistral"},
 
 	// Meta Llama
-	{Pattern: "llama-4", DisplayName: "Llama 4", ContextLength: 10000000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "llama"},
-	{Pattern: "llama-3.3", DisplayName: "Llama 3.3", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "llama"},
+	{Pattern: "llama-4-maverick", DisplayName: "Llama 4 Maverick", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "llama"},
+	{Pattern: "llama-4-scout", DisplayName: "Llama 4 Scout", ContextLength: 328000, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "llama"},
+	{Pattern: "llama-4", DisplayName: "Llama 4", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "llama"},
+	{Pattern: "llama-3.3", DisplayName: "Llama 3.3", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "llama"},
 	{Pattern: "llama-3", DisplayName: "Llama 3", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "llama"},
 
 	// Cohere
-	{Pattern: "command-r-plus", DisplayName: "Command R+", ContextLength: 128000, MaxOutput: 4096, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "command-a-plus", DisplayName: "Command A+", ContextLength: 256000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "command-a-reasoning", DisplayName: "Command A Reasoning", ContextLength: 256000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "command"},
 	{Pattern: "command-a", DisplayName: "Command A", ContextLength: 256000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "command-r-plus", DisplayName: "Command R+", ContextLength: 128000, MaxOutput: 4096, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "command-r7b", DisplayName: "Command R7B", ContextLength: 128000, MaxOutput: 4000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "command-r", DisplayName: "Command R", ContextLength: 128000, MaxOutput: 4000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "embed-v4", DisplayName: "Cohere Embed V4", ContextLength: 128000, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "command"},
+	{Pattern: "rerank-v4", DisplayName: "Cohere Rerank V4", ContextLength: 32000, Capabilities: []string{"rerank"}, Modalities: []string{"text"}, Family: "command"},
 
 	// NVIDIA Nemotron
+	{Pattern: "nemotron-3-ultra", DisplayName: "Nemotron 3 Ultra", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "nemotron"},
+	{Pattern: "nemotron-3.5", DisplayName: "Nemotron 3.5 Lightning", ContextLength: 1000000, MaxOutput: 65536, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "nemotron"},
+	{Pattern: "nemotron-3-super", DisplayName: "Nemotron 3 Super", ContextLength: 262144, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "nemotron"},
 	{Pattern: "nemotron", DisplayName: "Nemotron", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "nemotron"},
 
-	// Seed (ByteDance)
-	{Pattern: "seed-2", DisplayName: "Seed 2.0", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "seed"},
+	// Seed (ByteDance Doubao)
+	{Pattern: "seed-2.0-pro", DisplayName: "Doubao Seed 2.0 Pro", ContextLength: 256000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "seed"},
+	{Pattern: "seed-2.0-code", DisplayName: "Doubao Seed 2.0 Code", ContextLength: 256000, MaxOutput: 128000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "seed"},
+	{Pattern: "seed-2.0", DisplayName: "Doubao Seed 2.0", ContextLength: 256000, MaxOutput: 32000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "seed"},
+	{Pattern: "seed-2", DisplayName: "Doubao Seed 2.0", ContextLength: 256000, MaxOutput: 32000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "seed"},
+	{Pattern: "seed-1.6", DisplayName: "Doubao Seed 1.6", ContextLength: 256000, MaxOutput: 32000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "seed"},
+	{Pattern: "seed-1-6", DisplayName: "Doubao Seed 1.6", ContextLength: 256000, MaxOutput: 32000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "seed"},
 
 	// MiMo (Xiaomi)
-	{Pattern: "mimo-v2.5-pro", DisplayName: "MiMo V2.5 Pro", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
-	{Pattern: "mimo-v2.5", DisplayName: "MiMo V2.5", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
+	{Pattern: "mimo-v2.5-pro", DisplayName: "MiMo V2.5 Pro", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "mimo"},
+	{Pattern: "mimo-v2.5", DisplayName: "MiMo V2.5", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "mimo"},
+	{Pattern: "mimo-v2-pro", DisplayName: "MiMo V2 Pro", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "mimo"},
+	{Pattern: "mimo-v2-flash", DisplayName: "MiMo V2 Flash", ContextLength: 256000, MaxOutput: 256000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
 	{Pattern: "mimo-v2", DisplayName: "MiMo V2", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mimo"},
 
 	// Poolside Laguna
-	{Pattern: "laguna-s-2.1", DisplayName: "Laguna S 2.1", ContextLength: 1000000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
-	{Pattern: "laguna-xs-2.1", DisplayName: "Laguna XS 2.1", ContextLength: 200000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
-	{Pattern: "laguna", DisplayName: "Laguna", ContextLength: 200000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
+	{Pattern: "laguna-s-2.1", DisplayName: "Laguna S 2.1", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
+	{Pattern: "laguna-xs-2.1", DisplayName: "Laguna XS 2.1", ContextLength: 262144, MaxOutput: 32768, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
+	{Pattern: "laguna-m.1", DisplayName: "Laguna M.1", ContextLength: 262144, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "poolside"},
+	{Pattern: "laguna", DisplayName: "Laguna", ContextLength: 262144, MaxOutput: 32768, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
 
 	// Tencent Hunyuan (Hy)
 	{Pattern: "hy4-preview", DisplayName: "Hy4 Preview", ContextLength: 1048576, MaxOutput: 64000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "hunyuan"},
@@ -210,6 +246,36 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "hunyuan-t1", DisplayName: "Hunyuan T1", ContextLength: 256000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "hunyuan"},
 	{Pattern: "hunyuan-turbos", DisplayName: "Hunyuan TurboS", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
 	{Pattern: "hunyuan", DisplayName: "Hunyuan", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
+
+	// Perplexity Sonar
+	{Pattern: "sonar-deep-research", DisplayName: "Sonar Deep Research", ContextLength: 128000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning"}, Modalities: []string{"text"}, Family: "perplexity"},
+	{Pattern: "sonar-reasoning-pro", DisplayName: "Sonar Reasoning Pro", ContextLength: 128000, MaxOutput: 4096, Capabilities: []string{"chat", "reasoning"}, Modalities: []string{"text"}, Family: "perplexity"},
+	{Pattern: "sonar-reasoning", DisplayName: "Sonar Reasoning", ContextLength: 127000, MaxOutput: 4096, Capabilities: []string{"chat", "reasoning"}, Modalities: []string{"text"}, Family: "perplexity"},
+	{Pattern: "sonar-pro", DisplayName: "Sonar Pro", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat"}, Modalities: []string{"text"}, Family: "perplexity"},
+	{Pattern: "sonar", DisplayName: "Sonar", ContextLength: 130000, MaxOutput: 4096, Capabilities: []string{"chat"}, Modalities: []string{"text"}, Family: "perplexity"},
+
+	// Amazon Nova
+	{Pattern: "nova-2-pro", DisplayName: "Nova 2 Pro", ContextLength: 1000000, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "nova"},
+	{Pattern: "nova-2-lite", DisplayName: "Nova 2 Lite", ContextLength: 1000000, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "nova"},
+	{Pattern: "nova-pro", DisplayName: "Nova Pro", ContextLength: 300000, MaxOutput: 5000, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "nova"},
+	{Pattern: "nova-lite", DisplayName: "Nova Lite", ContextLength: 300000, MaxOutput: 5000, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "nova"},
+	{Pattern: "nova-micro", DisplayName: "Nova Micro", ContextLength: 128000, MaxOutput: 4096, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "nova"},
+
+	// Baidu ERNIE
+	{Pattern: "ernie-5.1", DisplayName: "ERNIE 5.1", ContextLength: 119000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "ernie"},
+	{Pattern: "ernie-5.0", DisplayName: "ERNIE 5.0", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "ernie"},
+	{Pattern: "ernie-4.5", DisplayName: "ERNIE 4.5", ContextLength: 131000, MaxOutput: 131000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "ernie"},
+	{Pattern: "ernie", DisplayName: "ERNIE", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "ernie"},
+
+	// Microsoft Phi
+	{Pattern: "phi-4-multimodal", DisplayName: "Phi 4 Multimodal", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "phi"},
+	{Pattern: "phi-4-mini", DisplayName: "Phi 4 Mini", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "phi"},
+	{Pattern: "phi-4", DisplayName: "Phi 4", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "phi"},
+
+	// StepFun (阶跃星辰)
+	{Pattern: "step-3.7-flash", DisplayName: "Step 3.7 Flash", ContextLength: 262144, MaxOutput: 256000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "step"},
+	{Pattern: "step-3.5-flash", DisplayName: "Step 3.5 Flash", ContextLength: 262144, MaxOutput: 65536, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "step"},
+	{Pattern: "step-2", DisplayName: "Step 2", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "step"},
 }
 
 // LookupCatalog finds the best matching static catalog entry for a model ID.

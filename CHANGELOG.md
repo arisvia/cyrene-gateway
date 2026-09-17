@@ -2,14 +2,15 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.2.1] - 2026-09-17
+## [1.2.2] - 2026-09-17
+
+### Added
+- **模型静态目录全厂商 2026 对齐**：依据 `models.dev` 权威数据库，全面增补与对齐 OpenAI（含 GPT-6 Astra、GPT-OSS 系列）、xAI Grok（含 4.20、4.6、4.2-Fast、Grok Build）、通义千问 Qwen 3.8 全系、Mistral Large 3/Small 4、Meta Llama 4、Cohere Command A+、Perplexity Sonar、Amazon Nova、百度文心 ERNIE 5.x、字节跳动 Seed 2.0、小米 MiMo、阶跃星辰 Step 等主流现役模型。
+- **Antigravity 周度与共享配额支持**：支持 `retrieveUserQuotaSummary` 提取 5 小时与每周额度窗口，合并 Claude 与 GPT 共享配额池。
 
 ### Fixed
 - **Qoder 模型来源透传修复**：完整透传 `model_config.source` 至请求头 `X-Model-Source`，消除退回兜底值。
-- **Antigravity 动态模型自适应命名**：自动格式化 `gemini-3.7-flash-tiered` 等自适应端点展示名，补齐 2026 最新模型目录收录。
-
-### Added
-- **Antigravity 周度与共享配额支持**：支持 `retrieveUserQuotaSummary` 提取 5 小时与每周额度窗口，合并 Claude 与 GPT 共享配额池。
+- **Antigravity 动态模型自适应命名**：自动格式化 `gemini-3.7-flash-tiered` 等自适应端点展示名，并淘汰清理过期实验模型。
 
 ## [1.2.0] - 2026-09-17
 
@@ -55,6 +56,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.2.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.0...v1.2.2
 [1.2.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/arisvia/cyrene-gateway/releases/tag/v1.0.0
