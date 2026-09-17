@@ -126,9 +126,16 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "deepseek-reasoner", DisplayName: "DeepSeek Reasoner", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "reasoning", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
 
 	// xAI Grok
-	{Pattern: "grok-4", DisplayName: "Grok 4", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
-	{Pattern: "grok-3", DisplayName: "Grok 3", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
-	{Pattern: "grok-code-fast", DisplayName: "Grok Code Fast", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-4.20", DisplayName: "Grok 4.20", ContextLength: 2000000, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
+	{Pattern: "grok-4.6", DisplayName: "Grok 4.6", ContextLength: 500000, MaxOutput: 450000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
+	{Pattern: "grok-4.5", DisplayName: "Grok 4.5", ContextLength: 500000, MaxOutput: 450000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
+	{Pattern: "grok-4.3", DisplayName: "Grok 4.3", ContextLength: 1000000, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
+	{Pattern: "grok-4.1-fast", DisplayName: "Grok 4.1 Fast", ContextLength: 2000000, MaxOutput: 2000000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-4-fast", DisplayName: "Grok 4 Fast", ContextLength: 2000000, MaxOutput: 2000000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-4", DisplayName: "Grok 4", ContextLength: 256000, MaxOutput: 256000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "grok"},
+	{Pattern: "grok-code-fast", DisplayName: "Grok Code Fast", ContextLength: 256000, MaxOutput: 256000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-3-mini", DisplayName: "Grok 3 Mini", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
+	{Pattern: "grok-3", DisplayName: "Grok 3", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
 
 	// Qwen (Alibaba)
 	{Pattern: "qwen3.8-max", DisplayName: "Qwen 3.8 Max", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "qwen"},
