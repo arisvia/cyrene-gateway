@@ -182,26 +182,14 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "failed to create request"})
 		return
 	}
-
-	if conn.Data.APIKey != "" {
-		if effectiveAPIType == "anthropic" {
-			upstreamReq.Header.Set("x-api-key", conn.Data.APIKey)
-			upstreamReq.Header.Set("anthropic-version", "2023-06-01")
-		} else if effectiveAPIType == "gemini" {
-			q := upstreamReq.URL.Query()
-			q.Set("key", conn.Data.APIKey)
-			upstreamReq.URL.RawQuery = q.Encode()
-		} else {
-			upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
-		}
-	} else if conn.Data.AccessToken != "" {
-		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
-	}
-	upstreamReq.Header.Set("Content-Type", "application/json")
-	for k, v := range providerInfo.Headers {
+	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+	for k, v := range transport.Headers {
 		upstreamReq.Header.Set(k, v)
 	}
 
+	creds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
+	provider.ApplyAuth(upstreamReq, transport, creds)
+	upstreamReq.Header.Set("Content-Type", "application/json")
 	client := s.getHTTPClient(30 * time.Second)
 	start := time.Now()
 	resp, err := client.Do(upstreamReq)

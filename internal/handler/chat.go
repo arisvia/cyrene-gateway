@@ -440,11 +440,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		for k, v := range comboTransport.Headers {
 			upstreamReq.Header.Set(k, v)
 		}
-		comboCreds := provider.Credentials{
-			APIKey:               conn.Data.APIKey,
-			AccessToken:          conn.Data.AccessToken,
-			ProviderSpecificData: conn.Data.ProviderSpecificData,
-		}
+		comboCreds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
 		provider.ApplyAuth(upstreamReq, comboTransport, comboCreds)
 		upstreamReq.Header.Set("Content-Type", "application/json")
 		if upstreamStream {
@@ -716,11 +712,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	for k, v := range transport.Headers {
 		upstreamReq.Header.Set(k, v)
 	}
-	creds := provider.Credentials{
-		APIKey:               conn.Data.APIKey,
-		AccessToken:          conn.Data.AccessToken,
-		ProviderSpecificData: conn.Data.ProviderSpecificData,
-	}
+	creds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
 	provider.ApplyAuth(upstreamReq, transport, creds)
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	if upstreamStream {
@@ -764,11 +756,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 				for k, v := range transport.Headers {
 					retryReq.Header.Set(k, v)
 				}
-				retryCreds := provider.Credentials{
-					APIKey:               conn.Data.APIKey,
-					AccessToken:          conn.Data.AccessToken,
-					ProviderSpecificData: conn.Data.ProviderSpecificData,
-				}
+				retryCreds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
 				provider.ApplyAuth(retryReq, transport, retryCreds)
 				retryReq.Header.Set("Content-Type", "application/json")
 				if upstreamStream {
@@ -1320,11 +1308,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	for k, v := range transport.Headers {
 		upstreamReq.Header.Set(k, v)
 	}
-	creds := provider.Credentials{
-		APIKey:               conn.Data.APIKey,
-		AccessToken:          conn.Data.AccessToken,
-		ProviderSpecificData: conn.Data.ProviderSpecificData,
-	}
+	creds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
 	provider.ApplyAuth(upstreamReq, transport, creds)
 	upstreamReq.Header.Set("Content-Type", "application/json")
 

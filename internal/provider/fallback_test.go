@@ -64,6 +64,14 @@ func TestCheckFallbackError(t *testing.T) {
 	if result.Cooldown != 0 {
 		t.Errorf("expected 0 cooldown for 404, got %v", result.Cooldown)
 	}
+	// FreeTierError → deterministic non-fallback (0 cooldown)
+	result = CheckFallbackError(403, `{"type":"error","error":{"type":"FreeTierError","message":"Error from provider (Console): OpenCode's free tier can only be used from within OpenCode"}}`, 0)
+	if result.ShouldFallback {
+		t.Error("expected ShouldFallback=false for FreeTierError")
+	}
+	if result.Cooldown != 0 {
+		t.Errorf("expected 0 cooldown for FreeTierError, got %v", result.Cooldown)
+	}
 	// Unknown error → transient cooldown
 	result = CheckFallbackError(500, "something weird happened", 0)
 	if result.Cooldown != TransientCooldown {

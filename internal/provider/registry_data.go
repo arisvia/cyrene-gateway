@@ -380,6 +380,7 @@ func init() {
 	Registry["opencode"] = ProviderInfo{
 		ID: "opencode", Name: "OpenCode",
 		Alias: "oc", Aliases: []string{"oc"},
+		Brand: "OpenCode", Region: "zen",
 		BaseURL: "https://opencode.ai/zen/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 40,
@@ -393,6 +394,25 @@ func init() {
 			"x-opencode-client": "desktop",
 		},
 		ModelsURL:  "https://opencode.ai/zen/v1/models",
+		ModelsAuth: "none",
+	}
+	Registry["opencode-go"] = ProviderInfo{
+		ID: "opencode-go", Name: "OpenCode Go",
+		Alias: "ocg", Aliases: []string{"ocg", "opencode_go"},
+		Brand: "OpenCode", Region: "go",
+		BaseURL: "https://opencode.ai/zen/go/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 40,
+		Color:     "#E87040",
+		Website:   "https://opencode.ai",
+		Icon:      "terminal",
+		TextIcon:  "OCG",
+		APIKeyURL: "https://opencode.ai/auth",
+		AuthHooks: []string{"opencodeHeaders"},
+		Headers: map[string]string{
+			"x-opencode-client": "desktop",
+		},
+		ModelsURL:  "https://opencode.ai/zen/go/v1/models",
 		ModelsAuth: "none",
 	}
 	Registry["openrouter"] = ProviderInfo{

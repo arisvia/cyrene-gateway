@@ -172,6 +172,9 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		AccessToken:          conn.Data.AccessToken,
 		ProviderSpecificData: conn.Data.ProviderSpecificData,
 	}
+	if (conn.Provider == "opencode" || conn.Provider == "opencode-go") && strings.TrimSpace(creds.Token()) == "" {
+		return testResult{OK: false, Error: "API key is required for OpenCode"}
+	}
 
 	var targetURL string
 	var testBody []byte
@@ -209,6 +212,18 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 				"max_tokens": 1,
 				"stream":     true,
 				"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
+			})
+		} else if conn.Provider == "opencode" || conn.Provider == "opencode-go" {
+			targetURL = baseURL
+			if !strings.HasSuffix(targetURL, "/chat/completions") {
+				targetURL = strings.TrimRight(targetURL, "/") + "/chat/completions"
+			}
+			testModel := "big-pickle"
+			creds = provider.ResolveCredentials(conn, conn.Provider, testModel)
+			testBody, _ = json.Marshal(map[string]any{
+				"model":      testModel,
+				"max_tokens": 1,
+				"messages":   []any{map[string]any{"role": "user", "content": "ping"}},
 			})
 		} else {
 			// For OpenAI-compatible providers, test via the models endpoint.
@@ -265,12 +280,44 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
 	}
 	defer resp.Body.Close()
-	io.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if conn.Provider == "opencode" || conn.Provider == "opencode-go" {
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			errMsg := "invalid OpenCode API key"
+			var errResp struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(bodyBytes, &errResp) == nil && errResp.Error.Message != "" {
+				errMsg = errResp.Error.Message
+			}
+			conn.Data.TestStatus = "error"
+			conn.Data.LastError = errMsg
+			if conn.ID != "" {
+				s.DB.UpdateConnection(conn)
+			}
+			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: errMsg}
+		}
+		if resp.StatusCode < 500 {
+			provider.ResetAccountState(conn)
+			provider.ClearModelLocks(conn)
+			if conn.ID != "" {
+				conn.Data.TestStatus = "ok"
+				conn.Data.LastError = ""
+				s.DB.UpdateConnection(conn)
+			}
+			return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
+		}
+	}
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		provider.ResetAccountState(conn)
 		provider.ClearModelLocks(conn)
 		if conn.ID != "" {
+			conn.Data.TestStatus = "ok"
+			conn.Data.LastError = ""
 			s.DB.UpdateConnection(conn)
 		}
 		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}

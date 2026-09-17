@@ -829,12 +829,12 @@ main();
           <div
             ref={chatContainerRef}
             onScroll={handleScroll}
-            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 px-1.5 scroll-smooth custom-scrollbar"
+            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 px-0.5 scroll-smooth custom-scrollbar flex flex-col"
           >
             <Show
               when={turns().length > 0}
               fallback={
-                <Card class="p-8 text-center space-y-4 border-dashed border-subtle h-full flex flex-col items-center justify-center my-auto">
+                <div class="flex-1 w-full flex flex-col items-center justify-center p-6 text-center space-y-4 my-auto">
                   <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
                     <IconChat size={24} />
                   </div>
@@ -857,7 +857,7 @@ main();
                       )}
                     </For>
                   </div>
-                </Card>
+                </div>
               }
             >
               <For each={turns()}>

@@ -54,16 +54,25 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-windows-amd64.exe ./cmd/gateway &
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-windows-arm64.exe ./cmd/gateway &
           wait
-      - name: Generate Checksums
-        run: cd dist && sha256sum * > checksums.txt
-
+      - name: Generate Checksums and Release Notes
+        run: |
+          cd dist && sha256sum * > checksums.txt && cd ..
+          VERSION_NUM="${GITHUB_REF_NAME#v}"
+          # Extract exactly the section for this tag from CHANGELOG.md
+          awk -v ver="${VERSION_NUM}" '
+            index($0, "## [" ver "]") == 1 { flag=1; print; next }
+            index($0, "## [") == 1 && flag { flag=0; exit }
+            flag { print }
+          ' CHANGELOG.md > dist/RELEASE_NOTES.md
+          if [ ! -s dist/RELEASE_NOTES.md ]; then
+            echo "Error: Release notes for ${GITHUB_REF_NAME} not found or empty in CHANGELOG.md"
+            exit 1
+          fi
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
-          body_path: CHANGELOG.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          body_path: dist/RELEASE_NOTES.md
 
   docker:
     name: Build & Push Multi-Arch Docker Image

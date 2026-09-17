@@ -2,6 +2,40 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-09-17
+
+### Added
+- **OpenCode 提供商适配与双端点支持**：
+  - 新增 `opencode`（OpenCode 官方端点）与 `opencode-go`（OpenCode Zen 端点），并在 WebUI 提供商市场与详情页统一呈现对应图标与操作向导。
+  - 在 `internal/provider/registry_data.go` 注册 OpenCode 系列模型元数据与免密能力，支持上游动态模型拉取与自动同步。
+  - 支持通过 `ProviderSpecificData["sessionId"]` 注入自定义会话 ID，保证跨请求上下文黏性。
+- **系统管理与在线运维能力（Ops）**：
+  - 系统详情指标监控：实时呈现系统 CPU、内存、Goroutine、数据库大小及 WAL 状态。
+  - SQLite 运维维护：支持在线 WAL Checkpoint（`TRUNCATE`）与 `VACUUM` 物理收缩整理。
+  - 跨平台二进制原地热升级：官方 GitHub Release SHA-256 完整性校验、原子替换与自动 `.old` 备份（容器环境下自动探测阻断并提示镜像拉取）。
+  - 无缝自重启与端口平滑交接：基于 `CYRENE_RESTART=1` 的子进程接管与重试绑定，彻底解决 Windows/Linux 端口占用冲突。
+
+### Fixed
+- **OpenCode 免费档客户端指纹防 403 阻断**：
+  - 严密对齐 OpenCode 官方客户端指纹协议，将 `User-Agent` 升级为 `opencode/1.18.31`，消除裸 `opencode` 触发的 `403 FreeTierError`（上游限制版本 `>= 1.17.0`）。
+  - 实现官方规范的 30 位降序会话 ID（`ses_` + 12 位 hex 时间戳 + 14 位 Base62 字符）与请求 ID（`msg_` + 12 位 hex 时间戳 + 14 位 Base62 字符）生成及规范化映射。
+  - 修复 `test_model.go` 闪电快速测试未接入 `ApplyAuth` 与客户端指纹、导致 `big-pickle` 等免密模型测试失败的问题。
+  - 修复 `test_batch.go` 探针未走免费档模型、导致未充值 Key 阻断向导保存的问题，统一收口为 `big-pickle` + `Bearer public` 探测。
+- **WebUI 演练场（Playground）工作台与视觉重构**：
+  - 重构演练场为固定视口工作台布局，彻底消除外层滚动抖动。
+  - 消除会话历史模式切换时非活跃轮次的串扰与渲染混淆。
+  - 移除 Max Tokens 输入框标题栏冗余数值展示，保证单一数据源。
+- **CSS 滚动容器防裁切与焦点环优化**：
+  - 为所有 `overflow-y-auto` 容器补齐对称的 `px-*` 呼吸缓冲区，杜绝子元素 `focus:ring` 阴影左边缘被截断。
+  - 修复「用量看板」Token 趋势悬浮 Badge 动态挂载触发的标题栏高度抖动与微小布局偏移（CLS），锁定 `h-6` 容器并通过平滑透明度过渡替代条件装载。
+  - 修复「演练场」空状态面板多层嵌套内缩与虚线外框导致的视觉偏小 Bug，拉齐垂直中轴与外层卡片边界。
+  - 移除 Max Tokens 输入框标题栏冗余数值展示，保证单一数据源。
+- **凭据解析与模型级路由统一收口**：
+  - 在 `internal/provider/transport.go` 抽象 `ResolveCredentials(conn, providerName, modelName)` 统一门面函数，消除各 handler 散落的凭据构造与 OpenCode 免费模型 `Bearer public` 覆盖逻辑。
+- **精简架构与规约沉淀**：
+  - 在 `AGENTS.md` 固化严格的本地 CI 预提交一致性门禁（Rule 11）、滚动容器防裁切规范（Rule 12）与文档单一事实源纪律（Rule 13）。
+  - 移除过期草稿与历史蓝图文件，防止智能体上下文冗余。
+
 ## [1.1.0] - 2026-09-16
 
 ### Security
@@ -75,4 +109,5 @@
 - **CSS 注释解析警告消除**：消除 Lightning CSS 的 `Unexpected token Delim('*')` 构建警告。
 
 [1.1.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.0.0...v1.1.0
+[1.2.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.1.0...v1.2.0
 [1.0.0]: https://github.com/arisvia/cyrene-gateway/releases/tag/v1.0.0

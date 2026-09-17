@@ -128,17 +128,27 @@ func TestE2EChatCompletion(t *testing.T) {
 		// Gemini uses a different wire format; tested separately below.
 		// --- free category (NoAuth, zero-config) ---
 		{
-			Provider: "opencode", Model: "opencode/big-pickle",
+			Provider: "opencode", Model: "opencode/deepseek-v4-pro",
 			AuthType: "api-key", APIKey: "oc-test-key",
 			WantAuth: func(r *http.Request) error {
 				if got := r.Header.Get("Authorization"); got != "Bearer oc-test-key" {
-					return fmt.Errorf("opencode: want Bearer oc-test-key, got %q", got)
+					return fmt.Errorf("opencode paid: want Bearer oc-test-key, got %q", got)
 				}
 				if got := r.Header.Get("x-opencode-client"); got != "desktop" {
 					return fmt.Errorf("opencode: want x-opencode-client=desktop, got %q", got)
 				}
-				if got := r.Header.Get("x-opencode-session"); !strings.HasPrefix(got, "ses_") {
-					return fmt.Errorf("opencode: want x-opencode-session ses_..., got %q", got)
+				if got := r.Header.Get("x-opencode-session"); !strings.HasPrefix(got, "ses_") || len(got) != 30 {
+					return fmt.Errorf("opencode: want 30-char ses_..., got %q", got)
+				}
+				return nil
+			},
+		},
+		{
+			Provider: "opencode", Model: "opencode/big-pickle",
+			AuthType: "api-key", APIKey: "oc-test-key",
+			WantAuth: func(r *http.Request) error {
+				if got := r.Header.Get("Authorization"); got != "Bearer public" {
+					return fmt.Errorf("opencode free: want Bearer public, got %q", got)
 				}
 				return nil
 			},

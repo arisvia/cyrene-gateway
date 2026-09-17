@@ -939,6 +939,8 @@ const Providers: Component = () => {
                               const label = () => {
                                 if (variant.region === 'cn') return t('providers.regionCn')
                                 if (variant.region === 'intl') return t('providers.regionIntl')
+                                if (variant.region === 'zen') return 'Zen'
+                                if (variant.region === 'go') return 'Go'
                                 return variant.name.replace(group.name, '').trim() || variant.id
                               }
                               return (

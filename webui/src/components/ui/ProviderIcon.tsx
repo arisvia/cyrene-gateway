@@ -86,6 +86,7 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   google: getProviderAsset('gemini')!,
   vertex: getProviderAsset('vertex')!,
   opencode: getProviderAsset('opencode')!,
+  'opencode-go': getProviderAsset('opencode')!,
   copilot: getProviderAsset('copilot')!,
   github: getProviderAsset('github')!,
   openrouter: getProviderAsset('openrouter')!,

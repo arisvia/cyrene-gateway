@@ -1304,7 +1304,7 @@ const ProviderDetail: Component = () => {
                             placeholder={
                               c().provider === 'qoder'
                                 ? 'pt-... (Personal Access Token)'
-                                : c().provider === 'opencode'
+                                : c().provider === 'opencode' || c().provider === 'opencode-go'
                                 ? t('providerDetail.opencodeKeyPlaceholder')
                                 : 'sk-...'
                             }
@@ -1843,7 +1843,7 @@ const ProviderDetail: Component = () => {
                   placeholder={
                     conn()?.provider === 'qoder'
                       ? 'pt-... (Personal Access Token)'
-                      : conn()?.provider === 'opencode'
+                      : conn()?.provider === 'opencode' || conn()?.provider === 'opencode-go'
                       ? t('providerDetail.opencodeKeyPlaceholder')
                       : 'sk-...'
                   }

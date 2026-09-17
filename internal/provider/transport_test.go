@@ -279,6 +279,16 @@ func TestApplyAuthFormats(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:  "bearer prefix normalization",
+			tr:    Transport{Auth: AuthDescriptor{Header: "Authorization", Scheme: AuthBearer}},
+			creds: Credentials{APIKey: "Bearer tok-with-bearer-prefix"},
+			check: func(t *testing.T, r *http.Request) {
+				if got := r.Header.Get("Authorization"); got != "Bearer tok-with-bearer-prefix" {
+					t.Errorf("expected Bearer tok-with-bearer-prefix, got %q", got)
+				}
+			},
+		},
 	}
 
 	for _, tc := range cases {

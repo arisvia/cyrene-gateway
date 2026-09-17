@@ -62,22 +62,46 @@ type Credentials struct {
 	AccessToken          string
 }
 
-// credentialsFromConn projects a connection onto the transport Credentials view.
-func credentialsFromConn(conn *model.ProviderConnection) Credentials {
-	return Credentials{
+// ResolveCredentials projects a connection onto the transport Credentials view,
+// applying model-level auth adaptations (such as OpenCode free tier public routing).
+func ResolveCredentials(conn *model.ProviderConnection, providerName, modelName string) Credentials {
+	if conn == nil {
+		return Credentials{}
+	}
+	creds := Credentials{
 		APIKey:               conn.Data.APIKey,
 		AccessToken:          conn.Data.AccessToken,
 		ProviderSpecificData: conn.Data.ProviderSpecificData,
 	}
+	if (providerName == "opencode" || providerName == "opencode-go" || conn.Provider == "opencode" || conn.Provider == "opencode-go") &&
+		IsOpenCodeFreeModel(modelName) {
+		creds.APIKey = "public"
+	}
+	return creds
+}
+
+func credentialsFromConn(conn *model.ProviderConnection) Credentials {
+	return ResolveCredentials(conn, "", "")
 }
 
 // token returns the credential value to inject, preferring an API key over an
 // OAuth access token (matches 9router applyAuth: apiKey || accessToken).
-func (c Credentials) token() string {
-	if c.APIKey != "" {
-		return c.APIKey
+// Token returns the normalized credential value to inject, preferring an API key over an
+// OAuth access token (matches 9router applyAuth: apiKey || accessToken).
+func (c Credentials) Token() string {
+	raw := c.APIKey
+	if raw == "" {
+		raw = c.AccessToken
 	}
-	return c.AccessToken
+	t := strings.TrimSpace(raw)
+	if strings.HasPrefix(strings.ToLower(t), "bearer ") {
+		t = strings.TrimSpace(t[7:])
+	}
+	return t
+}
+
+func (c Credentials) token() string {
+	return c.Token()
 }
 
 // ResolveTransport determines the effective transport for a request. baseURL and

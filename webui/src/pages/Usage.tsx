@@ -170,15 +170,13 @@ const Usage: Component = () => {
         <Card class="p-5">
           <div class="flex items-center justify-between gap-3 mb-4 min-h-[44px]">
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap h-6">
                 <h3 class="text-sm font-semibold whitespace-nowrap">{t('usage.tokenTrend')}</h3>
-                <Show when={hoveredPoint()}>
-                  {pt => (
-                    <Badge tone="blue" class="text-[11px] font-mono px-2 py-0.5 whitespace-nowrap shrink-0 animate-fade-in">
-                      {pt().label} · {fmtNum(pt().tokens)} Tokens
-                    </Badge>
-                  )}
-                </Show>
+                <span class={`transition-opacity duration-150 ${hoveredPoint() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                  <Badge tone="blue" class="text-[11px] font-mono px-2 py-0.5 whitespace-nowrap shrink-0">
+                    {hoveredPoint()?.label ?? ''} · {fmtNum(hoveredPoint()?.tokens ?? 0)} Tokens
+                  </Badge>
+                </span>
               </div>
               <p class="text-xs text-faint mt-0.5 truncate">
                 {t('usage.chartAggregateHint', { peak: fmtNum(maxTokens()) })}

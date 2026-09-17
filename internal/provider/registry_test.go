@@ -16,8 +16,8 @@ func TestRegistryCompleteness(t *testing.T) {
 		"xai", "alicode-intl", "alicode",
 		// E2E-verified (4)
 		"deepseek", "cerebras", "groq", "nvidia",
-		// Brand pairs / quota-ported (3)
-		"codebuddy-cn", "minimax", "minimax-cn",
+		// Brand pairs / quota-ported (4)
+		"codebuddy-cn", "minimax", "minimax-cn", "opencode-go",
 		// Generic custom providers (2)
 		"custom-openai", "custom-anthropic",
 	}
@@ -36,7 +36,7 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":   13,
+		"apikey":   14,
 		"oauth":    11,
 		"freeTier": 4,
 		"custom":   2,
@@ -90,9 +90,10 @@ func TestRegistryProviderFields(t *testing.T) {
 // sibling pair carries the same Brand and a distinct Region.
 func TestRegistryBrandRegion(t *testing.T) {
 	brands := map[string][]string{
-		"GLM":     {"glm", "glm-cn"},
-		"MiniMax": {"minimax", "minimax-cn"},
-		"Alibaba": {"alicode-intl", "alicode"},
+		"GLM":      {"glm", "glm-cn"},
+		"MiniMax":  {"minimax", "minimax-cn"},
+		"Alibaba":  {"alicode-intl", "alicode"},
+		"OpenCode": {"opencode", "opencode-go"},
 	}
 	for brand, ids := range brands {
 		for _, id := range ids {
@@ -121,6 +122,7 @@ func TestRegistryOfficialNames(t *testing.T) {
 		"codebuddy-cn":   "CodeBuddy (CN)",
 		"cursor":         "Cursor",
 		"opencode":       "OpenCode",
+		"opencode-go":    "OpenCode Go",
 		"claude":         "Claude Code",
 		"codex":          "OpenAI Codex",
 		"github":         "GitHub Copilot",

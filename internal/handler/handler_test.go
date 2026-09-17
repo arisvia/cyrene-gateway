@@ -663,6 +663,7 @@ func TestOpenCodeHeadersInjection(t *testing.T) {
 	}
 	database.CreateConnection(conn)
 
+	// Free model should route with Bearer public and canonical headers
 	body := `{"model":"opencode/big-pickle","messages":[{"role":"user","content":"hi"}]}`
 	reqChat := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	reqChat.Header.Set("Content-Type", "application/json")
@@ -673,20 +674,107 @@ func TestOpenCodeHeadersInjection(t *testing.T) {
 		t.Fatalf("expected 200 OK, got %d: %s", wChat.Code, wChat.Body.String())
 	}
 
-	if got := capturedHeaders.Get("Authorization"); got != "Bearer oc-secret-key" {
-		t.Errorf("expected Bearer oc-secret-key, got %q", got)
+	if got := capturedHeaders.Get("Authorization"); got != "Bearer public" {
+		t.Errorf("expected Bearer public for free model, got %q", got)
+	}
+	if got := capturedHeaders.Get("User-Agent"); got != "opencode/1.18.31" {
+		t.Errorf("expected User-Agent opencode/1.18.31, got %q", got)
 	}
 	if got := capturedHeaders.Get("x-opencode-client"); got != "desktop" {
 		t.Errorf("expected x-opencode-client desktop, got %q", got)
 	}
-	if got := capturedHeaders.Get("x-opencode-session"); !strings.HasPrefix(got, "ses_") {
-		t.Errorf("expected x-opencode-session to start with ses_, got %q", got)
+	if got := capturedHeaders.Get("x-opencode-session"); !strings.HasPrefix(got, "ses_") || len(got) != 30 {
+		t.Errorf("expected x-opencode-session 30-char ses_..., got %q", got)
 	}
-	if got := capturedHeaders.Get("x-opencode-request"); !strings.HasPrefix(got, "msg_") {
-		t.Errorf("expected x-opencode-request to start with msg_, got %q", got)
+	if got := capturedHeaders.Get("x-opencode-request"); !strings.HasPrefix(got, "msg_") || len(got) != 30 {
+		t.Errorf("expected x-opencode-request 30-char msg_..., got %q", got)
 	}
 	if got := capturedHeaders.Get("x-opencode-project"); got != "global" {
 		t.Errorf("expected x-opencode-project global, got %q", got)
+	}
+
+	// Paid model should route with the configured API key
+	bodyPaid := `{"model":"opencode/deepseek-v4-pro","messages":[{"role":"user","content":"hi"}]}`
+	reqPaid := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(bodyPaid))
+	reqPaid.Header.Set("Content-Type", "application/json")
+	wPaid := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(wPaid, reqPaid)
+	if wPaid.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for paid model, got %d: %s", wPaid.Code, wPaid.Body.String())
+	}
+	if got := capturedHeaders.Get("Authorization"); got != "Bearer oc-secret-key" {
+		t.Errorf("expected Bearer oc-secret-key for paid model, got %q", got)
+	}
+}
+func TestOpenCodeTestConnection(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// 1. Missing API key should be rejected immediately without calling upstream
+	reqNoKey := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(`{"provider":"opencode","apiKey":""}`))
+	reqNoKey.Header.Set("Content-Type", "application/json")
+	wNoKey := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(wNoKey, reqNoKey)
+	if wNoKey.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 wrapper, got %d", wNoKey.Code)
+	}
+	var resNoKey map[string]any
+	json.Unmarshal(wNoKey.Body.Bytes(), &resNoKey)
+	if resNoKey["ok"] == true {
+		t.Fatalf("expected ok: false for missing OpenCode key, got ok: true")
+	}
+
+	// 2. Upstream 401 should fail the connection test
+	mock401 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"type":"error","error":{"type":"AuthError","message":"Invalid API key."}}`))
+	}))
+	defer mock401.Close()
+
+	req401 := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode","apiKey":"invalid-key","baseUrl":%q}`, mock401.URL)))
+	req401.Header.Set("Content-Type", "application/json")
+	w401 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w401, req401)
+	var res401 map[string]any
+	json.Unmarshal(w401.Body.Bytes(), &res401)
+	if res401["ok"] == true {
+		t.Fatalf("expected ok: false for 401 response, got ok: true")
+	}
+	if res401["error"] != "Invalid API key." {
+		t.Errorf("expected error 'Invalid API key.', got %v", res401["error"])
+	}
+
+	// 3. Upstream 200 should pass the connection test
+	mock200 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}`))
+	}))
+	defer mock200.Close()
+
+	req200 := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode-go","apiKey":"valid-go-key","baseUrl":%q}`, mock200.URL)))
+	req200.Header.Set("Content-Type", "application/json")
+	w200 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w200, req200)
+	var res200 map[string]any
+	json.Unmarshal(w200.Body.Bytes(), &res200)
+	if res200["ok"] != true {
+		t.Fatalf("expected ok: true for 200 response, got: %v", res200)
+	}
+
+	// 4. Upstream 429 (quota exhausted) should still prove auth passed
+	mock429 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":{"message":"Rate limit exceeded"}}`))
+	}))
+	defer mock429.Close()
+
+	req429 := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode","apiKey":"valid-zen-key","baseUrl":%q}`, mock429.URL)))
+	req429.Header.Set("Content-Type", "application/json")
+	w429 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w429, req429)
+	var res429 map[string]any
+	json.Unmarshal(w429.Body.Bytes(), &res429)
+	if res429["ok"] != true {
+		t.Fatalf("expected ok: true for 429 response, got: %v", res429)
 	}
 }
 

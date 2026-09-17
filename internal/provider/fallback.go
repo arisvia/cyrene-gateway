@@ -39,6 +39,8 @@ var ErrorRules = []ErrorRule{
 	{Text: "no credentials", CooldownMs: CooldownLong},
 	{Text: "request not allowed", CooldownMs: CooldownShort},
 	{Text: "improperly formed request", CooldownMs: 0}, // Non-fallback
+	{Text: "freetiererror", CooldownMs: 0},             // Non-fallback: unauthenticated free tier blocked upstream
+	{Text: "only be used from within opencode", CooldownMs: 0},
 	{Text: "rate limit", Backoff: true},
 	{Text: "too many requests", Backoff: true},
 	{Text: "quota exceeded", Backoff: true},
