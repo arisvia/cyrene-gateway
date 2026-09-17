@@ -13,18 +13,21 @@ func TestLookupCatalog(t *testing.T) {
 		{"gpt-5.4-mini", "GPT-5.4 Mini", 256000, "gpt-5"},
 		{"claude-sonnet-4-20250514", "Claude Sonnet 4", 200000, "claude"},
 		{"gemini-2.5-pro", "Gemini 2.5 Pro", 1048576, "gemini"},
-		{"deepseek-v4-pro", "DeepSeek V4 Pro", 128000, "deepseek"},
+		{"deepseek-v4-pro", "DeepSeek V4 Pro", 1000000, "deepseek"},
 		{"kimi-k2.6", "Kimi K2.6", 131072, "kimi"},
-		{"glm-5.2", "GLM 5.2", 128000, "glm"},
+		{"glm-5.2", "GLM 5.2", 1000000, "glm"},
 		{"o3", "O3", 200000, "o-series"},
 		{"text-embedding-3-large", "Text Embedding 3 Large", 8191, "embedding"},
 		{"deepseek-v4.1-flash", "DeepSeek V4.1 Flash", 1000000, "deepseek"},
 		{"claude-opus-4.8", "Claude Opus 4.8", 1000000, "claude"},
-		{"kimi-k2.7-code", "Kimi K2.7 Code", 256000, "kimi"},
+		{"kimi-k2.7-code", "Kimi K2.7 Code", 262144, "kimi"},
+		{"gpt-oss-120b", "GPT-OSS 120B", 131072, "openai"},
+		{"qwen3.8-max", "Qwen 3.8 Max", 1048576, "qwen"},
+		{"hy4-preview", "Hy4 Preview", 1048576, "hunyuan"},
+		{"hy3", "Hy3", 262144, "hunyuan"},
 		{"gpt-image-2.5", "GPT Image 2.5", 0, "image"},
 		{"unknown-model-xyz", "", 0, ""},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.modelID, func(t *testing.T) {
 			got := LookupCatalog(tt.modelID)

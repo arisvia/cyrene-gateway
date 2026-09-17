@@ -28,7 +28,7 @@ type CatalogEntry struct {
 // StaticCatalog is a curated list of mainstream model metadata.
 // Ordered by specificity: more specific patterns first.
 var StaticCatalog = []CatalogEntry{
-	// OpenAI GPT-5.x series
+	// OpenAI GPT-5.x & GPT-OSS
 	{Pattern: "gpt-5.6-sol", DisplayName: "GPT-5.6 Sol", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
 	{Pattern: "gpt-5.6-terra", DisplayName: "GPT-5.6 Terra", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
 	{Pattern: "gpt-5.6-luna", DisplayName: "GPT-5.6 Luna", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "reasoning", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
@@ -43,6 +43,8 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "gpt-5-mini", DisplayName: "GPT-5 Mini", ContextLength: 256000, MaxOutput: 16384, Capabilities: []string{"chat", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
 	{Pattern: "gpt-5-nano", DisplayName: "GPT-5 Nano", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat"}, Modalities: []string{"text"}, Family: "gpt-5"},
 	{Pattern: "gpt-5", DisplayName: "GPT-5", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gpt-5"},
+	{Pattern: "gpt-oss-120b", DisplayName: "GPT-OSS 120B", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "openai"},
+	{Pattern: "gpt-oss-20b", DisplayName: "GPT-OSS 20B", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "openai"},
 
 	// OpenAI GPT-4.x series
 	{Pattern: "gpt-4o-mini-tts", DisplayName: "GPT-4o Mini TTS", ContextLength: 128000, MaxOutput: 4096, Capabilities: []string{"tts"}, Modalities: []string{"text", "audio"}, Family: "gpt-4o"},
@@ -89,6 +91,7 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "claude-3-7-sonnet", DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude", DisplayName: "Claude", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
+
 	// Google Gemini
 	{Pattern: "gemini-3.8-flash-tiered", DisplayName: "Gemini 3.8 Flash (Tiered)", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
 	{Pattern: "gemini-3.8-flash", DisplayName: "Gemini 3.8 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image", "audio", "video"}, Family: "gemini"},
@@ -107,16 +110,16 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "gemini-2.5-flash-lite", DisplayName: "Gemini 2.5 Flash Lite", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
 	{Pattern: "gemini-2.5-flash-image", DisplayName: "Gemini 2.5 Flash Image", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "image-generation", "vision"}, Modalities: []string{"text", "image"}, Family: "gemini"},
 	{Pattern: "gemini-2.5-flash", DisplayName: "Gemini 2.5 Flash", ContextLength: 1048576, MaxOutput: 65536, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image", "audio"}, Family: "gemini"},
-	{Pattern: "gemini-2.0-flash", DisplayName: "Gemini 2.0 Flash", ContextLength: 1048576, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image", "audio"}, Family: "gemini"},
 	{Pattern: "gemini-embedding", DisplayName: "Gemini Embedding", ContextLength: 2048, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "gemini"},
 	{Pattern: "gemma-4", DisplayName: "Gemma 4", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gemma"},
 	{Pattern: "gemma-3", DisplayName: "Gemma 3", ContextLength: 131072, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gemma"},
-	{Pattern: "gpt-oss-120b", DisplayName: "GPT-OSS 120B", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "gpt-oss"},
+
 	// DeepSeek
-	{Pattern: "deepseek-v4.1-flash", DisplayName: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
-	{Pattern: "deepseek-v4-pro-max", DisplayName: "DeepSeek V4 Pro Max", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
-	{Pattern: "deepseek-v4-pro", DisplayName: "DeepSeek V4 Pro", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
-	{Pattern: "deepseek-v4-flash", DisplayName: "DeepSeek V4 Flash", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4.1-flash", DisplayName: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4-pro-0813", DisplayName: "DeepSeek V4 Pro 0813", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4-pro", DisplayName: "DeepSeek V4 Pro", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4-flash-0731", DisplayName: "DeepSeek V4 Flash 0731", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4-flash", DisplayName: "DeepSeek V4 Flash", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v3", DisplayName: "DeepSeek V3", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-r1", DisplayName: "DeepSeek R1", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "reasoning", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-chat", DisplayName: "DeepSeek Chat", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
@@ -127,8 +130,13 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "grok-3", DisplayName: "Grok 3", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "grok"},
 	{Pattern: "grok-code-fast", DisplayName: "Grok Code Fast", ContextLength: 131072, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "grok"},
 
-	// Qwen
+	// Qwen (Alibaba)
+	{Pattern: "qwen3.8-max", DisplayName: "Qwen 3.8 Max", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "qwen"},
+	{Pattern: "qwen3.8-flash", DisplayName: "Qwen 3.8 Flash", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "qwen"},
+	{Pattern: "qwen3.8-27b", DisplayName: "Qwen 3.8 27B", ContextLength: 1131072, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "qwen"},
+	{Pattern: "qwen3.8", DisplayName: "Qwen 3.8", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "qwen"},
 	{Pattern: "qwen3.7-max", DisplayName: "Qwen 3.7 Max", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "qwen"},
+	{Pattern: "qwen3.7-plus", DisplayName: "Qwen 3.7 Plus", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "qwen"},
 	{Pattern: "qwen3.6", DisplayName: "Qwen 3.6", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "qwen"},
 	{Pattern: "qwen3.5-plus", DisplayName: "Qwen 3.5 Plus", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "qwen"},
 	{Pattern: "qwen3-coder", DisplayName: "Qwen3 Coder", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "qwen"},
@@ -138,22 +146,24 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "qwq", DisplayName: "QwQ", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "reasoning", "code"}, Modalities: []string{"text"}, Family: "qwen"},
 
 	// Kimi (Moonshot)
-	{Pattern: "kimi-k3", DisplayName: "Kimi K3", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
-	{Pattern: "kimi-k2.7-code", DisplayName: "Kimi K2.7 Code", ContextLength: 256000, MaxOutput: 32768, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
+	{Pattern: "kimi-k3", DisplayName: "Kimi K3", ContextLength: 1048576, MaxOutput: 131072, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
+	{Pattern: "kimi-k2.7-code", DisplayName: "Kimi K2.7 Code", ContextLength: 262144, MaxOutput: 262144, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.7", DisplayName: "Kimi K2.7", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.6", DisplayName: "Kimi K2.6", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 	{Pattern: "kimi-k2.5", DisplayName: "Kimi K2.5", ContextLength: 131072, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "kimi"},
 
 	// GLM (Zhipu)
-	{Pattern: "glm-5.2", DisplayName: "GLM 5.2", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "glm"},
-	{Pattern: "glm-5.1", DisplayName: "GLM 5.1", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
-	{Pattern: "glm-5", DisplayName: "GLM 5", ContextLength: 128000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
+	{Pattern: "glm-5.3-flash", DisplayName: "GLM 5.3 Flash", ContextLength: 1310720, MaxOutput: 131072, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
+	{Pattern: "glm-5.3", DisplayName: "GLM 5.3", ContextLength: 1000000, MaxOutput: 131072, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "glm"},
+	{Pattern: "glm-5.2", DisplayName: "GLM 5.2", ContextLength: 1000000, MaxOutput: 131072, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "glm"},
+	{Pattern: "glm-5.1", DisplayName: "GLM 5.1", ContextLength: 200000, MaxOutput: 131072, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
+	{Pattern: "glm-5", DisplayName: "GLM 5", ContextLength: 204800, MaxOutput: 131072, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "glm"},
 	{Pattern: "glm-4.7", DisplayName: "GLM 4.7", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "glm"},
 	{Pattern: "glm-4", DisplayName: "GLM 4", ContextLength: 128000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "glm"},
 
 	// MiniMax
-	{Pattern: "minimax-m3", DisplayName: "MiniMax M3", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "minimax"},
-	{Pattern: "minimax-m2.7", DisplayName: "MiniMax M2.7", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
+	{Pattern: "minimax-m3", DisplayName: "MiniMax M3", ContextLength: 1048576, MaxOutput: 512000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "minimax"},
+	{Pattern: "minimax-m2.7", DisplayName: "MiniMax M2.7", ContextLength: 204800, MaxOutput: 131072, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
 	{Pattern: "minimax-m2.5", DisplayName: "MiniMax M2.5", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
 	{Pattern: "minimax-m2", DisplayName: "MiniMax M2", ContextLength: 1000000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "minimax"},
 	{Pattern: "codestral", DisplayName: "Codestral", ContextLength: 256000, MaxOutput: 8192, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "mistral"},
@@ -185,7 +195,11 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "laguna-xs-2.1", DisplayName: "Laguna XS 2.1", ContextLength: 200000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
 	{Pattern: "laguna", DisplayName: "Laguna", ContextLength: 200000, MaxOutput: 32000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "poolside"},
 
-	// Tencent Hunyuan
+	// Tencent Hunyuan (Hy)
+	{Pattern: "hy4-preview", DisplayName: "Hy4 Preview", ContextLength: 1048576, MaxOutput: 64000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "hunyuan"},
+	{Pattern: "hy4", DisplayName: "Hy4", ContextLength: 1048576, MaxOutput: 64000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "hunyuan"},
+	{Pattern: "hy3-preview", DisplayName: "Hy3 Preview", ContextLength: 256000, MaxOutput: 128000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
+	{Pattern: "hy3", DisplayName: "Hy3", ContextLength: 262144, MaxOutput: 128000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
 	{Pattern: "hunyuan-t1", DisplayName: "Hunyuan T1", ContextLength: 256000, MaxOutput: 16384, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "hunyuan"},
 	{Pattern: "hunyuan-turbos", DisplayName: "Hunyuan TurboS", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
 	{Pattern: "hunyuan", DisplayName: "Hunyuan", ContextLength: 200000, MaxOutput: 16384, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "hunyuan"},
