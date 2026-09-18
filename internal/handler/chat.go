@@ -1189,6 +1189,11 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	stream, _ := reqBody["stream"].(bool)
+	// If model is a combo, route via Chat Completions adapter
+	if _, isCombo := provider.ResolveCombo(modelStr, s.DB); isCombo {
+		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
+		return
+	}
 
 	// Resolve model
 	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
@@ -1200,7 +1205,6 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelStr)})
 		return
 	}
-
 	// Phase: Response Cache check
 	settings, _ := s.DB.GetSettings()
 	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
@@ -1272,10 +1276,10 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		baseURL = conn.Data.BaseURL
 		effectiveAPIType = providerInfo.APIType
 	}
-	if effectiveAPIType != "anthropic" || baseURL == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": fmt.Sprintf("model '%s' (provider: %s) uses '%s' protocol and does not support Anthropic /v1/messages; please use /v1/chat/completions", modelStr, modelInfo.Provider, effectiveAPIType),
-		})
+	// If upstream provider does not speak native Anthropic format (e.g. Qoder, Antigravity, OpenAI, DeepSeek),
+	// route via Chat Completions adapter with bidirectional translation.
+	if effectiveAPIType != "anthropic" || baseURL == "" || modelInfo.Provider == "qoder" || modelInfo.Provider == "antigravity" {
+		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
 		return
 	}
 
