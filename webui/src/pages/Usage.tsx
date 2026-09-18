@@ -5,6 +5,7 @@ import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, 
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
+import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail, LiveUsageEvent } from '@/types/domain'
 
 const Usage: Component = () => {
@@ -22,6 +23,7 @@ const Usage: Component = () => {
   const [loading, setLoading] = createSignal(true)
   const [live, setLive] = createSignal(false)
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
+  const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
   let es: EventSource | null = null
   const timeUnits = () => ({
     justNow: t('time.justNow'),
@@ -37,8 +39,8 @@ const Usage: Component = () => {
   onMount(() => {
     load()
     store.loadRequestDetails(1, 10)
+    fetchModelDisplayNameMap().then(setModelNameMap)
   })
-
   onCleanup(() => { es?.close(); es = null })
 
   function toggleLive() {
@@ -306,7 +308,12 @@ const Usage: Component = () => {
                   {e => (
                     <div class="flex items-center gap-2 text-xs py-1 border-b border-subtle/50 last:border-0">
                       <span class="text-faint font-mono">{fmtTime(e.timestamp, timeUnits())}</span>
-                      <span class="truncate">{e.model || e.endpoint || '-'}</span>
+                      <div class="truncate flex items-baseline gap-1" title={e.model || e.endpoint || '-'}>
+                        <span class="font-medium text-foreground">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
+                        <Show when={Boolean(e.model && resolveModelDisplayName(modelNameMap(), e.model) !== e.model)}>
+                          <span class="text-[10px] text-faint font-mono truncate">({e.model})</span>
+                        </Show>
+                      </div>
                       <Badge tone={e.status === 'ok' ? 'green' : 'red'}>{e.status || '-'}</Badge>
                       <Show when={e.latencyMs}><span class="ml-auto text-faint">{e.latencyMs}ms</span></Show>
                     </div>
@@ -343,7 +350,14 @@ const Usage: Component = () => {
                     {d => (
                       <tr class="border-b border-subtle/40 last:border-0 hover:bg-hover/30 transition-colors">
                         <td class="py-2.5 text-faint font-mono">{fmtTime(d.timestamp, timeUnits())}</td>
-                        <td class="py-2.5 truncate max-w-[200px] font-medium">{d.model || '-'}</td>
+                        <td class="py-2.5 max-w-[220px]">
+                          <div class="flex flex-col min-w-0" title={d.model || '-'}>
+                            <span class="font-medium text-foreground truncate">{resolveModelDisplayName(modelNameMap(), d.model) || '-'}</span>
+                            <Show when={Boolean(d.model && resolveModelDisplayName(modelNameMap(), d.model) !== d.model)}>
+                              <span class="text-[10px] text-faint font-mono truncate">{d.model}</span>
+                            </Show>
+                          </div>
+                        </td>
                         <td class="py-2.5"><Badge tone={d.status === 'ok' ? 'green' : 'red'}>{d.status || '-'}</Badge></td>
                         <td class="py-2.5 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
                         <td class="py-2.5 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>

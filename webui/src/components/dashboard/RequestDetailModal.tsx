@@ -4,8 +4,8 @@ import { Badge, Button, ProviderAvatar, Spinner, SegmentedControl, IconClose, Ic
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
+import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail } from '@/types/domain'
-
 interface RequestDetailModalProps {
   item: RequestDetail | null
   onClose: () => void
@@ -13,6 +13,7 @@ interface RequestDetailModalProps {
 
 export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   const [activeTab, setActiveTab] = createSignal<'overview' | 'payload' | 'raw'>('overview')
+  const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
   const { t } = useI18n()
   const timeUnits = () => ({
     justNow: t('time.justNow'),
@@ -36,7 +37,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   )
 
   const detail = () => fullDetail() || props.item
-
+  fetchModelDisplayNameMap().then(setModelNameMap)
   // 清洗并提取对话内容（过滤冗长思考过程 <thinking> ... </thinking>）
   const cleanPayload = () => {
     const raw = detail()
@@ -78,7 +79,10 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               <ProviderAvatar provider={props.item?.provider || 'default'} name={props.item?.provider} size="sm" class="shrink-0" />
               <div class="min-w-0">
                 <div class="text-sm font-bold truncate text-foreground flex items-center gap-2">
-                  <span>{props.item?.model || t('common.unknownModel')}</span>
+                  <span>{resolveModelDisplayName(modelNameMap(), props.item?.model) || t('common.unknownModel')}</span>
+                  <Show when={Boolean(props.item?.model && resolveModelDisplayName(modelNameMap(), props.item?.model) !== props.item?.model)}>
+                    <span class="text-xs text-faint font-mono font-normal">({props.item?.model})</span>
+                  </Show>
                   <Badge tone={props.item?.status === 'ok' ? 'green' : 'red'} class="text-[10px]">
                     {props.item?.status || t('common.unknown')}
                   </Badge>
