@@ -130,8 +130,49 @@ func isLoopbackOrigin(originHeader string) bool {
 	return isLoopbackHost(u.Host)
 }
 
+// isAllowedManagementOrigin reports whether an Origin header is permitted to access /api/* management endpoints.
+// Permitted if:
+// 1. originHeader is empty (same-origin simple request or non-browser client)
+// 2. originHeader is loopback (localhost, 127.0.0.1) for local development or dev tools
+// 3. origin matches the current request's Host or X-Forwarded-Host (legitimate same-origin/reverse-proxy request)
+func isAllowedManagementOrigin(originHeader string, r *http.Request) bool {
+	if originHeader == "" {
+		return true
+	}
+	u, err := url.Parse(originHeader)
+	if err != nil {
+		return false
+	}
+	if isLoopbackHost(u.Host) {
+		return true
+	}
+	if r != nil {
+		reqHost := r.Header.Get("X-Forwarded-Host")
+		if reqHost == "" {
+			reqHost = r.Host
+		}
+		if reqHost != "" {
+			origH, _, err := net.SplitHostPort(u.Host)
+			if err != nil {
+				origH = u.Host
+			}
+			reqH, _, err := net.SplitHostPort(reqHost)
+			if err != nil {
+				reqH = reqHost
+			}
+			origH = strings.TrimPrefix(strings.TrimSuffix(origH, "]"), "[")
+			reqH = strings.TrimPrefix(strings.TrimSuffix(reqH, "]"), "[")
+			if strings.EqualFold(origH, reqH) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // DashboardAuth protects /api/* management routes with session auth.
-// Non-loopback callers ALWAYS require authentication for management APIs to prevent unauthenticated remote takeover.
+// Public WAN callers ALWAYS require authentication for management APIs to prevent unauthenticated remote takeover.
+// Localhost and LAN/private network callers follow the settings.RequireLogin configuration.
 func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -155,16 +196,16 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Trusted loopback verification:
-			// 1. RemoteAddr must be loopback IP (or in-memory mock test runner 192.0.2.1:).
-			// 2. Host header must point strictly to loopback (localhost/127.0.0.1/[::1]) to prevent DNS rebinding.
-			// 3. Origin header (if present) must point strictly to loopback to prevent cross-origin browser attacks.
-			isTestMock := strings.HasPrefix(r.RemoteAddr, "192.0.2.1:") || r.RemoteAddr == "192.0.2.1"
-			isTrustedLoopback := isTestMock || (isLoopback(r.RemoteAddr) && isLoopbackHost(r.Host) && isLoopbackOrigin(r.Header.Get("Origin")))
-			remote := !isTrustedLoopback
+			isWAN := auth.IsPublicWANRequest(r)
+			mustAuthenticate := settings.RequireLogin || isWAN
 
-			// If requireLogin is explicitly enabled OR request is not trusted loopback:
-			if settings.RequireLogin || remote {
+			if mustAuthenticate {
+				// Allow initial admin password setup when no password has been configured yet (prevents lockout)
+				if path == "/api/auth/password" && settings.PasswordHash == "" {
+					next.ServeHTTP(w, r)
+					return
+				}
+
 				cookie, err := r.Cookie("auth_token")
 				if err != nil || !auth.VerifySessionToken(cookie.Value) {
 					writeAuthError(w, http.StatusUnauthorized, "unauthorized")

@@ -19,8 +19,13 @@ func NewAuthHandler(database *db.DB) *AuthHandler {
 }
 
 func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	ip := auth.ClientIP(r.RemoteAddr)
-
+	clientIP := auth.ExtractEffectiveClientIP(r)
+	ip := ""
+	if clientIP != nil {
+		ip = clientIP.String()
+	} else {
+		ip = auth.ClientIP(r.RemoteAddr)
+	}
 	// Check rate limit
 	if locked, retryAfter := auth.CheckLock(ip); locked {
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{
@@ -61,7 +66,10 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// No password configured
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "password not initialized"})
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"error":       "password not initialized",
+			"hasPassword": false,
+		})
 		return
 	}
 
@@ -130,9 +138,23 @@ func (h *AuthHandler) HandleSetPassword(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Issue session token and set cookie so the caller is immediately authenticated
+	token, err := auth.CreateSessionToken()
+	if err == nil {
+		secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+		http.SetCookie(w, &http.Cookie{
+			Name:     "auth_token",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   secure,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   86400,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
-
 func (h *AuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.db.GetSettings()
 	if err != nil {
@@ -140,8 +162,12 @@ func (h *AuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isWAN := auth.IsPublicWANRequest(r)
+	requireLogin := settings.RequireLogin || isWAN
+	hasPassword := settings.PasswordHash != ""
+
 	authenticated := false
-	if !settings.RequireLogin {
+	if !requireLogin {
 		authenticated = true
 	} else {
 		cookie, err := r.Cookie("auth_token")
@@ -151,7 +177,9 @@ func (h *AuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"requireLogin":  settings.RequireLogin,
+		"requireLogin":  requireLogin,
 		"authenticated": authenticated,
+		"hasPassword":   hasPassword,
+		"isWan":         isWAN,
 	})
 }

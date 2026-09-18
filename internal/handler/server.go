@@ -1001,6 +1001,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guard: cannot disable login requirement when accessing from public WAN or tunnel domain
+	if !settings.RequireLogin && auth.IsPublicWANRequest(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot disable login requirement when accessing from public WAN"})
+		return
+	}
 	if err := s.DB.SaveSettings(&settings); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
@@ -1048,6 +1053,11 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Guard: cannot disable login requirement when accessing from public WAN or tunnel domain
+	if !updated.RequireLogin && auth.IsPublicWANRequest(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot disable login requirement when accessing from public WAN"})
+		return
+	}
 	if err := s.DB.SaveSettings(&updated); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return

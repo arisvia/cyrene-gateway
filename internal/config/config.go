@@ -16,6 +16,7 @@ type Config struct {
 	PanelURL             string
 	Secret               string
 	Port                 int
+	AdminPassword        string
 	AllowPrivateNetworks bool
 	ShowVersion          bool
 }
@@ -46,8 +47,8 @@ func registerFlags(fs *flag.FlagSet, cfg *Config) {
 		fmt.Fprintf(out, "  -data-dir string\n    \tData directory for database, panel cache and secrets (default ~/.cyrene-gateway, env: CYRENE_DATA_DIR)\n\n")
 		fmt.Fprintf(out, "Security Flags:\n")
 		fmt.Fprintf(out, "  -secret string\n    \tHMAC master secret for signing API keys and session tokens (env: CYRENE_SECRET)\n")
+		fmt.Fprintf(out, "  -admin-password string\n    \tInitial admin password override (env: CYRENE_ADMIN_PASSWORD)\n")
 		fmt.Fprintf(out, "  -allow-private-networks\n    \tAllow upstream proxying to private/loopback IP addresses (for local testing/mock servers, env: CYRENE_ALLOW_PRIVATE_NETWORKS)\n\n")
-		fmt.Fprintf(out, "Dashboard & UI Flags:\n")
 		fmt.Fprintf(out, "  -dashboard string\n    \tLocal directory to serve dashboard from for dev mode (empty=use embedded, env: CYRENE_DASHBOARD)\n")
 		fmt.Fprintf(out, "  -panel-url string\n    \tURL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded, env: CYRENE_PANEL_URL)\n\n")
 		fmt.Fprintf(out, "General Flags:\n")
@@ -61,6 +62,7 @@ func registerFlags(fs *flag.FlagSet, cfg *Config) {
 	fs.StringVar(&cfg.Dashboard, "dashboard", envOrDefault("CYRENE_DASHBOARD", ""), "Local directory to serve dashboard from for dev mode (empty=use embedded, env: CYRENE_DASHBOARD)")
 	fs.StringVar(&cfg.PanelURL, "panel-url", envOrDefault("CYRENE_PANEL_URL", ""), "URL to download updated panel (dist.zip auto-extracted, or single HTML; empty=use embedded, env: CYRENE_PANEL_URL)")
 	fs.StringVar(&cfg.Secret, "secret", envOrDefault("CYRENE_SECRET", ""), "HMAC master secret for signing API keys and session tokens (env: CYRENE_SECRET)")
+	fs.StringVar(&cfg.AdminPassword, "admin-password", envOrDefault("CYRENE_ADMIN_PASSWORD", ""), "Initial admin password override (env: CYRENE_ADMIN_PASSWORD)")
 	fs.BoolVar(&cfg.AllowPrivateNetworks, "allow-private-networks", envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "true" || envOrDefault("CYRENE_ALLOW_PRIVATE_NETWORKS", "") == "1", "Allow upstream proxying to private/loopback IP addresses (for local testing/mock servers, env: CYRENE_ALLOW_PRIVATE_NETWORKS)")
 	fs.BoolVar(&cfg.ShowVersion, "v", false, "Print version and exit")
 	fs.BoolVar(&cfg.ShowVersion, "version", false, "Print version and exit")

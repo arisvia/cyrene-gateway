@@ -59,8 +59,8 @@ func CORS(next http.Handler) http.Handler {
 		isProtectedAPI := strings.HasPrefix(r.URL.Path, "/api/") && !isPublicPath(r.URL.Path)
 
 		if isProtectedAPI {
-			// For protected management APIs, only allow loopback origins to access CORS
-			if origin != "" && isLoopbackOrigin(origin) {
+			// For protected management APIs, only allow loopback or legitimate same-origin requests
+			if origin != "" && isAllowedManagementOrigin(origin, r) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}

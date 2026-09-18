@@ -238,6 +238,16 @@ const (
 	argonKeyLen      = 32
 )
 
+// GenerateRandomPassword creates a cryptographically secure random password for initial setup.
+// Format: cg-admin-<16 random hex characters>
+func GenerateRandomPassword() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("cg-admin-%d", time.Now().UnixNano())
+	}
+	return "cg-admin-" + hex.EncodeToString(b)
+}
+
 // HashPassword creates a secure Argon2id hash of the password.
 func HashPassword(password string) string {
 	salt := make([]byte, argonSaltLen)

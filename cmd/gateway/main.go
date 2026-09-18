@@ -54,6 +54,9 @@ func main() {
 	}
 	defer database.Close()
 
+	// Ensure admin password exists or apply override from CLI flag / env var
+	ensureAdminPassword(database, cfg.AdminPassword)
+
 	// Create HTTP server
 	srv := handler.NewServer(database, cfg)
 
@@ -124,4 +127,42 @@ func main() {
 	}
 
 	slog.Info("Gateway stopped")
+}
+
+func ensureAdminPassword(database *db.DB, explicitPassword string) {
+	settings, err := database.GetSettings()
+	if err != nil || settings == nil {
+		return
+	}
+
+	// 1. Explicit password override from CLI flag or environment variable
+	if explicitPassword != "" {
+		settings.PasswordHash = auth.HashPassword(explicitPassword)
+		if err := database.SaveSettings(settings); err != nil {
+			slog.Error("Failed to save configured admin password", "error", err)
+		} else {
+			slog.Info("Admin password initialized from configuration flag/env")
+		}
+		return
+	}
+
+	// 2. Initial run on fresh database with no configured password
+	if settings.PasswordHash == "" {
+		initialPassword := auth.GenerateRandomPassword()
+		settings.PasswordHash = auth.HashPassword(initialPassword)
+		if err := database.SaveSettings(settings); err != nil {
+			slog.Error("Failed to persist initial admin password", "error", err)
+			return
+		}
+
+		// Print conspicuous banner to console for operator visibility
+		fmt.Printf(`
+========================================================================
+[Cyrene Gateway] Initial Admin Password Generated:
+  Password:  %s
+Please copy this password to log in and change it in Settings.
+========================================================================
+`, initialPassword)
+		slog.Info("Initial admin password generated", slog.String("password", initialPassword))
+	}
 }

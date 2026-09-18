@@ -20,6 +20,20 @@ func TestGenerateAndVerifyAPIKey(t *testing.T) {
 	}
 }
 
+func TestGenerateRandomPassword(t *testing.T) {
+	pw1 := GenerateRandomPassword()
+	pw2 := GenerateRandomPassword()
+	if pw1 == "" || pw2 == "" {
+		t.Fatal("expected non-empty random password")
+	}
+	if pw1 == pw2 {
+		t.Fatal("expected random passwords to be unique")
+	}
+	if len(pw1) < 12 {
+		t.Fatalf("expected password length >= 12, got %d (%s)", len(pw1), pw1)
+	}
+}
+
 func TestVerifyAPIKeyTampered(t *testing.T) {
 	key := GenerateAPIKey()
 	// Tamper with the key

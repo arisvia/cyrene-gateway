@@ -108,6 +108,80 @@ func TestRemoteUnauthenticatedManagementBlocked(t *testing.T) {
 	}
 }
 
+func TestInitialPasswordSetupAndSessionIssuance(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	wanIP := "203.0.113.195:54321"
+
+	// 1. Initial auth status on WAN: requireLogin=true, hasPassword=false, authenticated=false
+	statusReq := httptest.NewRequest("GET", "/api/auth/status", nil)
+	statusReq.RemoteAddr = wanIP
+	statusW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(statusW, statusReq)
+	if statusW.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", statusW.Code)
+	}
+	var statusResp map[string]any
+	json.Unmarshal(statusW.Body.Bytes(), &statusResp)
+	if statusResp["requireLogin"] != true || statusResp["hasPassword"] != false || statusResp["authenticated"] != false {
+		t.Fatalf("unexpected initial WAN auth status: %v", statusResp)
+	}
+
+	// 2. Set initial password via WAN - should succeed and return auth_token cookie
+	setBody := `{"password":"initial-secure-password"}`
+	setReq := httptest.NewRequest("POST", "/api/auth/password", strings.NewReader(setBody))
+	setReq.RemoteAddr = wanIP
+	setReq.Header.Set("Content-Type", "application/json")
+	setW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(setW, setReq)
+	if setW.Code != http.StatusOK {
+		t.Fatalf("expected 200 for initial password setup, got %d: %s", setW.Code, setW.Body.String())
+	}
+
+	var sessionCookie *http.Cookie
+	for _, c := range setW.Result().Cookies() {
+		if c.Name == "auth_token" && c.Value != "" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected auth_token cookie to be set after setting password")
+	}
+
+	// 3. Request protected management route using issued session cookie - should succeed
+	provReq := httptest.NewRequest("GET", "/api/providers", nil)
+	provReq.RemoteAddr = wanIP
+	provReq.AddCookie(sessionCookie)
+	provW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(provW, provReq)
+	if provW.Code != http.StatusOK {
+		t.Fatalf("expected 200 with session cookie, got %d", provW.Code)
+	}
+
+	// 4. Subsequent unauthenticated password modification attempt must now be rejected with 401
+	hackerBody := `{"password":"hacked-password-attempt"}`
+	hackerReq := httptest.NewRequest("POST", "/api/auth/password", strings.NewReader(hackerBody))
+	hackerReq.RemoteAddr = wanIP
+	hackerReq.Header.Set("Content-Type", "application/json")
+	hackerW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(hackerW, hackerReq)
+	if hackerW.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated password change after init, got %d", hackerW.Code)
+	}
+
+	// 5. Attempting to disable requireLogin from WAN must be blocked with 400
+	patchBody := `{"requireLogin":false}`
+	patchReq := httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(patchBody))
+	patchReq.RemoteAddr = wanIP
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchReq.AddCookie(sessionCookie)
+	patchW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(patchW, patchReq)
+	if patchW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when disabling requireLogin on WAN, got %d: %s", patchW.Code, patchW.Body.String())
+	}
+}
+
 func TestPasswordArgon2idMigration(t *testing.T) {
 	srv, database := setupTestServer(t)
 
@@ -133,6 +207,87 @@ func TestPasswordArgon2idMigration(t *testing.T) {
 	updatedSettings, _ := database.GetSettings()
 	if !strings.HasPrefix(updatedSettings.PasswordHash, "$argon2id$") {
 		t.Fatalf("expected password hash migrated to argon2id, got %s", updatedSettings.PasswordHash)
+	}
+}
+
+func TestManagementAPICORS(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// 1. Same-origin public domain via reverse proxy / Cloudflare Tunnel
+	sameOriginReq := httptest.NewRequest("OPTIONS", "/api/providers", nil)
+	sameOriginReq.Header.Set("Origin", "https://ai.mycompany.com")
+	sameOriginReq.Header.Set("X-Forwarded-Host", "ai.mycompany.com")
+	sameOriginW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(sameOriginW, sameOriginReq)
+	if sameOriginW.Header().Get("Access-Control-Allow-Origin") != "https://ai.mycompany.com" {
+		t.Fatalf("expected CORS allow origin for same domain, got %q", sameOriginW.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if sameOriginW.Header().Get("Access-Control-Allow-Credentials") != "true" {
+		t.Fatal("expected Access-Control-Allow-Credentials to be true for same domain")
+	}
+
+	// 2. Loopback origin (e.g. local dev server or local browser)
+	loopbackReq := httptest.NewRequest("OPTIONS", "/api/providers", nil)
+	loopbackReq.Header.Set("Origin", "http://localhost:5173")
+	loopbackW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(loopbackW, loopbackReq)
+	if loopbackW.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
+		t.Fatalf("expected CORS allow origin for localhost:5173, got %q", loopbackW.Header().Get("Access-Control-Allow-Origin"))
+	}
+
+	// 3. Untrusted cross-origin website (e.g. CSRF attack)
+	evilReq := httptest.NewRequest("OPTIONS", "/api/providers", nil)
+	evilReq.Header.Set("Origin", "https://malicious-site.com")
+	evilReq.Header.Set("X-Forwarded-Host", "ai.mycompany.com")
+	evilW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(evilW, evilReq)
+	if evilW.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("expected no CORS allow origin for malicious site, got %q", evilW.Header().Get("Access-Control-Allow-Origin"))
+	}
+}
+
+func TestLoginRateLimitingBehindProxy(t *testing.T) {
+	srv, database := setupTestServer(t)
+	settings, _ := database.GetSettings()
+	settings.PasswordHash = auth.HashPassword("correct-admin-password")
+	database.SaveSettings(settings)
+
+	attackerIP := "198.51.100.99"
+	innocentIP := "198.51.100.100"
+
+	// Attacker attempts 5 wrong passwords behind a reverse proxy (RemoteAddr is local loopback)
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{"password":"wrong-password"}`))
+		req.RemoteAddr = "127.0.0.1:12345"
+		req.Header.Set("X-Forwarded-For", attackerIP)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, w.Code)
+		}
+	}
+
+	// 6th attempt by attacker must be locked out with 429
+	req6 := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{"password":"wrong-password"}`))
+	req6.RemoteAddr = "127.0.0.1:12345"
+	req6.Header.Set("X-Forwarded-For", attackerIP)
+	req6.Header.Set("Content-Type", "application/json")
+	w6 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w6, req6)
+	if w6.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 Too Many Requests for attacker, got %d", w6.Code)
+	}
+
+	// Innocent user behind the SAME reverse proxy must NOT be locked out!
+	innocentReq := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(`{"password":"correct-admin-password"}`))
+	innocentReq.RemoteAddr = "127.0.0.1:12345"
+	innocentReq.Header.Set("X-Forwarded-For", innocentIP)
+	innocentReq.Header.Set("Content-Type", "application/json")
+	innocentW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(innocentW, innocentReq)
+	if innocentW.Code != http.StatusOK {
+		t.Fatalf("expected innocent user behind reverse proxy to succeed with 200, got %d: %s", innocentW.Code, innocentW.Body.String())
 	}
 }
 
