@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
@@ -28,23 +29,50 @@ func (h *EndpointHandler) HandleEndpoints(w http.ResponseWriter, r *http.Request
 
 	port := h.cfg.Port
 	var endpoints []Endpoint
+	seenURLs := make(map[string]bool)
 
-	// Local
-	endpoints = append(endpoints, Endpoint{
-		Label: "Localhost",
-		URL:   fmt.Sprintf("http://localhost:%d", port),
-		Type:  "local",
-	})
-
-	// LAN addresses
-	for _, ip := range localIPs() {
+	// 1. Current access host/domain if request context provided
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" || strings.Contains(r.Header.Get("CF-Visitor"), `"scheme":"https"`) {
+		scheme = "https"
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	if host != "" {
+		currentURL := fmt.Sprintf("%s://%s", scheme, host)
 		endpoints = append(endpoints, Endpoint{
-			Label: "LAN (" + ip + ")",
-			URL:   fmt.Sprintf("http://%s:%d", ip, port),
-			Type:  "lan",
+			Label: "Current (" + host + ")",
+			URL:   currentURL,
+			Type:  "current",
 		})
+		seenURLs[currentURL] = true
 	}
 
+	// 2. Localhost
+	localURL := fmt.Sprintf("http://localhost:%d", port)
+	if !seenURLs[localURL] {
+		endpoints = append(endpoints, Endpoint{
+			Label: "Localhost",
+			URL:   localURL,
+			Type:  "local",
+		})
+		seenURLs[localURL] = true
+	}
+
+	// 3. LAN addresses
+	for _, ip := range localIPs() {
+		lanURL := fmt.Sprintf("http://%s:%d", ip, port)
+		if !seenURLs[lanURL] {
+			endpoints = append(endpoints, Endpoint{
+				Label: "LAN (" + ip + ")",
+				URL:   lanURL,
+				Type:  "lan",
+			})
+			seenURLs[lanURL] = true
+		}
+	}
 	// Auth status
 	requireAuth := false
 	if settings, err := h.db.GetSettings(); err == nil && settings != nil {

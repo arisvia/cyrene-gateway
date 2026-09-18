@@ -16,6 +16,32 @@ const Home: Component = () => {
   const [copiedKeyId, setCopiedKeyId] = createSignal<string | null>(null)
   const [copiedEndpoint, setCopiedEndpoint] = createSignal<string | null>(null)
 
+  const effectiveEndpoints = () => {
+    const list = store.endpoints()
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+    if (!currentOrigin) return list
+
+    if (list.some(e => e.type === 'current')) {
+      return list
+    }
+
+    const existing = list.find(e => e.url === currentOrigin)
+    if (existing) {
+      return [
+        { ...existing, label: `${t('home.currentEndpoint')} (${window.location.host})`, type: 'current' },
+        ...list.filter(e => e !== existing),
+      ]
+    }
+
+    return [
+      {
+        label: `${t('home.currentEndpoint')} (${window.location.host})`,
+        url: currentOrigin,
+        type: 'current',
+      },
+      ...list,
+    ]
+  }
   // 细粒度规则编辑状态
   const [editingKey, setEditingKey] = createSignal<ApiKey | null>(null)
   const [editName, setEditName] = createSignal('')
@@ -50,7 +76,6 @@ const Home: Component = () => {
       setEditingKey(null)
     } catch (err) {
       console.error(err)
-      toast.error(t('toast.saveKeyFailed'))
     } finally {
       setSavingEdit(false)
     }
@@ -126,7 +151,7 @@ const Home: Component = () => {
             </div>
 
             <div class="space-y-2.5">
-              <For each={store.endpoints()}>
+              <For each={effectiveEndpoints()}>
                 {ep => {
                   const isCopied = () => copiedEndpoint() === ep.url
                   return (
@@ -140,7 +165,14 @@ const Home: Component = () => {
                           title={t('home.clickToCopy')}
                       >
                         <div class="min-w-0 flex-1">
-                          <div class="text-sm font-medium text-foreground">{ep.label}</div>
+                          <div class="text-sm font-medium text-foreground flex items-center gap-2">
+                            <span class="truncate">{ep.label}</span>
+                            <Show when={ep.type === 'current'}>
+                              <Badge tone="green" class="text-[10px] py-0 px-1.5 shrink-0">
+                                {t('home.currentTag')}
+                              </Badge>
+                            </Show>
+                          </div>
                           <code class="text-xs text-faint truncate block font-mono mt-0.5">{ep.url}</code>
                         </div>
                         <span class="text-xs text-muted group-hover:text-accent font-medium shrink-0 flex items-center gap-1">
@@ -150,7 +182,7 @@ const Home: Component = () => {
                   )
                 }}
               </For>
-              <Show when={store.endpoints().length === 0}>
+              <Show when={effectiveEndpoints().length === 0}>
                 <Empty message={t('home.noEndpoints')} />
               </Show>
             </div>
@@ -188,7 +220,6 @@ const Home: Component = () => {
                         setKeyName('')
                       } catch (err) {
                         console.error(err)
-                        toast.error(t('toast.createKeyFailed'))
                       } finally {
                         setCreatingKey(false)
                       }
@@ -211,7 +242,6 @@ const Home: Component = () => {
                       setKeyName('')
                     } catch (err) {
                       console.error(err)
-                      toast.error(t('toast.createKeyFailed'))
                     } finally {
                       setCreatingKey(false)
                     }
