@@ -4,23 +4,15 @@ Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(O
 
 单二进制、零外部依赖(SQLite 内嵌)、Go + Solid.js 实现。
 
-## 功能总览
+## 核心特性
 
-- **统一 API 入口**:OpenAI 兼容(`/v1/chat/completions`、`/v1/embeddings`、`/v1/images/generations`、`/v1/audio/speech`、`/v1/models`、`/v1/responses`)与 Anthropic 兼容(`/v1/messages` 直通)。
-- **全能力提供商市场**:
-  - 覆盖 LLM 对话、图像生成、语音合成/识别、视频生成、文本向量与联网搜索/网页抓取 8 大能力标签;
-  - 支持 API Key、OAuth(授权码 + PKCE、设备码、Token 导入)、免密公共提供商与 Web Cookie 接入;
-  - 纯媒体服务(ElevenLabs、Stability AI、Tavily、Exa 等)与大模型上游在统一市场聚合与授权;
-  - 多模态媒体工作台(Media)提供即时交互调试与图像结果图库。
-- **思考推理能力映射**:下游标准化暴露 OpenAI `reasoning_effort`(`low`/`medium`/`high`)与 Anthropic `thinking`，自动映射至上游提供商(Gemini 3.8/3.7/3.6 Flash、Claude 3.7 Sonnet 等)。
-- **组合与回退**:Combo(多模型组合)按 `fallback` / `round-robin` / sticky 策略轮转;错误分类规则(`ErrorRules`)驱动指数退避冷却(2s 起步、上限 5 分钟)与模型级锁定。
-- **凭证调度**:`SelectCredentialWithQuota` 按 priority 排序、冷却状态、模型锁、配额上限挑选连接,OAuth 优先于 API Key。
-- **全链路出站安全与 SSRF 防护**: 所有出站 HTTP 请求（上游直通、文本向量、后台模型探测、凭证测试与外部面板下载）统一经 `SafeHTTPClient` 强化，实施基于 dial-time IP 解析的私网/环回/链路本地/云元数据/CGNAT 地址阻断与防跳转逃逸(可用 `-allow-private-networks` 放开,仅限本地测试)。
-- **令牌节省**:RTK 压缩、Caveman、Ponytail 三档 token saver,支持按提供商排除。
-- **循环防护(loopguard)**:检测重复工具调用与文本复读,注入提示打断死循环。
-- **用量观测**:逐请求 token 记账(含 cached/reasoning tokens)、每日聚合、成本估算、请求详情、SSE 实时事件流(`/api/usage/stream`)。
-- **出站代理池 (ProxyPools)**: 支持轮询调度出站 HTTP/SOCKS 代理,统一经 SafeHTTPClient 实施 SSRF 强化与超时约束,助力跨地域与受限网络访问。
-- **内置管理面板**: 基于 Solid.js + Vite + Tailwind CSS v4 构建的现代化单页控制台，具备完整深色玻璃拟物风格、统一矢量图标库、无内联 `any` 严格类型安全与流畅动画。
+- **统一 API 协议网关**：全面兼容 OpenAI 标准协议（`/v1/chat/completions`、`/v1/embeddings`、`/v1/images/generations`、`/v1/audio/*`、`/v1/models`、`/v1/responses`）及 Anthropic 原生协议（`/v1/messages`）。
+- **全能力提供商市场**：聚合主流 LLM（OpenAI、Anthropic、Gemini、Qoder、OpenCode 等）与纯媒体/搜索服务（ElevenLabs、Stability AI、Tavily、Exa）；支持 API Key、OAuth（PKCE/设备码/Token 导入）、免密公共端点与 Cookie 认证。
+- **智能调度与故障容灾**：支持多模型 Combo 轮转（Fallback、Round-Robin、Sticky 策略）；凭证池按优先级、模型锁与配额自动挑选；内置指数退避冷却（2s～5m）。
+- **思考推理自适应映射**：下游标准化透传 `reasoning_effort` 与 `thinking` 参数，自适应转译至各主流大模型（Gemini 3.8/3.7、Claude 3.7、Qwen 等）。
+- **生产级出站安全 (SSRF)**：所有出站流量经 `SafeHTTPClient` 实施拨号期 IP 严格过滤，防范私网探测、云元数据逃逸及 DNS 重绑定；支持轮询调度出站 HTTP/SOCKS 代理池。
+- **用量监控与会话防护**：逐请求 Token 记账（含 reasoning/cached 消耗）与成本估算；内置 Loopguard 智能打断死循环；提供实时 SSE 事件流看板。
+- **现代化控制台**：内置基于 Solid.js + Tailwind CSS v4 构建的单页管理后台，提供零依赖内嵌、深色玻璃拟物界面与即时演练场（Playground）。
 ## 快速开始
 
 ### 要求
@@ -116,13 +108,13 @@ schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 
 打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
 
-## 安全要点
+## 安全机制
 
-- **入站防御与 DNS 重绑定防护**：默认绑定 `0.0.0.0` 方便容器组网，但管理端 API（`/api/*`）强制实施**可信回环校验（Trusted Loopback）**——不仅校验 `RemoteAddr`，同时严格校验 HTTP `Host` 与 `Origin` 请求头（仅放行 localhost/127.0.0.1/[::1]）。任何指向 127.0.0.1 的外部域名（DNS Rebinding 攻击）或来自第三方网页的跨域脚本均会被拒发回环信任，强制要求 Session 登录鉴权（401 Unauthorized）；生产部署暴露于公网时，建议在「设置」中显式开启 `requireLogin`。
-- **CORS 隔离策略**：下游推理接口（`/v1/*`）及公有探活端点（`/api/health`、`/api/version`）对外部应用开放跨域；受保护的管理端 API（`/api/*`）仅对本地可信回环 Origin 开放 CORS。
-- **出站请求 SSRF 双重防御**：所有出站 HTTP 客户端统一经 `SafeHTTPClient` 托管，实施 Dial-time 解析期与拨号期 IP 校验，阻断针对内网、回环、链路本地与云元数据地址（如 169.254.169.254）的探测，并拦截 302 重定向逃逸。
-- **API Key 权限与限流**：`/v1/*` 可通过设置开启 API Key 强制校验（HMAC 签名 + 数据库白名单），支持细粒度模型白名单、System Context 注入与专属 RPM 限流。
-- **暴力破解防护**：登录失败按 IP 指数锁定（30s → 30m）；密码采用 Argon2id 单向加盐哈希（自动兼容旧版 HMAC 迁移）。
+- **外网智能识别与登录保护自适应**：智能探测客户端 IP 与 Host 头，非 localhost / 局域网访问时默认强制开启面板登录防护，自动阻断未授权远程接管；支持 `-admin-password` 参数或首启安全随机密码。
+- **入站 DNS 重绑定与跨域防护**：管理接口（`/api/*`）严格实施可信回环校验，绑定验证 `Host` 与 `Origin`，阻断外部域名重绑定攻击与未授权跨域脚本。
+- **CORS 严格分级**：推理端点（`/v1/*`）及公开探活开放跨域；管理接口仅对受信任本地 Origin 开放。
+- **双重 SSRF 防御**：所有出站 HTTP 客户端统一经 `SafeHTTPClient` 托管，在拨号期拦截私网、回环、链路本地与云元数据地址（如 `169.254.169.254`），严防跳转逃逸。
+- **访问控制与防爆破**：支持细粒度 API Key 白名单、专属 RPM 限流及 System Context 注入；面板密码采用 Argon2id 加盐哈希，并具备登录失败指数级 IP 锁定机制。
 ## License
 
 以 [MIT](LICENSE) 许可证开源。

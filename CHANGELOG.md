@@ -2,8 +2,22 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.2.2] - 2026-09-17
+## [1.2.3] - 2026-09-18
 
+### Security
+- **外网智能识别与登录自适应防护**：智能探测客户端 IP 与请求 Host，非局域网/本机访问时默认强制开启管理面板登录，杜绝远程未授权接管；支持 `-admin-password` 参数或安全随机密码首启。
+
+### Fixed
+- **管理会话拦截与死锁修复**：修复未配置密码时 401 拦截导致的登录弹窗失效，更新密码后即时签发会话凭据并支持动态引导初始化。
+- **全站模型友好展示名双显**：用量明细、实时请求流、钻取详情与模型组合全量支持「友好名称 + 原始 ID」双显与智能兜底。
+
+### Added
+- **端点当前访问感知**：首页统一接入端点动态感知当前请求 Host 与协议头，并标明「当前访问」状态。
+
+### Refactored
+- **网络层国际化与死键清理**：API 与网络拦截层全量接入 Strict i18n 规范，彻底消除硬编码字符串并物理清理 22 个无引用孤立死键。
+
+## [1.2.2] - 2026-09-17
 ### Added
 - **模型静态目录全厂商 2026 对齐**：依据 `models.dev` 权威数据库，全面增补与对齐 OpenAI（含 GPT-6 Astra、GPT-OSS 系列）、xAI Grok（含 4.20、4.6、4.2-Fast、Grok Build）、通义千问 Qwen 3.8 全系、Mistral Large 3/Small 4、Meta Llama 4、Cohere Command A+、Perplexity Sonar、Amazon Nova、百度文心 ERNIE 5.x、字节跳动 Seed 2.0、小米 MiMo、阶跃星辰 Step 等主流现役模型。
 - **Antigravity 周度与共享配额支持**：支持 `retrieveUserQuotaSummary` 提取 5 小时与每周额度窗口，合并 Claude 与 GPT 共享配额池。
@@ -56,6 +70,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.2.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.0...v1.2.2
 [1.2.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.0.0...v1.1.0
