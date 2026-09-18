@@ -1,14 +1,12 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
-import { useToast } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, IconGlobe, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
   const { t } = useI18n()
-  const toast = useToast()
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<ProxyPool | null>(null)
   const [saving, setSaving] = createSignal(false)
@@ -38,8 +36,8 @@ const ProxyPools: Component = () => {
     try {
       await store.saveProxyPool({ id: editing()?.id, ...f })
       setOpen(false)
-    } catch (e: unknown) {
-      toast.error(t('toast.saveProxyFailed'))
+    } catch {
+      // Error is automatically surfaced by api.ts
     } finally { setSaving(false) }
   }
 

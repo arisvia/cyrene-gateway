@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { api, apiPost, apiPut, apiDelete, ApiError } from '@/lib/api'
+import { api, apiPost, apiPut, apiDelete, ApiError, setOnUnauthorized } from '@/lib/api'
+import { toast } from '@/lib/toast'
 
 describe('api lib', () => {
   beforeEach(() => {
@@ -51,6 +52,36 @@ describe('api lib', () => {
       expect((err as ApiError).status).toBe(404)
       expect((err as ApiError).message).toBe('provider not found')
     }
+  })
+
+  it('captures network failure and triggers toast when not silent', async () => {
+    const toastSpy = vi.spyOn(toast, 'error')
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(api('/api/offline')).rejects.toThrow(ApiError)
+    expect(toastSpy).toHaveBeenCalled()
+  })
+
+  it('suppresses toast notifications in silent mode', async () => {
+    const toastSpy = vi.spyOn(toast, 'error')
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(api('/api/offline', { silent: true })).rejects.toThrow(ApiError)
+    expect(toastSpy).not.toHaveBeenCalled()
+  })
+
+  it('invokes onUnauthorized callback on 401 response', async () => {
+    const unauthSpy = vi.fn()
+    setOnUnauthorized(unauthSpy)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: () => Promise.resolve({ error: 'unauthorized' }),
+    })
+
+    await expect(api('/api/protected')).rejects.toThrow(ApiError)
+    expect(unauthSpy).toHaveBeenCalled()
   })
 
   it('propagates AbortSignal to fetch', async () => {

@@ -99,9 +99,8 @@ const ProviderDetail: Component = () => {
       await apiPost(`/api/providers/${p}/refresh-models`)
       toast.success(t('toast.syncModelsSuccess'))
       await refetchModels()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error(t('toast.syncModelsFailed', { error: msg }))
+    } catch {
+      // Error is automatically surfaced by api.ts
     } finally {
       setSyncingModels(false)
     }
@@ -196,8 +195,8 @@ const ProviderDetail: Component = () => {
       if (added?.id) {
         navigate(`/providers/${added.id}`)
       }
-    } catch (e: unknown) {
-      toast.error(t('toast.addAccountFailed', { error: e instanceof Error ? e.message : 'error' }))
+    } catch {
+      // Error is automatically surfaced by api.ts
     } finally {
       setAddingAccount(false)
     }
@@ -551,7 +550,6 @@ const ProviderDetail: Component = () => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('providerDetail.testRequestError')
       setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
-      toast.error(t('toast.modelTestFailed', { id: modelId, error: msg }))
     } finally {
       setTestingModels(prev => ({ ...prev, [modelId]: false }))
     }
@@ -577,7 +575,6 @@ const ProviderDetail: Component = () => {
       await store.batchSetModelsDisabled(modelKeys, false)
       toast.success(t('toast.batchEnableSuccess', { count: toEnable.length }))
     } catch {
-      toast.error(t('toast.batchEnableFailed'))
       refetchModels()
     } finally {
       setBatchBusy(false)
@@ -604,7 +601,6 @@ const ProviderDetail: Component = () => {
       await store.batchSetModelsDisabled(modelKeys, true)
       toast.success(t('toast.batchDisableSuccess', { count: toDisable.length }))
     } catch {
-      toast.error(t('toast.batchDisableFailed'))
       refetchModels()
     } finally {
       setBatchBusy(false)
@@ -702,7 +698,6 @@ const ProviderDetail: Component = () => {
       await store.batchSetModelsDisabled(modelKeys, true)
       toast.success(t('toast.batchDisableSuccess', { count: failedList.length }))
     } catch {
-      toast.error(t('toast.batchDisableFailed'))
       refetchModels()
     } finally {
       setBatchBusy(false)
@@ -821,8 +816,8 @@ const ProviderDetail: Component = () => {
           code: r?.code ? ` (HTTP ${r.code})` : '',
         }))
       }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('providerDetail.testConnRequestFailed'))
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setTesting(false)
     }
@@ -834,8 +829,8 @@ const ProviderDetail: Component = () => {
       await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || modelId.trim() })
       toast.success(t('providerDetail.customModelAdded', { id: modelId.trim() }))
       refetchModels()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('common.addFailed'))
+    } catch {
+      // Error is automatically surfaced by api.ts
     }
   }
 
@@ -850,8 +845,8 @@ const ProviderDetail: Component = () => {
       await store.deleteProviderModel(params.id, modelId)
       toast.success(t('providerDetail.modelDeleted', { id: modelId }))
       refetchModels()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('providerDetail.deleteModelFailed'))
+    } catch {
+      // Error is automatically surfaced by api.ts
     }
   }
 

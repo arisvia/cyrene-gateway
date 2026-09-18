@@ -141,7 +141,6 @@ const Media: Component = () => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : t('media.requestFailed')
       setError(msg)
-      toast.error(msg)
     } finally {
       setBusy(false)
     }

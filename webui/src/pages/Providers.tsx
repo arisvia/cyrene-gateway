@@ -365,7 +365,6 @@ const Providers: Component = () => {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setTestedCreds({ ok: false, msg })
-      toast.error(t('toast.credTestFailed', { error: msg }))
     } finally {
       setTestingCreds(false)
     }
@@ -574,8 +573,6 @@ const Providers: Component = () => {
       setWizardOpen(false)
       setActiveTab('connections')
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      toast.error(t('toast.addProviderFailed', { error: msg }))
       console.error('[providers] add provider failed:', e)
     } finally {
       setSaving(false)
@@ -589,8 +586,8 @@ const Providers: Component = () => {
       await store.loadProvidersOnly()
       await store.loadCore()
       toast.success(t('toast.refreshSuccess'))
-    } catch (e: unknown) {
-      toast.error(t('toast.refreshFailed'))
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setRefreshing(false)
     }

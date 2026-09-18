@@ -217,8 +217,8 @@ const Playground: Component = () => {
           setModelB(list[1]?.id || list[0].id)
         }
       }
-    } catch (e: unknown) {
-      toast.error(t('toast.loadModelsFailed', { error: e instanceof Error ? e.message : String(e) }))
+    } catch {
+      // Error is automatically surfaced by api.ts
     } finally {
       setLoadingModels(false)
     }
