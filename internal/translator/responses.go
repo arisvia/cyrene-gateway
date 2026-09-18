@@ -39,6 +39,8 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 	// MaxTokens / MaxOutputTokens
 	if maxOut, ok := responsesBody["max_output_tokens"]; ok {
 		result["max_tokens"] = maxOut
+	} else if maxComp, ok := responsesBody["max_completion_tokens"]; ok {
+		result["max_tokens"] = maxComp
 	} else if maxTokens, ok := responsesBody["max_tokens"]; ok {
 		result["max_tokens"] = maxTokens
 	}

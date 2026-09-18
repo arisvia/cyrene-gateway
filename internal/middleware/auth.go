@@ -205,9 +205,24 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 					next.ServeHTTP(w, r)
 					return
 				}
+				token := ""
+				if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+					token = cookie.Value
+				}
+				if token == "" {
+					authHeader := r.Header.Get("Authorization")
+					if strings.HasPrefix(authHeader, "Bearer ") {
+						candidate := strings.TrimPrefix(authHeader, "Bearer ")
+						if strings.Contains(candidate, ".") {
+							token = candidate
+						}
+					}
+				}
+				if token == "" {
+					token = r.Header.Get("X-Cyrene-Auth-Token")
+				}
 
-				cookie, err := r.Cookie("auth_token")
-				if err != nil || !auth.VerifySessionToken(cookie.Value) {
+				if token == "" || !auth.VerifySessionToken(token) {
 					writeAuthError(w, http.StatusUnauthorized, "unauthorized")
 					return
 				}

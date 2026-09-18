@@ -1,6 +1,6 @@
 import { createSignal, createRoot } from 'solid-js'
 import { createStore } from 'solid-js/store'
-import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized } from '@/lib/api'
+import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized, setStoredSessionToken } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type {
   Provider, RegistryCategory, Combo, ApiKey, ApiKeyInput, ProxyPool, Endpoint,
@@ -72,6 +72,7 @@ function createGatewayStore() {
 
   setOnUnauthorized(() => {
     // 捕获到 401 立即标记登录拦截，确保弹窗能够无条件弹出
+    setAuthChecked(true)
     setRequireLogin(true)
     setAuthenticated(false)
   })
@@ -98,13 +99,17 @@ function createGatewayStore() {
   }
 
   async function login(password: string) {
-    const res = await apiPost<{ ok?: boolean; error?: string }>('/api/auth/login', { password })
+    const res = await apiPost<{ ok?: boolean; token?: string; error?: string }>('/api/auth/login', { password })
+    if (res && res.token) {
+      setStoredSessionToken(res.token)
+    }
     setAuthenticated(true)
     await loadCore()
     return res
   }
 
   async function logout() {
+    setStoredSessionToken(null)
     try {
       await apiPost('/api/auth/logout')
     } catch {
@@ -349,7 +354,10 @@ function createGatewayStore() {
     await loadSettings()
   }
   async function setPassword(password: string) {
-    const res = await apiPost('/api/auth/password', { password })
+    const res = await apiPost<{ ok?: boolean; token?: string; error?: string }>('/api/auth/password', { password })
+    if (res && res.token) {
+      setStoredSessionToken(res.token)
+    }
     setHasPassword(true)
     setAuthenticated(true)
     try {

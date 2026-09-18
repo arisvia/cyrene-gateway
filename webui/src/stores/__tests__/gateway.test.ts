@@ -8,6 +8,9 @@ vi.mock('@/lib/api', () => ({
   apiPatch: vi.fn(),
   apiDelete: vi.fn(),
   setOnUnauthorized: vi.fn(),
+  setStoredSessionToken: vi.fn(),
+  getStoredSessionToken: vi.fn(),
+  SESSION_TOKEN_KEY: 'cyrene_session_token',
 }))
 
 const mockToast = vi.hoisted(() => ({

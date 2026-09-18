@@ -99,7 +99,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "token": token})
 }
 
 func (h *AuthHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +153,7 @@ func (h *AuthHandler) HandleSetPassword(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "token": token})
 }
 func (h *AuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.db.GetSettings()

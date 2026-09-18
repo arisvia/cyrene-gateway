@@ -13,6 +13,28 @@ export class ApiError extends Error {
   }
 }
 
+const SESSION_TOKEN_KEY = 'cyrene_session_token'
+
+export function getStoredSessionToken(): string | null {
+  try {
+    return localStorage.getItem(SESSION_TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setStoredSessionToken(token: string | null) {
+  try {
+    if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token)
+    } else {
+      localStorage.removeItem(SESSION_TOKEN_KEY)
+    }
+  } catch {
+    // ignore
+  }
+}
+
 type UnauthorizedHandler = () => void
 let onUnauthorizedCallback: UnauthorizedHandler | null = null
 
@@ -43,10 +65,17 @@ function showApiToast(msg: string) {
 }
 async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? 'GET'
+  const headers: Record<string, string> = { ...options.headers }
+  const token = getStoredSessionToken()
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
   const opts: RequestInit = {
     method,
-    headers: { ...options.headers },
+    headers,
     signal: options.signal,
+    credentials: 'same-origin',
   }
   if (options.body !== undefined) {
     ;(opts.headers as Record<string, string>)['Content-Type'] = 'application/json'
@@ -82,6 +111,7 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
     } catch { /* non-JSON error body */ }
 
     if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      setStoredSessionToken(null)
       onUnauthorizedCallback?.()
       if (!options.silent) {
         showApiToast(msg === '401 Unauthorized' || msg === 'unauthorized' ? t('api.authRequired') : msg)
