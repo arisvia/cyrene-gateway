@@ -12,11 +12,11 @@ type ProviderConnection struct {
 	AuthType  string         `json:"authType"`
 	Name      string         `json:"name,omitempty"`
 	Email     string         `json:"email,omitempty"`
-	Priority  int            `json:"priority"`
-	IsActive  bool           `json:"isActive"`
 	Data      ConnectionData `json:"data"`
 	CreatedAt time.Time      `json:"createdAt"`
 	UpdatedAt time.Time      `json:"updatedAt"`
+	Priority  int            `json:"priority"`
+	IsActive  bool           `json:"isActive"`
 }
 
 type ConnectionData struct {
@@ -67,12 +67,12 @@ type APIKey struct {
 	Key           string    `json:"key"`
 	Name          string    `json:"name,omitempty"`
 	MachineID     string    `json:"machineId,omitempty"`
-	IsActive      bool      `json:"isActive"`
-	AllowedModels []string  `json:"allowedModels,omitempty"`
-	RPM           int       `json:"rpm,omitempty"`
 	SystemPrompt  string    `json:"systemPrompt,omitempty"`
 	ExpiresAt     string    `json:"expiresAt,omitempty"`
+	AllowedModels []string  `json:"allowedModels,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
+	RPM           int       `json:"rpm,omitempty"`
+	IsActive      bool      `json:"isActive"`
 }
 
 // IsModelAllowed checks if the given model matches the key's allowed models list.
@@ -125,11 +125,11 @@ type ModelInfo struct {
 // ProxyPool represents an outbound proxy configuration
 type ProxyPool struct {
 	ID         string        `json:"id"`
-	IsActive   bool          `json:"isActive"`
 	TestStatus string        `json:"testStatus,omitempty"`
 	Data       ProxyPoolData `json:"data"`
 	CreatedAt  time.Time     `json:"createdAt"`
 	UpdatedAt  time.Time     `json:"updatedAt"`
+	IsActive   bool          `json:"isActive"`
 }
 
 type ProxyPoolData struct {

@@ -198,6 +198,9 @@ func BuildTransportURL(t Transport, modelName string, stream bool) string {
 	if t.Format == "gemini" {
 		return BuildGeminiURL(base, modelName, stream)
 	}
+	if t.Format == "responses" {
+		return BuildResponsesURL(base)
+	}
 	return BuildChatURL(base, t.Format)
 }
 

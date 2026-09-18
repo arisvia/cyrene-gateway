@@ -350,13 +350,13 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 // OpenAIToClaudeSSETranslator manages streaming state to translate OpenAI SSE lines into Anthropic SSE lines.
 type OpenAIToClaudeSSETranslator struct {
 	Model        string
-	started      bool
 	msgID        string
-	blockStarted bool
+	finishReason string
 	blockIndex   int
 	outputTokens int
-	finishReason string
 	inTokens     int
+	started      bool
+	blockStarted bool
 }
 
 // NewOpenAIToClaudeSSETranslator creates a new stateful translator.

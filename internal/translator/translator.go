@@ -14,6 +14,7 @@ const (
 	FormatOpenAI    Format = "openai"
 	FormatAnthropic Format = "anthropic"
 	FormatGemini    Format = "gemini"
+	FormatResponses Format = "responses"
 )
 
 // TranslateRequest converts an OpenAI-format request body to the target provider format.
@@ -28,6 +29,8 @@ func TranslateRequest(targetFormat Format, model string, body map[string]any, st
 		return openAIToClaude(model, body, stream)
 	case FormatGemini:
 		return openAIToGemini(model, body, stream)
+	case FormatResponses:
+		return OpenAIToResponsesRequest(model, body, stream)
 	default:
 		return nil, fmt.Errorf("unsupported target format: %s", targetFormat)
 	}
@@ -42,6 +45,8 @@ func TranslateResponse(sourceFormat Format, data []byte, model string) ([]byte, 
 		return claudeToOpenAI(data, model)
 	case FormatGemini:
 		return geminiToOpenAI(data, model)
+	case FormatResponses:
+		return ResponsesToOpenAIResponse(data, model)
 	default:
 		return data, nil
 	}
@@ -57,6 +62,8 @@ func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, 
 		return claudeSSEToOpenAI(data, model)
 	case FormatGemini:
 		return geminiSSEToOpenAI(data, model)
+	case FormatResponses:
+		return ResponsesSSEToOpenAI(data, model)
 	default:
 		return data, false, nil
 	}

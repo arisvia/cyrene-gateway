@@ -14,13 +14,13 @@ import (
 // and translates it into an Anthropic Messages format response.
 type anthropicResponseAdapter struct {
 	w             http.ResponseWriter
-	isStream      bool
-	model         string
 	flusher       http.Flusher
 	sseTranslator *translator.OpenAIToClaudeSSETranslator
-	buf           bytes.Buffer
+	model         string
 	scanBuf       []byte
+	buf           bytes.Buffer
 	statusCode    int
+	isStream      bool
 	headerWritten bool
 	isSSE         bool
 }
