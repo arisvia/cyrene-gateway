@@ -84,6 +84,9 @@ const LogsPage: Component = () => {
     // 2. 建立 SSE 实时流
     const streamUrl = '/api/system/logs/stream'
     es = new EventSource(streamUrl)
+    es.onopen = () => {
+      setConnected(true)
+    }
     es.addEventListener('connected', () => {
       setConnected(true)
     })

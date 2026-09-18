@@ -1264,10 +1264,19 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ensure fresh credentials for OAuth / Copilot connections
+	s.tryRefreshToken(conn)
+
 	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
 		effectiveAPIType = providerInfo.APIType
+	}
+	if effectiveAPIType != "anthropic" || baseURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("model '%s' (provider: %s) uses '%s' protocol and does not support Anthropic /v1/messages; please use /v1/chat/completions", modelStr, modelInfo.Provider, effectiveAPIType),
+		})
+		return
 	}
 
 	// Set the resolved model name
@@ -1290,13 +1299,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
 	targetURL := provider.BuildTransportURL(transport, modelInfo.Model, stream)
 	if targetURL == "" {
-		// Fallback for providers without a usable base URL.
-		switch effectiveAPIType {
-		case "anthropic":
-			targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
-		default:
-			targetURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
-		}
+		targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
 	}
 
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(translatedBody))
@@ -1308,10 +1311,19 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	for k, v := range transport.Headers {
 		upstreamReq.Header.Set(k, v)
 	}
+	// Forward Anthropic-specific client headers if present
+	if v := r.Header.Get("anthropic-version"); v != "" && upstreamReq.Header.Get("anthropic-version") == "" {
+		upstreamReq.Header.Set("anthropic-version", v)
+	}
+	if v := r.Header.Get("anthropic-beta"); v != "" && upstreamReq.Header.Get("anthropic-beta") == "" {
+		upstreamReq.Header.Set("anthropic-beta", v)
+	}
+	if stream {
+		upstreamReq.Header.Set("Accept", "text/event-stream")
+	}
 	creds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
 	provider.ApplyAuth(upstreamReq, transport, creds)
 	upstreamReq.Header.Set("Content-Type", "application/json")
-
 	slog.Info("Messages passthrough",
 		slog.String("model", modelInfo.Model),
 		slog.String("provider", modelInfo.Provider),
@@ -1321,13 +1333,17 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	client := s.getHTTPClient(5 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
+		slog.Error("Messages upstream request failed", "error", err, "provider", modelInfo.Provider, "url", targetURL)
+		writeJSON(w, http.StatusBadGateway, map[string]string{
+			"error": fmt.Sprintf("upstream request failed: %v", err),
+		})
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(resp.Body)
+		slog.Warn("Messages upstream error response", "status", resp.StatusCode, "provider", modelInfo.Provider, "body", string(errBody))
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
 		w.Header().Set("Content-Type", "application/json")
@@ -1352,6 +1368,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 
 		flusher, ok := w.(http.Flusher)
@@ -1359,6 +1376,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			io.Copy(w, resp.Body)
 			return
 		}
+		flusher.Flush()
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

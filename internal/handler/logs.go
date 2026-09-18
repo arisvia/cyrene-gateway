@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -144,6 +145,8 @@ func (s *Server) handleSystemLogsStream(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	// Send initial 2KB SSE comment padding to bypass buffering in reverse proxies (Nginx / Cloudflare)
+	w.Write([]byte(": " + strings.Repeat(" ", 2048) + "\n\n"))
 	flusher.Flush()
 
 	ch, done := GlobalLogBuffer.Subscribe()
