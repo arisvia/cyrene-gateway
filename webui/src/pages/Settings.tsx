@@ -136,8 +136,8 @@ const Settings: Component = () => {
     try {
       const data = await api<SystemStatsData>('/api/system/stats')
       setSystemStats(data)
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to fetch system stats')
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setLoadingStats(false)
     }
@@ -153,8 +153,8 @@ const Settings: Component = () => {
       } else {
         toast.success(t('settings.ops.upToDateBadge'))
       }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Failed to check update')
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setCheckingUpdate(false)
     }
@@ -181,8 +181,8 @@ const Settings: Component = () => {
       if (shouldRestart) {
         await handleTriggerRestart()
       }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('settings.ops.updateFailed'))
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setApplyingUpdate(false)
     }
@@ -208,7 +208,7 @@ const Settings: Component = () => {
     const interval = setInterval(async () => {
       attempts++
       try {
-        const h = await api<{ status: string }>('/api/health')
+        const h = await api<{ status: string }>('/api/health', { silent: true })
         if (h && h.status === 'ok') {
           clearInterval(interval)
           setRestarting(false)
@@ -237,8 +237,8 @@ const Settings: Component = () => {
     try {
       await apiPost('/api/system/rollback', {})
       toast.success(t('settings.ops.rollbackSuccess'))
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('settings.ops.rollbackFailed'))
+    } catch {
+      // Error surfaced by api.ts
     }
   }
 
@@ -262,8 +262,8 @@ const Settings: Component = () => {
         )
       }
       void fetchSystemStats()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('settings.ops.maintFailed'))
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setRunningMaint(null)
     }
@@ -398,8 +398,8 @@ const Settings: Component = () => {
       await apiPost('/api/cache/clear')
       toast.success(t('toast.cacheCleared'))
       await fetchCacheStats()
-    } catch (e: unknown) {
-      toast.error(t('toast.cacheClearFailed'))
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setClearingCache(false)
     }
@@ -446,8 +446,8 @@ const Settings: Component = () => {
       await store.saveSettings(payload)
       setLocal({ ...store.settings() })
       setHasPw(!!store.settings().hasPassword)
-    } catch (e: unknown) {
-      toast.error(t('toast.saveFailed', { error: e instanceof Error ? e.message : 'error' }))
+    } catch {
+      // Error surfaced by api.ts
     } finally {
       setSaving(false)
     }
@@ -463,8 +463,8 @@ const Settings: Component = () => {
       setPw('')
       setHasPw(true)
       toast.success(t('toast.passwordUpdateSuccess'))
-    } catch (e: unknown) {
-      toast.error(t('toast.passwordUpdateFailed'))
+    } catch {
+      // Error surfaced by api.ts
     }
   }
 
@@ -539,17 +539,20 @@ const Settings: Component = () => {
             <Field
               label={t('settings.access.requireLogin')}
               hint={
-                hasPw()
-                  ? t('settings.access.requireLoginHint')
-                  : t('settings.access.requireLoginNoPw')
+                store.isWan()
+                  ? t('settings.access.requireLoginWanLocked')
+                  : hasPw()
+                    ? t('settings.access.requireLoginHint')
+                    : t('settings.access.requireLoginNoPw')
               }
             >
               <span />
             </Field>
             <Toggle
-              checked={!!local().requireLogin}
-              disabled={!hasPw()}
+              checked={store.isWan() || !!local().requireLogin}
+              disabled={store.isWan() || !hasPw()}
               onChange={v => {
+                if (store.isWan()) return
                 if (v && !hasPw()) {
                   toast.warning(t('toast.setAdminPasswordFirst'))
                   return

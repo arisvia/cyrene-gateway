@@ -11,18 +11,34 @@ export const LoginModal: Component = () => {
   const [loading, setLoading] = createSignal(false)
   const [error, setError] = createSignal('')
 
+  const isSetup = () => !store.hasPassword()
+
   const handleSubmit = async (e?: Event) => {
     e?.preventDefault()
-    if (!password().trim() || loading()) return
+    const val = password().trim()
+    if (!val || loading()) return
+
+    if (isSetup() && val.length < 8) {
+      setError(t('login.passwordMinLength'))
+      return
+    }
+
     setLoading(true)
     setError('')
     try {
-      await store.login(password().trim())
+      if (isSetup()) {
+        await store.setPassword(val)
+      } else {
+        await store.login(val)
+      }
       setPassword('')
     } catch (err: unknown) {
       if (err instanceof Error) {
         if (err.message.includes('429') || err.message.includes('too many failed attempts')) {
           setError(t('login.tooManyAttempts'))
+        } else if (err.message.includes('password not initialized')) {
+          // 密码未初始化，自动切换为初始化引导
+          setError('')
         } else {
           setError(t('login.invalidPassword'))
         }
@@ -53,10 +69,10 @@ export const LoginModal: Component = () => {
         </div>
 
         <h1 class="text-xl font-bold text-foreground tracking-tight mb-2">
-          {t('login.title')}
+          {isSetup() ? t('login.setupTitle') : t('login.title')}
         </h1>
         <p class="text-xs text-muted leading-relaxed mb-6 max-w-xs">
-          {t('login.subtitle')}
+          {isSetup() ? t('login.setupSubtitle') : t('login.subtitle')}
         </p>
 
         {/* 错误提示 */}
@@ -72,7 +88,7 @@ export const LoginModal: Component = () => {
             <Input
               type="password"
               class="w-full h-11 pr-10"
-              placeholder={t('login.passwordPlaceholder')}
+              placeholder={isSetup() ? t('login.setupPlaceholder') : t('login.passwordPlaceholder')}
               value={password()}
               onInput={setPassword}
               disabled={loading()}
@@ -89,7 +105,7 @@ export const LoginModal: Component = () => {
             disabled={!password().trim()}
             class="w-full h-11 justify-center text-sm shadow-lg shadow-accent/20"
           >
-            {loading() ? t('login.loggingIn') : t('login.submit')}
+            {loading() ? t('login.loggingIn') : isSetup() ? t('login.setupSubmit') : t('login.submit')}
           </Button>
         </form>
       </div>

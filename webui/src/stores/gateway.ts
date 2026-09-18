@@ -67,22 +67,29 @@ function createGatewayStore() {
   const [requireLogin, setRequireLogin] = createSignal(false)
   const [authenticated, setAuthenticated] = createSignal(true)
   const [authChecked, setAuthChecked] = createSignal(false)
+  const [hasPassword, setHasPassword] = createSignal(true)
+  const [isWan, setIsWan] = createSignal(false)
 
   setOnUnauthorized(() => {
-    if (requireLogin()) {
-      setAuthenticated(false)
-    }
+    // 捕获到 401 立即标记登录拦截，确保弹窗能够无条件弹出
+    setRequireLogin(true)
+    setAuthenticated(false)
   })
 
   async function checkAuth(): Promise<boolean> {
     try {
-      const res = await api<{ requireLogin: boolean; authenticated: boolean }>('/api/auth/status')
+      const res = await api<{ requireLogin: boolean; authenticated: boolean; hasPassword?: boolean; isWan?: boolean }>('/api/auth/status', { silent: true })
       if (res) {
         setRequireLogin(!!res.requireLogin)
         setAuthenticated(!!res.authenticated)
+        if (typeof res.hasPassword === 'boolean') {
+          setHasPassword(res.hasPassword)
+        }
+        if (typeof res.isWan === 'boolean') {
+          setIsWan(res.isWan)
+        }
         return !!res.authenticated
       }
-    } catch {
       // safe fallback
     } finally {
       setAuthChecked(true)
@@ -240,7 +247,6 @@ function createGatewayStore() {
       await apiPut(`/api/providers/${p.id}`, { isActive: !original })
     } catch {
       setProviders(list => list.map(x => x.id === p.id ? { ...x, isActive: original } : x))
-      toast.error('更新提供商状态失败')
     }
   }
 
@@ -344,10 +350,15 @@ function createGatewayStore() {
   }
   async function setPassword(password: string) {
     const res = await apiPost('/api/auth/password', { password })
-    toast.success('管理密码已更新')
+    setHasPassword(true)
+    setAuthenticated(true)
+    try {
+      await loadCore()
+    } catch {
+      // ignore
+    }
     return res
   }
-
   // ── provider 编辑 / 凭证 ──
   async function updateProvider(id: string, patch: Record<string, unknown>) {
     const res = await apiPut(`/api/providers/${id}`, patch)
@@ -401,7 +412,7 @@ function createGatewayStore() {
   }
 
   async function oauthPoll(providerId: string, payload: Record<string, unknown>) {
-    return apiPost(`/api/oauth/${providerId}/device-code/poll`, payload)
+    return apiPost(`/api/oauth/${providerId}/device-code/poll`, payload, { silent: true })
   }
 
   async function oauthImport(providerId: string, payload: Record<string, unknown>) {
@@ -447,7 +458,7 @@ function createGatewayStore() {
     return apiPost('/api/models/test', { model, connectionId })
   }
   return {
-    requireLogin, authenticated, authChecked, checkAuth, login, logout,
+    requireLogin, authenticated, authChecked, hasPassword, isWan, checkAuth, login, logout,
     version, health, providers, setProviders, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings, aliases,
     usageStats, usageChart, requestDetails, requestDetailsPagination,

@@ -120,4 +120,17 @@ describe('gateway store', () => {
     expect(store.authenticated()).toBe(false)
     expect(apiPost).toHaveBeenCalledWith('/api/auth/logout')
   })
+
+  it('setPassword immediately sets hasPassword and authenticated', async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return Promise.resolve({ requireLogin: true, authenticated: true, hasPassword: true } as unknown)
+      return Promise.resolve(null as unknown)
+    })
+    vi.mocked(apiPost).mockResolvedValue({ ok: true } as unknown)
+    const store = useGatewayStore()
+    await store.setPassword('new-super-pass')
+    expect(store.hasPassword()).toBe(true)
+    expect(store.authenticated()).toBe(true)
+    expect(apiPost).toHaveBeenCalledWith('/api/auth/password', { password: 'new-super-pass' })
+  })
 })
