@@ -1516,7 +1516,7 @@ const Settings: Component = () => {
       {/* ── 重启全屏探活与重连遮罩 ── */}
       <Show when={restarting()}>
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <Card class="max-w-md w-full p-6 text-center space-y-4 shadow-2xl border border-accent/30">
+          <Card class="max-w-md w-full p-6 text-center space-y-4 shadow-glass-hover border border-accent/30">
             <div class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto text-accent">
               <IconRotateCcw size={24} class="animate-spin" />
             </div>

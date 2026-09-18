@@ -775,7 +775,9 @@ main();
                 single: () => (
                   <div class="flex items-center gap-3 min-w-0 py-0.5">
                     <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
-                      <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
+                      <Show when={modelA()}>
+                        <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
+                      </Show>
                       {t('playground.selectEvalModel')}
                     </span>
                     <div class="flex-1 min-w-0">
@@ -794,7 +796,10 @@ main();
                 compare: () => (
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 py-0.5">
                     <div class="flex items-center gap-2 min-w-0">
-                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0 flex items-center gap-1">
+                        <Show when={modelA()}>
+                          <ProviderAvatar provider={modelA().split('/')[0]} size="sm" class="w-3.5 h-3.5 rounded text-[7px]" />
+                        </Show>
                         {t('playground.modelA')}
                       </span>
                       <div class="flex-1 min-w-0">
@@ -807,7 +812,10 @@ main();
                       </div>
                     </div>
                     <div class="flex items-center gap-2 min-w-0">
-                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0 flex items-center gap-1">
+                        <Show when={modelB()}>
+                          <ProviderAvatar provider={modelB().split('/')[0]} size="sm" class="w-3.5 h-3.5 rounded text-[7px]" />
+                        </Show>
                         {t('playground.modelB')}
                       </span>
                       <div class="flex-1 min-w-0">
@@ -1159,7 +1167,7 @@ main();
             class="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-xs animate-fade-in"
             onClick={() => setShowParams(false)}
           />
-          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col h-full min-h-0 shadow-2xl lg:shadow-none animate-slide-up lg:animate-none">
+          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col h-full min-h-0 shadow-glass-hover lg:shadow-none animate-slide-up lg:animate-none">
             <Card class="flex flex-col h-full min-h-0 p-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle/50">
               <div class="flex items-center justify-between border-b border-subtle/50 pb-2 shrink-0">
                 <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">

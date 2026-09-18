@@ -1,5 +1,5 @@
 import { type Component, Show, createSignal, createEffect } from 'solid-js'
-import { IconServer } from './icons'
+import { IconSparkles } from './icons'
 interface ProviderIconProps {
   provider: string
   name?: string
@@ -25,6 +25,10 @@ const ICON_SIZES = {
 // 统一未知/自定义 Provider 优雅降级徽标（已内嵌全量 39 家官方 SVG，兜底专注未知自定义源）
 export const ProviderBrandIcon: Component<{ provider: string; name?: string; size?: number; class?: string }> = props => {
   const label = () => (props.name || props.provider || '?').trim()
+  const isGeneric = () => {
+    const l = label().toLowerCase()
+    return !l || l === '?' || l === 'default' || l === 'unknown'
+  }
   const initials = () => {
     const l = label()
     return l.length <= 2 ? l.toUpperCase() : l.slice(0, 2).toUpperCase()
@@ -33,9 +37,9 @@ export const ProviderBrandIcon: Component<{ provider: string; name?: string; siz
 
   return (
     <Show
-      when={label() !== '?'}
+      when={!isGeneric()}
       fallback={
-        <IconServer size={sz()} class={props.class} />
+        <IconSparkles size={sz()} class={props.class} />
       }
     >
       <span class={`font-bold font-mono select-none tracking-tighter text-foreground/90 ${props.class ?? ''}`}>
@@ -122,7 +126,7 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const sizeClass = () => SIZES[props.size ?? 'md']
   const iconPx = () => ICON_SIZES[props.size ?? 'md']
   const name = () => props.name || props.provider
-  const normalized = () => props.provider.toLowerCase().replace(/[-_]/g, '')
+  const normalized = () => (props.provider || '').toLowerCase().replace(/[-_]/g, '')
   const [imgFailed, setImgFailed] = createSignal(false)
 
   // 当 provider 属性变化时自动复位失败状态
@@ -134,6 +138,7 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   const imgSrc = () => {
     if (imgFailed()) return null
     const norm = normalized()
+    if (!norm) return null
     const key = Object.keys(PROVIDER_IMAGE_MAP).find(k => norm.includes(k.replace(/[-_]/g, '')))
     if (key && PROVIDER_IMAGE_MAP[key]) return PROVIDER_IMAGE_MAP[key]
     const dataKey = Object.keys(PROVIDER_DATA_URLS).find(k => norm.includes(k.replace(/[-_]/g, '')))
@@ -143,13 +148,16 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
     <div
       class={`shrink-0 flex items-center justify-center rounded-xl overflow-hidden glass-avatar transition-transform group-hover:scale-105 ${sizeClass()} ${props.class ?? ''}`}
       style={{
-        background: imgSrc() ? undefined : (props.color || 'var(--gradient)'),
+        background: imgSrc() ? undefined : (props.color || undefined),
+      }}
+      classList={{
+        'bg-accent/10 text-accent border border-accent/20': !imgSrc() && !props.color,
       }}
       title={name()}
     >
       <Show
         when={imgSrc()}
-        fallback={<ProviderBrandIcon provider={props.provider} size={iconPx()} />}
+        fallback={<ProviderBrandIcon provider={props.provider} name={props.name} size={iconPx()} />}
       >
         <img
           src={imgSrc()!}

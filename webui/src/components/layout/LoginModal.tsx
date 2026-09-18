@@ -51,7 +51,7 @@ export const LoginModal: Component = () => {
   }
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg/70 backdrop-blur-xl animate-fade-in">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg/80 backdrop-blur-md animate-fade-in">
       {/* 顶部工具栏：主题与语言切换 */}
       <div class="absolute top-4 right-4 flex items-center gap-2 z-10">
         <LanguageToggle />
@@ -59,10 +59,7 @@ export const LoginModal: Component = () => {
       </div>
 
       {/* 登录卡片 */}
-      <div class="relative w-full max-w-md rounded-3xl border border-glass-border glass-panel shadow-2xl p-8 sm:p-10 flex flex-col items-center text-center animate-slide-up">
-        {/* 顶部装饰光斑 */}
-        <div class="absolute -top-12 inset-x-12 h-24 bg-accent/20 blur-3xl rounded-full pointer-events-none" />
-
+      <div class="relative w-full max-w-md rounded-card border border-glass-border glass-panel shadow-glass-hover p-8 sm:p-10 flex flex-col items-center text-center animate-slide-up">
         {/* 品牌标识 */}
         <div class="w-14 h-14 rounded-2xl border border-glass-border glass-sticky shadow-glass flex items-center justify-center mb-5 shrink-0">
           <CyreneLogo class="w-8 h-8 text-accent" />
