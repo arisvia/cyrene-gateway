@@ -286,12 +286,29 @@ const Playground: Component = () => {
     return fallback.includes('/') ? fallback.slice(fallback.indexOf('/') + 1) : fallback
   }
 
+  function getTurnProvider(resp?: AssistantResponse): string {
+    if (!resp) return ''
+    const modelId = resp.servedModel && resp.servedModel !== 'auto' && resp.servedModel !== 'default'
+      ? resp.servedModel
+      : resp.targetModel
+    const entry = models().find(m => m.id === modelId || m.id === resp.targetModel)
+    if (entry?.owned_by === 'cyrene-gateway' || entry?.owned_by === 'cyrene') {
+      return 'cyrene'
+    }
+    if (modelId && modelId.includes('/')) {
+      return modelId.split('/')[0]
+    }
+    if (entry?.owned_by) {
+      return entry.owned_by
+    }
+    return (resp.targetModel || '').split('/')[0]
+  }
+
   function getResponseProvider(resp?: AssistantResponse): string {
     if (!resp) return ''
     const opt = modelOptions().find(o => o.value === resp.targetModel)
     if (opt?.badge) return opt.badge
-    const providerId = resp.targetModel.split('/')[0]
-    return getProviderBadge(providerId)
+    return getProviderBadge(getTurnProvider(resp))
   }
   const isBusy = () =>
     turnsAll().some(t => t.a.busy || (t.b && t.b.busy))
@@ -774,10 +791,7 @@ main();
               views={{
                 single: () => (
                   <div class="flex items-center gap-3 min-w-0 py-0.5">
-                    <span class="text-xs font-medium text-foreground shrink-0 flex items-center gap-1.5">
-                      <Show when={modelA()}>
-                        <ProviderAvatar provider={modelA().split('/')[0]} size="sm" />
-                      </Show>
+                    <span class="text-xs font-medium text-foreground shrink-0">
                       {t('playground.selectEvalModel')}
                     </span>
                     <div class="flex-1 min-w-0">
@@ -796,10 +810,7 @@ main();
                 compare: () => (
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 py-0.5">
                     <div class="flex items-center gap-2 min-w-0">
-                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0 flex items-center gap-1">
-                        <Show when={modelA()}>
-                          <ProviderAvatar provider={modelA().split('/')[0]} size="sm" class="w-3.5 h-3.5 rounded text-[7px]" />
-                        </Show>
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
                         {t('playground.modelA')}
                       </span>
                       <div class="flex-1 min-w-0">
@@ -812,10 +823,7 @@ main();
                       </div>
                     </div>
                     <div class="flex items-center gap-2 min-w-0">
-                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0 flex items-center gap-1">
-                        <Show when={modelB()}>
-                          <ProviderAvatar provider={modelB().split('/')[0]} size="sm" class="w-3.5 h-3.5 rounded text-[7px]" />
-                        </Show>
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0">
                         {t('playground.modelB')}
                       </span>
                       <div class="flex-1 min-w-0">
@@ -886,7 +894,7 @@ main();
                         <Card class="p-4 space-y-3 border-t-2 border-t-accent/60 bg-card/60 backdrop-blur-md">
                           <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2 shrink-0">
                             <div class="flex items-center gap-2 min-w-0">
-                              <ProviderAvatar provider={turn.a.targetModel.split('/')[0]} size="sm" />
+                              <ProviderAvatar provider={getTurnProvider(turn.a)} size="sm" />
                               <div class="flex flex-col min-w-0 leading-tight">
                                 <span class="text-xs font-semibold text-foreground truncate max-w-[260px] sm:max-w-[340px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
                                   {getResponseModelLabel(turn.a)}
@@ -974,7 +982,7 @@ main();
                               <span class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30">
                                 A
                               </span>
-                              <ProviderAvatar provider={turn.a.targetModel.split('/')[0]} size="sm" />
+                              <ProviderAvatar provider={getTurnProvider(turn.a)} size="sm" />
                               <div class="flex flex-col min-w-0 leading-tight">
                                 <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
                                   {getResponseModelLabel(turn.a)}
@@ -1040,7 +1048,7 @@ main();
                               <span class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30">
                                 B
                               </span>
-                              <ProviderAvatar provider={(turn.b?.targetModel || '').split('/')[0]} size="sm" />
+                              <ProviderAvatar provider={getTurnProvider(turn.b)} size="sm" />
                               <div class="flex flex-col min-w-0 leading-tight">
                                 <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.b?.servedModel ? `${turn.b?.targetModel} (served: ${turn.b?.servedModel})` : turn.b?.targetModel}>
                                   {getResponseModelLabel(turn.b)}

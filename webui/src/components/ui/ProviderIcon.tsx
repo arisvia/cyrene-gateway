@@ -1,4 +1,5 @@
 import { type Component, Show, createSignal, createEffect } from 'solid-js'
+import { CyreneLogo } from './CyreneLogo'
 import { IconSparkles } from './icons'
 interface ProviderIconProps {
   provider: string
@@ -29,6 +30,10 @@ export const ProviderBrandIcon: Component<{ provider: string; name?: string; siz
     const l = label().toLowerCase()
     return !l || l === '?' || l === 'default' || l === 'unknown'
   }
+  const isCyrene = () => {
+    const l = label().toLowerCase().replace(/[-_]/g, '')
+    return l === 'cyrene' || l === 'cyrenegateway' || l === 'combo' || l === 'combos'
+  }
   const initials = () => {
     const l = label()
     return l.length <= 2 ? l.toUpperCase() : l.slice(0, 2).toUpperCase()
@@ -38,13 +43,16 @@ export const ProviderBrandIcon: Component<{ provider: string; name?: string; siz
   return (
     <Show
       when={!isGeneric()}
-      fallback={
-        <IconSparkles size={sz()} class={props.class} />
-      }
+      fallback={<IconSparkles size={sz()} class={props.class} />}
     >
-      <span class={`font-bold font-mono select-none tracking-tighter text-foreground/90 ${props.class ?? ''}`}>
-        {initials()}
-      </span>
+      <Show
+        when={!isCyrene()}
+        fallback={<CyreneLogo size={sz()} class="text-accent" />}
+      >
+        <span class={`font-bold font-mono select-none tracking-tighter text-foreground/90 ${props.class ?? ''}`}>
+          {initials()}
+        </span>
+      </Show>
     </Show>
   )
 }
