@@ -149,3 +149,54 @@ func TestOpenAIToClaudeSSETranslator(t *testing.T) {
 		t.Errorf("expected message_stop, got: %s", sDone)
 	}
 }
+
+func TestOpenAIToClaudeSSETranslator_ToolCalls(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("deepseek/deepseek-chat")
+
+	// 1. Text chunk
+	c1 := []byte(`{"id":"chatcmpl-tc1","choices":[{"index":0,"delta":{"role":"assistant","content":"Checking math..."},"finish_reason":null}]}`)
+	out1, _, _ := trans.TranslateChunk(c1)
+	s1 := string(out1)
+	if !strings.Contains(s1, "event: content_block_start") || !strings.Contains(s1, "Checking math...") {
+		t.Fatalf("expected text content in chunk1, got: %s", s1)
+	}
+
+	// 2. Tool call initiation chunk (text block should be stopped, tool block started)
+	c2 := []byte(`{"id":"chatcmpl-tc1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_calc_99","type":"function","function":{"name":"calc","arguments":""}}]},"finish_reason":null}]}`)
+	out2, _, _ := trans.TranslateChunk(c2)
+	s2 := string(out2)
+	if !strings.Contains(s2, "event: content_block_stop") {
+		t.Errorf("expected prior text block to be closed, got: %s", s2)
+	}
+	if !strings.Contains(s2, "event: content_block_start") || !strings.Contains(s2, "tool_use") || !strings.Contains(s2, "call_calc_99") || !strings.Contains(s2, "calc") {
+		t.Errorf("expected tool_use block start, got: %s", s2)
+	}
+
+	// 3. Tool call arguments delta chunk
+	c3 := []byte(`{"id":"chatcmpl-tc1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"expr\":\"1+1\"}"}}]},"finish_reason":null}]}`)
+	out3, _, _ := trans.TranslateChunk(c3)
+	s3 := string(out3)
+	if !strings.Contains(s3, "event: content_block_delta") || !strings.Contains(s3, "input_json_delta") || !strings.Contains(s3, "1+1") {
+		t.Errorf("expected input_json_delta, got: %s", s3)
+	}
+
+	// 4. Finish reason chunk
+	c4 := []byte(`{"id":"chatcmpl-tc1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`)
+	trans.TranslateChunk(c4)
+
+	// 5. [DONE] chunk
+	doneOut, isDone, _ := trans.TranslateChunk([]byte("[DONE]"))
+	if !isDone {
+		t.Fatalf("expected isDone=true")
+	}
+	sDone := string(doneOut)
+	if !strings.Contains(sDone, "event: content_block_stop") {
+		t.Errorf("expected tool content_block_stop, got: %s", sDone)
+	}
+	if !strings.Contains(sDone, `"stop_reason":"tool_use"`) {
+		t.Errorf("expected stop_reason tool_use, got: %s", sDone)
+	}
+	if !strings.Contains(sDone, "event: message_stop") {
+		t.Errorf("expected message_stop, got: %s", sDone)
+	}
+}

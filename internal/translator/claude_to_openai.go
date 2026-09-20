@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -40,6 +41,34 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 	// StopSequences
 	if stop, ok := claudeBody["stop_sequences"]; ok {
 		result["stop"] = stop
+	}
+
+	// Reasoning effort & thinking conversion
+	if oc, ok := claudeBody["output_config"].(map[string]any); ok {
+		if eff, ok := oc["effort"].(string); ok && eff != "" {
+			result["reasoning_effort"] = eff
+		}
+	} else if th, ok := claudeBody["thinking"].(map[string]any); ok {
+		tType, _ := th["type"].(string)
+		switch tType {
+		case "disabled":
+			result["reasoning_effort"] = "none"
+		case "adaptive":
+			result["reasoning_effort"] = "medium"
+		case "enabled":
+			if b, ok := th["budget_tokens"].(float64); ok {
+				if b <= 2048 {
+					result["reasoning_effort"] = "low"
+				} else if b <= 8192 {
+					result["reasoning_effort"] = "medium"
+				} else {
+					result["reasoning_effort"] = "high"
+				}
+			} else {
+				result["reasoning_effort"] = "medium"
+			}
+		}
+		result["thinking"] = th
 	}
 
 	// Messages conversion
@@ -349,21 +378,27 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 
 // OpenAIToClaudeSSETranslator manages streaming state to translate OpenAI SSE lines into Anthropic SSE lines.
 type OpenAIToClaudeSSETranslator struct {
-	Model        string
-	msgID        string
-	finishReason string
-	blockIndex   int
-	outputTokens int
-	inTokens     int
-	started      bool
-	blockStarted bool
+	Model            string
+	msgID            string
+	finishReason     string
+	blockIndex       int
+	nextBlockIndex   int
+	outputTokens     int
+	inTokens         int
+	started          bool
+	blockStarted     bool
+	hasToolCalls     bool
+	toolBlockIndices map[int]int
+	toolBlockStarted map[int]bool
 }
 
 // NewOpenAIToClaudeSSETranslator creates a new stateful translator.
 func NewOpenAIToClaudeSSETranslator(model string) *OpenAIToClaudeSSETranslator {
 	return &OpenAIToClaudeSSETranslator{
-		Model: model,
-		msgID: fmt.Sprintf("msg_%d", time.Now().UnixNano()),
+		Model:            model,
+		msgID:            fmt.Sprintf("msg_%d", time.Now().UnixNano()),
+		toolBlockIndices: make(map[int]int),
+		toolBlockStarted: make(map[int]bool),
 	}
 }
 
@@ -376,11 +411,24 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
 			t.blockStarted = false
 		}
+
+		// Stop any started tool call content blocks in ascending order of block index
+		if len(t.toolBlockIndices) > 0 {
+			var stopIndices []int
+			for _, bIdx := range t.toolBlockIndices {
+				stopIndices = append(stopIndices, bIdx)
+			}
+			sort.Ints(stopIndices)
+			for _, bIdx := range stopIndices {
+				out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", bIdx))
+			}
+		}
+
 		stopReason := "end_turn"
-		if t.finishReason == "length" {
-			stopReason = "max_tokens"
-		} else if t.finishReason == "tool_calls" || t.finishReason == "function_call" {
+		if t.hasToolCalls || t.finishReason == "tool_calls" || t.finishReason == "function_call" {
 			stopReason = "tool_use"
+		} else if t.finishReason == "length" {
+			stopReason = "max_tokens"
 		}
 		out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", stopReason, t.outputTokens))
 		out.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
@@ -455,6 +503,8 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	if text != "" || reasoning != "" {
 		if !t.blockStarted {
 			t.blockStarted = true
+			t.blockIndex = t.nextBlockIndex
+			t.nextBlockIndex++
 			startBlock := map[string]any{
 				"type":  "content_block_start",
 				"index": t.blockIndex,
@@ -466,7 +516,6 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			blockBytes, _ := json.Marshal(startBlock)
 			out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
 		}
-
 		if text != "" {
 			t.outputTokens++
 			deltaEvent := map[string]any{
@@ -490,6 +539,76 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			}
 			deltaBytes, _ := json.Marshal(deltaEvent)
 			out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
+		}
+	}
+
+	// 3. Tool calls streaming
+	if tcList, ok := delta["tool_calls"].([]any); ok && len(tcList) > 0 {
+		t.hasToolCalls = true
+		if t.blockStarted {
+			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
+			t.blockStarted = false
+		}
+
+		for _, tcRaw := range tcList {
+			tc, ok := tcRaw.(map[string]any)
+			if !ok {
+				continue
+			}
+			tcIdx := 0
+			if rawIdx, ok := tc["index"]; ok {
+				if f, ok := rawIdx.(float64); ok {
+					tcIdx = int(f)
+				}
+			}
+
+			fn, _ := tc["function"].(map[string]any)
+			fnName := ""
+			fnArgs := ""
+			if fn != nil {
+				fnName, _ = fn["name"].(string)
+				fnArgs, _ = fn["arguments"].(string)
+			}
+
+			if !t.toolBlockStarted[tcIdx] {
+				t.toolBlockStarted[tcIdx] = true
+				cIdx := t.nextBlockIndex
+				t.nextBlockIndex++
+				t.toolBlockIndices[tcIdx] = cIdx
+
+				tcID, _ := tc["id"].(string)
+				if tcID == "" {
+					tcID = fmt.Sprintf("toolu_%d_%d", time.Now().UnixNano(), tcIdx)
+				}
+
+				startBlock := map[string]any{
+					"type":  "content_block_start",
+					"index": cIdx,
+					"content_block": map[string]any{
+						"type":  "tool_use",
+						"id":    tcID,
+						"name":  fnName,
+						"input": map[string]any{},
+					},
+				}
+				sbBytes, _ := json.Marshal(startBlock)
+				out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(sbBytes)))
+			}
+
+			if fnArgs != "" {
+				cIdx := t.toolBlockIndices[tcIdx]
+				t.outputTokens++
+				deltaEvent := map[string]any{
+					"type":  "content_block_delta",
+					"index": cIdx,
+					"delta": map[string]any{
+						"type":         "input_json_delta",
+						"partial_json": fnArgs,
+					},
+				}
+				dBytes, _ := json.Marshal(deltaEvent)
+				out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(dBytes)))
+			}
 		}
 	}
 
