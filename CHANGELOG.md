@@ -2,6 +2,16 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.4] - 2026-09-20
+
+### Fixed
+- **Antigravity 地域与网络限制根治**：彻底剥离诱发 Google 判定为受限 Cloud Shell 容器的 `X-Goog-Api-Client` 脏头，规范透传会话标识（`sessionId`），彻底解决 `User location is not supported` 阻断。
+- **Responses API 双向流式转换加固**：重构工具调用索引跟踪为状态化精准映射，消除并行函数调用与图文混排下的索引漂移及 `finish_reason` 丢失。
+
+### Added
+- **无头服务器 OAuth 手动回调粘贴模式**：针对 Antigravity 官方 Client ID 严格限定本地回环回调的特性，新增浏览器地址栏完整回调 URL/Code 手工直粘与前端解析换票机制，保障远程 VPS 部署无障碍授权。
+- **Anthropic Messages 协议全格式兼容增强**：补齐非流式与流式数据行提取防御性兼容，保障任意客户端向各上游模型无缝调用。
+
 ## [1.2.3] - 2026-09-18
 
 ### Security
@@ -70,6 +80,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.2.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.0...v1.2.2
 [1.2.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.1.0...v1.2.0
