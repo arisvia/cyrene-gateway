@@ -177,7 +177,23 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 		params.Set("code_challenge", pkce.CodeChallenge)
 		params.Set("code_challenge_method", "S256")
 		params.Set("state", pkce.State)
-	case "gemini", "antigravity":
+	case "antigravity":
+		params.Set("client_id", info.ClientID)
+		params.Set("response_type", "code")
+		actualRedirectURI := redirectURI
+		if actualRedirectURI == "" || !strings.Contains(actualRedirectURI, "51121") {
+			actualRedirectURI = "http://127.0.0.1:51121/oauth-callback"
+		}
+		params.Set("redirect_uri", actualRedirectURI)
+		params.Set("scope", "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs")
+		if pkce.CodeChallenge != "" {
+			params.Set("code_challenge", pkce.CodeChallenge)
+			params.Set("code_challenge_method", "S256")
+		}
+		params.Set("state", pkce.State)
+		params.Set("access_type", "offline")
+		params.Set("prompt", "consent")
+	case "gemini":
 		params.Set("client_id", info.ClientID)
 		params.Set("response_type", "code")
 		params.Set("redirect_uri", redirectURI)

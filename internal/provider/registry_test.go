@@ -79,7 +79,7 @@ func TestRegistryProviderFields(t *testing.T) {
 		if p.APIType == "" {
 			t.Errorf("Provider %q has empty APIType", id)
 		}
-		validAPI := map[string]bool{"openai": true, "anthropic": true, "gemini": true}
+		validAPI := map[string]bool{"openai": true, "anthropic": true, "gemini": true, "responses": true}
 		if !validAPI[p.APIType] {
 			t.Errorf("Provider %q has invalid APIType %q", id, p.APIType)
 		}
@@ -213,7 +213,7 @@ func TestRegistryTransportCompleteness(t *testing.T) {
 		if p.BaseURL == "" && !exempt[id] {
 			t.Errorf("Provider %q has empty BaseURL and is not exempt", id)
 		}
-		validFormats := map[string]bool{"openai": true, "anthropic": true, "gemini": true}
+		validFormats := map[string]bool{"openai": true, "anthropic": true, "gemini": true, "responses": true}
 		if !validFormats[p.APIType] {
 			t.Errorf("Provider %q has invalid APIType/format %q", id, p.APIType)
 		}

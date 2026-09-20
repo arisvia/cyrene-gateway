@@ -46,7 +46,9 @@ func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	redirectURI := r.URL.Query().Get("redirect_uri")
-	if redirectURI == "" {
+	if providerID == "antigravity" {
+		redirectURI = "http://127.0.0.1:51121/oauth-callback"
+	} else if redirectURI == "" {
 		redirectURI = "http://localhost:8080/callback"
 	}
 
@@ -236,6 +238,20 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
+	}
+	// Antigravity requires discovering the Cloud AI Companion project ID
+	if providerID == "antigravity" && tokens.AccessToken != "" {
+		projID, err := DiscoverAntigravityProject(r.Context(), s.getHTTPClient(15*time.Second), tokens.AccessToken)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("failed to discover Antigravity project: %v", err),
+			})
+			return
+		}
+		if tokens.ProviderSpecificData == nil {
+			tokens.ProviderSpecificData = make(map[string]any)
+		}
+		tokens.ProviderSpecificData["projectId"] = projID
 	}
 
 	conn := s.createOAuthConnection(providerID, tokens)

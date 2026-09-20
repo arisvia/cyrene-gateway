@@ -96,6 +96,12 @@ func TestBuildAuthorizeURL_Antigravity(t *testing.T) {
 	if !strings.Contains(url, "code_challenge_method=S256") {
 		t.Error("Antigravity URL should contain code_challenge_method=S256")
 	}
+	if !strings.Contains(url, "redirect_uri=http%3A%2F%2F127.0.0.1%3A51121%2Foauth-callback") {
+		t.Errorf("Antigravity URL should enforce 127.0.0.1:51121 redirect_uri, got: %s", url)
+	}
+	if !strings.Contains(url, "cclog") || !strings.Contains(url, "experimentsandconfigs") {
+		t.Errorf("Antigravity URL should contain cclog and experimentsandconfigs scopes, got: %s", url)
+	}
 }
 
 func TestBuildAuthorizeURL_Codex(t *testing.T) {

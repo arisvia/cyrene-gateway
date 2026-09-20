@@ -290,7 +290,11 @@ const Providers: Component = () => {
     machineId?: string
     expiresIn?: number
     interval?: number
+    state?: string
+    isManualPaste?: boolean
   } | null>(null)
+  const [wizardManualCode, setWizardManualCode] = createSignal('')
+  const [wizardExchanging, setWizardExchanging] = createSignal(false)
   const [wizardOAuthPolling, setWizardOAuthPolling] = createSignal(false)
   const [wizardOAuthError, setWizardOAuthError] = createSignal('')
   const [wizardOAuthCopied, setWizardOAuthCopied] = createSignal(false)
@@ -311,6 +315,8 @@ const Providers: Component = () => {
     setWizardOAuthError('')
     setWizardIsImport(false)
     setWizardImportToken('')
+    setWizardManualCode('')
+    setWizardExchanging(false)
   }
 
   // 打开添加向导
@@ -403,6 +409,13 @@ const Providers: Component = () => {
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
           toast.info(t('toast.oauthWindowOpened', { name: reg.name }))
+          if (reg.id === 'antigravity') {
+            setWizardOAuthFlow({
+              verificationUri: authRes.authorizeUrl,
+              state: authRes.state,
+              isManualPaste: true,
+            })
+          }
         }
 
         // 轮询检测是否产生新连接
@@ -524,6 +537,42 @@ const Providers: Component = () => {
       toast.error(t('toast.tokenImportFailed', { error: msg }))
     } finally {
       setWizardImporting(false)
+    }
+  }
+  async function handleWizardManualSubmit() {
+    const raw = wizardManualCode().trim()
+    const reg = selectedReg()
+    if (!raw || !reg) return
+    setWizardExchanging(true)
+    setWizardOAuthError('')
+    try {
+      let code = raw
+      let state = wizardOAuthFlow()?.state || ''
+      if (raw.includes('?') || raw.includes('&')) {
+        try {
+          const url = new URL(raw.startsWith('http') ? raw : `http://dummy/?${raw}`)
+          const c = url.searchParams.get('code')
+          const s = url.searchParams.get('state')
+          if (c) code = c
+          if (s) state = s
+        } catch {}
+      }
+      await apiPost(`/api/oauth/${reg.id}/exchange`, {
+        code,
+        state,
+        redirectUri: reg.id === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
+      })
+      toast.success(t('toast.oauthSuccess', { name: reg.name }))
+      cancelWizardOAuth()
+      setWizardOpen(false)
+      setActiveTab('connections')
+      await store.loadProvidersOnly()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setWizardOAuthError(msg)
+      toast.error(msg)
+    } finally {
+      setWizardExchanging(false)
     }
   }
 
@@ -1199,13 +1248,22 @@ const Providers: Component = () => {
                           <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3 text-center">
                             <div class="text-xs font-semibold text-accent">{t('providers.oauthInProgress')}</div>
 
-                            {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
                             <Show
-                              when={flow().userCode}
+                              when={!flow().isManualPaste}
                               fallback={
-                                <div class="space-y-2 py-1">
-                                  <div class="text-xs text-faint">{t('providers.oauthBrowserOpened')}</div>
-                                  <div class="flex items-center justify-center gap-2">
+                                <div class="space-y-2.5 py-1 text-left">
+                                  <p class="text-xs text-faint leading-relaxed">
+                                    {t('providers.oauthPasteCallbackHelp')}
+                                  </p>
+                                  <div class="space-y-1.5">
+                                    <Input
+                                      value={wizardManualCode()}
+                                      onInput={v => setWizardManualCode(v)}
+                                      placeholder={t('providers.oauthPasteCallbackPlaceholder')}
+                                      class="font-mono text-xs"
+                                    />
+                                  </div>
+                                  <div class="flex items-center justify-between gap-2 pt-1">
                                     <Button
                                       size="sm"
                                       variant="secondary"
@@ -1216,42 +1274,75 @@ const Providers: Component = () => {
                                     >
                                       {t('providers.openAuthPage')}
                                     </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="primary"
+                                      loading={wizardExchanging()}
+                                      disabled={!wizardManualCode().trim()}
+                                      onClick={handleWizardManualSubmit}
+                                    >
+                                      {t('providers.confirmAndConnect')}
+                                    </Button>
                                   </div>
                                 </div>
                               }
                             >
-                              <div class="text-xs text-faint">{t('providers.oauthEnterCode')}</div>
-                              <div class="flex items-center justify-center gap-2">
-                                <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
-                                  {flow().userCode}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={async () => {
-                                    if (flow().userCode) {
-                                      const ok = await copyToClipboard(flow().userCode!)
-                                      if (ok) {
-                                        setWizardOAuthCopied(true)
-                                        setTimeout(() => setWizardOAuthCopied(false), 2000)
-                                      } else {
-                                        toast.info(flow().userCode!)
+                              {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
+                              <Show
+                                when={flow().userCode}
+                                fallback={
+                                  <div class="space-y-2 py-1">
+                                    <div class="text-xs text-faint">{t('providers.oauthBrowserOpened')}</div>
+                                    <div class="flex items-center justify-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => {
+                                          const url = flow().verificationUriComplete || flow().verificationUri
+                                          if (url) window.open(url, '_blank')
+                                        }}
+                                      >
+                                        {t('providers.openAuthPage')}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                }
+                              >
+                                <div class="text-xs text-faint">{t('providers.oauthEnterCode')}</div>
+                                <div class="flex items-center justify-center gap-2">
+                                  <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
+                                    {flow().userCode}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={async () => {
+                                      if (flow().userCode) {
+                                        const ok = await copyToClipboard(flow().userCode!)
+                                        if (ok) {
+                                          setWizardOAuthCopied(true)
+                                          setTimeout(() => setWizardOAuthCopied(false), 2000)
+                                        } else {
+                                          toast.info(flow().userCode!)
+                                        }
                                       }
-                                    }
-                                  }}
-                                >
-                                  {wizardOAuthCopied() ? t('providers.copied') : t('providers.copyCode')}
-                                </Button>
-                              </div>
+                                    }}
+                                  >
+                                    {wizardOAuthCopied() ? t('providers.copied') : t('providers.copyCode')}
+                                  </Button>
+                                </div>
+                              </Show>
                             </Show>
 
                             <div class="text-[11px] text-faint break-all bg-bg/80 p-2 rounded border border-subtle">
                               {flow().verificationUriComplete || flow().verificationUri}
                             </div>
-                            <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
-                              <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
-                              <span>{t('providers.oauthWaitingAuth')}</span>
-                            </div>
+                            <Show when={!flow().isManualPaste}>
+                              <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
+                                <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
+                                <span>{t('providers.oauthWaitingAuth')}</span>
+                              </div>
+                            </Show>
                             <div class="pt-2 flex justify-center">
                               <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
                                 {t('providers.cancelAuth')}

@@ -213,7 +213,11 @@ const ProviderDetail: Component = () => {
     machineId?: string
     expiresIn?: number
     interval?: number
+    state?: string
+    isManualPaste?: boolean
   } | null>(null)
+  const [manualCode, setManualCode] = createSignal('')
+  const [manualExchanging, setManualExchanging] = createSignal(false)
   const [devicePolling, setDevicePolling] = createSignal(false)
   const [deviceError, setDeviceError] = createSignal('')
   const [copiedCode, setCopiedCode] = createSignal(false)
@@ -257,8 +261,14 @@ const ProviderDetail: Component = () => {
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
           toast.info(t('toast.oauthWindowOpened', { name: providerDisplayName() }))
+          if (p === 'antigravity') {
+            setDeviceFlow({
+              verificationUri: authRes.authorizeUrl,
+              state: authRes.state,
+              isManualPaste: true,
+            })
+          }
         }
-
         clearInterval(pollTimer)
         pollTimer = window.setInterval(async () => {
           try {
@@ -387,6 +397,45 @@ const ProviderDetail: Component = () => {
     setDeviceError('')
     setIsImportFlow(false)
     setImportTokenText('')
+    setManualCode('')
+    setManualExchanging(false)
+  }
+
+  async function handleManualSubmit() {
+    const raw = manualCode().trim()
+    const p = conn()?.provider
+    if (!raw || !p) return
+    setManualExchanging(true)
+    setDeviceError('')
+    try {
+      let code = raw
+      let state = deviceFlow()?.state || ''
+      if (raw.includes('?') || raw.includes('&')) {
+        try {
+          const url = new URL(raw.startsWith('http') ? raw : `http://dummy/?${raw}`)
+          const c = url.searchParams.get('code')
+          const s = url.searchParams.get('state')
+          if (c) code = c
+          if (s) state = s
+        } catch {}
+      }
+      await apiPost(`/api/oauth/${p}/exchange`, {
+        code,
+        state,
+        redirectUri: p === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
+      })
+      toast.success(t('toast.oauthSuccess', { name: providerDisplayName() }))
+      cancelDeviceFlow()
+      await store.loadProvidersOnly()
+      await load()
+      refetchOAuth()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setDeviceError(msg)
+      toast.error(msg)
+    } finally {
+      setManualExchanging(false)
+    }
   }
   async function load(idToLoad?: string) {
     const target = idToLoad || params.id
@@ -1956,13 +2005,22 @@ const ProviderDetail: Component = () => {
             >
               {flow => (
                 <div class="space-y-4 text-center">
-                  {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
                   <Show
-                    when={flow().userCode}
+                    when={!flow().isManualPaste}
                     fallback={
-                      <div class="space-y-2 py-1">
-                        <div class="text-xs text-faint">{t('providerDetail.browserAuthPrompt')}</div>
-                        <div class="flex items-center justify-center gap-2">
+                      <div class="space-y-3 py-1 text-left">
+                        <p class="text-xs text-faint leading-relaxed">
+                          {t('providers.oauthPasteCallbackHelp')}
+                        </p>
+                        <div class="space-y-1.5">
+                          <Input
+                            value={manualCode()}
+                            onInput={v => setManualCode(v)}
+                            placeholder={t('providers.oauthPasteCallbackPlaceholder')}
+                            class="font-mono text-xs"
+                          />
+                        </div>
+                        <div class="flex items-center justify-between gap-2 pt-1">
                           <Button
                             size="sm"
                             variant="secondary"
@@ -1973,85 +2031,116 @@ const ProviderDetail: Component = () => {
                           >
                             {t('providerDetail.openAuthPage')}
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            loading={manualExchanging()}
+                            disabled={!manualCode().trim()}
+                            onClick={handleManualSubmit}
+                          >
+                            {t('providers.confirmAndConnect')}
+                          </Button>
                         </div>
                       </div>
                     }
                   >
-                    <p class="text-xs text-faint leading-relaxed">
-                      {t('providerDetail.authPageHint')}
-                    </p>
-                    {/* 验证码卡片 */}
-                    <div class="p-4 rounded-card bg-accent/10 border border-accent/30 space-y-1.5">
-                      <div class="text-[11px] text-faint font-medium">{t('providerDetail.authCodeLabel')}</div>
-                      <div class="flex items-center justify-center gap-3">
-                        <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
-                          {flow().userCode}
-                        </span>
-                        <button
-                          type="button"
-                          class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
-                          title={t('providerDetail.copyCodeTitle')}
+                    {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
+                    <Show
+                      when={flow().userCode}
+                      fallback={
+                        <div class="space-y-2 py-1">
+                          <div class="text-xs text-faint">{t('providerDetail.browserAuthPrompt')}</div>
+                          <div class="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                const url = flow().verificationUriComplete || flow().verificationUri
+                                if (url) window.open(url, '_blank')
+                              }}
+                            >
+                              {t('providerDetail.openAuthPage')}
+                            </Button>
+                          </div>
+                        </div>
+                      }
+                    >
+                      <p class="text-xs text-faint leading-relaxed">
+                        {t('providerDetail.authPageHint')}
+                      </p>
+                      {/* 验证码卡片 */}
+                      <div class="p-4 rounded-card bg-accent/10 border border-accent/30 space-y-1.5">
+                        <div class="text-[11px] text-faint font-medium">{t('providerDetail.authCodeLabel')}</div>
+                        <div class="flex items-center justify-center gap-3">
+                          <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
+                            {flow().userCode}
+                          </span>
+                          <button
+                            type="button"
+                            class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
+                            title={t('providerDetail.copyCodeTitle')}
+                            onClick={async () => {
+                              if (flow().userCode) {
+                                const ok = await copyToClipboard(flow().userCode!)
+                                if (ok) {
+                                  setCopiedCode(true)
+                                  toast.success(t('providerDetail.codeCopied'))
+                                  setTimeout(() => setCopiedCode(false), 2000)
+                                } else {
+                                  toast.info(flow().userCode!)
+                                }
+                              }
+                            }}
+                          >
+                            {copiedCode() ? <IconCheck size={14} class="text-success" /> : <IconClipboard size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                    </Show>
+
+                    {/* 登录 URL 卡片 */}
+                    <div class="p-3.5 rounded-card bg-hover/80 border border-subtle text-left space-y-2">
+                      <div class="text-[11px] text-faint font-medium text-center">Login URL</div>
+                      <div class="font-mono text-xs break-all text-foreground select-all bg-bg/70 p-2.5 rounded border border-subtle leading-relaxed">
+                        {flow().verificationUriComplete || flow().verificationUri}
+                      </div>
+                      <div class="flex items-center justify-end gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="secondary"
                           onClick={async () => {
-                            if (flow().userCode) {
-                              const ok = await copyToClipboard(flow().userCode!)
+                            const url = flow().verificationUriComplete || flow().verificationUri
+                            if (url) {
+                              const ok = await copyToClipboard(url)
                               if (ok) {
-                                setCopiedCode(true)
-                                toast.success(t('providerDetail.codeCopied'))
-                                setTimeout(() => setCopiedCode(false), 2000)
+                                toast.success(t('providerDetail.copyUrlSuccess'))
                               } else {
-                                toast.info(flow().userCode!)
+                                toast.info(url)
                               }
                             }
                           }}
                         >
-                          {copiedCode() ? <IconCheck size={14} class="text-success" /> : <IconClipboard size={14} />}
-                        </button>
+                          {t('providerDetail.copyUrl')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            const url = flow().verificationUriComplete || flow().verificationUri
+                            if (url) window.open(url, '_blank')
+                          }}
+                        >
+                          {t('providerDetail.openPage')}
+                        </Button>
                       </div>
                     </div>
+
+                    {/* 轮询等待状态 */}
+                    <div class="flex items-center justify-center gap-2 pt-2 text-xs text-faint">
+                      <span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                      <span>{t('providerDetail.waitingAuth')}</span>
+                    </div>
                   </Show>
-
-                  {/* 登录 URL 卡片 */}
-                  <div class="p-3.5 rounded-card bg-hover/80 border border-subtle text-left space-y-2">
-                    <div class="text-[11px] text-faint font-medium text-center">Login URL</div>
-                    <div class="font-mono text-xs break-all text-foreground select-all bg-bg/70 p-2.5 rounded border border-subtle leading-relaxed">
-                      {flow().verificationUriComplete || flow().verificationUri}
-                    </div>
-                    <div class="flex items-center justify-end gap-2 pt-1">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={async () => {
-                          const url = flow().verificationUriComplete || flow().verificationUri
-                          if (url) {
-                            const ok = await copyToClipboard(url)
-                            if (ok) {
-                              toast.success(t('providerDetail.copyUrlSuccess'))
-                            } else {
-                              toast.info(url)
-                            }
-                          }
-                        }}
-                      >
-                        {t('providerDetail.copyUrl')}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          const url = flow().verificationUriComplete || flow().verificationUri
-                          if (url) window.open(url, '_blank')
-                        }}
-                      >
-                        {t('providerDetail.openPage')}
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* 轮询等待状态 */}
-                  <div class="flex items-center justify-center gap-2 pt-2 text-xs text-faint">
-                    <span class="w-2.5 h-2.5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-                    <span>{t('providerDetail.waitingAuth')}</span>
-                  </div>
 
                   <div class="pt-2 border-t border-subtle flex justify-end">
                     <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
