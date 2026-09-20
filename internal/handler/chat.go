@@ -594,6 +594,8 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		targetFormat = translator.FormatAnthropic
 	case "gemini":
 		targetFormat = translator.FormatGemini
+	case "responses":
+		targetFormat = translator.FormatResponses
 	}
 
 	// Phase 30: resolve the provider transport (base URL, format, auth scheme,
@@ -858,6 +860,10 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 	var chunkID string
 	var created int64 = time.Now().Unix()
 	ctx := r.Context()
+	var responsesTranslator *translator.ResponsesSSEToOpenAITranslator
+	if format == translator.FormatResponses {
+		responsesTranslator = translator.NewResponsesSSEToOpenAITranslator(model)
+	}
 
 	for {
 		select {
@@ -887,11 +893,18 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 		// Translate chunk if non-OpenAI format
 		chunkData := event.Data
 		if format != translator.FormatOpenAI {
-			translated, isDone, err := translator.TranslateSSEChunk(format, event.Data, model)
+			var translated []byte
+			var isDone bool
+			var tErr error
+			if responsesTranslator != nil {
+				translated, isDone, tErr = responsesTranslator.TranslateChunk(event.Data)
+			} else {
+				translated, isDone, tErr = translator.TranslateSSEChunk(format, event.Data, model)
+			}
 			if isDone {
 				break
 			}
-			if err != nil || translated == nil {
+			if tErr != nil || translated == nil {
 				continue
 			}
 			chunkData = translated
@@ -1061,6 +1074,10 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	ctx := r.Context()
 	reader := provider.NewSSEReader(resp.Body)
 	var lastUsage usage.Usage
+	var responsesTranslator *translator.ResponsesSSEToOpenAITranslator
+	if format == translator.FormatResponses {
+		responsesTranslator = translator.NewResponsesSSEToOpenAITranslator(model)
+	}
 
 	for {
 		select {
@@ -1122,8 +1139,15 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 
 		// Translate SSE chunks if needed
 		if format != translator.FormatOpenAI {
-			translated, isDone, err := translator.TranslateSSEChunk(format, event.Data, model)
-			if err != nil || translated == nil {
+			var translated []byte
+			var isDone bool
+			var tErr error
+			if responsesTranslator != nil {
+				translated, isDone, tErr = responsesTranslator.TranslateChunk(event.Data)
+			} else {
+				translated, isDone, tErr = translator.TranslateSSEChunk(format, event.Data, model)
+			}
+			if tErr != nil || translated == nil {
 				continue
 			}
 			if isDone {

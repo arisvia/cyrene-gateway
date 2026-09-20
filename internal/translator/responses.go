@@ -124,6 +124,45 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 			// Mode 2: Array of conversation items
 			for _, item := range in {
 				if itemMap, ok := item.(map[string]any); ok {
+					iType, _ := itemMap["type"].(string)
+					// 1. Tool result item in Responses API (function_call_output)
+					if iType == "function_call_output" || (itemMap["call_id"] != nil && itemMap["output"] != nil) {
+						callID, _ := itemMap["call_id"].(string)
+						outputVal := itemMap["output"]
+						outputStr, isStr := outputVal.(string)
+						if !isStr {
+							b, _ := json.Marshal(outputVal)
+							outputStr = string(b)
+						}
+						openAIMessages = append(openAIMessages, map[string]any{
+							"role":         "tool",
+							"tool_call_id": callID,
+							"content":      outputStr,
+						})
+						continue
+					}
+					// 2. Tool call item in Responses API (function_call)
+					if iType == "function_call" || (itemMap["name"] != nil && itemMap["call_id"] != nil && itemMap["arguments"] != nil) {
+						callID, _ := itemMap["call_id"].(string)
+						name, _ := itemMap["name"].(string)
+						args, _ := itemMap["arguments"].(string)
+						openAIMessages = append(openAIMessages, map[string]any{
+							"role":    "assistant",
+							"content": nil,
+							"tool_calls": []any{
+								map[string]any{
+									"id":   callID,
+									"type": "function",
+									"function": map[string]any{
+										"name":      name,
+										"arguments": args,
+									},
+								},
+							},
+						})
+						continue
+					}
+
 					role, _ := itemMap["role"].(string)
 					if role == "" {
 						role = "user"
@@ -169,13 +208,6 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 						openAIMessages = append(openAIMessages, map[string]any{
 							"role":    role,
 							"content": parts,
-						})
-					} else if callID, ok := itemMap["call_id"].(string); ok && role == "tool" {
-						// Function result item
-						openAIMessages = append(openAIMessages, map[string]any{
-							"role":         "tool",
-							"tool_call_id": callID,
-							"content":      itemMap["output"],
 						})
 					}
 				}
@@ -223,7 +255,6 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 			if mm, ok := m.(map[string]any); ok {
 				role, _ := mm["role"].(string)
 				content := mm["content"]
-
 				if role == "system" || role == "developer" {
 					if s, ok := content.(string); ok && s != "" {
 						if instructions != "" {
@@ -231,6 +262,43 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 						} else {
 							instructions = s
 						}
+					}
+				} else if role == "tool" {
+					callID, _ := mm["tool_call_id"].(string)
+					outputStr, isStr := content.(string)
+					if !isStr {
+						b, _ := json.Marshal(content)
+						outputStr = string(b)
+					}
+					inputItems = append(inputItems, map[string]any{
+						"type":    "function_call_output",
+						"call_id": callID,
+						"output":  outputStr,
+					})
+				} else if role == "assistant" && mm["tool_calls"] != nil {
+					if tcList, ok := mm["tool_calls"].([]any); ok {
+						for _, tcRaw := range tcList {
+							if tc, ok := tcRaw.(map[string]any); ok {
+								callID, _ := tc["id"].(string)
+								if fn, ok := tc["function"].(map[string]any); ok {
+									name, _ := fn["name"].(string)
+									args, _ := fn["arguments"].(string)
+									inputItems = append(inputItems, map[string]any{
+										"type":      "function_call",
+										"call_id":   callID,
+										"name":      name,
+										"arguments": args,
+									})
+								}
+							}
+						}
+					}
+					if s, ok := content.(string); ok && s != "" {
+						inputItems = append(inputItems, map[string]any{
+							"type":    "message",
+							"role":    "assistant",
+							"content": s,
+						})
 					}
 				} else {
 					inputItems = append(inputItems, mm)
@@ -459,8 +527,22 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 	return json.Marshal(chatResp)
 }
 
-// ResponsesSSEToOpenAI converts an OpenAI Responses API SSE data chunk into an OpenAI ChatCompletion SSE chunk.
-func ResponsesSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
+// ResponsesSSEToOpenAITranslator manages streaming state to translate
+// OpenAI Responses API SSE events into OpenAI ChatCompletion SSE chunks.
+type ResponsesSSEToOpenAITranslator struct {
+	Model           string
+	toolCallIndex   int
+	hasToolCalls    bool
+	toolIdxByOutput map[int]int // output_index → tool_calls[].index
+}
+
+// NewResponsesSSEToOpenAITranslator creates a new stateful streaming translator.
+func NewResponsesSSEToOpenAITranslator(model string) *ResponsesSSEToOpenAITranslator {
+	return &ResponsesSSEToOpenAITranslator{Model: model}
+}
+
+// TranslateChunk converts a single Responses API SSE event into ChatCompletion SSE chunk(s).
+func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
 	trimmed := bytes.TrimSpace(data)
 	if bytes.Equal(trimmed, []byte("[DONE]")) {
 		return []byte("[DONE]"), true, nil
@@ -479,7 +561,7 @@ func ResponsesSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 			"id":      "chatcmpl-stream",
 			"object":  "chat.completion.chunk",
 			"created": time.Now().Unix(),
-			"model":   model,
+			"model":   t.Model,
 			"choices": []any{
 				map[string]any{
 					"index": 0,
@@ -493,17 +575,110 @@ func ResponsesSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 		b, _ := json.Marshal(chunk)
 		return b, false, nil
 
-	case "response.done":
+	case "response.output_item.added":
+		// Function call item added — emit initial tool_call chunk with id and name
+		if item, ok := event["item"].(map[string]any); ok {
+			if iType, _ := item["type"].(string); iType == "function_call" {
+				fnName, _ := item["name"].(string)
+				callID, _ := item["call_id"].(string)
+				if callID == "" {
+					callID, _ = item["id"].(string)
+				}
+				idx := t.toolCallIndex
+				if outputIdx, ok := event["output_index"].(float64); ok {
+					if t.toolIdxByOutput == nil {
+						t.toolIdxByOutput = make(map[int]int)
+					}
+					t.toolIdxByOutput[int(outputIdx)] = idx
+				}
+				t.toolCallIndex++
+				t.hasToolCalls = true
+				chunk := map[string]any{
+					"id":      "chatcmpl-stream",
+					"object":  "chat.completion.chunk",
+					"created": time.Now().Unix(),
+					"model":   t.Model,
+					"choices": []any{
+						map[string]any{
+							"index": 0,
+							"delta": map[string]any{
+								"tool_calls": []any{
+									map[string]any{
+										"index": idx,
+										"id":    callID,
+										"type":  "function",
+										"function": map[string]any{
+											"name":      fnName,
+											"arguments": "",
+										},
+									},
+								},
+							},
+							"finish_reason": nil,
+						},
+					},
+				}
+				b, _ := json.Marshal(chunk)
+				return b, false, nil
+			}
+		}
+		return nil, false, nil
+
+	case "response.function_call_arguments.delta":
+		argsDelta, _ := event["delta"].(string)
+		outputIdx, _ := event["output_index"].(float64)
+		tcIdx, ok := t.toolIdxByOutput[int(outputIdx)]
+		if !ok {
+			// Fallback: if we never saw output_item.added for this index,
+			// assign the next available tool call index
+			tcIdx = t.toolCallIndex
+			if t.toolIdxByOutput == nil {
+				t.toolIdxByOutput = make(map[int]int)
+			}
+			t.toolIdxByOutput[int(outputIdx)] = tcIdx
+			t.toolCallIndex++
+			t.hasToolCalls = true
+		}
 		chunk := map[string]any{
 			"id":      "chatcmpl-stream",
 			"object":  "chat.completion.chunk",
 			"created": time.Now().Unix(),
-			"model":   model,
+			"model":   t.Model,
+			"choices": []any{
+				map[string]any{
+					"index": 0,
+					"delta": map[string]any{
+						"tool_calls": []any{
+							map[string]any{
+								"index": tcIdx,
+								"function": map[string]any{
+									"arguments": argsDelta,
+								},
+							},
+						},
+					},
+					"finish_reason": nil,
+				},
+			},
+		}
+		b, _ := json.Marshal(chunk)
+		return b, false, nil
+
+	case "response.done":
+		finishReason := "stop"
+		if t.hasToolCalls {
+			finishReason = "tool_calls"
+		}
+		chunk := map[string]any{
+			"id":      "chatcmpl-stream",
+			"object":  "chat.completion.chunk",
+			"created": time.Now().Unix(),
+			"model":   t.Model,
 			"choices": []any{
 				map[string]any{
 					"index":         0,
 					"delta":         map[string]any{},
-					"finish_reason": "stop",
+					"finish_reason": finishReason,
 				},
 			},
 		}
@@ -523,7 +698,7 @@ func ResponsesSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 		return b, true, nil
 
 	default:
-		// Ignore structural control events (response.created, response.output_item.added, etc.)
+		// Ignore structural control events (response.created, response.content_part.added, etc.)
 		return nil, false, nil
 	}
 }
@@ -538,21 +713,35 @@ type OpenAIToResponsesSSETranslator struct {
 	promptTokens int
 	outputTokens int
 	totalTokens  int
-	outputIndex  int
-	contentIndex int
-	created      bool
-	itemAdded    bool
-	partAdded    bool
-	done         bool
+	deltaChunks  int // fallback chunk counter when upstream omits usage
+	// Output item index allocation: assigned once at first emission, never recomputed.
+	nextOutputIndex int
+	msgOutputIndex  int // -1 until the message item is emitted
+	contentIndex    int
+	created         bool
+	itemAdded       bool
+	partAdded       bool
+	done            bool
+	// Tool call tracking
+	toolCalls []responsesToolCallState
+}
+
+type responsesToolCallState struct {
+	id          string
+	name        string
+	argsBuf     strings.Builder
+	outputIndex int  // assigned once at first emission
+	added       bool // whether output_item.added has been emitted
 }
 
 // NewOpenAIToResponsesSSETranslator creates a new streaming translator for Responses API.
 func NewOpenAIToResponsesSSETranslator(model string) *OpenAIToResponsesSSETranslator {
 	now := time.Now().UnixNano()
 	return &OpenAIToResponsesSSETranslator{
-		Model:  model,
-		respID: fmt.Sprintf("resp_%d", now),
-		msgID:  fmt.Sprintf("msg_%d", now),
+		Model:          model,
+		respID:         fmt.Sprintf("resp_%d", now),
+		msgID:          fmt.Sprintf("msg_%d", now),
+		msgOutputIndex: -1,
 	}
 }
 
@@ -567,46 +756,108 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 
 		if t.partAdded {
 			out.WriteString(fmt.Sprintf("event: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"output_index\":%d,\"content_index\":%d,\"part\":{\"type\":\"output_text\",\"text\":%s}}\n\n",
-				t.outputIndex, t.contentIndex, quoteJSON(outText)))
+				t.msgOutputIndex, t.contentIndex, quoteJSON(outText)))
 		}
 
 		if t.itemAdded {
 			out.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"id\":\"%s\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":%s}]}}\n\n",
-				t.outputIndex, t.msgID, quoteJSON(outText)))
+				t.msgOutputIndex, t.msgID, quoteJSON(outText)))
 		}
 
-		// Final response.done event
+		// Emit function_call_arguments.done and output_item.done for each tool call
+		for i := range t.toolCalls {
+			tcs := &t.toolCalls[i]
+			if !tcs.added {
+				continue
+			}
+			argsDonePayload := map[string]any{
+				"type":         "response.function_call_arguments.done",
+				"item_id":      tcs.id,
+				"output_index": tcs.outputIndex,
+				"call_id":      tcs.id,
+				"arguments":    tcs.argsBuf.String(),
+			}
+			adBytes, _ := json.Marshal(argsDonePayload)
+			out.WriteString(fmt.Sprintf("event: response.function_call_arguments.done\ndata: %s\n\n", string(adBytes)))
+
+			itemDonePayload := map[string]any{
+				"type":         "response.output_item.done",
+				"output_index": tcs.outputIndex,
+				"item": map[string]any{
+					"id":        tcs.id,
+					"type":      "function_call",
+					"status":    "completed",
+					"call_id":   tcs.id,
+					"name":      tcs.name,
+					"arguments": tcs.argsBuf.String(),
+				},
+			}
+			idBytes, _ := json.Marshal(itemDonePayload)
+			out.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: %s\n\n", string(idBytes)))
+		}
+
+		// Build output items for response.done ordered by assigned output_index
+		outputItems := make([]any, t.nextOutputIndex)
+		if t.itemAdded && t.msgOutputIndex >= 0 && t.msgOutputIndex < len(outputItems) {
+			outputItems[t.msgOutputIndex] = map[string]any{
+				"id":     t.msgID,
+				"type":   "message",
+				"status": "completed",
+				"role":   "assistant",
+				"content": []any{
+					map[string]any{
+						"type": "output_text",
+						"text": outText,
+					},
+				},
+			}
+		}
+		for i := range t.toolCalls {
+			tcs := &t.toolCalls[i]
+			if tcs.added && tcs.outputIndex >= 0 && tcs.outputIndex < len(outputItems) {
+				outputItems[tcs.outputIndex] = map[string]any{
+					"id":        tcs.id,
+					"type":      "function_call",
+					"status":    "completed",
+					"call_id":   tcs.id,
+					"name":      tcs.name,
+					"arguments": tcs.argsBuf.String(),
+				}
+			}
+		}
+		var compactOutput []any
+		for _, it := range outputItems {
+			if it != nil {
+				compactOutput = append(compactOutput, it)
+			}
+		}
+		if compactOutput == nil {
+			compactOutput = []any{}
+		}
+
+		// Use real usage when available, fall back to chunk counter estimate
+		outTokens := t.outputTokens
+		if outTokens == 0 {
+			outTokens = t.deltaChunks
+		}
 		tot := t.totalTokens
 		if tot == 0 {
-			tot = t.promptTokens + t.outputTokens
+			tot = t.promptTokens + outTokens
 		}
 		donePayload := map[string]any{
 			"type": "response.done",
 			"response": map[string]any{
-				"id":         t.respID,
-				"object":     "response",
-				"created_at": time.Now().Unix(),
-				"status":     "completed",
-				"model":      t.Model,
-				"output": []any{
-					map[string]any{
-						"id":     t.msgID,
-						"type":   "message",
-						"status": "completed",
-						"role":   "assistant",
-						"content": []any{
-							map[string]any{
-								"type": "output_text",
-								"text": outText,
-							},
-						},
-					},
-				},
+				"id":          t.respID,
+				"object":      "response",
+				"created_at":  time.Now().Unix(),
+				"status":      "completed",
+				"model":       t.Model,
+				"output":      compactOutput,
 				"output_text": outText,
 				"usage": map[string]any{
 					"total_tokens":  tot,
 					"input_tokens":  t.promptTokens,
-					"output_tokens": t.outputTokens,
+					"output_tokens": outTokens,
 				},
 			},
 		}
@@ -644,7 +895,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		}
 	}
 
-	// 1. First event: response.created
+	// First event: response.created
 	if !t.created {
 		t.created = true
 		createdPayload := map[string]any{
@@ -661,17 +912,19 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		out.WriteString(fmt.Sprintf("event: response.created\ndata: %s\n\n", string(cBytes)))
 	}
 
-	// 2. Process delta content
+	// Process delta content and tool calls
 	if choices, ok := chunk["choices"].([]any); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]any); ok {
 			if delta, ok := choice["delta"].(map[string]any); ok {
 				if content, ok := delta["content"].(string); ok && content != "" {
-					// 3. Ensure item added
+					// Ensure message item added
 					if !t.itemAdded {
 						t.itemAdded = true
+						t.msgOutputIndex = t.nextOutputIndex
+						t.nextOutputIndex++
 						itemAddedPayload := map[string]any{
 							"type":         "response.output_item.added",
-							"output_index": t.outputIndex,
+							"output_index": t.msgOutputIndex,
 							"item": map[string]any{
 								"id":      t.msgID,
 								"type":    "message",
@@ -684,12 +937,12 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 						out.WriteString(fmt.Sprintf("event: response.output_item.added\ndata: %s\n\n", string(iaBytes)))
 					}
 
-					// 4. Ensure part added
+					// Ensure content part added
 					if !t.partAdded {
 						t.partAdded = true
 						partAddedPayload := map[string]any{
 							"type":          "response.content_part.added",
-							"output_index":  t.outputIndex,
+							"output_index":  t.msgOutputIndex,
 							"content_index": t.contentIndex,
 							"part": map[string]any{
 								"type": "output_text",
@@ -700,18 +953,98 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 						out.WriteString(fmt.Sprintf("event: response.content_part.added\ndata: %s\n\n", string(paBytes)))
 					}
 
-					// 5. Emit output_text.delta
+					// Emit output_text.delta
 					t.outputBuf.WriteString(content)
-					t.outputTokens++
+					t.deltaChunks++
 					deltaPayload := map[string]any{
 						"type":          "response.output_text.delta",
 						"item_id":       t.msgID,
-						"output_index":  t.outputIndex,
+						"output_index":  t.msgOutputIndex,
 						"content_index": t.contentIndex,
 						"delta":         content,
 					}
 					dBytes, _ := json.Marshal(deltaPayload)
 					out.WriteString(fmt.Sprintf("event: response.output_text.delta\ndata: %s\n\n", string(dBytes)))
+				}
+
+				// Handle tool call deltas
+				if tcList, ok := delta["tool_calls"].([]any); ok {
+					for _, tcRaw := range tcList {
+						tc, ok := tcRaw.(map[string]any)
+						if !ok {
+							continue
+						}
+						tcIdxF, _ := tc["index"].(float64)
+						tcIdx := int(tcIdxF)
+
+						for len(t.toolCalls) <= tcIdx {
+							t.toolCalls = append(t.toolCalls, responsesToolCallState{outputIndex: -1})
+						}
+						tcs := &t.toolCalls[tcIdx]
+
+						if id, ok := tc["id"].(string); ok && id != "" {
+							tcs.id = id
+						}
+						if fn, ok := tc["function"].(map[string]any); ok {
+							if name, ok := fn["name"].(string); ok && name != "" {
+								tcs.name = name
+							}
+						}
+						if !tcs.added && (tcs.name != "" || tcs.id != "") {
+							tcs.added = true
+							tcs.outputIndex = t.nextOutputIndex
+							t.nextOutputIndex++
+							addedPayload := map[string]any{
+								"type":         "response.output_item.added",
+								"output_index": tcs.outputIndex,
+								"item": map[string]any{
+									"id":        tcs.id,
+									"type":      "function_call",
+									"status":    "in_progress",
+									"call_id":   tcs.id,
+									"name":      tcs.name,
+									"arguments": "",
+								},
+							}
+							aBytes, _ := json.Marshal(addedPayload)
+							out.WriteString(fmt.Sprintf("event: response.output_item.added\ndata: %s\n\n", string(aBytes)))
+						}
+						if fn, ok := tc["function"].(map[string]any); ok {
+							if args, ok := fn["arguments"].(string); ok && args != "" {
+								tcs.argsBuf.WriteString(args)
+
+								if !tcs.added {
+									tcs.added = true
+									tcs.outputIndex = t.nextOutputIndex
+									t.nextOutputIndex++
+									addedPayload := map[string]any{
+										"type":         "response.output_item.added",
+										"output_index": tcs.outputIndex,
+										"item": map[string]any{
+											"id":        tcs.id,
+											"type":      "function_call",
+											"status":    "in_progress",
+											"call_id":   tcs.id,
+											"name":      tcs.name,
+											"arguments": "",
+										},
+									}
+									aBytes, _ := json.Marshal(addedPayload)
+									out.WriteString(fmt.Sprintf("event: response.output_item.added\ndata: %s\n\n", string(aBytes)))
+								}
+
+								argDeltaPayload := map[string]any{
+									"type":         "response.function_call_arguments.delta",
+									"item_id":      tcs.id,
+									"output_index": tcs.outputIndex,
+									"call_id":      tcs.id,
+									"delta":        args,
+								}
+								adBytes, _ := json.Marshal(argDeltaPayload)
+								out.WriteString(fmt.Sprintf("event: response.function_call_arguments.delta\ndata: %s\n\n", string(adBytes)))
+							}
+						}
+					}
 				}
 			}
 		}

@@ -54,6 +54,7 @@ func TranslateResponse(sourceFormat Format, data []byte, model string) ([]byte, 
 
 // TranslateSSEChunk converts a single SSE data line from provider format to OpenAI SSE format.
 // Returns the OpenAI-format SSE data payload (without "data: " prefix).
+// FormatResponses is handled separately via per-connection ResponsesSSEToOpenAITranslator.
 func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, bool, error) {
 	switch sourceFormat {
 	case FormatOpenAI:
@@ -62,8 +63,6 @@ func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, 
 		return claudeSSEToOpenAI(data, model)
 	case FormatGemini:
 		return geminiSSEToOpenAI(data, model)
-	case FormatResponses:
-		return ResponsesSSEToOpenAI(data, model)
 	default:
 		return data, false, nil
 	}
@@ -492,14 +491,18 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
 		switch strings.ToLower(effort) {
 		case "low":
-			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 2048}
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 2048, "includeThoughts": true}
 		case "medium":
-			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 8192}
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 8192, "includeThoughts": true}
 		case "high":
-			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 16384}
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 16384, "includeThoughts": true}
 		case "none", "off":
 			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 0}
 		}
+	} else if tc, ok := body["thinking_config"].(map[string]any); ok {
+		genConfig["thinkingConfig"] = tc
+	} else if tc, ok := body["thinkingConfig"].(map[string]any); ok {
+		genConfig["thinkingConfig"] = tc
 	}
 
 	if len(genConfig) > 0 {
@@ -508,6 +511,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 
 	messages, _ := body["messages"].([]any)
 	var contents []any
+	toolCallNames := make(map[string]string)
 
 	for _, msgRaw := range messages {
 		msg, ok := msgRaw.(map[string]any)
@@ -546,11 +550,20 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 					if argsStr, ok := fn["arguments"].(string); ok {
 						json.Unmarshal([]byte(argsStr), &args)
 					}
+					tcID, _ := tcMap["id"].(string)
+					fnName, _ := fn["name"].(string)
+					if tcID != "" && fnName != "" {
+						toolCallNames[tcID] = fnName
+					}
+					fc := map[string]any{
+						"name": fnName,
+						"args": args,
+					}
+					if tcID != "" {
+						fc["id"] = tcID
+					}
 					parts = append(parts, map[string]any{
-						"functionCall": map[string]any{
-							"name": fn["name"],
-							"args": args,
-						},
+						"functionCall": fc,
 					})
 				}
 			}
@@ -559,20 +572,35 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 			}
 		case "tool":
 			toolCallID, _ := msg["tool_call_id"].(string)
+			fnName := toolCallNames[toolCallID]
+			if fnName == "" {
+				if n, ok := msg["name"].(string); ok && n != "" {
+					fnName = n
+				} else {
+					fnName = toolCallID
+				}
+			}
 			content := extractText(msg["content"])
 			var resp any
-			json.Unmarshal([]byte(content), &resp)
-			if resp == nil {
+			if err := json.Unmarshal([]byte(content), &resp); err != nil || resp == nil {
 				resp = map[string]any{"result": content}
+			}
+			respMap, ok := resp.(map[string]any)
+			if !ok {
+				respMap = map[string]any{"result": resp}
+			}
+			fnResp := map[string]any{
+				"name":     fnName,
+				"response": respMap,
+			}
+			if toolCallID != "" {
+				fnResp["id"] = toolCallID
 			}
 			contents = append(contents, map[string]any{
 				"role": "user",
 				"parts": []any{
 					map[string]any{
-						"functionResponse": map[string]any{
-							"name":     toolCallID,
-							"response": map[string]any{"result": resp},
-						},
+						"functionResponse": fnResp,
 					},
 				},
 			})
@@ -632,7 +660,7 @@ func convertContentToGeminiParts(content any) []any {
 			continue
 		}
 		switch p["type"] {
-		case "text":
+		case "text", "input_text":
 			parts = append(parts, map[string]any{"text": p["text"]})
 		case "image_url":
 			if imgURL, ok := p["image_url"].(map[string]any); ok {
@@ -643,6 +671,18 @@ func convertContentToGeminiParts(content any) []any {
 						"inlineData": map[string]any{"mimeType": mediaType, "data": data},
 					})
 				}
+			}
+		case "input_audio":
+			if audio, ok := p["input_audio"].(map[string]any); ok {
+				data, _ := audio["data"].(string)
+				format, _ := audio["format"].(string)
+				if format == "" {
+					format = "wav"
+				}
+				mime := "audio/" + format
+				parts = append(parts, map[string]any{
+					"inlineData": map[string]any{"mimeType": mime, "data": data},
+				})
 			}
 		}
 	}
@@ -827,6 +867,7 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 	}
 
 	var content strings.Builder
+	var reasoning strings.Builder
 	var toolCalls []any
 
 	if candidates, ok := geminiResp["candidates"].([]any); ok && len(candidates) > 0 {
@@ -838,10 +879,19 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 						if !ok {
 							continue
 						}
+						isThought, _ := p["thought"].(bool)
 						if text, ok := p["text"].(string); ok {
-							content.WriteString(text)
+							if isThought {
+								reasoning.WriteString(text)
+							} else {
+								content.WriteString(text)
+							}
 						}
 						if fc, ok := p["functionCall"].(map[string]any); ok {
+							callID, _ := fc["id"].(string)
+							if callID == "" {
+								callID = fmt.Sprintf("call_%v", fc["name"])
+							}
 							var argsStr string
 							if fc["args"] == nil {
 								argsStr = "{}"
@@ -855,7 +905,7 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 								argsStr = string(args)
 							}
 							toolCalls = append(toolCalls, map[string]any{
-								"id":   fmt.Sprintf("call_%v", fc["name"]),
+								"id":   callID,
 								"type": "function",
 								"function": map[string]any{
 									"name":      fc["name"],
@@ -875,6 +925,9 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 			message := map[string]any{
 				"role":    "assistant",
 				"content": content.String(),
+			}
+			if reasoning.Len() > 0 {
+				message["reasoning_content"] = reasoning.String()
 			}
 			if len(toolCalls) > 0 {
 				message["tool_calls"] = toolCalls
@@ -1009,15 +1062,24 @@ func geminiSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 						if !ok {
 							continue
 						}
+						isThought, _ := p["thought"].(bool)
 						if text, ok := p["text"].(string); ok {
-							delta["content"] = text
+							if isThought {
+								delta["reasoning_content"] = text
+							} else {
+								delta["content"] = text
+							}
 						}
 						if fc, ok := p["functionCall"].(map[string]any); ok {
+							callID, _ := fc["id"].(string)
+							if callID == "" {
+								callID = fmt.Sprintf("call_%v", fc["name"])
+							}
 							args, _ := json.Marshal(fc["args"])
 							delta["tool_calls"] = []any{
 								map[string]any{
 									"index": 0,
-									"id":    fmt.Sprintf("call_%v", fc["name"]),
+									"id":    callID,
 									"type":  "function",
 									"function": map[string]any{
 										"name":      fc["name"],

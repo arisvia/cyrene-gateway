@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 )
@@ -77,28 +76,26 @@ func (a *responsesResponseAdapter) Write(p []byte) (int, error) {
 			if idx < 0 {
 				break
 			}
-			line := bytes.TrimRight(a.scanBuf[:idx], "\r")
+			line := a.scanBuf[:idx]
 			a.scanBuf = a.scanBuf[idx+1:]
 
-			if len(line) == 0 {
-				continue
-			}
-
-			lineStr := string(line)
-			if strings.HasPrefix(lineStr, "data:") {
+			if data, isDone, ok := translator.ParseSSEDataLine(line); ok || isDone {
 				a.isSSE = true
-				payload := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
-				if len(payload) > 0 {
-					translatedEvents, isDone, err := a.sseTranslator.TranslateChunk(payload)
-					if err == nil && len(translatedEvents) > 0 {
-						a.w.Write(translatedEvents)
-						if a.flusher != nil {
-							a.flusher.Flush()
-						}
+				var chunk []byte
+				if isDone {
+					chunk = []byte("[DONE]")
+				} else {
+					chunk = data
+				}
+				translatedEvents, isFinished, err := a.sseTranslator.TranslateChunk(chunk)
+				if err == nil && len(translatedEvents) > 0 {
+					a.w.Write(translatedEvents)
+					if a.flusher != nil {
+						a.flusher.Flush()
 					}
-					if isDone {
-						return len(p), nil
-					}
+				}
+				if isFinished {
+					return len(p), nil
 				}
 			}
 		}
@@ -121,14 +118,16 @@ func (a *responsesResponseAdapter) Finish() {
 
 	if a.isStream {
 		if len(a.scanBuf) > 0 {
-			line := bytes.TrimRight(a.scanBuf, "\r\n")
-			if strings.HasPrefix(string(line), "data:") {
-				payload := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
-				if len(payload) > 0 {
-					translatedEvents, _, _ := a.sseTranslator.TranslateChunk(payload)
-					if len(translatedEvents) > 0 {
-						a.w.Write(translatedEvents)
-					}
+			if data, isDone, ok := translator.ParseSSEDataLine(a.scanBuf); ok || isDone {
+				var chunk []byte
+				if isDone {
+					chunk = []byte("[DONE]")
+				} else {
+					chunk = data
+				}
+				translatedEvents, _, _ := a.sseTranslator.TranslateChunk(chunk)
+				if len(translatedEvents) > 0 {
+					a.w.Write(translatedEvents)
 				}
 			}
 		}

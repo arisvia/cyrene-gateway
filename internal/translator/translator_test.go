@@ -913,3 +913,186 @@ func TestParseSSEDataLine(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiToOpenAIResponse_Thought(t *testing.T) {
+	geminiResp := map[string]any{
+		"candidates": []any{
+			map[string]any{
+				"content": map[string]any{
+					"parts": []any{
+						map[string]any{
+							"text":    "Thinking through the solution step by step...",
+							"thought": true,
+						},
+						map[string]any{
+							"text": "The final answer is 42.",
+						},
+					},
+				},
+				"finishReason": "STOP",
+			},
+		},
+		"usageMetadata": map[string]any{
+			"promptTokenCount":     float64(10),
+			"candidatesTokenCount": float64(20),
+			"totalTokenCount":      float64(30),
+		},
+	}
+	data, _ := json.Marshal(geminiResp)
+
+	result, err := geminiToOpenAI(data, "gemini-2.5-pro")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var openAIResp map[string]any
+	json.Unmarshal(result, &openAIResp)
+
+	choices := openAIResp["choices"].([]any)
+	msg := choices[0].(map[string]any)["message"].(map[string]any)
+	if msg["content"] != "The final answer is 42." {
+		t.Errorf("expected content to only contain final answer, got: %v", msg["content"])
+	}
+	if msg["reasoning_content"] != "Thinking through the solution step by step..." {
+		t.Errorf("expected reasoning_content to contain thought, got: %v", msg["reasoning_content"])
+	}
+}
+
+func TestGeminiSSEToOpenAI_ThoughtAndToolCall(t *testing.T) {
+	// 1. Thought delta chunk
+	thoughtChunk := map[string]any{
+		"candidates": []any{
+			map[string]any{
+				"content": map[string]any{
+					"parts": []any{
+						map[string]any{
+							"text":    "Reasoning in stream...",
+							"thought": true,
+						},
+					},
+				},
+			},
+		},
+	}
+	d1, _ := json.Marshal(thoughtChunk)
+	out1, done1, err1 := geminiSSEToOpenAI(d1, "gemini-2.5-flash")
+	if err1 != nil || done1 {
+		t.Fatalf("thought chunk failed: err=%v, done=%v", err1, done1)
+	}
+	var c1 map[string]any
+	json.Unmarshal(out1, &c1)
+	delta1 := c1["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+	if delta1["reasoning_content"] != "Reasoning in stream..." {
+		t.Errorf("expected delta.reasoning_content, got: %v", delta1)
+	}
+	if delta1["content"] != nil {
+		t.Errorf("expected nil content in thought chunk, got: %v", delta1["content"])
+	}
+
+	// 2. Tool call delta chunk with id
+	toolChunk := map[string]any{
+		"candidates": []any{
+			map[string]any{
+				"content": map[string]any{
+					"parts": []any{
+						map[string]any{
+							"functionCall": map[string]any{
+								"id":   "call_gemini_123",
+								"name": "lookup_stock",
+								"args": map[string]any{"ticker": "GOOG"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	d2, _ := json.Marshal(toolChunk)
+	out2, _, _ := geminiSSEToOpenAI(d2, "gemini-2.5-flash")
+	var c2 map[string]any
+	json.Unmarshal(out2, &c2)
+	delta2 := c2["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+	tcList := delta2["tool_calls"].([]any)
+	tc0 := tcList[0].(map[string]any)
+	if tc0["id"] != "call_gemini_123" {
+		t.Errorf("expected call_gemini_123 id preserved, got: %v", tc0["id"])
+	}
+}
+
+func TestOpenAIToGemini_MultiTurnToolCallAndThinking(t *testing.T) {
+	body := map[string]any{
+		"model":            "gemini-2.5-pro",
+		"reasoning_effort": "medium",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "What is the price of GOOG?"},
+			map[string]any{
+				"role":    "assistant",
+				"content": nil,
+				"tool_calls": []any{
+					map[string]any{
+						"id":   "call_goog_99",
+						"type": "function",
+						"function": map[string]any{
+							"name":      "get_quote",
+							"arguments": `{"symbol":"GOOG"}`,
+						},
+					},
+				},
+			},
+			map[string]any{
+				"role":         "tool",
+				"tool_call_id": "call_goog_99",
+				"content":      `{"price": 180.5}`,
+			},
+		},
+	}
+
+	req, err := openAIToGemini("gemini-2.5-pro", body, false)
+	if err != nil {
+		t.Fatalf("openAIToGemini failed: %v", err)
+	}
+
+	// Verify generationConfig thinkingConfig
+	genConfig := req["generationConfig"].(map[string]any)
+	thinkingConfig := genConfig["thinkingConfig"].(map[string]any)
+	if thinkingConfig["includeThoughts"] != true {
+		t.Errorf("expected includeThoughts=true in thinkingConfig, got: %v", thinkingConfig)
+	}
+	if thinkingConfig["thinkingBudget"] != 8192 {
+		t.Errorf("expected thinkingBudget=8192 for medium, got: %v", thinkingConfig["thinkingBudget"])
+	}
+
+	// Verify multi-turn contents
+	contents := req["contents"].([]any)
+	if len(contents) != 3 {
+		t.Fatalf("expected 3 turns, got %d", len(contents))
+	}
+
+	// Turn 1 (model tool call)
+	mTurn := contents[1].(map[string]any)
+	if mTurn["role"] != "model" {
+		t.Errorf("expected role model, got %v", mTurn["role"])
+	}
+	fcPart := mTurn["parts"].([]any)[0].(map[string]any)["functionCall"].(map[string]any)
+	if fcPart["name"] != "get_quote" || fcPart["id"] != "call_goog_99" {
+		t.Errorf("unexpected functionCall: %v", fcPart)
+	}
+
+	// Turn 2 (user tool result)
+	uTurn := contents[2].(map[string]any)
+	if uTurn["role"] != "user" {
+		t.Errorf("expected role user, got %v", uTurn["role"])
+	}
+	frPart := uTurn["parts"].([]any)[0].(map[string]any)["functionResponse"].(map[string]any)
+	// CRITICAL: Name MUST match function name "get_quote", not the ID
+	if frPart["name"] != "get_quote" {
+		t.Errorf("expected functionResponse name to match function name 'get_quote', got: %v", frPart["name"])
+	}
+	if frPart["id"] != "call_goog_99" {
+		t.Errorf("expected functionResponse id to match 'call_goog_99', got: %v", frPart["id"])
+	}
+	respMap := frPart["response"].(map[string]any)
+	if respMap["price"] != 180.5 {
+		t.Errorf("expected parsed response map with price=180.5, got: %v", respMap)
+	}
+}

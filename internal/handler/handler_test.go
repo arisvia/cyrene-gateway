@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/config"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func setupTestServer(t *testing.T) (*Server, *db.DB) {
@@ -1278,5 +1280,111 @@ func TestProxyPoolDeleteConflict(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409 for in-use pool, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChatToResponsesUpstream_NonStreamAndStream(t *testing.T) {
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var respReq map[string]any
+		json.NewDecoder(r.Body).Decode(&respReq)
+
+		// Verify incoming body translated to Responses API structure
+		if _, hasInput := respReq["input"]; !hasInput {
+			t.Errorf("expected input field in upstream request, got: %v", respReq)
+		}
+
+		isStream, _ := respReq["stream"].(bool)
+		if isStream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			flusher := w.(http.Flusher)
+			w.Write([]byte("event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_up_stream\"}}\n\n"))
+			flusher.Flush()
+			w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Streamed Responses!\"}\n\n"))
+			flusher.Flush()
+			w.Write([]byte("event: response.done\ndata: {\"type\":\"response.done\",\"response\":{\"usage\":{\"input_tokens\":5,\"output_tokens\":5,\"total_tokens\":10}}}\n\n"))
+			flusher.Flush()
+			return
+		}
+
+		// Non-streaming response
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":          "resp_up_nonstream",
+			"object":      "response",
+			"status":      "completed",
+			"output_text": "Hello from Responses upstream!",
+			"usage": map[string]any{
+				"input_tokens":  8,
+				"output_tokens": 4,
+				"total_tokens":  12,
+			},
+		})
+	}))
+	defer mockUpstream.Close()
+
+	// Register temporary provider in Registry
+	provID := "mock-resp-prov"
+	provider.Registry[provID] = provider.ProviderInfo{
+		ID:       provID,
+		Name:     "Mock Responses Provider",
+		BaseURL:  mockUpstream.URL + "/responses",
+		APIType:  "responses",
+		AuthType: "api-key",
+	}
+	defer delete(provider.Registry, provID)
+
+	srv, database := setupTestServer(t)
+
+	database.CreateConnection(&model.ProviderConnection{
+		ID:        "conn-resp-prov",
+		Provider:  provID,
+		AuthType:  "api-key",
+		IsActive:  true,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Data: model.ConnectionData{
+			APIKey:  "sk-mock",
+			BaseURL: mockUpstream.URL + "/responses",
+		},
+	})
+
+	// 1. Non-streaming test
+	bodyNonStream := fmt.Sprintf(`{"model":"%s/model-a","messages":[{"role":"user","content":"Hello"}]}`, provID)
+	req1 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(bodyNonStream))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w1, req1)
+
+	if w1.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for non-stream, got %d: %s", w1.Code, w1.Body.String())
+	}
+
+	var chatResp map[string]any
+	if err := json.Unmarshal(w1.Body.Bytes(), &chatResp); err != nil {
+		t.Fatalf("failed to unmarshal chat completions response: %v", err)
+	}
+	choices := chatResp["choices"].([]any)
+	msg := choices[0].(map[string]any)["message"].(map[string]any)
+	if msg["content"] != "Hello from Responses upstream!" {
+		t.Errorf("unexpected content: %v", msg["content"])
+	}
+
+	// 2. Streaming test
+	bodyStream := fmt.Sprintf(`{"model":"%s/model-a","messages":[{"role":"user","content":"Hello"}],"stream":true}`, provID)
+	req2 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(bodyStream))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for stream, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	resStream := w2.Body.String()
+	if !strings.Contains(resStream, "Streamed Responses!") {
+		t.Fatalf("expected 'Streamed Responses!' in stream output, got:\n%s", resStream)
+	}
+	if !strings.Contains(resStream, "[DONE]") {
+		t.Fatalf("expected [DONE] in stream output, got:\n%s", resStream)
 	}
 }
