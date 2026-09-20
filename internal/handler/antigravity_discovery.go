@@ -40,8 +40,6 @@ func DiscoverAntigravityProject(ctx context.Context, client *http.Client, access
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
-		req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-		req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -175,8 +173,6 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
-		req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-		req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -303,8 +299,6 @@ func tryOnboardUser(ctx context.Context, client *http.Client, endpoint, accessTo
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", provider.AntigravityUserAgent)
-	req.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-	req.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -199,8 +199,6 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 	httpReq.Header.Set("Content-Type", "application/json")
 	if cfg.Format == "antigravity" {
 		httpReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
-		httpReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-		httpReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 	}
 	setAuth(httpReq, cfg, creds)
 	slog.Debug("Media image request",
@@ -628,8 +626,6 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 	}
 	if cfg.Format == "antigravity" {
 		httpReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
-		httpReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-		httpReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 	}
 	setAuth(httpReq, cfg, creds)
 	return c.HTTPClient.Do(httpReq)

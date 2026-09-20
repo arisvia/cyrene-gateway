@@ -53,8 +53,10 @@ func (s *Server) handleAntigravityChat(
 		genConfig["maxOutputTokens"] = *req.MaxTokens
 	}
 
+	sessionID := fmt.Sprintf("-%d", time.Now().UnixNano()%9000000000000000000)
 	innerRequest := map[string]any{
-		"contents": contents,
+		"contents":  contents,
+		"sessionId": sessionID,
 	}
 	if len(systemInstruction) > 0 {
 		innerRequest["systemInstruction"] = map[string]any{
@@ -124,8 +126,6 @@ func (s *Server) handleAntigravityChat(
 	upReq.Header.Set("Content-Type", "application/json")
 	upReq.Header.Set("Accept", "text/event-stream")
 	upReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
-	upReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-	upReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 	resp, err := client.Do(upReq)
 	if err != nil {

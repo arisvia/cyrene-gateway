@@ -69,6 +69,8 @@ func PrepareUpstreamRequest(
 		targetFormat = translator.FormatAnthropic
 	case "gemini":
 		targetFormat = translator.FormatGemini
+	case "responses":
+		targetFormat = translator.FormatResponses
 	}
 
 	transport := ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)

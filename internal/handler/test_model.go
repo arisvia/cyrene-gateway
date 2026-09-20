@@ -121,8 +121,6 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		upReq.Header.Set("Content-Type", "application/json")
 		upReq.Header.Set("Accept", "text/event-stream")
 		upReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
-		upReq.Header.Set("X-Goog-Api-Client", provider.AntigravityXGoogClient)
-		upReq.Header.Set("Client-Metadata", provider.AntigravityMetadata)
 
 		resp, err := client.Do(upReq)
 		latency := time.Since(start)
