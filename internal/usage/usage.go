@@ -13,6 +13,46 @@ type Usage struct {
 	ReasoningTokens  int `json:"reasoning_tokens,omitempty"`
 }
 
+func (u Usage) OpenAI() map[string]any {
+	result := map[string]any{
+		"prompt_tokens":     u.PromptTokens,
+		"completion_tokens": u.CompletionTokens,
+		"total_tokens":      u.TotalTokens,
+	}
+	if u.CachedTokens > 0 {
+		result["prompt_tokens_details"] = map[string]int{"cached_tokens": u.CachedTokens}
+	}
+	if u.ReasoningTokens > 0 {
+		result["completion_tokens_details"] = map[string]int{"reasoning_tokens": u.ReasoningTokens}
+	}
+	return result
+}
+
+func ExtractFromResponses(data []byte) Usage {
+	var response struct {
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+			InputDetails struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"input_tokens_details"`
+			OutputDetails struct {
+				ReasoningTokens int `json:"reasoning_tokens"`
+			} `json:"output_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return Usage{}
+	}
+	u := response.Usage
+	total := u.TotalTokens
+	if total == 0 {
+		total = u.InputTokens + u.OutputTokens
+	}
+	return Usage{PromptTokens: u.InputTokens, CompletionTokens: u.OutputTokens, TotalTokens: total, CachedTokens: u.InputDetails.CachedTokens, ReasoningTokens: u.OutputDetails.ReasoningTokens}
+}
+
 // ExtractFromOpenAI extracts usage from an OpenAI-format response body.
 func ExtractFromOpenAI(data []byte) Usage {
 	var resp struct {
@@ -35,6 +75,9 @@ func ExtractFromOpenAI(data []byte) Usage {
 		PromptTokens:     resp.Usage.PromptTokens,
 		CompletionTokens: resp.Usage.CompletionTokens,
 		TotalTokens:      resp.Usage.TotalTokens,
+	}
+	if u.TotalTokens == 0 {
+		u.TotalTokens = u.PromptTokens + u.CompletionTokens
 	}
 	if resp.Usage.PromptTokensDetails != nil {
 		u.CachedTokens = resp.Usage.PromptTokensDetails.CachedTokens
@@ -145,32 +188,5 @@ func ExtractFromGemini(data []byte) Usage {
 
 // ExtractFromSSELine extracts usage from an OpenAI SSE chunk (final chunk often has usage).
 func ExtractFromSSELine(data []byte) Usage {
-	var chunk struct {
-		Usage *struct {
-			PromptTokens        int `json:"prompt_tokens"`
-			CompletionTokens    int `json:"completion_tokens"`
-			TotalTokens         int `json:"total_tokens"`
-			PromptTokensDetails *struct {
-				CachedTokens int `json:"cached_tokens"`
-			} `json:"prompt_tokens_details"`
-			CompletionTokensDetails *struct {
-				ReasoningTokens int `json:"reasoning_tokens"`
-			} `json:"completion_tokens_details"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(data, &chunk); err != nil || chunk.Usage == nil {
-		return Usage{}
-	}
-	u := Usage{
-		PromptTokens:     chunk.Usage.PromptTokens,
-		CompletionTokens: chunk.Usage.CompletionTokens,
-		TotalTokens:      chunk.Usage.TotalTokens,
-	}
-	if chunk.Usage.PromptTokensDetails != nil {
-		u.CachedTokens = chunk.Usage.PromptTokensDetails.CachedTokens
-	}
-	if chunk.Usage.CompletionTokensDetails != nil {
-		u.ReasoningTokens = chunk.Usage.CompletionTokensDetails.ReasoningTokens
-	}
-	return u
+	return ExtractFromOpenAI(data)
 }
