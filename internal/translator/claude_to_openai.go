@@ -386,6 +386,7 @@ type OpenAIToClaudeSSETranslator struct {
 	outputTokens     int
 	inTokens         int
 	started          bool
+	ended            bool
 	blockStarted     bool
 	hasToolCalls     bool
 	toolBlockIndices map[int]int
@@ -406,7 +407,34 @@ func NewOpenAIToClaudeSSETranslator(model string) *OpenAIToClaudeSSETranslator {
 // and returns the corresponding Anthropic SSE events formatted as raw SSE text.
 func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
 	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
+		if t.ended {
+			return nil, true, nil
+		}
+		t.ended = true
 		var out bytes.Buffer
+
+		// Strict Anthropic contract: message_start MUST ALWAYS precede message_delta or message_stop.
+		// If no chunks containing content or choices were received before [DONE], synthesize message_start now.
+		if !t.started {
+			t.started = true
+			startEvent := map[string]any{
+				"type": "message_start",
+				"message": map[string]any{
+					"id":      t.msgID,
+					"type":    "message",
+					"role":    "assistant",
+					"content": []any{},
+					"model":   t.Model,
+					"usage": map[string]any{
+						"input_tokens":  t.inTokens,
+						"output_tokens": 0,
+					},
+				},
+			}
+			startBytes, _ := json.Marshal(startEvent)
+			out.WriteString(fmt.Sprintf("event: message_start\ndata: %s\n\n", string(startBytes)))
+		}
+
 		if t.blockStarted {
 			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
 			t.blockStarted = false

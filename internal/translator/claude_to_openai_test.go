@@ -200,3 +200,32 @@ func TestOpenAIToClaudeSSETranslator_ToolCalls(t *testing.T) {
 		t.Errorf("expected message_stop, got: %s", sDone)
 	}
 }
+func TestOpenAIToClaudeSSETranslator_EmptyOrImmediateDone(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("qoder/dfmodel")
+
+	// Immediate [DONE] without any prior chunks
+	out, done, err := trans.TranslateChunk([]byte("[DONE]"))
+	if err != nil || !done {
+		t.Fatalf("expected done=true, err=nil; got err=%v, done=%v", err, done)
+	}
+	s := string(out)
+	startIdx := strings.Index(s, "event: message_start")
+	deltaIdx := strings.Index(s, "event: message_delta")
+	stopIdx := strings.Index(s, "event: message_stop")
+
+	if startIdx < 0 {
+		t.Fatalf("expected message_start even on immediate [DONE], got:\n%s", s)
+	}
+	if deltaIdx < 0 || deltaIdx <= startIdx {
+		t.Fatalf("expected message_delta after message_start, got startIdx=%d, deltaIdx=%d", startIdx, deltaIdx)
+	}
+	if stopIdx < 0 || stopIdx <= deltaIdx {
+		t.Fatalf("expected message_stop after message_delta, got deltaIdx=%d, stopIdx=%d", deltaIdx, stopIdx)
+	}
+
+	// Repeated [DONE] must be idempotent and return empty
+	out2, done2, err2 := trans.TranslateChunk([]byte("[DONE]"))
+	if err2 != nil || !done2 || len(out2) > 0 {
+		t.Fatalf("repeated [DONE] should return nil and done=true, got len=%d, done=%v, err=%v", len(out2), done2, err2)
+	}
+}
