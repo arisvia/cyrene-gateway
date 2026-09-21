@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Format represents an API format type.
@@ -52,20 +54,105 @@ func TranslateResponse(sourceFormat Format, data []byte, model string) ([]byte, 
 	}
 }
 
-// TranslateSSEChunk converts a single SSE data line from provider format to OpenAI SSE format.
-// Returns the OpenAI-format SSE data payload (without "data: " prefix).
-// FormatResponses is handled separately via per-connection ResponsesSSEToOpenAITranslator.
-func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, bool, error) {
-	switch sourceFormat {
-	case FormatOpenAI:
-		return data, false, nil
+// SSETranslator holds provider-to-OpenAI streaming state for one request.
+type SSETranslator struct {
+	format            Format
+	model             string
+	responses         *ResponsesSSEToOpenAITranslator
+	claudeUsage       map[string]any
+	geminiToolIndices map[string]int
+	nextToolIndex     int
+	done              bool
+}
+
+// NewSSETranslator creates a translator that must be reused for all chunks of one request.
+func NewSSETranslator(format Format, model string) *SSETranslator {
+	t := &SSETranslator{format: format, model: model}
+	switch format {
+	case FormatResponses:
+		t.responses = NewResponsesSSEToOpenAITranslator(model)
 	case FormatAnthropic:
-		return claudeSSEToOpenAI(data, model)
+		t.claudeUsage = make(map[string]any)
 	case FormatGemini:
-		return geminiSSEToOpenAI(data, model)
+		t.geminiToolIndices = make(map[string]int)
+	}
+	return t
+}
+
+// TranslateChunk returns an OpenAI data payload without SSE framing, including terminal errors.
+func (t *SSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
+	if t.done {
+		return nil, true, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
+		t.done = true
+		return []byte("[DONE]"), true, nil
+	}
+	var event map[string]any
+	if err := json.Unmarshal(data, &event); err != nil {
+		return nil, false, fmt.Errorf("invalid %s SSE payload: %w", t.format, err)
+	}
+	if event == nil {
+		return nil, false, fmt.Errorf("SSE payload must be an object")
+	}
+	if payload := openAISSEError(event); payload != nil {
+		t.done = true
+		return payload, true, nil
+	}
+
+	var out []byte
+	var done bool
+	var err error
+	switch t.format {
+	case FormatAnthropic:
+		out, done, err = t.translateClaude(event)
+	case FormatGemini:
+		out, done, err = t.translateGemini(event)
+	case FormatResponses:
+		out, done, err = t.responses.TranslateChunk(data)
 	default:
 		return data, false, nil
 	}
+	t.done = done
+	return out, done, err
+}
+
+// TranslateSSEChunk converts an isolated payload; use NewSSETranslator for cross-chunk state.
+func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, bool, error) {
+	return NewSSETranslator(sourceFormat, model).TranslateChunk(data)
+}
+
+func openAISSEError(event map[string]any) []byte {
+	raw := event["error"]
+	if event["type"] == "response.failed" {
+		if response, ok := event["response"].(map[string]any); ok {
+			raw = response["error"]
+		}
+		if raw == nil {
+			raw = map[string]any{"message": "Upstream response failed"}
+		}
+	} else if event["type"] == "error" && raw == nil {
+		raw = event
+	}
+	if raw == nil {
+		return nil
+	}
+	detail := map[string]any{"type": "upstream_error", "message": "Upstream stream failed"}
+	switch upstream := raw.(type) {
+	case map[string]any:
+		for _, key := range []string{"message", "type", "code", "param"} {
+			if value, ok := upstream[key]; ok && value != nil {
+				detail[key] = value
+			}
+		}
+		if status, ok := upstream["status"].(string); ok && upstream["type"] == nil {
+			detail["type"] = status
+		}
+	case string:
+		detail["message"] = upstream
+	}
+	out, _ := json.Marshal(map[string]any{"error": detail})
+	return out
 }
 
 // ParseSSEDataLine parses a single line from an SSE stream.
@@ -511,6 +598,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 
 	messages, _ := body["messages"].([]any)
 	var contents []any
+	var systemParts []any
 	toolCallNames := make(map[string]string)
 
 	for _, msgRaw := range messages {
@@ -524,9 +612,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 		case "system":
 			text := extractText(msg["content"])
 			if text != "" {
-				result["systemInstruction"] = map[string]any{
-					"parts": []any{map[string]any{"text": text}},
-				}
+				systemParts = append(systemParts, map[string]any{"text": text})
 			}
 		case "user":
 			parts := convertContentToGeminiParts(msg["content"])
@@ -608,6 +694,9 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 	}
 
 	result["contents"] = normalizeGeminiContents(contents)
+	if len(systemParts) > 0 {
+		result["systemInstruction"] = map[string]any{"parts": systemParts}
+	}
 
 	// Convert tools (sanitize schemas for Gemini compatibility — 9router#2877)
 	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
@@ -826,26 +915,7 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 	// 9router#2873) and keep them visible via prompt_tokens_details so a client
 	// can tell a cache hit from a small prompt (9router@41606a37).
 	if usage, ok := claudeResp["usage"].(map[string]any); ok {
-		cacheRead := usageNumber(usage["cache_read_input_tokens"])
-		cacheCreate := usageNumber(usage["cache_creation_input_tokens"])
-		inTokens := usageNumber(usage["input_tokens"]) + cacheRead + cacheCreate
-		outTokens := usageNumber(usage["output_tokens"])
-		u := map[string]any{
-			"prompt_tokens":     inTokens,
-			"completion_tokens": outTokens,
-			"total_tokens":      inTokens + outTokens,
-		}
-		details := map[string]any{}
-		if cacheRead > 0 {
-			details["cached_tokens"] = cacheRead
-		}
-		if cacheCreate > 0 {
-			details["cache_creation_tokens"] = cacheCreate
-		}
-		if len(details) > 0 {
-			u["prompt_tokens_details"] = details
-		}
-		openAIResp["usage"] = u
+		openAIResp["usage"] = claudeUsageToOpenAI(usage)
 	}
 
 	return json.Marshal(openAIResp)
@@ -890,19 +960,11 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 						if fc, ok := p["functionCall"].(map[string]any); ok {
 							callID, _ := fc["id"].(string)
 							if callID == "" {
-								callID = fmt.Sprintf("call_%v", fc["name"])
+								callID = "call_" + uuid.New().String()
 							}
-							var argsStr string
-							if fc["args"] == nil {
+							argsStr := geminiFunctionArguments(fc["args"])
+							if argsStr == "" {
 								argsStr = "{}"
-							} else if s, ok := fc["args"].(string); ok {
-								argsStr = s
-								if argsStr == "" {
-									argsStr = "{}"
-								}
-							} else {
-								args, _ := json.Marshal(fc["args"])
-								argsStr = string(args)
 							}
 							toolCalls = append(toolCalls, map[string]any{
 								"id":   callID,
@@ -945,11 +1007,7 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 
 	// Usage
 	if usageMeta, ok := geminiResp["usageMetadata"].(map[string]any); ok {
-		openAIResp["usage"] = map[string]any{
-			"prompt_tokens":     usageMeta["promptTokenCount"],
-			"completion_tokens": usageMeta["candidatesTokenCount"],
-			"total_tokens":      usageMeta["totalTokenCount"],
-		}
+		openAIResp["usage"] = geminiUsageToOpenAI(usageMeta)
 	}
 
 	return json.Marshal(openAIResp)
@@ -958,14 +1016,32 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 // --- Claude SSE → OpenAI SSE ---
 
 func claudeSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
-	var event map[string]any
-	if err := json.Unmarshal(data, &event); err != nil {
-		return nil, false, nil
+	return NewSSETranslator(FormatAnthropic, model).TranslateChunk(data)
+}
+
+func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, error) {
+	model := t.model
+	eventType, _ := event["type"].(string)
+	usage, _ := event["usage"].(map[string]any)
+	if eventType == "message_start" {
+		if message, ok := event["message"].(map[string]any); ok {
+			usage, _ = message["usage"].(map[string]any)
+		}
+	}
+	for _, key := range []string{"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"} {
+		if value, ok := usage[key]; ok && value != nil {
+			t.claudeUsage[key] = value
+		}
 	}
 
-	eventType, _ := event["type"].(string)
-
 	switch eventType {
+	case "message_start":
+		chunk := buildOpenAIChunk(model, map[string]any{"role": "assistant"}, "")
+		if len(t.claudeUsage) > 0 {
+			chunk["usage"] = claudeUsageToOpenAI(t.claudeUsage)
+		}
+		out, err := json.Marshal(chunk)
+		return out, false, err
 	case "content_block_delta":
 		delta := map[string]any{}
 		if d, ok := event["delta"].(map[string]any); ok {
@@ -1025,14 +1101,24 @@ func claudeSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 		return nil, false, nil
 
 	case "message_delta":
+		finishReason := ""
 		if d, ok := event["delta"].(map[string]any); ok {
-			if stopReason, ok := d["stop_reason"].(string); ok {
-				chunk := buildOpenAIChunk(model, map[string]any{}, claudeStopToOpenAI(stopReason))
-				out, _ := json.Marshal(chunk)
-				return out, false, nil
+			if stopReason, ok := d["stop_reason"].(string); ok && stopReason != "" {
+				finishReason = claudeStopToOpenAI(stopReason)
 			}
 		}
-		return nil, false, nil
+		if finishReason == "" && len(usage) == 0 {
+			return nil, false, nil
+		}
+		chunk := buildOpenAIChunk(model, map[string]any{}, finishReason)
+		if finishReason == "" {
+			chunk["choices"] = []any{}
+		}
+		if len(t.claudeUsage) > 0 {
+			chunk["usage"] = claudeUsageToOpenAI(t.claudeUsage)
+		}
+		out, err := json.Marshal(chunk)
+		return out, false, err
 
 	case "message_stop":
 		return []byte("[DONE]"), true, nil
@@ -1045,65 +1131,97 @@ func claudeSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
 // --- Gemini SSE → OpenAI SSE ---
 
 func geminiSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
-	var geminiChunk map[string]any
-	if err := json.Unmarshal(data, &geminiChunk); err != nil {
-		return nil, false, nil
-	}
+	return NewSSETranslator(FormatGemini, model).TranslateChunk(data)
+}
 
+func (t *SSETranslator) translateGemini(event map[string]any) ([]byte, bool, error) {
 	delta := map[string]any{}
 	finishReason := ""
+	var text, reasoning strings.Builder
+	var toolCalls []any
 
-	if candidates, ok := geminiChunk["candidates"].([]any); ok && len(candidates) > 0 {
+	if candidates, ok := event["candidates"].([]any); ok && len(candidates) > 0 {
 		if candidate, ok := candidates[0].(map[string]any); ok {
-			if contentParts, ok := candidate["content"].(map[string]any); ok {
-				if parts, ok := contentParts["parts"].([]any); ok {
-					for _, part := range parts {
-						p, ok := part.(map[string]any)
-						if !ok {
-							continue
-						}
-						isThought, _ := p["thought"].(bool)
-						if text, ok := p["text"].(string); ok {
-							if isThought {
-								delta["reasoning_content"] = text
-							} else {
-								delta["content"] = text
-							}
-						}
-						if fc, ok := p["functionCall"].(map[string]any); ok {
-							callID, _ := fc["id"].(string)
-							if callID == "" {
-								callID = fmt.Sprintf("call_%v", fc["name"])
-							}
-							args, _ := json.Marshal(fc["args"])
-							delta["tool_calls"] = []any{
-								map[string]any{
-									"index": 0,
-									"id":    callID,
-									"type":  "function",
-									"function": map[string]any{
-										"name":      fc["name"],
-										"arguments": string(args),
-									},
-								},
-							}
-						}
+			content, _ := candidate["content"].(map[string]any)
+			parts, _ := content["parts"].([]any)
+			for _, part := range parts {
+				p, ok := part.(map[string]any)
+				if !ok {
+					continue
+				}
+				if value, ok := p["text"].(string); ok {
+					if thought, _ := p["thought"].(bool); thought {
+						reasoning.WriteString(value)
+					} else {
+						text.WriteString(value)
 					}
 				}
+				if fc, ok := p["functionCall"].(map[string]any); ok {
+					callID, _ := fc["id"].(string)
+					if callID == "" {
+						callID = "call_" + uuid.New().String()
+					}
+					index, exists := t.geminiToolIndices[callID]
+					if !exists {
+						index = t.nextToolIndex
+						t.nextToolIndex++
+						t.geminiToolIndices[callID] = index
+					}
+					fn := map[string]any{}
+					if args, ok := fc["args"]; ok {
+						fn["arguments"] = geminiFunctionArguments(args)
+					}
+					call := map[string]any{"index": index, "function": fn}
+					if !exists {
+						call["id"] = callID
+						call["type"] = "function"
+						fn["name"] = fc["name"]
+					}
+					toolCalls = append(toolCalls, call)
+				}
 			}
-			if fr, ok := candidate["finishReason"].(string); ok {
+			if fr, ok := candidate["finishReason"].(string); ok && fr != "" {
 				finishReason = geminiFinishToOpenAI(fr)
+				if fr == "STOP" && t.nextToolIndex > 0 {
+					finishReason = "tool_calls"
+				}
 			}
 		}
 	}
-
-	if len(delta) == 0 && finishReason == "" {
+	if text.Len() > 0 {
+		delta["content"] = text.String()
+	}
+	if reasoning.Len() > 0 {
+		delta["reasoning_content"] = reasoning.String()
+	}
+	if len(toolCalls) > 0 {
+		delta["tool_calls"] = toolCalls
+	}
+	usage, hasUsage := event["usageMetadata"].(map[string]any)
+	if len(delta) == 0 && finishReason == "" && !hasUsage {
 		return nil, false, nil
 	}
 
-	chunk := buildOpenAIChunk(model, delta, finishReason)
-	out, _ := json.Marshal(chunk)
-	return out, false, nil
+	chunk := buildOpenAIChunk(t.model, delta, finishReason)
+	if len(delta) == 0 && finishReason == "" {
+		chunk["choices"] = []any{}
+	}
+	if hasUsage {
+		chunk["usage"] = geminiUsageToOpenAI(usage)
+	}
+	out, err := json.Marshal(chunk)
+	return out, false, err
+}
+
+func geminiFunctionArguments(args any) string {
+	if args == nil {
+		return "{}"
+	}
+	if value, ok := args.(string); ok {
+		return value
+	}
+	encoded, _ := json.Marshal(args)
+	return string(encoded)
 }
 
 // --- Helpers ---
@@ -1203,6 +1321,51 @@ func geminiFinishToOpenAI(reason string) string {
 	default:
 		return "stop"
 	}
+}
+
+func claudeUsageToOpenAI(usage map[string]any) map[string]any {
+	cacheRead := usageNumber(usage["cache_read_input_tokens"])
+	cacheCreate := usageNumber(usage["cache_creation_input_tokens"])
+	inTokens := usageNumber(usage["input_tokens"]) + cacheRead + cacheCreate
+	outTokens := usageNumber(usage["output_tokens"])
+	result := map[string]any{
+		"prompt_tokens":     inTokens,
+		"completion_tokens": outTokens,
+		"total_tokens":      inTokens + outTokens,
+	}
+	details := map[string]any{}
+	if cacheRead > 0 {
+		details["cached_tokens"] = cacheRead
+	}
+	if cacheCreate > 0 {
+		details["cache_creation_tokens"] = cacheCreate
+	}
+	if len(details) > 0 {
+		result["prompt_tokens_details"] = details
+	}
+	return result
+}
+
+func geminiUsageToOpenAI(usage map[string]any) map[string]any {
+	inTokens := usageNumber(usage["promptTokenCount"])
+	reasoningTokens := usageNumber(usage["thoughtsTokenCount"])
+	outTokens := usageNumber(usage["candidatesTokenCount"]) + reasoningTokens
+	total := usageNumber(usage["totalTokenCount"])
+	if total == 0 {
+		total = inTokens + outTokens
+	}
+	result := map[string]any{
+		"prompt_tokens":     inTokens,
+		"completion_tokens": outTokens,
+		"total_tokens":      total,
+	}
+	if cached := usageNumber(usage["cachedContentTokenCount"]); cached > 0 {
+		result["prompt_tokens_details"] = map[string]any{"cached_tokens": cached}
+	}
+	if reasoningTokens > 0 {
+		result["completion_tokens_details"] = map[string]any{"reasoning_tokens": reasoningTokens}
+	}
+	return result
 }
 
 // usageNumber converts a JSON-decoded usage counter to int (absent → 0).

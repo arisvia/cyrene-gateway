@@ -1096,3 +1096,292 @@ func TestOpenAIToGemini_MultiTurnToolCallAndThinking(t *testing.T) {
 		t.Errorf("expected parsed response map with price=180.5, got: %v", respMap)
 	}
 }
+
+func decodeTranslatorPayload(t *testing.T, data []byte) map[string]any {
+	t.Helper()
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("invalid JSON %q: %v", data, err)
+	}
+	return result
+}
+
+func TestSSETranslatorGeminiParallelParts(t *testing.T) {
+	input := []byte(`{"candidates":[{"content":{"parts":[{"text":"Hello "},{"text":"think ","thought":true},{"functionCall":{"name":"weather","args":{"city":"Tokyo"}}},{"text":"world"},{"text":"again","thought":true},{"functionCall":{"name":"weather","args":{"city":"Paris"}}}]}}]}`)
+	for _, stateful := range []bool{false, true} {
+		var out []byte
+		var done bool
+		var err error
+		if stateful {
+			out, done, err = NewSSETranslator(FormatGemini, "gemini").TranslateChunk(input)
+		} else {
+			out, done, err = TranslateSSEChunk(FormatGemini, input, "gemini")
+		}
+		if err != nil || done {
+			t.Fatalf("stateful=%v: done=%v err=%v", stateful, done, err)
+		}
+		chunk := decodeTranslatorPayload(t, out)
+		delta := chunk["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+		if delta["content"] != "Hello world" || delta["reasoning_content"] != "think again" {
+			t.Fatalf("parts overwritten: %s", out)
+		}
+		calls := delta["tool_calls"].([]any)
+		if len(calls) != 2 {
+			t.Fatalf("expected two parallel calls: %s", out)
+		}
+		ids := make(map[string]bool)
+		for i, raw := range calls {
+			call := raw.(map[string]any)
+			id, _ := call["id"].(string)
+			if id == "" || ids[id] || call["index"] != float64(i) {
+				t.Fatalf("calls must have unique IDs and indices: %s", out)
+			}
+			ids[id] = true
+			fn := call["function"].(map[string]any)
+			args := decodeTranslatorPayload(t, []byte(fn["arguments"].(string)))
+			if fn["name"] != "weather" || args["city"] != []string{"Tokyo", "Paris"}[i] {
+				t.Fatalf("call arguments lost: %s", out)
+			}
+		}
+	}
+}
+
+func TestSSETranslatorGeminiAcrossChunks(t *testing.T) {
+	trans := NewSSETranslator(FormatGemini, "gemini")
+	inputs := []string{
+		`{"candidates":[{"content":{"parts":[{"functionCall":{"id":"call_a","name":"weather","args":""}}]}}]}`,
+		`{"candidates":[{"content":{"parts":[{"functionCall":{"id":"call_b","name":"weather","args":{}}}]}}]}`,
+		`{"candidates":[{"content":{"parts":[{"functionCall":{"id":"call_a","args":"{\"city\":\"Tokyo\"}"}}]}}]}`,
+		`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"weather","args":{}}}]}}]}`,
+		`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"weather","args":{}}}]}}]}`,
+	}
+	indices := []float64{0, 1, 0, 2, 3}
+	ids := make(map[string]bool)
+	for i, input := range inputs {
+		out, done, err := trans.TranslateChunk([]byte(input))
+		if err != nil || done {
+			t.Fatalf("chunk %d: done=%v err=%v", i, done, err)
+		}
+		chunk := decodeTranslatorPayload(t, out)
+		delta := chunk["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+		call := delta["tool_calls"].([]any)[0].(map[string]any)
+		if call["index"] != indices[i] {
+			t.Fatalf("chunk %d: wrong stable index: %s", i, out)
+		}
+		if i == 2 {
+			fn := call["function"].(map[string]any)
+			if call["id"] != nil || fn["name"] != nil || fn["arguments"] != `{"city":"Tokyo"}` {
+				t.Fatalf("continuation must not redeclare the call or quote arguments: %s", out)
+			}
+			continue
+		}
+		id, _ := call["id"].(string)
+		if id == "" || ids[id] {
+			t.Fatalf("missing or duplicate ID: %s", out)
+		}
+		ids[id] = true
+		if i < 2 && id != []string{"call_a", "call_b"}[i] {
+			t.Fatalf("upstream ID changed: %s", out)
+		}
+	}
+	out, done, err := trans.TranslateChunk([]byte(`{"candidates":[{"finishReason":"STOP"}]}`))
+	if err != nil || done {
+		t.Fatalf("finish must allow following usage: done=%v err=%v", done, err)
+	}
+	if decodeTranslatorPayload(t, out)["choices"].([]any)[0].(map[string]any)["finish_reason"] != "tool_calls" {
+		t.Fatalf("tool finish reason lost: %s", out)
+	}
+	other := NewSSETranslator(FormatGemini, "gemini")
+	out, _, _ = other.TranslateChunk([]byte(inputs[1]))
+	delta := decodeTranslatorPayload(t, out)["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+	if delta["tool_calls"].([]any)[0].(map[string]any)["index"] != float64(0) {
+		t.Fatal("tool indices leaked across requests")
+	}
+}
+
+func TestSSETranslatorClaudeUsage(t *testing.T) {
+	trans := NewSSETranslator(FormatAnthropic, "claude")
+	cases := []struct {
+		input              string
+		prompt, completion int
+		usageOnly          bool
+	}{
+		{`{"type":"message_start","message":{"usage":{"input_tokens":10,"output_tokens":0,"cache_read_input_tokens":3,"cache_creation_input_tokens":2}}}`, 15, 0, false},
+		{`{"type":"message_delta","usage":{"output_tokens":2}}`, 15, 2, true},
+		{`{"type":"message_delta","usage":{"input_tokens":12,"cache_read_input_tokens":4,"output_tokens":3}}`, 18, 3, true},
+		{`{"type":"message_delta","usage":{"output_tokens":3}}`, 18, 3, true},
+		{`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}`, 18, 4, false},
+	}
+	for i, tc := range cases {
+		out, done, err := trans.TranslateChunk([]byte(tc.input))
+		if err != nil || done {
+			t.Fatalf("chunk %d: done=%v err=%v", i, done, err)
+		}
+		chunk := decodeTranslatorPayload(t, out)
+		usage := chunk["usage"].(map[string]any)
+		if usage["prompt_tokens"] != float64(tc.prompt) || usage["completion_tokens"] != float64(tc.completion) || usage["total_tokens"] != float64(tc.prompt+tc.completion) {
+			t.Fatalf("chunk %d lost cumulative usage: %s", i, out)
+		}
+		details := usage["prompt_tokens_details"].(map[string]any)
+		if details["cache_creation_tokens"] != float64(2) {
+			t.Fatalf("cache usage disappeared: %s", out)
+		}
+		if tc.usageOnly && len(chunk["choices"].([]any)) != 0 {
+			t.Fatalf("usage-only event has choices: %s", out)
+		}
+		if i == 0 {
+			text, done, err := trans.TranslateChunk([]byte(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`))
+			if err != nil || done || !strings.Contains(string(text), `"content":"hello"`) {
+				t.Fatalf("text must stream before final usage: %s done=%v err=%v", text, done, err)
+			}
+		}
+	}
+	out, done, err := trans.TranslateChunk([]byte(`{"type":"message_stop"}`))
+	if err != nil || !done || string(out) != "[DONE]" {
+		t.Fatalf("unexpected terminal chunk: %s done=%v err=%v", out, done, err)
+	}
+	other := NewSSETranslator(FormatAnthropic, "claude")
+	out, _, _ = other.TranslateChunk([]byte(cases[1].input))
+	if decodeTranslatorPayload(t, out)["usage"].(map[string]any)["prompt_tokens"] != float64(0) {
+		t.Fatal("usage leaked across requests")
+	}
+}
+
+func TestSSETranslatorGeminiUsage(t *testing.T) {
+	trans := NewSSETranslator(FormatGemini, "gemini")
+	for _, input := range []string{
+		`{"candidates":[{"content":{"parts":[{"text":"hello"}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2,"totalTokenCount":15,"thoughtsTokenCount":3,"cachedContentTokenCount":4}}`,
+		`{"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2,"totalTokenCount":15,"thoughtsTokenCount":3,"cachedContentTokenCount":4}}`,
+		`{"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":2,"thoughtsTokenCount":3,"cachedContentTokenCount":4}}`,
+	} {
+		out, done, err := trans.TranslateChunk([]byte(input))
+		if err != nil || done {
+			t.Fatalf("unexpected result: done=%v err=%v", done, err)
+		}
+		chunk := decodeTranslatorPayload(t, out)
+		usage := chunk["usage"].(map[string]any)
+		if usage["prompt_tokens"] != float64(10) || usage["completion_tokens"] != float64(5) || usage["total_tokens"] != float64(15) {
+			t.Fatalf("usage lost: %s", out)
+		}
+		if usage["prompt_tokens_details"].(map[string]any)["cached_tokens"] != float64(4) || usage["completion_tokens_details"].(map[string]any)["reasoning_tokens"] != float64(3) {
+			t.Fatalf("usage details lost: %s", out)
+		}
+		if !strings.Contains(input, "candidates") && len(chunk["choices"].([]any)) != 0 {
+			t.Fatalf("usage-only chunk must have no choices: %s", out)
+		}
+	}
+}
+
+func TestSSETranslatorErrors(t *testing.T) {
+	cases := []struct {
+		name                      string
+		format                    Format
+		input, message, errorType string
+	}{
+		{"openai", FormatOpenAI, `{"error":{"message":"quota","type":"rate_limit_error","code":"quota","param":"model"}}`, "quota", "rate_limit_error"},
+		{"anthropic", FormatAnthropic, `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`, "busy", "overloaded_error"},
+		{"gemini", FormatGemini, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"quota"}}`, "quota", "RESOURCE_EXHAUSTED"},
+		{"responses", FormatResponses, `{"type":"response.failed","response":{"error":{"code":"server_error","message":"failed"}}}`, "failed", "upstream_error"},
+		{"responses_error", FormatResponses, `{"type":"error","message":"invalid","code":"invalid_request"}`, "invalid", "error"},
+		{"string_error", FormatGemini, `{"error":"unavailable"}`, "unavailable", "upstream_error"},
+		{"missing_detail", FormatResponses, `{"type":"response.failed","response":{}}`, "Upstream response failed", "upstream_error"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trans := NewSSETranslator(tc.format, "model")
+			content := map[Format]string{
+				FormatOpenAI:    `{"choices":[{"delta":{"content":"hello"}}]}`,
+				FormatAnthropic: `{"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`,
+				FormatGemini:    `{"candidates":[{"content":{"parts":[{"text":"hello"}]}}]}`,
+				FormatResponses: `{"type":"response.output_text.delta","delta":"hello"}`,
+			}
+			if out, done, err := trans.TranslateChunk([]byte(content[tc.format])); err != nil || done || !strings.Contains(string(out), "hello") {
+				t.Fatalf("text before error must stream immediately: %s done=%v err=%v", out, done, err)
+			}
+			out, done, err := trans.TranslateChunk([]byte(tc.input))
+			if err != nil || !done {
+				t.Fatalf("error must terminate with payload: done=%v err=%v", done, err)
+			}
+			payload := decodeTranslatorPayload(t, out)
+			detail, ok := payload["error"].(map[string]any)
+			if !ok || detail["message"] != tc.message || detail["type"] != tc.errorType || payload["choices"] != nil {
+				t.Fatalf("unexpected error payload: %s", out)
+			}
+			if tc.name == "openai" && (detail["code"] != "quota" || detail["param"] != "model") {
+				t.Fatalf("OpenAI error metadata lost: %s", out)
+			}
+			for _, input := range []string{tc.input, "[DONE]"} {
+				out, done, err = trans.TranslateChunk([]byte(input))
+				if err != nil || !done || len(out) != 0 {
+					t.Fatalf("terminal payload emitted twice: %s done=%v err=%v", out, done, err)
+				}
+			}
+			out, done, err = TranslateSSEChunk(tc.format, []byte(tc.input), "model")
+			if err != nil || !done || len(out) == 0 {
+				t.Fatalf("compatibility entry point dropped error: %s done=%v err=%v", out, done, err)
+			}
+		})
+	}
+}
+
+func TestSSETranslatorResponsesState(t *testing.T) {
+	trans := NewSSETranslator(FormatResponses, "model")
+	for _, input := range []string{
+		`{"type":"response.output_item.added","output_index":3,"item":{"type":"function_call","call_id":"call_a","name":"weather"}}`,
+		`{"type":"response.output_item.added","output_index":9,"item":{"type":"function_call","call_id":"call_b","name":"weather"}}`,
+	} {
+		if _, done, err := trans.TranslateChunk([]byte(input)); err != nil || done {
+			t.Fatalf("unexpected declaration: done=%v err=%v", done, err)
+		}
+	}
+	out, done, err := trans.TranslateChunk([]byte(`{"type":"response.function_call_arguments.delta","output_index":9,"delta":"{}"}`))
+	if err != nil || done {
+		t.Fatalf("unexpected arguments: done=%v err=%v", done, err)
+	}
+	delta := decodeTranslatorPayload(t, out)["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+	if delta["tool_calls"].([]any)[0].(map[string]any)["index"] != float64(1) {
+		t.Fatalf("Responses delegate was recreated per chunk: %s", out)
+	}
+}
+
+func TestOpenAIToGeminiMultipleSystemMessages(t *testing.T) {
+	body := decodeTranslatorPayload(t, []byte(`{"messages":[{"role":"system","content":"first rule"},{"role":"system","content":[{"type":"text","text":"second rule"}]},{"role":"user","content":[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="}}]}]}`))
+	out, err := openAIToGemini("gemini", body, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := out["systemInstruction"].(map[string]any)["parts"].([]any)
+	if len(parts) != 2 || parts[0].(map[string]any)["text"] != "first rule" || parts[1].(map[string]any)["text"] != "second rule" {
+		t.Fatalf("system messages overwritten: %#v", out)
+	}
+	parts = out["contents"].([]any)[0].(map[string]any)["parts"].([]any)
+	if len(parts) != 2 || parts[0].(map[string]any)["text"] != "look" || parts[1].(map[string]any)["inlineData"].(map[string]any)["data"] != "aGVsbG8=" {
+		t.Fatalf("ordinary image/text behavior changed: %#v", out)
+	}
+}
+
+func TestGeminiToOpenAIResponseParallelIDs(t *testing.T) {
+	out, err := geminiToOpenAI([]byte(`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"weather","args":{}}},{"functionCall":{"name":"weather","args":{}}}]}}]}`), "gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := decodeTranslatorPayload(t, out)["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	calls := msg["tool_calls"].([]any)
+	if len(calls) != 2 || calls[0].(map[string]any)["id"] == calls[1].(map[string]any)["id"] {
+		t.Fatalf("same-name parallel calls must have distinct IDs: %s", out)
+	}
+}
+
+func TestSSETranslatorDone(t *testing.T) {
+	for _, format := range []Format{FormatOpenAI, FormatAnthropic, FormatGemini, FormatResponses} {
+		trans := NewSSETranslator(format, "model")
+		out, done, err := trans.TranslateChunk([]byte(" [DONE]\r\n"))
+		if err != nil || !done || string(out) != "[DONE]" {
+			t.Fatalf("%s terminal marker: %s done=%v err=%v", format, out, done, err)
+		}
+		out, done, err = trans.TranslateChunk([]byte("[DONE]"))
+		if err != nil || !done || len(out) != 0 {
+			t.Fatalf("%s repeated marker: %s done=%v err=%v", format, out, done, err)
+		}
+	}
+}
