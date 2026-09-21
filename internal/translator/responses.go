@@ -96,6 +96,13 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 	// ToolChoice
 	if tc, ok := responsesBody["tool_choice"]; ok {
 		result["tool_choice"] = tc
+		if choice, ok := tc.(map[string]any); ok && choice["type"] == "function" {
+			if name, ok := choice["name"].(string); ok {
+				result["tool_choice"] = map[string]any{
+					"type": "function", "function": map[string]any{"name": name},
+				}
+			}
+		}
 	}
 
 	// Messages assembly
@@ -240,11 +247,32 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
 		result["reasoning"] = map[string]any{"effort": effort}
 	}
-	if tools, ok := body["tools"]; ok {
-		result["tools"] = tools
+	if tools, ok := body["tools"].([]any); ok {
+		flatTools := make([]any, 0, len(tools))
+		for _, tool := range tools {
+			if tm, ok := tool.(map[string]any); ok && tm["type"] == "function" {
+				if fn, ok := tm["function"].(map[string]any); ok {
+					flat := map[string]any{"type": "function"}
+					for _, key := range []string{"name", "description", "parameters", "strict"} {
+						if value, ok := fn[key]; ok {
+							flat[key] = value
+						}
+					}
+					flatTools = append(flatTools, flat)
+					continue
+				}
+			}
+			flatTools = append(flatTools, tool)
+		}
+		result["tools"] = flatTools
 	}
 	if tc, ok := body["tool_choice"]; ok {
 		result["tool_choice"] = tc
+		if choice, ok := tc.(map[string]any); ok && choice["type"] == "function" {
+			if fn, ok := choice["function"].(map[string]any); ok {
+				result["tool_choice"] = map[string]any{"type": "function", "name": fn["name"]}
+			}
+		}
 	}
 
 	var instructions string
@@ -336,17 +364,21 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 	}
 
 	var outputText string
-	var outputItems []any
+	outputItems := []any{}
+	status := "completed"
+	var incompleteDetails map[string]any
 
 	if choices, ok := openAIResp["choices"].([]any); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]any); ok {
+			finishReason, _ := choice["finish_reason"].(string)
+			status, incompleteDetails = responsesStatus(finishReason)
 			if msg, ok := choice["message"].(map[string]any); ok {
 				if text, ok := msg["content"].(string); ok && text != "" {
 					outputText = text
 					outputItems = append(outputItems, map[string]any{
 						"id":     "msg_" + id,
 						"type":   "message",
-						"status": "completed",
+						"status": status,
 						"role":   "assistant",
 						"content": []any{
 							map[string]any{
@@ -365,8 +397,9 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 								fnName, _ := fn["name"].(string)
 								argsStr, _ := fn["arguments"].(string)
 								outputItems = append(outputItems, map[string]any{
-									"id":        tcID,
+									"id":        "fc_" + tcID,
 									"type":      "function_call",
+									"status":    status,
 									"call_id":   tcID,
 									"name":      fnName,
 									"arguments": argsStr,
@@ -401,7 +434,7 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 		"id":         id,
 		"object":     "response",
 		"created_at": time.Now().Unix(),
-		"status":     "completed",
+		"status":     status,
 		"model":      respModel,
 		"output":     outputItems,
 		"usage": map[string]any{
@@ -410,8 +443,28 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 			"output_tokens": outTokens,
 		},
 	}
+	if sourceUsage, ok := openAIResp["usage"].(map[string]any); ok {
+		targetUsage := resp["usage"].(map[string]any)
+		if details, ok := sourceUsage["prompt_tokens_details"]; ok {
+			targetUsage["input_tokens_details"] = details
+		}
+		if details, ok := sourceUsage["completion_tokens_details"]; ok {
+			targetUsage["output_tokens_details"] = details
+		}
+	}
 	if outputText != "" {
 		resp["output_text"] = outputText
+	}
+	if incompleteDetails != nil {
+		resp["incomplete_details"] = incompleteDetails
+	}
+	if upstreamError := openAIResp["error"]; upstreamError != nil {
+		resp["status"] = "failed"
+		resp["error"] = upstreamError
+		delete(resp, "incomplete_details")
+		for _, item := range outputItems {
+			item.(map[string]any)["status"] = "incomplete"
+		}
 	}
 
 	return json.Marshal(resp)
@@ -423,6 +476,9 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 	var resp map[string]any
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return nil, err
+	}
+	if upstreamError := responsesError(resp); upstreamError != nil {
+		return json.Marshal(map[string]any{"error": upstreamError})
 	}
 
 	id, _ := resp["id"].(string)
@@ -458,7 +514,7 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 						}
 					}
 				} else if iType == "function_call" {
-					tcID, _ := im["id"].(string)
+					tcID, _ := im["call_id"].(string)
 					fnName, _ := im["name"].(string)
 					args, _ := im["arguments"].(string)
 					toolCalls = append(toolCalls, map[string]any{
@@ -482,10 +538,7 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 		message["tool_calls"] = toolCalls
 	}
 
-	finishReason := "stop"
-	if len(toolCalls) > 0 {
-		finishReason = "tool_calls"
-	}
+	finishReason := responsesFinishReason(resp, len(toolCalls) > 0)
 
 	inTokens := 0
 	outTokens := 0
@@ -524,6 +577,15 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 		},
 	}
 
+	if sourceUsage, ok := resp["usage"].(map[string]any); ok {
+		targetUsage := chatResp["usage"].(map[string]any)
+		if details, ok := sourceUsage["input_tokens_details"]; ok {
+			targetUsage["prompt_tokens_details"] = details
+		}
+		if details, ok := sourceUsage["output_tokens_details"]; ok {
+			targetUsage["completion_tokens_details"] = details
+		}
+	}
 	return json.Marshal(chatResp)
 }
 
@@ -533,6 +595,7 @@ type ResponsesSSEToOpenAITranslator struct {
 	Model           string
 	toolCallIndex   int
 	hasToolCalls    bool
+	done            bool
 	toolIdxByOutput map[int]int // output_index → tool_calls[].index
 }
 
@@ -543,9 +606,13 @@ func NewResponsesSSEToOpenAITranslator(model string) *ResponsesSSEToOpenAITransl
 
 // TranslateChunk converts a single Responses API SSE event into ChatCompletion SSE chunk(s).
 func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
+	if t.done {
+		return nil, true, nil
+	}
 	trimmed := bytes.TrimSpace(data)
 	if bytes.Equal(trimmed, []byte("[DONE]")) {
-		return []byte("[DONE]"), true, nil
+		t.done = true
+		return nil, true, nil
 	}
 
 	var event map[string]any
@@ -554,6 +621,18 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 	}
 
 	eType, _ := event["type"].(string)
+	if upstreamError := event["error"]; upstreamError != nil {
+		t.done = true
+		b, err := json.Marshal(map[string]any{"error": upstreamError})
+		return b, true, err
+	}
+	if eType == "error" {
+		delete(event, "type")
+		delete(event, "sequence_number")
+		t.done = true
+		b, err := json.Marshal(map[string]any{"error": event})
+		return b, true, err
+	}
 	switch eType {
 	case "response.output_text.delta":
 		deltaText, _ := event["delta"].(string)
@@ -581,9 +660,6 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 			if iType, _ := item["type"].(string); iType == "function_call" {
 				fnName, _ := item["name"].(string)
 				callID, _ := item["call_id"].(string)
-				if callID == "" {
-					callID, _ = item["id"].(string)
-				}
 				idx := t.toolCallIndex
 				if outputIdx, ok := event["output_index"].(float64); ok {
 					if t.toolIdxByOutput == nil {
@@ -664,10 +740,16 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 		b, _ := json.Marshal(chunk)
 		return b, false, nil
 
-	case "response.done":
-		finishReason := "stop"
-		if t.hasToolCalls {
-			finishReason = "tool_calls"
+	case "response.completed", "response.failed", "response.incomplete":
+		t.done = true
+		respObj, _ := event["response"].(map[string]any)
+		if respObj == nil {
+			respObj = map[string]any{}
+		}
+		respObj["status"] = strings.TrimPrefix(eType, "response.")
+		if upstreamError := responsesError(respObj); upstreamError != nil {
+			b, err := json.Marshal(map[string]any{"error": upstreamError})
+			return b, true, err
 		}
 		chunk := map[string]any{
 			"id":      "chatcmpl-stream",
@@ -678,24 +760,32 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 				map[string]any{
 					"index":         0,
 					"delta":         map[string]any{},
-					"finish_reason": finishReason,
+					"finish_reason": responsesFinishReason(respObj, t.hasToolCalls),
 				},
 			},
 		}
-		if respObj, ok := event["response"].(map[string]any); ok {
-			if usage, ok := respObj["usage"].(map[string]any); ok {
-				inTokens, _ := usage["input_tokens"].(float64)
-				outTokens, _ := usage["output_tokens"].(float64)
-				totTokens, _ := usage["total_tokens"].(float64)
-				chunk["usage"] = map[string]any{
-					"prompt_tokens":     int(inTokens),
-					"completion_tokens": int(outTokens),
-					"total_tokens":      int(totTokens),
-				}
+		if usage, ok := respObj["usage"].(map[string]any); ok {
+			inTokens, _ := usage["input_tokens"].(float64)
+			outTokens, _ := usage["output_tokens"].(float64)
+			totTokens, _ := usage["total_tokens"].(float64)
+			if totTokens == 0 {
+				totTokens = inTokens + outTokens
 			}
+			convertedUsage := map[string]any{
+				"prompt_tokens":     int(inTokens),
+				"completion_tokens": int(outTokens),
+				"total_tokens":      int(totTokens),
+			}
+			if details, ok := usage["input_tokens_details"]; ok {
+				convertedUsage["prompt_tokens_details"] = details
+			}
+			if details, ok := usage["output_tokens_details"]; ok {
+				convertedUsage["completion_tokens_details"] = details
+			}
+			chunk["usage"] = convertedUsage
 		}
-		b, _ := json.Marshal(chunk)
-		return b, true, nil
+		b, err := json.Marshal(chunk)
+		return b, true, err
 
 	default:
 		// Ignore structural control events (response.created, response.content_part.added, etc.)
@@ -706,14 +796,16 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 // OpenAIToResponsesSSETranslator manages streaming state to translate
 // OpenAI ChatCompletion SSE lines into OpenAI Responses API SSE events.
 type OpenAIToResponsesSSETranslator struct {
-	Model        string
-	respID       string
-	msgID        string
-	outputBuf    strings.Builder
-	promptTokens int
-	outputTokens int
-	totalTokens  int
-	deltaChunks  int // fallback chunk counter when upstream omits usage
+	Model         string
+	respID        string
+	msgID         string
+	outputBuf     strings.Builder
+	promptTokens  int
+	outputTokens  int
+	totalTokens   int
+	inputDetails  map[string]any
+	outputDetails map[string]any
+	deltaChunks   int // fallback chunk counter when upstream omits usage
 	// Output item index allocation: assigned once at first emission, never recomputed.
 	nextOutputIndex int
 	msgOutputIndex  int // -1 until the message item is emitted
@@ -722,6 +814,8 @@ type OpenAIToResponsesSSETranslator struct {
 	itemAdded       bool
 	partAdded       bool
 	done            bool
+	finishReason    string
+	upstreamError   any
 	// Tool call tracking
 	toolCalls []responsesToolCallState
 }
@@ -747,9 +841,16 @@ func NewOpenAIToResponsesSSETranslator(model string) *OpenAIToResponsesSSETransl
 
 // TranslateChunk converts an OpenAI ChatCompletion chunk (or [DONE]) into Responses API SSE events.
 func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
+	if t.done {
+		return nil, true, nil
+	}
 	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
-		if t.done {
-			return nil, true, nil
+		status, incompleteDetails := responsesStatus(t.finishReason)
+		itemStatus := status
+		if t.upstreamError != nil {
+			status = "failed"
+			itemStatus = "incomplete"
+			incompleteDetails = nil
 		}
 		var out bytes.Buffer
 		outText := t.outputBuf.String()
@@ -760,8 +861,8 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		}
 
 		if t.itemAdded {
-			out.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"id\":\"%s\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":%s}]}}\n\n",
-				t.msgOutputIndex, t.msgID, quoteJSON(outText)))
+			out.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":%d,\"item\":{\"id\":%s,\"type\":\"message\",\"status\":%s,\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":%s}]}}\n\n",
+				t.msgOutputIndex, quoteJSON(t.msgID), quoteJSON(itemStatus), quoteJSON(outText)))
 		}
 
 		// Emit function_call_arguments.done and output_item.done for each tool call
@@ -772,7 +873,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 			}
 			argsDonePayload := map[string]any{
 				"type":         "response.function_call_arguments.done",
-				"item_id":      tcs.id,
+				"item_id":      "fc_" + tcs.id,
 				"output_index": tcs.outputIndex,
 				"call_id":      tcs.id,
 				"arguments":    tcs.argsBuf.String(),
@@ -784,9 +885,9 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 				"type":         "response.output_item.done",
 				"output_index": tcs.outputIndex,
 				"item": map[string]any{
-					"id":        tcs.id,
+					"id":        "fc_" + tcs.id,
 					"type":      "function_call",
-					"status":    "completed",
+					"status":    itemStatus,
 					"call_id":   tcs.id,
 					"name":      tcs.name,
 					"arguments": tcs.argsBuf.String(),
@@ -796,13 +897,13 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 			out.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: %s\n\n", string(idBytes)))
 		}
 
-		// Build output items for response.done ordered by assigned output_index
+		// Build output items ordered by assigned output_index.
 		outputItems := make([]any, t.nextOutputIndex)
 		if t.itemAdded && t.msgOutputIndex >= 0 && t.msgOutputIndex < len(outputItems) {
 			outputItems[t.msgOutputIndex] = map[string]any{
 				"id":     t.msgID,
 				"type":   "message",
-				"status": "completed",
+				"status": itemStatus,
 				"role":   "assistant",
 				"content": []any{
 					map[string]any{
@@ -816,9 +917,9 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 			tcs := &t.toolCalls[i]
 			if tcs.added && tcs.outputIndex >= 0 && tcs.outputIndex < len(outputItems) {
 				outputItems[tcs.outputIndex] = map[string]any{
-					"id":        tcs.id,
+					"id":        "fc_" + tcs.id,
 					"type":      "function_call",
-					"status":    "completed",
+					"status":    itemStatus,
 					"call_id":   tcs.id,
 					"name":      tcs.name,
 					"arguments": tcs.argsBuf.String(),
@@ -844,25 +945,36 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		if tot == 0 {
 			tot = t.promptTokens + outTokens
 		}
-		donePayload := map[string]any{
-			"type": "response.done",
-			"response": map[string]any{
-				"id":          t.respID,
-				"object":      "response",
-				"created_at":  time.Now().Unix(),
-				"status":      "completed",
-				"model":       t.Model,
-				"output":      compactOutput,
-				"output_text": outText,
-				"usage": map[string]any{
-					"total_tokens":  tot,
-					"input_tokens":  t.promptTokens,
-					"output_tokens": outTokens,
-				},
+		response := map[string]any{
+			"id":          t.respID,
+			"object":      "response",
+			"created_at":  time.Now().Unix(),
+			"status":      status,
+			"model":       t.Model,
+			"output":      compactOutput,
+			"output_text": outText,
+			"usage": map[string]any{
+				"total_tokens":  tot,
+				"input_tokens":  t.promptTokens,
+				"output_tokens": outTokens,
 			},
 		}
+		if t.inputDetails != nil {
+			response["usage"].(map[string]any)["input_tokens_details"] = t.inputDetails
+		}
+		if t.outputDetails != nil {
+			response["usage"].(map[string]any)["output_tokens_details"] = t.outputDetails
+		}
+		if incompleteDetails != nil {
+			response["incomplete_details"] = incompleteDetails
+		}
+		if t.upstreamError != nil {
+			response["error"] = t.upstreamError
+		}
+		eventType := "response." + status
+		donePayload := map[string]any{"type": eventType, "response": response}
 		doneBytes, _ := json.Marshal(donePayload)
-		out.WriteString(fmt.Sprintf("event: response.done\ndata: %s\n\n", string(doneBytes)))
+		out.WriteString(fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(doneBytes)))
 		t.done = true
 		return out.Bytes(), true, nil
 	}
@@ -893,6 +1005,12 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		if tt, ok := usageMap["total_tokens"].(float64); ok {
 			t.totalTokens = int(tt)
 		}
+		if details, ok := usageMap["prompt_tokens_details"].(map[string]any); ok {
+			t.inputDetails = details
+		}
+		if details, ok := usageMap["completion_tokens_details"].(map[string]any); ok {
+			t.outputDetails = details
+		}
 	}
 
 	// First event: response.created
@@ -912,9 +1030,19 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		out.WriteString(fmt.Sprintf("event: response.created\ndata: %s\n\n", string(cBytes)))
 	}
 
-	// Process delta content and tool calls
+	if upstreamError := chunk["error"]; upstreamError != nil {
+		t.upstreamError = upstreamError
+		terminal, done, err := t.TranslateChunk([]byte("[DONE]"))
+		out.Write(terminal)
+		return out.Bytes(), done, err
+	}
+
+	// Retain finish_reason until [DONE] so trailing usage chunks are included.
 	if choices, ok := chunk["choices"].([]any); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]any); ok {
+			if reason, ok := choice["finish_reason"].(string); ok && reason != "" {
+				t.finishReason = reason
+			}
 			if delta, ok := choice["delta"].(map[string]any); ok {
 				if content, ok := delta["content"].(string); ok && content != "" {
 					// Ensure message item added
@@ -998,7 +1126,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 								"type":         "response.output_item.added",
 								"output_index": tcs.outputIndex,
 								"item": map[string]any{
-									"id":        tcs.id,
+									"id":        "fc_" + tcs.id,
 									"type":      "function_call",
 									"status":    "in_progress",
 									"call_id":   tcs.id,
@@ -1021,7 +1149,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 										"type":         "response.output_item.added",
 										"output_index": tcs.outputIndex,
 										"item": map[string]any{
-											"id":        tcs.id,
+											"id":        "fc_" + tcs.id,
 											"type":      "function_call",
 											"status":    "in_progress",
 											"call_id":   tcs.id,
@@ -1035,7 +1163,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 
 								argDeltaPayload := map[string]any{
 									"type":         "response.function_call_arguments.delta",
-									"item_id":      tcs.id,
+									"item_id":      "fc_" + tcs.id,
 									"output_index": tcs.outputIndex,
 									"call_id":      tcs.id,
 									"delta":        args,
@@ -1051,6 +1179,47 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 	}
 
 	return out.Bytes(), false, nil
+}
+
+func responsesStatus(finishReason string) (string, map[string]any) {
+	switch finishReason {
+	case "length":
+		return "incomplete", map[string]any{"reason": "max_output_tokens"}
+	case "content_filter":
+		return "incomplete", map[string]any{"reason": "content_filter"}
+	default:
+		return "completed", nil
+	}
+}
+
+func responsesFinishReason(resp map[string]any, hasToolCalls bool) string {
+	if resp["status"] == "incomplete" {
+		if details, ok := resp["incomplete_details"].(map[string]any); ok && details["reason"] == "content_filter" {
+			return "content_filter"
+		}
+		return "length"
+	}
+	if output, ok := resp["output"].([]any); ok {
+		for _, raw := range output {
+			if item, ok := raw.(map[string]any); ok && item["type"] == "function_call" {
+				hasToolCalls = true
+			}
+		}
+	}
+	if hasToolCalls {
+		return "tool_calls"
+	}
+	return "stop"
+}
+
+func responsesError(resp map[string]any) any {
+	if upstreamError := resp["error"]; upstreamError != nil {
+		return upstreamError
+	}
+	if resp["status"] == "failed" {
+		return map[string]any{"type": "upstream_error", "code": "server_error", "message": "Upstream response failed"}
+	}
+	return nil
 }
 
 // quoteJSON serializes string into valid JSON escaped string literal.

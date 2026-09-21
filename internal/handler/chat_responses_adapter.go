@@ -22,7 +22,7 @@ type responsesResponseAdapter struct {
 	statusCode    int
 	isStream      bool
 	headerWritten bool
-	isSSE         bool
+	finished      bool
 }
 
 func newResponsesResponseAdapter(w http.ResponseWriter, isStream bool, model string) *responsesResponseAdapter {
@@ -65,6 +65,9 @@ func (a *responsesResponseAdapter) Write(p []byte) (int, error) {
 	if a.statusCode < 200 || a.statusCode >= 300 {
 		return a.w.Write(p)
 	}
+	if a.finished {
+		return len(p), nil
+	}
 
 	if a.isStream {
 		if !a.headerWritten {
@@ -80,7 +83,6 @@ func (a *responsesResponseAdapter) Write(p []byte) (int, error) {
 			a.scanBuf = a.scanBuf[idx+1:]
 
 			if data, isDone, ok := translator.ParseSSEDataLine(line); ok || isDone {
-				a.isSSE = true
 				var chunk []byte
 				if isDone {
 					chunk = []byte("[DONE]")
@@ -88,13 +90,20 @@ func (a *responsesResponseAdapter) Write(p []byte) (int, error) {
 					chunk = data
 				}
 				translatedEvents, isFinished, err := a.sseTranslator.TranslateChunk(chunk)
-				if err == nil && len(translatedEvents) > 0 {
-					a.w.Write(translatedEvents)
+				if err != nil {
+					return 0, err
+				}
+				if len(translatedEvents) > 0 {
+					if _, err := a.w.Write(translatedEvents); err != nil {
+						return 0, err
+					}
 					if a.flusher != nil {
 						a.flusher.Flush()
 					}
 				}
 				if isFinished {
+					a.finished = true
+					a.scanBuf = nil
 					return len(p), nil
 				}
 			}
@@ -112,36 +121,23 @@ func (a *responsesResponseAdapter) Flush() {
 }
 
 func (a *responsesResponseAdapter) Finish() {
-	if a.statusCode < 200 || a.statusCode >= 300 {
+	if a.finished || a.statusCode < 200 || a.statusCode >= 300 {
 		return
 	}
 
 	if a.isStream {
 		if len(a.scanBuf) > 0 {
-			if data, isDone, ok := translator.ParseSSEDataLine(a.scanBuf); ok || isDone {
-				var chunk []byte
-				if isDone {
-					chunk = []byte("[DONE]")
-				} else {
-					chunk = data
-				}
-				translatedEvents, _, _ := a.sseTranslator.TranslateChunk(chunk)
-				if len(translatedEvents) > 0 {
-					a.w.Write(translatedEvents)
-				}
+			if _, err := a.Write([]byte("\n")); err != nil {
+				return
 			}
 		}
-		// Send final [DONE] translation
-		doneEvents, _, _ := a.sseTranslator.TranslateChunk([]byte("[DONE]"))
-		if len(doneEvents) > 0 {
-			a.w.Write(doneEvents)
-		}
-		if a.flusher != nil {
-			a.flusher.Flush()
+		if !a.finished {
+			_, _ = a.Write([]byte("data: [DONE]\n\n"))
 		}
 		return
 	}
 
+	a.finished = true
 	// Non-streaming response conversion
 	raw := a.buf.Bytes()
 	if len(raw) == 0 {
