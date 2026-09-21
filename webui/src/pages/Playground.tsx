@@ -11,6 +11,7 @@ import {
   PageHeader,
   SegmentedControl,
   ProviderAvatar,
+  Badge,
   IconChat,
   IconZap,
   IconSliders,
@@ -45,6 +46,15 @@ interface Metrics {
   tokens?: number
   speed?: number
 }
+export type ProtocolType = 'openai' | 'responses' | 'anthropic' | 'gemini'
+
+export interface ProtocolOption {
+  value: ProtocolType
+  label: string
+  endpoint: string
+  badgeTone: 'green' | 'purple' | 'amber' | 'blue'
+  shortLabel: string
+}
 
 interface AssistantResponse {
   targetModel: string
@@ -52,11 +62,11 @@ interface AssistantResponse {
   busy: boolean
   error?: string
   servedModel?: string
+  protocol?: ProtocolType
   metrics?: Metrics
   rawRequest?: unknown
   rawResponse?: unknown
 }
-
 interface Turn {
   id: string
   user: string
@@ -65,6 +75,37 @@ interface Turn {
   b?: AssistantResponse
 }
 
+
+// JSON 安全窄化助手（AGENTS.md §1：前端禁 any，统一 unknown + 类型守卫）。
+// 跨协议响应/SSE 解析共用，置于组件外避免每次渲染重建。
+function asRecord(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+function asArray(v: unknown): unknown[] | null {
+  return Array.isArray(v) ? v : null
+}
+function str(v: unknown): string | null {
+  return typeof v === 'string' ? v : null
+}
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+// 沿对象/数组路径安全取值：dig(obj, 'choices', 0, 'message', 'content')
+function dig(v: unknown, ...path: (string | number)[]): unknown {
+  let cur: unknown = v
+  for (const step of path) {
+    if (typeof step === 'number') {
+      const arr = asArray(cur)
+      if (!arr) return null
+      cur = arr[step]
+    } else {
+      const rec = asRecord(cur)
+      if (!rec) return null
+      cur = rec[step]
+    }
+  }
+  return cur
+}
 
 const Playground: Component = () => {
   const { t } = useI18n()
@@ -92,6 +133,44 @@ const Playground: Component = () => {
   const [modelA, setModelA] = createSignal('')
   const [modelB, setModelB] = createSignal('')
 
+  // 协议端点选择
+  const [protocol, setProtocol] = createSignal<ProtocolType>('openai')
+
+  const protocolOptions = createMemo((): ProtocolOption[] => [
+    {
+      value: 'openai',
+      label: t('playground.protocolOpenAI'),
+      endpoint: '/v1/chat/completions',
+      badgeTone: 'green',
+      shortLabel: 'OpenAI Chat',
+    },
+    {
+      value: 'responses',
+      label: t('playground.protocolResponses'),
+      endpoint: '/v1/responses',
+      badgeTone: 'purple',
+      shortLabel: 'Responses',
+    },
+    {
+      value: 'anthropic',
+      label: t('playground.protocolAnthropic'),
+      endpoint: '/v1/messages',
+      badgeTone: 'amber',
+      shortLabel: 'Anthropic',
+    },
+    {
+      value: 'gemini',
+      label: t('playground.protocolGemini'),
+      endpoint: '/v1beta/models/...:generateContent',
+      badgeTone: 'blue',
+      shortLabel: 'Gemini',
+    },
+  ])
+
+  const activeProtocolMeta = createMemo(() => {
+    const proto = protocol()
+    return protocolOptions().find(p => p.value === proto) || protocolOptions()[0]
+  })
   // 参数配置
   const [systemPrompt, setSystemPrompt] = createSignal('')
   const [temperature, setTemperature] = createSignal(0.7)
@@ -164,15 +243,25 @@ const Playground: Component = () => {
       if (typeof localStorage !== 'undefined' && localStorage) {
         const saved = localStorage.getItem('cyrene_playground_config')
         if (saved) {
-          const parsed = JSON.parse(saved)
-          if (parsed.mode) setMode(parsed.mode)
-          if (parsed.modelA) setModelA(parsed.modelA)
-          if (parsed.modelB) setModelB(parsed.modelB)
-          if (parsed.systemPrompt !== undefined) setSystemPrompt(parsed.systemPrompt)
-          if (typeof parsed.temperature === 'number') setTemperature(parsed.temperature)
-          if (typeof parsed.topP === 'number') setTopP(parsed.topP)
-          if (typeof parsed.maxTokens === 'number') setMaxTokens(parsed.maxTokens)
-          if (typeof parsed.stream === 'boolean') setStream(parsed.stream)
+          const parsed: unknown = JSON.parse(saved)
+          const proto = str(dig(parsed, 'protocol'))
+          if (proto === 'openai' || proto === 'responses' || proto === 'anthropic' || proto === 'gemini') setProtocol(proto)
+          const savedMode = str(dig(parsed, 'mode'))
+          if (savedMode === 'single' || savedMode === 'compare') setMode(savedMode)
+          const savedModelA = str(dig(parsed, 'modelA'))
+          if (savedModelA) setModelA(savedModelA)
+          const savedModelB = str(dig(parsed, 'modelB'))
+          if (savedModelB) setModelB(savedModelB)
+          const savedSys = str(dig(parsed, 'systemPrompt'))
+          if (savedSys !== null) setSystemPrompt(savedSys)
+          const savedTemp = num(dig(parsed, 'temperature'))
+          if (savedTemp !== null) setTemperature(savedTemp)
+          const savedTopP = num(dig(parsed, 'topP'))
+          if (savedTopP !== null) setTopP(savedTopP)
+          const savedMaxTokens = num(dig(parsed, 'maxTokens'))
+          if (savedMaxTokens !== null) setMaxTokens(savedMaxTokens)
+          const savedStream = dig(parsed, 'stream')
+          if (typeof savedStream === 'boolean') setStream(savedStream)
         }
       }
     } catch {
@@ -185,6 +274,7 @@ const Playground: Component = () => {
   // 持久化设置
   createEffect(() => {
     const config = {
+      protocol: protocol(),
       mode: mode(),
       modelA: modelA(),
       modelB: modelB(),
@@ -343,7 +433,188 @@ const Playground: Component = () => {
     toast.info(t('toast.clearHistorySuccess'))
   }
 
-  // 执行单模型请求（支持 Stream 与非 Stream）
+  // 根据选定协议构造各厂商规范的请求体与请求头
+  function buildRequestPayload(
+    proto: ProtocolType,
+    targetModel: string,
+    historyMessages: { role: string; content: string }[],
+    isStream: boolean
+  ): { url: string; headers: Record<string, string>; body: Record<string, unknown> } {
+    const cleanSys = systemPrompt().trim()
+    const temp = Number(temperature())
+    const top_p = Number(topP())
+    const max_tokens = Number(maxTokens())
+
+    switch (proto) {
+      case 'responses': {
+        const input = historyMessages.map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        }))
+        const body: Record<string, unknown> = {
+          model: targetModel,
+          input,
+          stream: isStream,
+          temperature: temp,
+          top_p,
+        }
+        if (max_tokens > 0) {
+          body.max_output_tokens = max_tokens
+        }
+        if (cleanSys) {
+          body.instructions = cleanSys
+        }
+        return {
+          url: '/v1/responses',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        }
+      }
+      case 'anthropic': {
+        const messages = historyMessages.map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        }))
+        const body: Record<string, unknown> = {
+          model: targetModel,
+          messages,
+          max_tokens: max_tokens > 0 ? max_tokens : 4096,
+          temperature: temp,
+          top_p,
+          stream: isStream,
+        }
+        if (cleanSys) {
+          body.system = cleanSys
+        }
+        return {
+          url: '/v1/messages',
+          headers: {
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+          },
+          body,
+        }
+      }
+      case 'gemini': {
+        const contents = historyMessages.map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        }))
+        const body: Record<string, unknown> = {
+          contents,
+          generationConfig: {
+            temperature: temp,
+            topP: top_p,
+            maxOutputTokens: max_tokens > 0 ? max_tokens : 2048,
+          },
+        }
+        if (cleanSys) {
+          body.systemInstruction = {
+            parts: [{ text: cleanSys }],
+          }
+        }
+        const action = isStream ? 'streamGenerateContent?alt=sse' : 'generateContent'
+        const encodedModel = encodeURIComponent(targetModel)
+        return {
+          url: `/v1beta/models/${encodedModel}:${action}`,
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        }
+      }
+      case 'openai':
+      default: {
+        const reqMessages = cleanSys
+          ? [{ role: 'system', content: cleanSys }, ...historyMessages]
+          : historyMessages
+        const body: Record<string, unknown> = {
+          model: targetModel,
+          messages: reqMessages,
+          temperature: temp,
+          top_p,
+          stream: isStream,
+        }
+        if (max_tokens > 0) {
+          body.max_tokens = max_tokens
+        }
+        return {
+          url: '/v1/chat/completions',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        }
+      }
+    }
+  }
+
+  // 跨协议提取非流式响应文本
+  function extractResponseContent(proto: ProtocolType, data: unknown): string {
+    const openAIFallback = () => str(dig(data, 'choices', 0, 'message', 'content')) ?? ''
+    switch (proto) {
+      case 'responses': {
+        const outText = str(dig(data, 'output_text'))
+        if (outText) return outText
+        const items = asArray(dig(data, 'output'))
+        if (items && items.length > 0) {
+          const blocks = asArray(dig(items[0], 'content'))
+          if (blocks && blocks.length > 0) {
+            return str(dig(blocks[0], 'text')) ?? ''
+          }
+        }
+        return openAIFallback()
+      }
+      case 'anthropic': {
+        const blocks = asArray(dig(data, 'content'))
+        if (blocks && blocks.length > 0) {
+          return blocks.map(b => str(dig(b, 'text')) ?? '').join('')
+        }
+        return openAIFallback()
+      }
+      case 'gemini': {
+        const parts = asArray(dig(data, 'candidates', 0, 'content', 'parts'))
+        if (parts && parts.length > 0) {
+          return parts.map(p => str(dig(p, 'text')) ?? '').join('')
+        }
+        return openAIFallback()
+      }
+      case 'openai':
+      default:
+        return openAIFallback()
+    }
+  }
+
+  // 跨协议提取 SSE 增量文本
+  function extractSSEDelta(proto: ProtocolType, parsed: unknown): string | null {
+    if (!parsed) return null
+    const openAIFallback = () => str(dig(parsed, 'choices', 0, 'delta', 'content'))
+    switch (proto) {
+      case 'responses': {
+        if (dig(parsed, 'type') === 'response.output_text.delta') {
+          const delta = str(dig(parsed, 'delta'))
+          if (delta !== null) return delta
+        }
+        return openAIFallback()
+      }
+      case 'anthropic': {
+        if (dig(parsed, 'type') === 'content_block_delta') {
+          const delta = str(dig(parsed, 'delta', 'text'))
+          if (delta !== null) return delta
+        }
+        return openAIFallback()
+      }
+      case 'gemini': {
+        const parts = asArray(dig(parsed, 'candidates', 0, 'content', 'parts'))
+        if (parts && parts.length > 0) {
+          const t = parts.map(p => str(dig(p, 'text')) ?? '').join('')
+          return t || null
+        }
+        return openAIFallback()
+      }
+      case 'openai':
+      default:
+        return openAIFallback()
+    }
+  }
+
+  // 执行单模型请求（支持多协议 Stream 与非 Stream）
   async function executeRequest(
     targetModel: string,
     historyMessages: { role: string; content: string }[],
@@ -352,58 +623,55 @@ const Playground: Component = () => {
   ): Promise<{
     fullContent: string
     servedModel: string
+    protocol: ProtocolType
     metrics: Metrics
     rawRequest: unknown
     rawResponse: unknown
   }> {
     const startTime = performance.now()
     let firstTokenTime: number | null = null
+    const activeProto = protocol()
+    const reqInfo = buildRequestPayload(activeProto, targetModel, historyMessages, stream())
 
-    const reqMessages = systemPrompt().trim()
-      ? [{ role: 'system', content: systemPrompt().trim() }, ...historyMessages]
-      : historyMessages
-
-    const reqBody: Record<string, unknown> = {
-      model: targetModel,
-      messages: reqMessages,
-      temperature: Number(temperature()),
-      top_p: Number(topP()),
-      max_tokens: Number(maxTokens()),
-      stream: stream(),
-    }
-
-    const res = await fetch('/v1/chat/completions', {
+    const res = await fetch(reqInfo.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reqBody),
+      headers: reqInfo.headers,
+      body: JSON.stringify(reqInfo.body),
       signal,
     })
 
     const servedHeader = res.headers.get('x-cyrene-served-model') || ''
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}))
-      const msg = errData?.error?.message || errData?.error || `HTTP ${res.status} ${res.statusText}`
+      const errData: unknown = await res.json().catch(() => ({}))
+      const errMsg = str(dig(errData, 'error', 'message')) ?? str(dig(errData, 'error'))
+      const msg = errMsg || `HTTP ${res.status} ${res.statusText}`
       throw new Error(msg)
     }
 
     if (!stream() || !res.body) {
-      const data = await res.json()
+      const data: unknown = await res.json()
       const totalMs = Math.round(performance.now() - startTime)
-      const content = data?.choices?.[0]?.message?.content ?? ''
-      const completionTokens = data?.usage?.completion_tokens || Math.max(1, Math.round(content.length / 3.5))
+      const content = extractResponseContent(activeProto, data)
+      const reportedTokens =
+        num(dig(data, 'usage', 'completion_tokens')) ??
+        num(dig(data, 'usage', 'output_tokens')) ??
+        num(dig(data, 'usageMetadata', 'candidatesTokenCount'))
+      const completionTokens = reportedTokens ?? Math.max(1, Math.round(content.length / 3.5))
       const speed = totalMs > 0 ? Number(((completionTokens / totalMs) * 1000).toFixed(1)) : 0
-      onUpdate(content, { servedModel: servedHeader || data?.model })
+      const respModel = str(dig(data, 'model')) ?? str(dig(data, 'modelVersion')) ?? ''
+      onUpdate(content, { servedModel: servedHeader || respModel || undefined })
       return {
         fullContent: content,
-        servedModel: servedHeader || data?.model || targetModel,
+        servedModel: servedHeader || respModel || targetModel,
+        protocol: activeProto,
         metrics: {
           ttftMs: totalMs,
           totalMs,
           tokens: completionTokens,
           speed,
         },
-        rawRequest: reqBody,
+        rawRequest: reqInfo.body,
         rawResponse: data,
       }
     }
@@ -433,10 +701,12 @@ const Playground: Component = () => {
           if (dataStr === '[DONE]') continue
 
           try {
-            const parsed = JSON.parse(dataStr)
+            const parsed: unknown = JSON.parse(dataStr)
             rawChunks.push(parsed)
-            if (parsed.model && !servedModel) servedModel = parsed.model
-            const delta = parsed?.choices?.[0]?.delta?.content
+            if (!servedModel) {
+              servedModel = str(dig(parsed, 'model')) ?? str(dig(parsed, 'modelVersion')) ?? ''
+            }
+            const delta = extractSSEDelta(activeProto, parsed)
             if (delta) {
               if (firstTokenTime === null) {
                 firstTokenTime = performance.now()
@@ -470,13 +740,14 @@ const Playground: Component = () => {
     return {
       fullContent: accumulated,
       servedModel: servedModel || targetModel,
+      protocol: activeProto,
       metrics: {
         ttftMs,
         totalMs,
         tokens: estimatedTokens,
         speed,
       },
-      rawRequest: reqBody,
+      rawRequest: reqInfo.body,
       rawResponse: rawChunks.length > 0 ? rawChunks : { content: accumulated },
     }
   }
@@ -506,8 +777,8 @@ const Playground: Component = () => {
       id: turnId,
       user: text,
       mode: isCompare ? 'compare' : 'single',
-      a: { targetModel: modelA(), content: '', busy: true },
-      b: isCompare ? { targetModel: modelB(), content: '', busy: true } : undefined,
+      a: { targetModel: modelA(), content: '', busy: true, protocol: protocol() },
+      b: isCompare ? { targetModel: modelB(), content: '', busy: true, protocol: protocol() } : undefined,
     }
 
     setTurns(prev => [...prev, newTurn])
@@ -545,6 +816,7 @@ const Playground: Component = () => {
                     content: res.fullContent,
                     busy: false,
                     servedModel: res.servedModel,
+                    protocol: res.protocol,
                     metrics: res.metrics,
                     rawRequest: res.rawRequest,
                     rawResponse: res.rawResponse,
@@ -613,6 +885,7 @@ const Playground: Component = () => {
                       content: res.fullContent,
                       busy: false,
                       servedModel: res.servedModel,
+                      protocol: res.protocol,
                       metrics: res.metrics,
                       rawRequest: res.rawRequest,
                       rawResponse: res.rawResponse,
@@ -653,30 +926,111 @@ const Playground: Component = () => {
   }
 
   // 生成代码片段
+  function getProtocolBadgeTone(proto?: ProtocolType): 'green' | 'purple' | 'amber' | 'blue' | 'gray' {
+    switch (proto) {
+      case 'responses':
+        return 'purple'
+      case 'anthropic':
+        return 'amber'
+      case 'gemini':
+        return 'blue'
+      case 'openai':
+        return 'green'
+      default:
+        return 'gray'
+    }
+  }
+
+  function getProtocolLabel(proto?: ProtocolType): string {
+    switch (proto) {
+      case 'responses':
+        return 'Responses'
+      case 'anthropic':
+        return 'Messages'
+      case 'gemini':
+        return 'Gemini'
+      case 'openai':
+        return 'Chat'
+      default:
+        return 'Chat'
+    }
+  }
+
+  // 生成代码片段（全协议自适应）
   function generateCode(lang: 'curl' | 'python' | 'node'): string {
     const origin = window.location.origin
     const model = modelA() || 'antigravity/gemini-2.5-flash'
     const sample = t('playground.sampleUserMessage')
-    const messages = systemPrompt().trim()
-      ? [{ role: 'system', content: systemPrompt().trim() }, { role: 'user', content: turns().slice(-1)[0]?.user || sample }]
-      : [{ role: 'user', content: turns().slice(-1)[0]?.user || sample }]
+    const lastUser = turns().slice(-1)[0]?.user || sample
+    const historySample = [{ role: 'user', content: lastUser }]
+    const proto = protocol()
+    const reqInfo = buildRequestPayload(proto, model, historySample, stream())
 
     if (lang === 'curl') {
-      const body = {
-        model,
-        messages,
-        temperature: temperature(),
-        top_p: topP(),
-        max_tokens: maxTokens(),
-        stream: stream(),
-      }
-      return `curl -X POST "${origin}/v1/chat/completions" \\
-  -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(body, null, 2)}'`
+      const headerLines = Object.entries(reqInfo.headers)
+        .map(([k, v]) => `  -H "${k}: ${v}" \\`)
+        .join('\n')
+      return `curl -X POST "${origin}${reqInfo.url}" \\\n${headerLines}\n  -d '${JSON.stringify(reqInfo.body, null, 2)}'`
     }
 
     if (lang === 'python') {
-      return `from openai import OpenAI
+      switch (proto) {
+        case 'responses':
+          return `from openai import OpenAI
+
+client = OpenAI(
+    base_url="${origin}/v1",
+    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
+)
+
+response = client.responses.create(
+    model="${model}",
+    input=${JSON.stringify(reqInfo.body.input, null, 4)},${reqInfo.body.instructions ? `\n    instructions=${JSON.stringify(reqInfo.body.instructions)},` : ''}
+    stream=${stream() ? 'True' : 'False'}
+)
+
+${stream() ? 'for event in response:\n    if hasattr(event, "delta") and event.delta:\n        print(event.delta, end="", flush=True)' : 'print(response.output_text)'}
+`
+        case 'anthropic':
+          return `import anthropic
+
+client = anthropic.Anthropic(
+    base_url="${origin}",
+    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
+)
+
+response = client.messages.create(
+    model="${model}",
+    messages=${JSON.stringify(reqInfo.body.messages, null, 4)},${reqInfo.body.system ? `\n    system=${JSON.stringify(reqInfo.body.system)},` : ''}
+    max_tokens=${reqInfo.body.max_tokens},
+    temperature=${temperature()},
+    stream=${stream() ? 'True' : 'False'}
+)
+
+${stream() ? 'for event in response:\n    if event.type == "content_block_delta" and hasattr(event.delta, "text"):\n        print(event.delta.text, end="", flush=True)' : 'print("".join(block.text for block in response.content if hasattr(block, "text")))'}
+`
+        case 'gemini':
+          return `from google import genai
+
+client = genai.Client(
+    http_options={"api_version": "v1beta", "base_url": "${origin}"},
+    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
+)
+
+${stream() ? `response = client.models.generate_content_stream(
+    model="${model}",
+    contents=${JSON.stringify(reqInfo.body.contents, null, 4)},
+)
+for chunk in response:
+    print(chunk.text, end="", flush=True)` : `response = client.models.generate_content(
+    model="${model}",
+    contents=${JSON.stringify(reqInfo.body.contents, null, 4)},
+)
+print(response.text)`}
+`
+        case 'openai':
+        default:
+          return `from openai import OpenAI
 
 client = OpenAI(
     base_url="${origin}/v1",
@@ -685,7 +1039,7 @@ client = OpenAI(
 
 response = client.chat.completions.create(
     model="${model}",
-    messages=${JSON.stringify(messages, null, 4)},
+    messages=${JSON.stringify(reqInfo.body.messages, null, 4)},
     temperature=${temperature()},
     top_p=${topP()},
     max_tokens=${maxTokens()},
@@ -694,9 +1048,79 @@ response = client.chat.completions.create(
 
 ${stream() ? 'for chunk in response:\n    if chunk.choices[0].delta.content:\n        print(chunk.choices[0].delta.content, end="", flush=True)' : 'print(response.choices[0].message.content)'}
 `
+      }
     }
 
-    return `import OpenAI from "openai";
+    // Node.js
+    switch (proto) {
+      case 'responses':
+        return `import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "${origin}/v1",
+  apiKey: "cyrene-local",
+});
+
+async function main() {
+  const response = await client.responses.create({
+    model: "${model}",
+    input: ${JSON.stringify(reqInfo.body.input, null, 4)},${reqInfo.body.instructions ? `\n    instructions: ${JSON.stringify(reqInfo.body.instructions)},` : ''}
+    stream: ${stream() ? 'true' : 'false'},
+  });
+
+  ${stream() ? 'for await (const event of response) {\n    if (event.delta) process.stdout.write(event.delta);\n  }' : 'console.log(response.output_text);'}
+}
+
+main();
+`
+      case 'anthropic':
+        return `import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  baseURL: "${origin}",
+  apiKey: "cyrene-local",
+});
+
+async function main() {
+  const response = await client.messages.create({
+    model: "${model}",
+    messages: ${JSON.stringify(reqInfo.body.messages, null, 4)},${reqInfo.body.system ? `\n    system: ${JSON.stringify(reqInfo.body.system)},` : ''}
+    max_tokens: ${reqInfo.body.max_tokens},
+    stream: ${stream() ? 'true' : 'false'},
+  });
+
+  ${stream() ? 'for await (const chunk of response) {\n    if (chunk.type === "content_block_delta" && chunk.delta?.text) {\n      process.stdout.write(chunk.delta.text);\n    }\n  }' : 'console.log(response.content.map(c => c.text).join(""));'}
+}
+
+main();
+`
+      case 'gemini':
+        return `import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({
+  apiKey: "cyrene-local",
+  httpOptions: { baseUrl: "${origin}" },
+});
+
+async function main() {
+  ${stream() ? `const response = await ai.models.generateContentStream({
+    model: "${model}",
+    contents: ${JSON.stringify(reqInfo.body.contents, null, 4)},
+  });
+  for await (const chunk of response) {
+    process.stdout.write(chunk.text || "");
+  }` : `const response = await ai.models.generateContent({
+    model: "${model}",
+    contents: ${JSON.stringify(reqInfo.body.contents, null, 4)},
+  });
+  console.log(response.text);`}
+}
+
+main();
+`
+      case 'openai':
+      default:
+        return `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "${origin}/v1",
@@ -706,7 +1130,7 @@ const client = new OpenAI({
 async function main() {
   const response = await client.chat.completions.create({
     model: "${model}",
-    messages: ${JSON.stringify(messages, null, 4)},
+    messages: ${JSON.stringify(reqInfo.body.messages, null, 4)},
     temperature: ${temperature()},
     top_p: ${topP()},
     max_tokens: ${maxTokens()},
@@ -718,6 +1142,7 @@ async function main() {
 
 main();
 `
+    }
   }
 
   return (
@@ -744,6 +1169,15 @@ main();
               ]}
               size="sm"
             />
+            <div class="hidden sm:flex items-center">
+              <Select
+                class="w-44 text-xs font-mono"
+                size="sm"
+                value={protocol()}
+                options={protocolOptions()}
+                onChange={v => setProtocol(v as ProtocolType)}
+              />
+            </div>
             <Button
               variant="secondary"
               size="sm"
@@ -845,7 +1279,7 @@ main();
           <div
             ref={chatContainerRef}
             onScroll={handleScroll}
-            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 px-0.5 scroll-smooth custom-scrollbar flex flex-col"
+            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 px-0.5 scroll-smooth flex flex-col"
           >
             <Show
               when={turns().length > 0}
@@ -899,9 +1333,14 @@ main();
                                 <span class="text-xs font-semibold text-foreground truncate max-w-[260px] sm:max-w-[340px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
                                   {getResponseModelLabel(turn.a)}
                                 </span>
-                                <span class="text-[10px] text-faint truncate max-w-[260px]">
-                                  {getResponseProvider(turn.a)}
-                                </span>
+                                <div class="flex items-center gap-1.5 mt-0.5">
+                                  <span class="text-[10px] text-faint truncate max-w-[180px]">
+                                    {getResponseProvider(turn.a)}
+                                  </span>
+                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-[9px] font-mono px-1 py-0 uppercase">
+                                    {getProtocolLabel(turn.a.protocol)}
+                                  </Badge>
+                                </div>
                               </div>
                               <Show when={turn.a.busy}>
                                 <span class="text-[11px] text-accent animate-pulse flex items-center gap-1 ml-1 shrink-0">
@@ -987,9 +1426,14 @@ main();
                                 <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
                                   {getResponseModelLabel(turn.a)}
                                 </span>
-                                <span class="text-[10px] text-faint truncate max-w-[150px]">
-                                  {getResponseProvider(turn.a)}
-                                </span>
+                                <div class="flex items-center gap-1 mt-0.5">
+                                  <span class="text-[10px] text-faint truncate max-w-[100px]">
+                                    {getResponseProvider(turn.a)}
+                                  </span>
+                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-[8px] font-mono px-1 py-0 uppercase">
+                                    {getProtocolLabel(turn.a.protocol)}
+                                  </Badge>
+                                </div>
                               </div>
                               <Show when={turn.a.busy}>
                                 <span class="text-[10px] text-accent animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
@@ -1053,9 +1497,14 @@ main();
                                 <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.b?.servedModel ? `${turn.b?.targetModel} (served: ${turn.b?.servedModel})` : turn.b?.targetModel}>
                                   {getResponseModelLabel(turn.b)}
                                 </span>
-                                <span class="text-[10px] text-faint truncate max-w-[150px]">
-                                  {getResponseProvider(turn.b)}
-                                </span>
+                                <div class="flex items-center gap-1 mt-0.5">
+                                  <span class="text-[10px] text-faint truncate max-w-[100px]">
+                                    {getResponseProvider(turn.b)}
+                                  </span>
+                                  <Badge tone={getProtocolBadgeTone(turn.b?.protocol)} class="text-[8px] font-mono px-1 py-0 uppercase">
+                                    {getProtocolLabel(turn.b?.protocol)}
+                                  </Badge>
+                                </div>
                               </div>
                               <Show when={turn.b?.busy}>
                                 <span class="text-[10px] text-accent animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
@@ -1194,7 +1643,33 @@ main();
                 </div>
               </div>
               {/* 参数项独立滚动容器 */}
-              <div class="flex-1 min-h-0 overflow-y-auto space-y-4 px-1 pt-2 custom-scrollbar">
+              <div class="flex-1 min-h-0 overflow-y-auto space-y-4 px-1 pt-2">
+              {/* API 协议端点选择卡片 */}
+              <div class="p-2.5 rounded-control bg-black/4 dark:bg-white/4 border border-subtle/60 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-medium text-foreground flex items-center gap-1.5">
+                    <IconZap size={13} class="text-accent" />
+                    {t('playground.protocol')}
+                  </span>
+                  <Badge tone={activeProtocolMeta().badgeTone} class="text-[9px] font-mono px-1.5 py-0 uppercase">
+                    POST
+                  </Badge>
+                </div>
+                <Select
+                  class="w-full text-xs font-mono"
+                  size="sm"
+                  value={protocol()}
+                  options={protocolOptions()}
+                  onChange={v => setProtocol(v as ProtocolType)}
+                />
+                <div class="flex items-center justify-between text-[11px] text-faint font-mono pt-0.5">
+                  <span>{t('playground.activeEndpoint')}:</span>
+                  <span class="text-accent truncate max-w-[150px]" title={activeProtocolMeta().endpoint}>
+                    {activeProtocolMeta().endpoint}
+                  </span>
+                </div>
+              </div>
+
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between h-5">
@@ -1298,20 +1773,24 @@ main();
         onClose={() => setCodeModalOpen(false)}
       >
         <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <SegmentedControl
-              value={codeLang()}
-              onChange={l => setCodeLang(l as 'curl' | 'python' | 'node')}
-              options={[
-                { value: 'curl', label: 'cURL' },
-                { value: 'python', label: 'Python' },
-                { value: 'node', label: 'Node.js / TS' },
-              ]}
-              size="sm"
-            />
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
+              <SegmentedControl
+                value={codeLang()}
+                onChange={l => setCodeLang(l as 'curl' | 'python' | 'node')}
+                options={[
+                  { value: 'curl', label: 'cURL' },
+                  { value: 'python', label: 'Python' },
+                  { value: 'node', label: 'Node.js / TS' },
+                ]}
+                size="sm"
+              />
+              <Badge tone={activeProtocolMeta().badgeTone} class="text-[10px] font-mono px-2 py-0.5 uppercase">
+                {activeProtocolMeta().shortLabel}
+              </Badge>
+            </div>
             <Button
               variant="primary"
-              size="sm"
               class="gap-1.5"
               onClick={() => {
                 copyText(generateCode(codeLang()), t('playground.copyClientCode'))
