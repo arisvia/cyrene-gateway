@@ -2,6 +2,21 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-09-21
+
+### Added
+- **Google Gemini 入站协议全栈兼容**：全面开放 `/v1beta/models/...` 与 `/v1/models/...` REST/SDK 端点，支持多轮对话、流式增量、多工具调用与思考链互转。
+- **演练场多协议矩阵与多语言代码生成**：支持在 WebUI 演练场中自由切换 Chat、Responses、Messages、Gemini 四大协议，并支持导出 cURL、Python 与 Node.js 客户端代码。
+- **强制流式模型非流式工具调用自动聚合**：彻底攻克 OpenAI Codex 等 `ForceStream` 专属模型在非流式调用下丢失 `tool_calls` 的问题，完整保真工具名与参数。
+
+### Changed
+- **有状态跨协议流式状态机（SSETranslator）重构**：统一管理 Anthropic、Gemini、Responses 和 OpenAI 间的流式生命周期、工具索引分配与异常流快速失败。
+- **OpenAI Responses API 双向规范深度对齐**：全面接入 `response.completed` 等标准终态事件与 `fc_` 规范前缀，实现 Token 详情与结构化参数无缝流转。
+- **模型组合（Combo）全协议上游打通与装配收口**：收口全站上游请求预处理，模型组合全面支持路由至 Claude、Gemini、Codex 等异构提供商。
+
+### Security
+- **代理池与出站 SSRF 校验加固**：`SafeHTTPClient` 适配环境代理白名单机制，并阻断对伪造内部路由头的越权注入。
+
 ## [1.2.4] - 2026-09-20
 
 ### Fixed
@@ -80,6 +95,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.3.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.4...v1.3.0
 [1.2.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.2...v1.2.3
 [1.2.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.0...v1.2.2
