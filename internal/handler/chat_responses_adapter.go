@@ -214,7 +214,7 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 	newReq.Header = r.Header.Clone()
 	newReq.Header.Set("Content-Type", "application/json")
-
+	newReq.Header.Set("X-Cyrene-Original-Endpoint", "/v1/responses")
 	s.handleChatCompletions(adapter, newReq)
 	adapter.Finish()
 }

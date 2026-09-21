@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
@@ -126,6 +127,17 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		slog.String("model", qoderKey),
 		slog.String("connection", conn.ID),
 	)
+	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
+	if s.Events != nil {
+		s.Events.Publish(RequestEvent{
+			Type:      "routing",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Provider:  modelInfo.Provider,
+			Model:     modelInfo.Model,
+			Endpoint:  endpoint,
+			Status:    "routing",
+		})
+	}
 
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
@@ -139,8 +151,47 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		errBody, _ := io.ReadAll(resp.Body)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
+		latencyMs := int(time.Since(start).Milliseconds())
+		if latencyMs < 0 {
+			latencyMs = 0
+		}
+		statusStr := fmt.Sprintf("%d", resp.StatusCode)
+		rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+		rdData := map[string]any{
+			"id":           rdID,
+			"timestamp":    time.Now().UTC().Format(time.RFC3339),
+			"provider":     modelInfo.Provider,
+			"model":        modelInfo.Model,
+			"connectionId": conn.ID,
+			"status":       statusStr,
+			"latencyMs":    latencyMs,
+			"endpoint":     endpoint,
+			"error":        string(errBody),
+			"input":        extractPromptSummary(req.Messages),
+		}
+		rdBytes, _ := json.Marshal(rdData)
+		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+			ID:           rdID,
+			Timestamp:    rdData["timestamp"].(string),
+			Provider:     modelInfo.Provider,
+			Model:        modelInfo.Model,
+			ConnectionID: conn.ID,
+			Status:       statusStr,
+			Data:         string(rdBytes),
+		})
 		if s.Metrics != nil {
-			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, "/v1/chat/completions", resp.StatusCode, time.Since(start).Seconds(), nil)
+			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
+		}
+		if s.Events != nil {
+			s.Events.Publish(RequestEvent{
+				Type:      "request",
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Provider:  modelInfo.Provider,
+				Model:     modelInfo.Model,
+				Status:    statusStr,
+				Endpoint:  endpoint,
+				LatencyMs: int64(latencyMs),
+			})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
@@ -156,9 +207,10 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,
 		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     "/v1/chat/completions",
+		Endpoint:     endpoint,
 		StartedAt:    start,
 		Status:       resp.StatusCode,
+		Prompt:       extractPromptSummary(req.Messages),
 	}
 	// 非流式请求（OpenAI 契约 stream 默认 false）：上游只有 SSE，
 	// 在网关侧聚合 chunks 后拼成标准 chat.completion JSON 返回。

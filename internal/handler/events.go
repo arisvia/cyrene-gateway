@@ -98,7 +98,11 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 			return
 		case ev := <-ch:
 			data, _ := json.Marshal(ev)
-			writeSSE(w, flusher, "request", string(data))
+			evtName := ev.Type
+			if evtName == "" {
+				evtName = "request"
+			}
+			writeSSE(w, flusher, evtName, string(data))
 		case <-time.After(30 * time.Second):
 			// Heartbeat to keep connection alive
 			writeSSE(w, flusher, "ping", `{}`)

@@ -80,6 +80,9 @@ func (s *Server) quotaChecker() provider.QuotaChecker {
 // API (Phase 31). Port of 9router GET /api/usage/[connectionId]. Providers
 // without an upstream quota endpoint return an informational message.
 func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	id := r.PathValue("id")
 	conn, err := s.DB.GetConnection(id)
 	if err != nil {

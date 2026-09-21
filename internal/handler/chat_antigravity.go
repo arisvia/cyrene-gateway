@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
@@ -127,6 +128,18 @@ func (s *Server) handleAntigravityChat(
 	upReq.Header.Set("Accept", "text/event-stream")
 	upReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
 
+	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
+	start := time.Now()
+	if s.Events != nil {
+		s.Events.Publish(RequestEvent{
+			Type:      "routing",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Provider:  conn.Provider,
+			Model:     modelInfo.Model,
+			Endpoint:  endpoint,
+			Status:    "routing",
+		})
+	}
 	resp, err := client.Do(upReq)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "antigravity upstream connection failed: " + err.Error()})
@@ -136,6 +149,48 @@ func (s *Server) handleAntigravityChat(
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		latencyMs := time.Since(start).Milliseconds()
+		if latencyMs < 0 {
+			latencyMs = 0
+		}
+		statusStr := fmt.Sprintf("%d", resp.StatusCode)
+		rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+		rdData := map[string]any{
+			"id":           rdID,
+			"timestamp":    time.Now().UTC().Format(time.RFC3339),
+			"provider":     conn.Provider,
+			"model":        modelInfo.Model,
+			"connectionId": conn.ID,
+			"status":       statusStr,
+			"latencyMs":    latencyMs,
+			"endpoint":     endpoint,
+			"error":        string(respBody),
+			"input":        extractPromptSummary(req.Messages),
+		}
+		rdBytes, _ := json.Marshal(rdData)
+		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+			ID:           rdID,
+			Timestamp:    rdData["timestamp"].(string),
+			Provider:     conn.Provider,
+			Model:        modelInfo.Model,
+			ConnectionID: conn.ID,
+			Status:       statusStr,
+			Data:         string(rdBytes),
+		})
+		if s.Metrics != nil {
+			s.Metrics.ObserveRequest(conn.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
+		}
+		if s.Events != nil {
+			s.Events.Publish(RequestEvent{
+				Type:      "request",
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Provider:  conn.Provider,
+				Model:     modelInfo.Model,
+				Endpoint:  endpoint,
+				Status:    statusStr,
+				LatencyMs: latencyMs,
+			})
+		}
 		writeJSON(w, resp.StatusCode, map[string]any{
 			"error": fmt.Sprintf("antigravity upstream error (HTTP %d): %s", resp.StatusCode, string(respBody)),
 		})
@@ -143,11 +198,14 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	uc := &usageContext{
-		StartedAt:    time.Now(),
+		StartedAt:    start,
 		Provider:     conn.Provider,
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,
+		APIKey:       extractRequestAPIKey(r),
+		Endpoint:     endpoint,
 		Status:       http.StatusOK,
+		Prompt:       extractPromptSummary(req.Messages),
 	}
 
 	if isImage || !req.Stream {
@@ -157,7 +215,9 @@ func (s *Server) handleAntigravityChat(
 	}
 }
 
-const defaultThinkingAgSignature = "context_engineering_thought_signature"
+// defaultThinkingAgSignature is the base64-encoded dummy thought signature ("skip_thought_signature_validator")
+// officially recognized by Google Gemini and Vertex AI to bypass thought signature validation for prior turns.
+const defaultThinkingAgSignature = "c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I="
 
 func parseMessageContent(raw json.RawMessage) string {
 	if len(raw) == 0 {
@@ -265,7 +325,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 
 	chatSeq := 0
 	chatCmpleID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())
-
+	var outBuilder strings.Builder
 	for scanner.Scan() {
 		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
 		if !ok || isDone {
@@ -312,6 +372,9 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		delta := map[string]any{}
 		if textChunk != "" {
 			delta["content"] = textChunk
+			if outBuilder.Len() < 16384 {
+				outBuilder.WriteString(textChunk)
+			}
 		}
 		if reasoningChunk != "" {
 			delta["reasoning_content"] = reasoningChunk
@@ -350,6 +413,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
+	uc.Response = outBuilder.String()
 	s.recordUsage(uc, usage.Usage{TotalTokens: chatSeq * 4})
 }
 
@@ -419,10 +483,9 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	json.NewEncoder(w).Encode(respObj)
-
+	uc.Response = fullText
 	s.recordUsage(uc, usage.Usage{TotalTokens: len(fullText) / 4})
 }
-
 func randomHex(n int) string {
 	b := make([]byte, n)
 	rand.Read(b)

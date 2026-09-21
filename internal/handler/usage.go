@@ -309,6 +309,9 @@ type ProviderUsageAggregate struct {
 
 // handleUsageProviders returns per-provider aggregate usage with quota overlay.
 func (s *Server) handleUsageProviders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	period := r.URL.Query().Get("period")
 	if period == "" {
 		period = "7d"

@@ -44,6 +44,73 @@ type usageContext struct {
 	APIKey       string
 	Endpoint     string
 	Status       int
+	Prompt       string
+	Response     string
+}
+
+func capPromptText(s string) string {
+	const maxPromptChars = 16384
+	if len(s) > maxPromptChars {
+		return s[:maxPromptChars] + "..."
+	}
+	return s
+}
+
+func extractPromptSummary(messages []Message) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if strings.ToLower(messages[i].Role) == "user" {
+			txt := parseMessageContent(messages[i].Content)
+			if txt != "" {
+				return capPromptText(txt)
+			}
+		}
+	}
+	return capPromptText(parseMessageContent(messages[len(messages)-1].Content))
+}
+func extractAnthropicPrompt(reqBody map[string]any) string {
+	rawMsgs, ok := reqBody["messages"].([]any)
+	if !ok || len(rawMsgs) == 0 {
+		return ""
+	}
+	extractText := func(content any) string {
+		switch c := content.(type) {
+		case string:
+			return c
+		case []any:
+			var sb strings.Builder
+			for _, item := range c {
+				if block, ok := item.(map[string]any); ok {
+					if t, ok := block["text"].(string); ok && t != "" {
+						if sb.Len() > 0 {
+							sb.WriteString("\n")
+						}
+						sb.WriteString(t)
+					}
+				}
+			}
+			return sb.String()
+		}
+		return ""
+	}
+	for i := len(rawMsgs) - 1; i >= 0; i-- {
+		msg, ok := rawMsgs[i].(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := msg["role"].(string); strings.ToLower(role) == "user" {
+			txt := extractText(msg["content"])
+			if txt != "" {
+				return capPromptText(txt)
+			}
+		}
+	}
+	if last, ok := rawMsgs[len(rawMsgs)-1].(map[string]any); ok {
+		return capPromptText(extractText(last["content"]))
+	}
+	return ""
 }
 
 // ChatCompletionRequest represents an OpenAI-compatible chat request
@@ -440,6 +507,18 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			upstreamReq.Header.Set("Accept", "text/event-stream")
 		}
 
+		endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
+		if s.Events != nil {
+			s.Events.Publish(RequestEvent{
+				Type:      "routing",
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Provider:  modelInfo.Provider,
+				Model:     modelInfo.Model,
+				Endpoint:  endpoint,
+				Status:    "routing",
+			})
+		}
+
 		client := s.getHTTPClient(5 * time.Minute)
 		resp, err := client.Do(upstreamReq)
 		if err != nil {
@@ -465,9 +544,10 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				Model:        modelInfo.Model,
 				ConnectionID: conn.ID,
 				APIKey:       extractRequestAPIKey(r),
-				Endpoint:     "/v1/chat/completions",
+				Endpoint:     resolveRequestEndpoint(r, "/v1/chat/completions"),
 				StartedAt:    start,
 				Status:       resp.StatusCode,
+				Prompt:       extractPromptSummary(req.Messages),
 			}
 			s.proxyResponse(w, r, resp, req.Stream, upstreamStream, translator.FormatOpenAI, modelInfo.Model, uc)
 			resp.Body.Close()
@@ -489,6 +569,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
 		if !fallbackResult.ShouldFallback {
 			// Non-fallbackable error, return immediately
+			s.recordComboFailure(r, combo.Name, resp.StatusCode, string(errBody), start, extractPromptSummary(req.Messages))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(resp.StatusCode)
 			w.Write(errBody)
@@ -506,6 +587,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 	if lastError == "" {
 		lastError = "all combo models unavailable"
 	}
+	s.recordComboFailure(r, combo.Name, lastStatus, lastError, start, extractPromptSummary(req.Messages))
 	writeJSON(w, lastStatus, map[string]string{"error": lastError})
 }
 
@@ -722,6 +804,18 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		slog.Bool("stream", req.Stream),
 	)
 
+	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
+	if s.Events != nil {
+		s.Events.Publish(RequestEvent{
+			Type:      "routing",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Provider:  modelInfo.Provider,
+			Model:     modelInfo.Model,
+			Endpoint:  endpoint,
+			Status:    "routing",
+		})
+	}
+
 	// Phase 9: Use proxy-aware HTTP client
 	start := time.Now()
 	client := s.getHTTPClient(5 * time.Minute)
@@ -795,8 +889,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			"connectionId": conn.ID,
 			"status":       statusStr,
 			"latencyMs":    latencyMs,
-			"endpoint":     "/v1/chat/completions",
+			"endpoint":     endpoint,
 			"error":        string(errBody),
+			"input":        extractPromptSummary(req.Messages),
 		}
 		rdBytes, _ := json.Marshal(rdData)
 		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
@@ -809,7 +904,18 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			Data:         string(rdBytes),
 		})
 		if s.Metrics != nil {
-			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, "/v1/chat/completions", resp.StatusCode, time.Since(start).Seconds(), nil)
+			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
+		}
+		if s.Events != nil {
+			s.Events.Publish(RequestEvent{
+				Type:      "request",
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Provider:  modelInfo.Provider,
+				Model:     modelInfo.Model,
+				Status:    statusStr,
+				Endpoint:  endpoint,
+				LatencyMs: int64(latencyMs),
+			})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
@@ -829,9 +935,10 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,
 		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     "/v1/chat/completions",
+		Endpoint:     endpoint,
 		StartedAt:    start,
 		Status:       resp.StatusCode,
+		Prompt:       extractPromptSummary(req.Messages),
 	}
 	s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
 }
@@ -960,6 +1067,7 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 			},
 		},
 	}
+	uc.Response = contentBuilder.String()
 	if lastUsage.TotalTokens > 0 {
 		respObj["usage"] = map[string]any{
 			"prompt_tokens":     lastUsage.PromptTokens,
@@ -1016,6 +1124,25 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 		u = usage.ExtractFromGemini(body)
 	default:
 		u = usage.ExtractFromOpenAI(body)
+	}
+	var respObj struct {
+		Choices []struct {
+			Message struct {
+				Content any `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(body, &respObj); err == nil {
+		if len(respObj.Choices) > 0 {
+			if str, ok := respObj.Choices[0].Message.Content.(string); ok {
+				uc.Response = str
+			}
+		} else if len(respObj.Content) > 0 {
+			uc.Response = respObj.Content[0].Text
+		}
 	}
 
 	if u.TotalTokens > 0 {
@@ -1078,6 +1205,7 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	if format == translator.FormatResponses {
 		responsesTranslator = translator.NewResponsesSSEToOpenAITranslator(model)
 	}
+	var respBuilder strings.Builder
 
 	for {
 		select {
@@ -1125,6 +1253,7 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 		dataStr := strings.TrimSpace(string(event.Data))
 		if dataStr == "[DONE]" {
 			if lastUsage.TotalTokens > 0 {
+				uc.Response = respBuilder.String()
 				s.recordUsage(uc, lastUsage)
 			}
 			fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -1138,6 +1267,7 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 		}
 
 		// Translate SSE chunks if needed
+		chunkData := event.Data
 		if format != translator.FormatOpenAI {
 			var translated []byte
 			var isDone bool
@@ -1152,12 +1282,14 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			}
 			if isDone {
 				if lastUsage.TotalTokens > 0 {
+					uc.Response = respBuilder.String()
 					s.recordUsage(uc, lastUsage)
 				}
 				fmt.Fprintf(w, "data: [DONE]\n\n")
 				flusher.Flush()
 				return
 			}
+			chunkData = translated
 			w.Write([]byte("data: "))
 			w.Write(translated)
 			w.Write([]byte("\n\n"))
@@ -1165,6 +1297,25 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			// OpenAI format passthrough
 			w.Write(provider.FormatSSEEvent(*event))
 		}
+
+		// Accumulate response content preview (chunkData is guaranteed OpenAI format)
+		if respBuilder.Len() < 16384 {
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal(chunkData, &chunk); err == nil {
+				for _, c := range chunk.Choices {
+					if c.Delta.Content != "" {
+						respBuilder.WriteString(c.Delta.Content)
+					}
+				}
+			}
+		}
+
 		flusher.Flush()
 	}
 }
@@ -1350,6 +1501,18 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		slog.String("provider", modelInfo.Provider),
 		slog.Bool("stream", stream),
 	)
+	start := time.Now()
+	endpoint := resolveRequestEndpoint(r, "/v1/messages")
+	if s.Events != nil {
+		s.Events.Publish(RequestEvent{
+			Type:      "routing",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Provider:  modelInfo.Provider,
+			Model:     modelInfo.Model,
+			Endpoint:  endpoint,
+			Status:    "routing",
+		})
+	}
 
 	client := s.getHTTPClient(5 * time.Minute)
 	resp, err := client.Do(upstreamReq)
@@ -1367,6 +1530,50 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("Messages upstream error response", "status", resp.StatusCode, "provider", modelInfo.Provider, "body", string(errBody))
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnection(conn)
+
+		latencyMs := int(time.Since(start).Milliseconds())
+		if latencyMs < 0 {
+			latencyMs = 0
+		}
+		statusStr := fmt.Sprintf("%d", resp.StatusCode)
+		rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+		rdData := map[string]any{
+			"id":           rdID,
+			"timestamp":    time.Now().UTC().Format(time.RFC3339),
+			"provider":     modelInfo.Provider,
+			"model":        modelInfo.Model,
+			"connectionId": conn.ID,
+			"status":       statusStr,
+			"latencyMs":    latencyMs,
+			"endpoint":     endpoint,
+			"error":        string(errBody),
+			"input":        extractAnthropicPrompt(reqBody),
+		}
+		rdBytes, _ := json.Marshal(rdData)
+		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+			ID:           rdID,
+			Timestamp:    rdData["timestamp"].(string),
+			Provider:     modelInfo.Provider,
+			Model:        modelInfo.Model,
+			ConnectionID: conn.ID,
+			Status:       statusStr,
+			Data:         string(rdBytes),
+		})
+		if s.Metrics != nil {
+			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
+		}
+		if s.Events != nil {
+			s.Events.Publish(RequestEvent{
+				Type:      "request",
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Provider:  modelInfo.Provider,
+				Model:     modelInfo.Model,
+				Status:    statusStr,
+				Endpoint:  endpoint,
+				LatencyMs: int64(latencyMs),
+			})
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		w.Write(errBody)
@@ -1376,14 +1583,17 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	provider.ResetAccountState(conn)
 	s.DB.UpdateConnection(conn)
 
+	prompt := extractAnthropicPrompt(reqBody)
 	uc := &usageContext{
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,
 		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     "/v1/messages",
+		Endpoint:     endpoint,
+		StartedAt:    start,
+		Status:       resp.StatusCode,
+		Prompt:       prompt,
 	}
-
 	// For Anthropic passthrough, stream directly without translation
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -1402,6 +1612,8 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		var totalUsage usage.Usage
+		var outBuilder strings.Builder
+		var totalStreamChars int
 		ctx := r.Context()
 
 		for scanner.Scan() {
@@ -1424,6 +1636,19 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 					}
 					totalUsage.TotalTokens = totalUsage.PromptTokens + totalUsage.CompletionTokens
 				}
+				var ev struct {
+					Type  string `json:"type"`
+					Delta struct {
+						Type string `json:"type"`
+						Text string `json:"text"`
+					} `json:"delta"`
+				}
+				if err := json.Unmarshal(data, &ev); err == nil && ev.Delta.Text != "" {
+					totalStreamChars += len(ev.Delta.Text)
+					if outBuilder.Len() < 16384 {
+						outBuilder.WriteString(ev.Delta.Text)
+					}
+				}
 			}
 			fmt.Fprintf(w, "%s\n", line)
 			flusher.Flush()
@@ -1431,8 +1656,27 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		if scanErr := scanner.Err(); scanErr != nil {
 			slog.Warn("Messages passthrough SSE scan error", "error", scanErr, "model", modelInfo.Model)
 		}
+		uc.Response = outBuilder.String()
 		if totalUsage.TotalTokens > 0 {
 			s.recordUsage(uc, totalUsage)
+		} else if outBuilder.Len() > 0 || totalStreamChars > 0 {
+			estimatedPrompt := len(translatedBody) / 4
+			if estimatedPrompt < 1 {
+				estimatedPrompt = 1
+			}
+			complTokens := totalStreamChars / 4
+			if complTokens < 1 {
+				complTokens = len(outBuilder.String()) / 4
+			}
+			if complTokens < 1 {
+				complTokens = 1
+			}
+			fallbackUsage := usage.Usage{
+				PromptTokens:     estimatedPrompt,
+				CompletionTokens: complTokens,
+				TotalTokens:      estimatedPrompt + complTokens,
+			}
+			s.recordUsage(uc, fallbackUsage)
 		}
 	} else {
 		respBody, err := io.ReadAll(resp.Body)
@@ -1440,9 +1684,38 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
 			return
 		}
+		var anthropicResp struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		}
+		if err := json.Unmarshal(respBody, &anthropicResp); err == nil {
+			var sb strings.Builder
+			for _, c := range anthropicResp.Content {
+				if c.Type == "text" || c.Text != "" {
+					if sb.Len() > 0 {
+						sb.WriteString("\n")
+					}
+					sb.WriteString(c.Text)
+				}
+			}
+			uc.Response = sb.String()
+		}
 		u := usage.ExtractFromClaude(respBody)
 		if u.TotalTokens > 0 {
 			s.recordUsage(uc, u)
+		} else if uc.Response != "" {
+			estimatedPrompt := len(translatedBody) / 4
+			if estimatedPrompt < 1 {
+				estimatedPrompt = 1
+			}
+			fallbackUsage := usage.Usage{
+				PromptTokens:     estimatedPrompt,
+				CompletionTokens: len(uc.Response) / 4,
+				TotalTokens:      estimatedPrompt + len(uc.Response)/4,
+			}
+			s.recordUsage(uc, fallbackUsage)
 		}
 		// Copy headers and body (strip hop-by-hop)
 		for key, values := range resp.Header {
@@ -1766,6 +2039,12 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		"latencyMs":        latencyMs,
 		"endpoint":         uc.Endpoint,
 	}
+	if uc.Prompt != "" {
+		rdData["input"] = uc.Prompt
+	}
+	if uc.Response != "" {
+		rdData["output"] = uc.Response
+	}
 	if u.CachedTokens > 0 {
 		rdData["cachedTokens"] = u.CachedTokens
 	}
@@ -1801,14 +2080,71 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	}
 }
 
-// extractRequestAPIKey extracts the API key from the request Authorization header.
+func (s *Server) recordComboFailure(r *http.Request, comboName string, lastStatus int, lastError string, start time.Time, prompt string) {
+	latencyMs := int(time.Since(start).Milliseconds())
+	if latencyMs < 0 {
+		latencyMs = 0
+	}
+	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
+	statusStr := fmt.Sprintf("%d", lastStatus)
+	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), comboName)
+	rdData := map[string]any{
+		"id":        rdID,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"provider":  "combo",
+		"model":     comboName,
+		"status":    statusStr,
+		"latencyMs": latencyMs,
+		"endpoint":  endpoint,
+		"error":     lastError,
+	}
+	if prompt != "" {
+		rdData["input"] = prompt
+	}
+	rdBytes, _ := json.Marshal(rdData)
+	_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+		ID:        rdID,
+		Timestamp: rdData["timestamp"].(string),
+		Provider:  "combo",
+		Model:     comboName,
+		Status:    statusStr,
+		Data:      string(rdBytes),
+	})
+	if s.Metrics != nil {
+		s.Metrics.ObserveRequest("combo", comboName, endpoint, lastStatus, time.Since(start).Seconds(), nil)
+	}
+	if s.Events != nil {
+		s.Events.Publish(RequestEvent{
+			Type:      "request",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Provider:  "combo",
+			Model:     comboName,
+			Status:    statusStr,
+			Endpoint:  endpoint,
+			LatencyMs: int64(latencyMs),
+		})
+	}
+}
+
+// extractRequestAPIKey extracts the caller credential for usage attribution.
+// Delegates to the shared auth.ExtractAPIKey so every inbound protocol surface
+// (OpenAI, Anthropic x-api-key, Gemini x-goog-api-key / ?key=) attributes
+// consistently from one site (AGENTS.md §7).
 func extractRequestAPIKey(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if after, ok := strings.CutPrefix(auth, "Bearer "); ok {
-		return after
+	return auth.ExtractAPIKey(r)
+}
+
+// resolveRequestEndpoint extracts the original request endpoint, respecting
+// proxy adapter overrides (e.g. X-Cyrene-Original-Endpoint) or default fallback.
+func resolveRequestEndpoint(r *http.Request, defaultEndpoint string) string {
+	if r == nil {
+		return defaultEndpoint
 	}
-	if key := r.Header.Get("x-api-key"); key != "" {
-		return key
+	if orig := r.Header.Get("X-Cyrene-Original-Endpoint"); orig != "" {
+		return orig
 	}
-	return ""
+	if r.URL != nil && r.URL.Path != "" {
+		return r.URL.Path
+	}
+	return defaultEndpoint
 }

@@ -68,6 +68,9 @@ func (a *anthropicResponseAdapter) WriteHeader(statusCode int) {
 }
 
 func (a *anthropicResponseAdapter) Write(p []byte) (int, error) {
+	if !a.headerWritten {
+		a.WriteHeader(a.statusCode)
+	}
 	if a.statusCode < 200 || a.statusCode >= 300 {
 		return a.w.Write(p)
 	}
@@ -181,7 +184,7 @@ func (s *Server) handleMessagesViaChat(w http.ResponseWriter, r *http.Request, r
 	}
 	newReq.Header = r.Header.Clone()
 	newReq.Header.Set("Content-Type", "application/json")
-
+	newReq.Header.Set("X-Cyrene-Original-Endpoint", "/v1/messages")
 	s.handleChatCompletions(adapter, newReq)
 	adapter.Finish()
 }
