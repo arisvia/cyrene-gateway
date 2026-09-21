@@ -534,50 +534,51 @@ const Settings: Component = () => {
               {local().requireLogin || local().requireApiKey ? t('settings.access.protected') : t('settings.access.open')}
             </Badge>
           </div>
-
-          <div class="flex items-start justify-between gap-4">
-            <Field
-              label={t('settings.access.requireLogin')}
-              hint={
-                store.isWan()
-                  ? t('settings.access.requireLoginWanLocked')
-                  : hasPw()
-                    ? t('settings.access.requireLoginHint')
-                    : t('settings.access.requireLoginNoPw')
-              }
-            >
-              <span />
-            </Field>
-            <Toggle
-              checked={store.isWan() || !!local().requireLogin}
-              disabled={store.isWan() || !hasPw()}
-              onChange={v => {
-                if (store.isWan()) return
-                if (v && !hasPw()) {
-                  toast.warning(t('toast.setAdminPasswordFirst'))
-                  return
+          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-4">
+            <div class="flex items-start justify-between gap-4">
+              <Field
+                label={t('settings.access.requireLogin')}
+                hint={
+                  store.isWan()
+                    ? t('settings.access.requireLoginWanLocked')
+                    : hasPw()
+                      ? t('settings.access.requireLoginHint')
+                      : t('settings.access.requireLoginNoPw')
                 }
-                set('requireLogin', v)
-              }}
-            />
-          </div>
-
-          <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
-            <Field label={t('settings.access.requireApiKey')} hint={t('settings.access.requireApiKeyHint')}>
-              <span />
-            </Field>
-            <Toggle checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
-          </div>
-
-          <div class="pt-1 border-t border-subtle/50">
-            <Field label={t('settings.access.rpmLimit')} hint={t('settings.access.rpmLimitHint')}>
-              <Input
-                type="number"
-                class="w-full! sm:w-36! mt-1"
-                value={String(local().apiKeyRpm ?? 0)}
-                onInput={v => set('apiKeyRpm', Number(v) || 0)}
+              >
+                <span />
+              </Field>
+              <Toggle
+                checked={store.isWan() || !!local().requireLogin}
+                disabled={store.isWan() || !hasPw()}
+                onChange={v => {
+                  if (store.isWan()) return
+                  if (v && !hasPw()) {
+                    toast.warning(t('toast.setAdminPasswordFirst'))
+                    return
+                  }
+                  set('requireLogin', v)
+                }}
               />
-            </Field>
+            </div>
+
+            <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
+              <Field label={t('settings.access.requireApiKey')} hint={t('settings.access.requireApiKeyHint')}>
+                <span />
+              </Field>
+              <Toggle checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
+            </div>
+
+            <div class="pt-3 border-t border-subtle/50">
+              <Field label={t('settings.access.rpmLimit')} hint={t('settings.access.rpmLimitHint')}>
+                <Input
+                  type="number"
+                  class="w-full! sm:w-36! mt-1"
+                  value={String(local().apiKeyRpm ?? 0)}
+                  onInput={v => set('apiKeyRpm', Number(v) || 0)}
+                />
+              </Field>
+            </div>
           </div>
         </Card>
 
@@ -592,25 +593,27 @@ const Settings: Component = () => {
               {hasPw() ? t('settings.access.pwConfigured') : t('settings.access.pwUnset')}
             </Badge>
           </div>
-          <Field label={t('settings.access.changePassword')} hint={t('settings.access.pwHelpText')}>
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-              <Input
-                type="password"
-                value={pw()}
-                onInput={setPw}
-                placeholder={t('settings.pwPlaceholder')}
-                class="flex-1 w-full!"
-              />
-              <Button
-                variant="secondary"
-                disabled={pw().length < 8}
-                onClick={changePassword}
-                class="shrink-0"
-              >
-                {t('settings.updatePassword')}
-              </Button>
-            </div>
-          </Field>
+          <div class="p-4 rounded-xl border border-subtle bg-card/40">
+            <Field label={t('settings.access.changePassword')} hint={t('settings.access.pwHelpText')}>
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+                <Input
+                  type="password"
+                  value={pw()}
+                  onInput={setPw}
+                  placeholder={t('settings.pwPlaceholder')}
+                  class="flex-1 w-full!"
+                />
+                <Button
+                  variant="secondary"
+                  disabled={pw().length < 8}
+                  onClick={changePassword}
+                  class="shrink-0"
+                >
+                  {t('settings.updatePassword')}
+                </Button>
+              </div>
+            </Field>
+          </div>
         </Card>
 
         {/* 响应精确缓存卡片 */}
@@ -645,8 +648,8 @@ const Settings: Component = () => {
           </div>
 
           {/* 缓存指标数据小横条：移动端 2 列，平板及以上 4 列 */}
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-subtle/20 p-3 rounded-control border border-subtle/40 text-xs">
-            <div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-card/40 p-4 rounded-xl border border-subtle text-xs">
+            <div class="space-y-0.5">
               <span class="text-faint block text-[11px]">{t('settings.cache.hitRate')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
@@ -655,21 +658,21 @@ const Settings: Component = () => {
                 {t('settings.cache.hitsAndMisses', { hits: cacheStats()?.hits ?? 0, misses: cacheStats()?.misses ?? 0 })}
               </span>
             </div>
-            <div>
+            <div class="space-y-0.5">
               <span class="text-faint block text-[11px]">{t('settings.cache.tokensSaved')}</span>
               <span class="font-semibold text-accent text-sm">
                 {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
               </span>
               <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.directSavings')}</span>
             </div>
-            <div>
+            <div class="space-y-0.5">
               <span class="text-faint block text-[11px]">{t('settings.cache.entries')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
               </span>
               <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.lruPool')}</span>
             </div>
-            <div>
+            <div class="space-y-0.5">
               <span class="text-faint block text-[11px]">{t('settings.cache.memory')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {formatBytes(cacheStats()?.bytesUsed ?? 0)}
@@ -677,42 +680,43 @@ const Settings: Component = () => {
               <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.entrySizeLimit')}</span>
             </div>
           </div>
-
           {/* 控制项 */}
-          <div class="flex items-start justify-between gap-4 pt-1">
-            <Field label={t('settings.cache.enabled')} hint={t('settings.cache.enabledHint')}>
-              <span />
-            </Field>
-            <Toggle
-              checked={!!local().responseCacheEnabled}
-              onChange={v => {
-                set('responseCacheEnabled', v)
-                if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
-              }}
-            />
-          </div>
-
-          <Show when={!!local().responseCacheEnabled}>
-            <div class="space-y-3 pt-2 border-t border-subtle/50">
-              <Field label={t('settings.cache.ttl')} hint={t('settings.cache.ttlHint')}>
-                <Input
-                  type="number"
-                  class="w-full! sm:w-36! mt-1"
-                  value={String(local().responseCacheTTL ?? 3600)}
-                  onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
-                />
+          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3.5">
+            <div class="flex items-start justify-between gap-4">
+              <Field label={t('settings.cache.enabled')} hint={t('settings.cache.enabledHint')}>
+                <span />
               </Field>
-              <div class="flex items-start justify-between gap-4 pt-1 border-t border-subtle/50">
-                <Field label={t('settings.cache.enableAllRequests')} hint={t('settings.cache.enableAllRequestsHint')}>
-                  <span />
-                </Field>
-                <Toggle
-                  checked={!!local().responseCacheAll}
-                  onChange={v => set('responseCacheAll', v)}
-                />
-              </div>
+              <Toggle
+                checked={!!local().responseCacheEnabled}
+                onChange={v => {
+                  set('responseCacheEnabled', v)
+                  if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
+                }}
+              />
             </div>
-          </Show>
+
+            <Show when={!!local().responseCacheEnabled}>
+              <div class="space-y-3 pt-3 border-t border-subtle/50">
+                <Field label={t('settings.cache.ttl')} hint={t('settings.cache.ttlHint')}>
+                  <Input
+                    type="number"
+                    class="w-full! sm:w-36! mt-1"
+                    value={String(local().responseCacheTTL ?? 3600)}
+                    onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
+                  />
+                </Field>
+                <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
+                  <Field label={t('settings.cache.enableAllRequests')} hint={t('settings.cache.enableAllRequestsHint')}>
+                    <span />
+                  </Field>
+                  <Toggle
+                    checked={!!local().responseCacheAll}
+                    onChange={v => set('responseCacheAll', v)}
+                  />
+                </div>
+              </div>
+            </Show>
+          </div>
         </Card>
 
         {/* 令牌节省引擎卡片 */}
@@ -725,72 +729,75 @@ const Settings: Component = () => {
             </div>
           </div>
 
-          {/* RTK 压缩 */}
-          <div class="flex items-start justify-between gap-4">
-            <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
-              <span />
-            </Field>
-            <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
-          </div>
-
-          {/* Caveman 极简表达 */}
-          <div class="space-y-3 pt-2 border-t border-subtle/50">
+          {/* 压缩策略模块 */}
+          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-4">
+            {/* RTK 压缩 */}
             <div class="flex items-start justify-between gap-4">
-              <Field label={t('settings.tokenSaver.cavemanTitle')} hint={t('settings.tokenSaver.cavemanHint')}>
+              <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
                 <span />
               </Field>
-              <Toggle
-                checked={!!local().cavemanEnabled}
-                onChange={v => {
-                  set('cavemanEnabled', v)
-                  if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
-                }}
-              />
+              <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
             </div>
-            <Show when={!!local().cavemanEnabled}>
-              <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.cavemanHint')}>
-                  <Select
-                    value={String(local().cavemanLevel || 'lite')}
-                    options={cavemanOptions()}
-                    onChange={v => set('cavemanLevel', v)}
-                    class="w-full mt-1"
-                  />
+
+            {/* Caveman 极简表达 */}
+            <div class="space-y-3 pt-3 border-t border-subtle/50">
+              <div class="flex items-start justify-between gap-4">
+                <Field label={t('settings.tokenSaver.cavemanTitle')} hint={t('settings.tokenSaver.cavemanHint')}>
+                  <span />
                 </Field>
+                <Toggle
+                  checked={!!local().cavemanEnabled}
+                  onChange={v => {
+                    set('cavemanEnabled', v)
+                    if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
+                  }}
+                />
               </div>
-            </Show>
+              <Show when={!!local().cavemanEnabled}>
+                <div class="pl-3 sm:pl-4 border-l-2 border-accent/40">
+                  <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.cavemanHint')}>
+                    <Select
+                      value={String(local().cavemanLevel || 'lite')}
+                      options={cavemanOptions()}
+                      onChange={v => set('cavemanLevel', v)}
+                      class="w-full mt-1"
+                    />
+                  </Field>
+                </div>
+              </Show>
+            </div>
+
+            {/* Ponytail 极简代码 */}
+            <div class="space-y-3 pt-3 border-t border-subtle/50">
+              <div class="flex items-start justify-between gap-4">
+                <Field label={t('settings.tokenSaver.ponytailTitle')} hint={t('settings.tokenSaver.ponytailHint')}>
+                  <span />
+                </Field>
+                <Toggle
+                  checked={!!local().ponytailEnabled}
+                  onChange={v => {
+                    set('ponytailEnabled', v)
+                    if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
+                  }}
+                />
+              </div>
+              <Show when={!!local().ponytailEnabled}>
+                <div class="pl-3 sm:pl-4 border-l-2 border-accent/40">
+                  <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.ponytailHint')}>
+                    <Select
+                      value={String(local().ponytailLevel || 'lite')}
+                      options={ponytailOptions()}
+                      onChange={v => set('ponytailLevel', v)}
+                      class="w-full mt-1"
+                    />
+                  </Field>
+                </div>
+              </Show>
+            </div>
           </div>
 
-          {/* Ponytail 极简代码 */}
-          <div class="space-y-3 pt-2 border-t border-subtle/50">
-            <div class="flex items-start justify-between gap-4">
-              <Field label={t('settings.tokenSaver.ponytailTitle')} hint={t('settings.tokenSaver.ponytailHint')}>
-                <span />
-              </Field>
-              <Toggle
-                checked={!!local().ponytailEnabled}
-                onChange={v => {
-                  set('ponytailEnabled', v)
-                  if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
-                }}
-              />
-            </div>
-            <Show when={!!local().ponytailEnabled}>
-              <div class="pl-3 sm:pl-4 border-l-2 border-primary/30">
-                <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.ponytailHint')}>
-                  <Select
-                    value={String(local().ponytailLevel || 'lite')}
-                    options={ponytailOptions()}
-                    onChange={v => set('ponytailLevel', v)}
-                    class="w-full mt-1"
-                  />
-                </Field>
-              </div>
-            </Show>
-          </div>
-
-          {/* 排除名单 */}
-          <div class="space-y-3 pt-3 border-t border-subtle/50">
+          {/* 排除名单模块 */}
+          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3">
             <div>
               <Field
                 label={t('settings.tokenSaver.exclusionsTitle')}
@@ -800,7 +807,7 @@ const Settings: Component = () => {
               </Field>
             </div>
 
-            <div class="flex flex-wrap items-center gap-1.5 min-h-[32px] p-2 rounded-control bg-black/4 dark:bg-white/6 border border-black/10 dark:border-white/12">
+            <div class="flex flex-wrap items-center gap-1.5 min-h-[38px] p-2.5 rounded-xl bg-card/40 border border-subtle">
               <Show
                 when={excludedProviders().length > 0}
                 fallback={<span class="text-xs text-faint flex items-center gap-1.5"><IconInfo size={13} class="text-faint/80 shrink-0" />{t('settings.tokenSaver.noExclusions')}</span>}
@@ -823,7 +830,7 @@ const Settings: Component = () => {
               </Show>
             </div>
 
-            {/* 输入框与添加按钮：移动端自动换行/占满，大屏并排 */}
+            {/* 输入框与添加按钮 */}
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <Input
                 placeholder={t('settings.excludePlaceholder')}
@@ -901,11 +908,14 @@ const Settings: Component = () => {
             </Show>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* 远程图片链接 */}
-            <div class="space-y-1.5">
-              <label class="text-xs font-medium text-muted">{t('settings.remoteImageUrl')}</label>
-              <div class="flex flex-col sm:flex-row gap-2">
+            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-2.5">
+              <label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <IconDownload size={14} class="text-accent" />
+                <span>{t('settings.remoteImageUrl')}</span>
+              </label>
+              <div class="flex flex-col sm:flex-row gap-2 pt-0.5">
                 <Input
                   value={bgUrlInput()}
                   placeholder="https://..."
@@ -964,30 +974,38 @@ const Settings: Component = () => {
             </div>
 
             {/* 本地图片上传 */}
-            <div class="space-y-1.5">
-              <label class="text-xs font-medium text-muted">{t('settings.localImageUpload')}</label>
-              <FileUpload
-                compact
-                accept="image/*"
-                placeholder={t('settings.appearance.selectLocalImage')}
-                onChange={async file => {
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = async () => {
-                    const dataUrl = reader.result as string
-                    await bgStore.setWallpaper(dataUrl, { sourceType: 'upload' })
-                    toast.success(t('toast.saveUploadWallpaperSuccess', { name: file.name }))
-                  }
-                  reader.readAsDataURL(file)
-                }}
-              />
+            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-2.5">
+              <label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <IconUpload size={14} class="text-accent" />
+                <span>{t('settings.localImageUpload')}</span>
+              </label>
+              <div class="pt-0.5">
+                <FileUpload
+                  compact
+                  accept="image/*"
+                  placeholder={t('settings.appearance.selectLocalImage')}
+                  onChange={async file => {
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = async () => {
+                      const dataUrl = reader.result as string
+                      await bgStore.setWallpaper(dataUrl, { sourceType: 'upload' })
+                      toast.success(t('toast.saveUploadWallpaperSuccess', { name: file.name }))
+                    }
+                    reader.readAsDataURL(file)
+                  }}
+                />
+              </div>
             </div>
           </div>
 
           {/* 壁纸与毛玻璃微调控制面板（仿 zashboard 外观微调系统） */}
           <Show when={bgStore.hasCustomBg()}>
-            <div class="space-y-3 pt-3 border-t border-subtle/50">
-              <div class="text-xs font-semibold text-muted">{t('settings.appearance.appearanceSliders')}</div>
+            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3.5">
+              <div class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <IconSparkles size={14} class="text-accent" />
+                <span>{t('settings.appearance.appearanceSliders')}</span>
+              </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Slider
                   label={t('settings.appearance.blur')}
@@ -1047,42 +1065,42 @@ const Settings: Component = () => {
               <Badge tone="blue">{t('settings.data.snapshotBadge')}</Badge>
             </div>
 
-            <div class="space-y-3.5">
-              <Checkbox
-                checked={includeSecrets()}
-                onChange={setIncludeSecrets}
-                label={t('settings.data.includeSecrets')}
-                description={
-                  <div class="flex items-center gap-1.5 mt-1 text-[11px]">
-                    <Show
-                      when={includeSecrets()}
-                      fallback={
-                        <span class="text-faint flex items-center gap-1">
-                          <IconInfo size={13} class="text-info shrink-0" />
-                          <span>{t('settings.data.secretsSafe')}</span>
-                        </span>
-                      }
-                    >
-                      <span class="text-warning flex items-center gap-1">
-                        <IconAlertTriangle size={13} class="text-warning shrink-0" />
-                        <span>{t('settings.data.secretsWarning')}</span>
+          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3.5">
+            <Checkbox
+              checked={includeSecrets()}
+              onChange={setIncludeSecrets}
+              label={t('settings.data.includeSecrets')}
+              description={
+                <div class="flex items-center gap-1.5 mt-1 text-[11px]">
+                  <Show
+                    when={includeSecrets()}
+                    fallback={
+                      <span class="text-faint flex items-center gap-1">
+                        <IconInfo size={13} class="text-info shrink-0" />
+                        <span>{t('settings.data.secretsSafe')}</span>
                       </span>
-                    </Show>
-                  </div>
-                }
+                    }
+                  >
+                    <span class="text-warning flex items-center gap-1">
+                      <IconAlertTriangle size={13} class="text-warning shrink-0" />
+                      <span>{t('settings.data.secretsWarning')}</span>
+                    </span>
+                  </Show>
+                </div>
+              }
+            />
+
+            <div class="pt-3 border-t border-subtle/40">
+              <Checkbox
+                checked={includeUsage()}
+                onChange={setIncludeUsage}
+                label={t('settings.data.includeUsage')}
+                description={t('settings.data.usageDesc')}
               />
-
-              <div class="pt-3 border-t border-subtle/40">
-                <Checkbox
-                  checked={includeUsage()}
-                  onChange={setIncludeUsage}
-                  label={t('settings.data.includeUsage')}
-                  description={t('settings.data.usageDesc')}
-                />
-              </div>
             </div>
+          </div>
 
-            <div class="pt-2 border-t border-subtle/50 flex justify-end">
+          <div class="pt-1 flex justify-end">
               <Button
                 variant="primary"
                 loading={downloading()}
@@ -1108,7 +1126,8 @@ const Settings: Component = () => {
               <Badge tone="amber">{t('settings.data.restoreBadge')}</Badge>
             </div>
 
-            <div class="space-y-3.5 text-xs">
+          <div class="space-y-3.5 text-xs">
+            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-4">
               <Field label={t('settings.backupFileLabel')} hint={t('settings.backupFileHint')}>
                 <FileUpload
                   accept=".json,.cyrene.json"
@@ -1129,19 +1148,20 @@ const Settings: Component = () => {
                   onChange={v => setRestoreMode(v as 'replace' | 'merge')}
                 />
               </Field>
-
-              <div class="p-3 bg-warning/10 border border-warning/25 rounded-control text-[11px] text-warning space-y-1">
-                <div class="font-semibold flex items-center gap-1">
-                  <IconAlertTriangle size={13} />
-                  <span>{t('settings.data.importantNotice')}</span>
-                </div>
-                <p>
-                  {t('settings.restoreNotice')}
-                </p>
-              </div>
             </div>
 
-            <div class="pt-2 border-t border-subtle/50 flex items-center justify-between">
+            <div class="p-3.5 bg-warning/10 border border-warning/25 rounded-xl text-[11px] text-warning space-y-1">
+              <div class="font-semibold flex items-center gap-1">
+                <IconAlertTriangle size={13} />
+                <span>{t('settings.data.importantNotice')}</span>
+              </div>
+              <p>
+                {t('settings.restoreNotice')}
+              </p>
+            </div>
+          </div>
+
+          <div class="pt-1 flex items-center justify-between">
               <span class="text-xs text-faint font-mono">
                 {restoreFile() ? t('settings.fileReady', { name: restoreFile()!.name }) : t('settings.noFileSelected')}
               </span>
@@ -1198,82 +1218,90 @@ const Settings: Component = () => {
                       <div class="space-y-4">
                         {/* 状态徽标与基础环境 */}
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
-                            <span class="text-[11px] text-faint">{t('settings.ops.osArch')}</span>
-                            <div class="text-xs font-mono font-medium text-foreground truncate">
+                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
+                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.osArch')}</span>
+                            <div class="text-xs font-mono font-semibold text-foreground truncate">
                               {stats().os} / {stats().arch}
                             </div>
                           </div>
-                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
-                            <span class="text-[11px] text-faint">{t('settings.ops.uptime')}</span>
-                            <div class="text-xs font-mono font-medium text-foreground">
+                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
+                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.uptime')}</span>
+                            <div class="text-xs font-mono font-semibold text-foreground">
                               {formatUptime(stats().uptimeSeconds, uptimeUnits())}
                             </div>
                           </div>
-                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
-                            <span class="text-[11px] text-faint">{t('settings.ops.pid')} / CPU</span>
-                            <div class="text-xs font-mono font-medium text-foreground">
+                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
+                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.pid')} / CPU</span>
+                            <div class="text-xs font-mono font-semibold text-foreground">
                               PID {stats().pid} · {stats().numCPU} Cores
                             </div>
                           </div>
-                          <div class="p-3 rounded-lg bg-surface/40 border border-subtle/40 space-y-1">
-                            <span class="text-[11px] text-faint">{t('settings.ops.goroutines')}</span>
-                            <div class="text-xs font-mono font-medium text-foreground">
+                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
+                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.goroutines')}</span>
+                            <div class="text-xs font-mono font-semibold text-foreground">
                               {stats().goroutines}
                             </div>
                           </div>
                         </div>
 
                         {/* 内存与存储仪表 */}
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-subtle/40">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-subtle/50">
                           {/* 内存 */}
-                          <div class="p-3.5 rounded-lg bg-surface/30 border border-subtle/40 space-y-2">
-                            <div class="flex items-center justify-between text-xs font-medium">
+                          <div class="p-4 rounded-xl bg-card/40 border border-subtle space-y-3">
+                            <div class="flex items-center justify-between text-xs font-semibold">
                               <span class="flex items-center gap-1.5 text-accent">
-                                <IconServer size={14} />
+                                <IconServer size={15} />
                                 <span>{t('settings.ops.goRuntimeMemory')}</span>
                               </span>
                               <Badge tone="blue">GC: {stats().memory.numGC}</Badge>
                             </div>
-                            <div class="grid grid-cols-2 gap-2 text-xs pt-1">
-                              <div>
+                            <div class="grid grid-cols-2 gap-3 text-xs pt-0.5">
+                              <div class="space-y-0.5">
                                 <span class="text-[11px] text-faint block">{t('settings.ops.memoryAlloc')}</span>
-                                <span class="font-mono font-medium">{formatBytes(stats().memory.allocBytes)}</span>
+                                <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.allocBytes)}</span>
                               </div>
-                              <div>
+                              <div class="space-y-0.5">
+                                <span class="text-[11px] text-faint block">{t('settings.ops.memoryInuse')}</span>
+                                <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.heapInuseBytes)}</span>
+                              </div>
+                              <div class="space-y-0.5">
                                 <span class="text-[11px] text-faint block">{t('settings.ops.memorySys')}</span>
-                                <span class="font-mono font-medium">{formatBytes(stats().memory.sysBytes)}</span>
+                                <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.sysBytes)}</span>
+                              </div>
+                              <div class="space-y-0.5">
+                                <span class="text-[11px] text-faint block">{t('settings.ops.memoryTotalAlloc')}</span>
+                                <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.totalAllocBytes)}</span>
                               </div>
                             </div>
                           </div>
 
                           {/* SQLite 存储 */}
-                          <div class="p-3.5 rounded-lg bg-surface/30 border border-subtle/40 space-y-2">
-                            <div class="flex items-center justify-between text-xs font-medium">
+                          <div class="p-4 rounded-xl bg-card/40 border border-subtle space-y-3">
+                            <div class="flex items-center justify-between text-xs font-semibold">
                               <span class="flex items-center gap-1.5 text-warning">
-                                <IconDatabase size={14} />
+                                <IconDatabase size={15} />
                                 <span>{t('settings.ops.sqlitePhysicalStorage')}</span>
                               </span>
                               <Badge tone={stats().inDocker ? 'amber' : 'green'}>
                                 {stats().inDocker ? t('settings.ops.inDockerBadge') : t('settings.ops.nativeBadge')}
                               </Badge>
                             </div>
-                            <div class="grid grid-cols-2 gap-2 text-xs pt-1">
-                              <div>
+                            <div class="grid grid-cols-2 gap-3 text-xs pt-0.5">
+                              <div class="space-y-0.5">
                                 <span class="text-[11px] text-faint block">{t('settings.ops.dbSize')}</span>
-                                <span class="font-mono font-medium">{formatBytes(stats().storage?.dbSizeBytes ?? 0)}</span>
+                                <span class="font-mono font-semibold text-foreground">{formatBytes(stats().storage?.dbSizeBytes ?? 0)}</span>
                               </div>
-                              <div>
+                              <div class="space-y-0.5">
                                 <span class="text-[11px] text-faint block">{t('settings.ops.walSize')}</span>
-                                <span class="font-mono font-medium">{formatBytes(stats().storage?.walSizeBytes ?? 0)}</span>
+                                <span class="font-mono font-semibold text-foreground">{formatBytes(stats().storage?.walSizeBytes ?? 0)}</span>
                               </div>
-                              <div>
+                              <div class="space-y-0.5">
                                 <span class="text-[11px] text-faint block">{t('settings.ops.totalRequests')}</span>
-                                <span class="font-mono font-medium">{stats().storage?.totalRequests ?? 0}</span>
+                                <span class="font-mono font-semibold text-foreground">{stats().storage?.totalRequests ?? 0}</span>
                               </div>
-                              <div>
+                              <div class="space-y-0.5">
                                 <span class="text-[11px] text-faint block">{t('settings.ops.totalDetails')}</span>
-                                <span class="font-mono font-medium">{stats().storage?.totalDetails ?? 0}</span>
+                                <span class="font-mono font-semibold text-foreground">{stats().storage?.totalDetails ?? 0}</span>
                               </div>
                             </div>
                           </div>
@@ -1317,7 +1345,7 @@ const Settings: Component = () => {
                     }
                   >
                     <div class="space-y-3.5">
-                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle">
                         <div class="space-y-1">
                           <div class="flex items-center gap-2">
                             <span class="text-xs text-faint">{t('settings.ops.currentVersion')}:</span>
@@ -1362,7 +1390,7 @@ const Settings: Component = () => {
                       </div>
 
                       <Show when={updateInfo()?.hasUpdate && updateInfo()?.releaseNotes}>
-                        <div class="p-3 rounded-lg bg-surface/20 border border-subtle/30 text-xs font-mono text-muted max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                        <div class="p-3.5 rounded-xl bg-code-bg border border-subtle text-xs font-mono text-muted max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                           {updateInfo()?.releaseNotes}
                         </div>
                       </Show>
@@ -1382,8 +1410,8 @@ const Settings: Component = () => {
                     </div>
                   </div>
 
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                    <div class="text-xs text-faint leading-relaxed max-w-lg">
+                  <div class="p-4 rounded-xl bg-card/40 border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="text-xs text-faint leading-relaxed max-w-xl">
                       {t('settings.ops.restartDesc')}
                     </div>
                     <Button
@@ -1412,9 +1440,9 @@ const Settings: Component = () => {
 
                   <div class="space-y-3.5">
                     {/* Checkpoint */}
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle hover:bg-card/60 transition-colors">
                       <div class="space-y-0.5">
-                        <div class="text-xs font-semibold">{t('settings.ops.checkpointBtn')}</div>
+                        <div class="text-xs font-semibold text-foreground">{t('settings.ops.checkpointBtn')}</div>
                         <div class="text-[11px] text-faint">{t('settings.ops.checkpointDesc')}</div>
                       </div>
                       <Button
@@ -1429,9 +1457,9 @@ const Settings: Component = () => {
                     </div>
 
                     {/* Vacuum */}
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle hover:bg-card/60 transition-colors">
                       <div class="space-y-0.5">
-                        <div class="text-xs font-semibold">{t('settings.ops.vacuumBtn')}</div>
+                        <div class="text-xs font-semibold text-foreground">{t('settings.ops.vacuumBtn')}</div>
                         <div class="text-[11px] text-faint">{t('settings.ops.vacuumDesc')}</div>
                       </div>
                       <Button
@@ -1446,9 +1474,9 @@ const Settings: Component = () => {
                     </div>
 
                     {/* Prune Logs */}
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-lg bg-surface/30 border border-subtle/40">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle hover:bg-card/60 transition-colors">
                       <div class="space-y-1">
-                        <div class="text-xs font-semibold">{t('settings.ops.pruneBtn')}</div>
+                        <div class="text-xs font-semibold text-foreground">{t('settings.ops.pruneBtn')}</div>
                         <div class="text-[11px] text-faint">{t('settings.ops.pruneDesc')}</div>
                         <div class="flex items-center gap-2 pt-1">
                           <span class="text-[11px] text-muted">{t('settings.ops.retentionDaysLabel')}:</span>
@@ -1515,7 +1543,7 @@ const Settings: Component = () => {
 
       {/* ── 重启全屏探活与重连遮罩 ── */}
       <Show when={restarting()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
           <Card class="max-w-md w-full p-6 text-center space-y-4 shadow-glass-hover border border-accent/30">
             <div class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto text-accent">
               <IconRotateCcw size={24} class="animate-spin" />

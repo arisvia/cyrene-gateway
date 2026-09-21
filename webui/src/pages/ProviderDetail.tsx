@@ -152,9 +152,10 @@ const ProviderDetail: Component = () => {
 
   const accountAuthOptions = () => {
     const modes = regInfo()?.authModes || [regInfo()?.authType || 'api-key']
-    const opts: Array<{ value: string; label: string }> = [
-      { value: 'api-key', label: t('providerDetail.authApiKeyPat') },
-    ]
+    const opts: Array<{ value: string; label: string }> = []
+    if (modes.includes('api-key') || (!modes.includes('oauth') && regInfo()?.category !== 'oauth')) {
+      opts.push({ value: 'api-key', label: t('providerDetail.authApiKeyPat') })
+    }
     if (modes.includes('oauth') || regInfo()?.category === 'oauth') {
       opts.push({ value: 'oauth', label: t('providerDetail.authOauthMode') })
     }
@@ -172,11 +173,15 @@ const ProviderDetail: Component = () => {
     const p = conn()?.provider
     if (!p) return
     const aType = newAccountAuthType()
+    if (aType === 'oauth') {
+      setAddAccountOpen(false)
+      await startDeviceFlow()
+      return
+    }
     if (aType === 'api-key' && !newAccountApiKey().trim()) {
       toast.error(t('toast.requireApiKey'))
       return
     }
-    setAddingAccount(true)
     try {
       const added = await store.addProvider({
         provider: p,
@@ -1116,9 +1121,11 @@ const ProviderDetail: Component = () => {
                         size="sm"
                         variant="primary"
                         onClick={() => {
+                          const modes = regInfo()?.authModes || [regInfo()?.authType || 'api-key']
+                          const initialType = modes.includes('api-key') ? 'api-key' : (modes[0] || 'oauth')
                           const nextNum = accounts().length + 1
                           setNewAccountName(t('providerDetail.accountIndex', { index: nextNum }))
-                          setNewAccountAuthType('api-key')
+                          setNewAccountAuthType(initialType)
                           setNewAccountApiKey('')
                           setNewAccountPriority(String((Number(priority()) || 0) + 10))
                           setAddAccountOpen(true)
@@ -1860,20 +1867,24 @@ const ProviderDetail: Component = () => {
           <div class="p-3 rounded-control bg-hover border border-subtle text-xs text-faint leading-relaxed">
             {t('providerDetail.addAccountHint')}
           </div>
-          <Field label={t('providerDetail.accountNameLabel')} hint={t('providerDetail.accountNameHint')}>
-            <Input
-              value={newAccountName()}
-              onInput={setNewAccountName}
-              placeholder={t('providerDetail.newAccountPlaceholder', { index: accounts().length + 1 })}
-            />
-          </Field>
-          <Field label={t('providerDetail.authMethodLabel')} hint={t('providerDetail.authMethodSelectHint')}>
-            <Select
-              value={newAccountAuthType()}
-              options={accountAuthOptions()}
-              onChange={setNewAccountAuthType}
-            />
-          </Field>
+          <Show when={newAccountAuthType() === 'api-key'}>
+            <Field label={t('providerDetail.accountNameLabel')} hint={t('providerDetail.accountNameHint')}>
+              <Input
+                value={newAccountName()}
+                onInput={setNewAccountName}
+                placeholder={t('providerDetail.newAccountPlaceholder', { index: accounts().length + 1 })}
+              />
+            </Field>
+          </Show>
+          <Show when={accountAuthOptions().length > 1}>
+            <Field label={t('providerDetail.authMethodLabel')} hint={t('providerDetail.authMethodSelectHint')}>
+              <Select
+                value={newAccountAuthType()}
+                options={accountAuthOptions()}
+                onChange={setNewAccountAuthType}
+              />
+            </Field>
+          </Show>
           <Show when={newAccountAuthType() === 'api-key'}>
             <Field
               label={conn()?.provider === 'qoder' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
@@ -1913,20 +1924,22 @@ const ProviderDetail: Component = () => {
               <p class="text-faint">{t('providerDetail.oauthModeDesc')}</p>
             </div>
           </Show>
-          <Field label={t('providerDetail.priorityLabel')} hint={t('providerDetail.newAccountPriorityHint')}>
-            <Input
-              type="number"
-              value={newAccountPriority()}
-              onInput={setNewAccountPriority}
-              class="w-32!"
-            />
-          </Field>
+          <Show when={newAccountAuthType() === 'api-key'}>
+            <Field label={t('providerDetail.priorityLabel')} hint={t('providerDetail.newAccountPriorityHint')}>
+              <Input
+                type="number"
+                value={newAccountPriority()}
+                onInput={setNewAccountPriority}
+                class="w-32!"
+              />
+            </Field>
+          </Show>
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-subtle">
             <Button size="sm" variant="secondary" onClick={() => setAddAccountOpen(false)}>
               {t('common.cancel')}
             </Button>
             <Button size="sm" variant="primary" loading={addingAccount()} onClick={handleAddAccountSubmit}>
-              {t('providerDetail.saveAccount')}
+              {newAccountAuthType() === 'oauth' ? t('providers.startOAuth') : t('providerDetail.saveAccount')}
             </Button>
           </div>
         </div>

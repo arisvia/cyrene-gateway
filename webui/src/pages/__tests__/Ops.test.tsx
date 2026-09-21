@@ -43,7 +43,15 @@ describe('运维与工具页渲染', () => {
   it('ProxyPools 渲染代理池列表', async () => {
     vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/proxy-pools') {
-        return Promise.resolve({ proxyPools: [{ id: 'x1', name: 'home-proxy', proxyUrl: 'http://127.0.0.1:7890', type: 'http', isActive: true }] })
+        return Promise.resolve({
+          proxyPools: [
+            {
+              id: 'x1',
+              isActive: true,
+              data: { name: 'home-proxy', proxyUrl: 'http://127.0.0.1:7890', type: 'http', strictProxy: true },
+            },
+          ],
+        })
       }
       return Promise.resolve(null)
     })

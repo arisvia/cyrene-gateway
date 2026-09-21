@@ -27,41 +27,44 @@ interface ConnQuota {
 const Quota: Component = () => {
   const { t } = useI18n()
   const store = useGatewayStore()
+  const REFRESH_INTERVAL_SECS = 60
   const [rows, setRows] = createSignal<ProviderUsage[]>([])
   const [loading, setLoading] = createSignal(true)
   const [refreshing, setRefreshing] = createSignal(false)
   const [details, setDetails] = createSignal<Record<string, ConnQuota>>({})
   const [providerFilter, setProviderFilter] = createSignal('')
   const [autoRefresh, setAutoRefresh] = createSignal(false)
+  const [countdown, setCountdown] = createSignal(REFRESH_INTERVAL_SECS)
   let activeAbortController: AbortController | null = null
 
-  async function load() {
+  async function load(isManual = false) {
+    if (isManual) {
+      setRefreshing(true)
+      setCountdown(REFRESH_INTERVAL_SECS)
+    }
     activeAbortController?.abort()
     const controller = new AbortController()
     activeAbortController = controller
     const { signal } = controller
 
     try {
-      if (store.providers().length === 0) {
+      // 手动刷新或初次加载时拉取最新的账号连接列表
+      if (isManual || store.providers().length === 0) {
         await store.loadProvidersOnly()
       }
       if (signal.aborted) return
 
-      const [r, conns] = await Promise.all([
-        api<{ providers?: ProviderUsage[] }>('/api/usage/providers?period=7d', { signal }),
-        Promise.resolve(store.providers()),
-      ])
-      if (signal.aborted) return
+      const conns = store.providers()
+      const cacheBust = Date.now()
 
-      setRows(r?.providers ?? [])
+      const rPromise = api<{ providers?: ProviderUsage[] }>(`/api/usage/providers?period=7d&_t=${cacheBust}`, { signal })
 
-      // 先让卡片网格渲染出来，真实额度逐个连接异步填充与流式上屏
+      // 先让卡片网格渲染出来，真实额度逐个连接异步流式填充并等待全部就绪
       setLoading(false)
 
-      // 逐连接拉取真实额度（plan/credits/resetAt），各连接并行请求、谁先返回谁先上屏
-      conns.forEach(async c => {
+      const quotaPromises = conns.map(async c => {
         try {
-          const res = await api<ConnQuota>(`/api/usage/connection/${c.id}`, { signal })
+          const res = await api<ConnQuota>(`/api/usage/connection/${c.id}?_t=${cacheBust}`, { signal })
           if (signal.aborted) return
           if (res) {
             setDetails(prev => ({ ...prev, [c.id]: res }))
@@ -70,6 +73,14 @@ const Quota: Component = () => {
           // provider 不支持或请求取消
         }
       })
+
+      const [r] = await Promise.all([
+        rPromise,
+        Promise.allSettled(quotaPromises),
+      ])
+      if (signal.aborted) return
+
+      setRows(r?.providers ?? [])
     } catch {
       if (signal.aborted) return
       setRows([])
@@ -90,11 +101,21 @@ const Quota: Component = () => {
 
 
   createEffect(() => {
-    if (!autoRefresh()) return
-    const interval = setInterval(() => {
-      load()
-    }, 60000)
-    onCleanup(() => clearInterval(interval))
+    if (!autoRefresh()) {
+      setCountdown(REFRESH_INTERVAL_SECS)
+      return
+    }
+    setCountdown(REFRESH_INTERVAL_SECS)
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          load(false)
+          return REFRESH_INTERVAL_SECS
+        }
+        return prev - 1
+      })
+    }, 1000)
+    onCleanup(() => clearInterval(timer))
   })
 
   // 按供应商过滤连接
@@ -243,7 +264,7 @@ const Quota: Component = () => {
           </div>
         </Show>
 
-        <div class="space-y-0.5 max-h-[360px] overflow-y-auto px-0.5 scrollbar-thin">
+        <div class="space-y-0.5 max-h-[360px] overflow-y-auto px-0.5">
           <For each={currentKeys()}>
             {k => {
               const b = props.quotasObj[k]
@@ -287,14 +308,16 @@ const Quota: Component = () => {
             >
               <span class={`w-1.5 h-1.5 rounded-full ${autoRefresh() ? 'bg-warning animate-pulse' : 'bg-muted/40'}`} />
               <span>{t('quota.autoRefresh')}</span>
-              <span class="opacity-70">{autoRefresh() ? t('quota.autoRefreshOn') : t('quota.autoRefreshOff')}</span>
+              <span class="opacity-70 font-mono">
+                {autoRefresh() ? t('quota.autoRefreshOn', { seconds: countdown() }) : t('quota.autoRefreshOff')}
+              </span>
             </Button>
 
             <Button
               size="sm"
               variant="secondary"
               loading={refreshing()}
-              onClick={() => { setRefreshing(true); load(); }}
+              onClick={() => { load(true) }}
             >
               {t('quota.refreshData')}
             </Button>
@@ -389,9 +412,6 @@ const Quota: Component = () => {
                               >
                                 {providerName()}
                               </A>
-                              <Badge tone="gray" class="text-[10px] uppercase font-mono px-1.5 py-0">
-                                {conn.provider}
-                              </Badge>
                               <Show when={qData()?.plan}>
                                 <Badge tone="blue" class="text-[10px] px-1.5 py-0">
                                   {qData()!.plan}

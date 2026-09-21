@@ -171,6 +171,7 @@
   --animate-tab-slide-out-left: tabSlideOutLeft 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-tab-slide-in-left: tabSlideInLeft 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
   --animate-tab-slide-out-right: tabSlideOutRight 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shake: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
 /* ---- 基础样式：全部进 @layer base（v4 会自动追加到 preflight 之后） ---- */
@@ -302,16 +303,24 @@
     to { opacity: 0; transform: translateX(20px); }
   }
 
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+  }
+
   .animate-tab-slide-in-right { animation: var(--animate-tab-slide-in-right); }
   .animate-tab-slide-out-left { animation: var(--animate-tab-slide-out-left); }
   .animate-tab-slide-in-left { animation: var(--animate-tab-slide-in-left); }
   .animate-tab-slide-out-right { animation: var(--animate-tab-slide-out-right); }
-
+  .animate-shake { animation: var(--animate-shake); }
   @media (prefers-reduced-motion: reduce) {
     .animate-tab-slide-in-right,
     .animate-tab-slide-out-left,
     .animate-tab-slide-in-left,
-    .animate-tab-slide-out-right {
+    .animate-tab-slide-out-right,
+    .animate-shake {
       animation: none !important;
       transform: none !important;
     }

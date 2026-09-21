@@ -180,10 +180,39 @@ function createGatewayStore() {
     } catch { setApiKeys([]) }
   }
 
+  interface RawProxyPoolItem {
+    id: string
+    isActive?: boolean
+    data?: {
+      name?: string
+      proxyUrl?: string
+      type?: string
+      noProxy?: string
+      strictProxy?: boolean
+    }
+    name?: string
+    proxyUrl?: string
+    type?: string
+    noProxy?: string
+    strictProxy?: boolean
+    boundConnections?: number
+  }
+
   async function loadProxyPools() {
     try {
-      const r = await api<{ proxyPools?: ProxyPool[] } | ProxyPool[]>('/api/proxy-pools')
-      setProxyPools(r && 'proxyPools' in r && Array.isArray(r.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : []))
+      const r = await api<{ proxyPools?: RawProxyPoolItem[] } | RawProxyPoolItem[]>('/api/proxy-pools')
+      const rawList = r && 'proxyPools' in r && Array.isArray(r.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : [])
+      const mapped: ProxyPool[] = rawList.map(p => ({
+        id: p.id,
+        name: p.data?.name ?? p.name ?? '',
+        proxyUrl: p.data?.proxyUrl ?? p.proxyUrl ?? '',
+        type: p.data?.type ?? p.type ?? 'http',
+        isActive: p.isActive ?? true,
+        noProxy: p.data?.noProxy ?? p.noProxy ?? '',
+        strictProxy: p.data?.strictProxy ?? p.strictProxy ?? false,
+        boundConnections: p.boundConnections ?? 0,
+      }))
+      setProxyPools(mapped)
     } catch { setProxyPools([]) }
   }
 
@@ -196,7 +225,7 @@ function createGatewayStore() {
       const [stats, chart, details] = await Promise.all([
         api<UsageStats>(`/api/usage/stats?period=${period}`),
         api<{ label: string; tokens: number }[]>(`/api/usage/chart?period=${period}`),
-        api<{ details?: RequestDetail[] } | RequestDetail[]>('/api/usage/request-details?page=1&pageSize=15'),
+        api<{ details?: RequestDetail[] } | RequestDetail[]>('/api/usage/request-details?page=1&pageSize=10'),
       ])
       setUsageStats(stats || {})
       setUsageChart(Array.isArray(chart) ? chart : [])
@@ -205,7 +234,7 @@ function createGatewayStore() {
     } catch (e) { console.error('[store] loadUsage failed:', e) }
   }
 
-  async function loadRequestDetails(page = 1, pageSize = 20, filters: Record<string, string> = {}) {
+  async function loadRequestDetails(page = 1, pageSize = 10, filters: Record<string, string> = {}) {
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       for (const [k, v] of Object.entries(filters)) { if (v) params.set(k, v) }

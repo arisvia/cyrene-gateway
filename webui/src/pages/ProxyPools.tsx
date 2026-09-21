@@ -74,7 +74,9 @@ const ProxyPools: Component = () => {
                   <div class="min-w-0">
                     <div class="flex items-center gap-2">
                       <span class="font-medium text-sm">{p.name}</span>
-                      <Badge tone={p.isActive ? 'green' : 'gray'}>{p.isActive ? t('common.enabled') : t('common.disabled')}</Badge>
+                      <Show when={!p.isActive}>
+                        <Badge tone="gray">{t('common.disabled')}</Badge>
+                      </Show>
                       <Badge tone="blue">{p.type || 'http'}</Badge>
                       <Show when={p.strictProxy}><Badge tone="amber">{t('proxies.strict')}</Badge></Show>
                     </div>
@@ -118,7 +120,10 @@ const ProxyPools: Component = () => {
           </Field>
           <Field label={t('proxies.type')}>
             <Select value={form().type} options={[
-              { value: 'http', label: 'HTTP' }, { value: 'socks5', label: 'SOCKS5' },
+              { value: 'http', label: 'HTTP / HTTPS' },
+              { value: 'vercel', label: 'Vercel Edge' },
+              { value: 'cloudflare', label: 'Cloudflare Worker' },
+              { value: 'deno', label: 'Deno Deploy' },
             ]} onChange={v => setForm(f => ({ ...f, type: v }))} />
           </Field>
           <Field label={t('proxies.noProxy')} hint={t('proxies.noProxyHint')}>
