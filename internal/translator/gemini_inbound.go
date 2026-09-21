@@ -44,7 +44,7 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 
 	// 2. Contents (multi-turn history)
 	if contents, ok := geminiBody["contents"].([]any); ok {
-		knownToolIDs := make(map[string]string)
+		pendingToolIDs := make(map[string][]string)
 		for _, c := range contents {
 			cm, ok := c.(map[string]any)
 			if !ok {
@@ -58,6 +58,16 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 			}
 
 			parts, _ := cm["parts"].([]any)
+			explicitResponseIDs := make(map[string]bool)
+			for _, p := range parts {
+				if part, ok := p.(map[string]any); ok {
+					if response, ok := part["functionResponse"].(map[string]any); ok {
+						if id, _ := response["id"].(string); id != "" {
+							explicitResponseIDs[id] = true
+						}
+					}
+				}
+			}
 			var textParts []string
 			var toolCalls []any
 			var hasComplexParts bool
@@ -80,10 +90,10 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 					argsBytes, _ := json.Marshal(argsMap)
 					callID, _ := fc["id"].(string)
 					if callID == "" {
-						callID = fmt.Sprintf("call_%s", strings.ReplaceAll(uuid.New().String(), "-", "")[:16])
+						callID = "call_" + uuid.New().String()
 					}
 					if name != "" {
-						knownToolIDs[name] = callID
+						pendingToolIDs[name] = append(pendingToolIDs[name], callID)
 					}
 					toolCalls = append(toolCalls, map[string]any{
 						"id":   callID,
@@ -97,11 +107,25 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 					// Tool response turn (OpenAI requires tool_call_id on every role:tool message)
 					name, _ := fr["name"].(string)
 					callID, _ := fr["id"].(string)
-					if callID == "" && name != "" {
-						callID = knownToolIDs[name]
-					}
 					if callID == "" {
-						callID = fmt.Sprintf("call_%s", strings.ReplaceAll(uuid.New().String(), "-", "")[:16])
+						for _, id := range pendingToolIDs[name] {
+							if !explicitResponseIDs[id] {
+								callID = id
+								break
+							}
+						}
+					}
+					if callID != "" {
+						for pendingName, ids := range pendingToolIDs {
+							for i, id := range ids {
+								if id == callID {
+									pendingToolIDs[pendingName] = append(ids[:i], ids[i+1:]...)
+									break
+								}
+							}
+						}
+					} else {
+						callID = "call_" + uuid.New().String()
 					}
 					respData := fr["response"]
 					var respStr string
@@ -273,12 +297,11 @@ func OpenAIToGeminiResponse(data []byte, model string) ([]byte, error) {
 								if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil {
 									argsMap = map[string]any{"input": argsStr}
 								}
-								parts = append(parts, map[string]any{
-									"functionCall": map[string]any{
-										"name": name,
-										"args": argsMap,
-									},
-								})
+								fc := map[string]any{"name": name, "args": argsMap}
+								if id, ok := tc["id"].(string); ok && id != "" {
+									fc["id"] = id
+								}
+								parts = append(parts, map[string]any{"functionCall": fc})
 							}
 						}
 					}
@@ -342,6 +365,7 @@ type OpenAIToGeminiSSETranslator struct {
 	Model        string
 	toolOrder    []int
 	done         bool
+	failed       bool
 	toolsEmitted bool
 }
 
@@ -355,6 +379,9 @@ func NewOpenAIToGeminiSSETranslator(model string) *OpenAIToGeminiSSETranslator {
 
 // TranslateChunk converts a single OpenAI SSE chunk into a Gemini SSE chunk.
 func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
+	if t.failed {
+		return nil, true, nil
+	}
 	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 		if t.done {
 			return nil, true, nil
@@ -373,6 +400,7 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 				}
 				parts = append(parts, map[string]any{
 					"functionCall": map[string]any{
+						"id":   tc.id,
 						"name": tc.name,
 						"args": argsMap,
 					},
@@ -405,6 +433,19 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		return nil, false, nil
 	}
 
+	if upstreamError := chunk["error"]; upstreamError != nil {
+		t.failed, t.done = true, true
+		message := "Upstream stream failed"
+		if detail, ok := upstreamError.(map[string]any); ok {
+			if text, ok := detail["message"].(string); ok {
+				message = text
+			}
+		} else if text, ok := upstreamError.(string); ok {
+			message = text
+		}
+		payload, err := json.Marshal(map[string]any{"error": map[string]any{"code": 502, "status": "UNAVAILABLE", "message": message}})
+		return []byte(fmt.Sprintf("data: %s\n\n", payload)), true, err
+	}
 	choices, _ := chunk["choices"].([]any)
 	var usageMetadata map[string]any
 	if usage, ok := chunk["usage"].(map[string]any); ok {
@@ -478,6 +519,16 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	}
 
 	fr, _ := choice["finish_reason"].(string)
+	geminiReason := "STOP"
+	switch fr {
+	case "length":
+		geminiReason = "MAX_TOKENS"
+	case "content_filter":
+		geminiReason = "SAFETY"
+	}
+	if fr != "" {
+		t.done = true
+	}
 
 	// If tool calls were accumulated and finishReason arrived, flush the functionCalls
 	if fr != "" && len(t.toolCalls) > 0 && !t.toolsEmitted {
@@ -492,6 +543,7 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			}
 			parts = append(parts, map[string]any{
 				"functionCall": map[string]any{
+					"id":   tc.id,
 					"name": tc.name,
 					"args": argsMap,
 				},
@@ -501,11 +553,10 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 
 	if len(parts) == 0 {
 		if fr != "" {
-			t.done = true
 			donePayload := map[string]any{
 				"candidates": []any{
 					map[string]any{
-						"finishReason": "STOP",
+						"finishReason": geminiReason,
 						"index":        0,
 					},
 				},
@@ -528,7 +579,7 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		"index": 0,
 	}
 	if fr != "" {
-		candidate["finishReason"] = "STOP"
+		candidate["finishReason"] = geminiReason
 	}
 
 	geminiChunk := map[string]any{

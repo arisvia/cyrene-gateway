@@ -229,3 +229,98 @@ func TestOpenAIToClaudeSSETranslator_EmptyOrImmediateDone(t *testing.T) {
 		t.Fatalf("repeated [DONE] should return nil and done=true, got len=%d, done=%v, err=%v", len(out2), done2, err2)
 	}
 }
+
+func TestClaudeToOpenAIRequestMixedToolResults(t *testing.T) {
+	for _, withImage := range []bool{false, true} {
+		body := decodeTranslatorPayload(t, []byte(`{
+			"system":[{"type":"text","text":"first rule"},{"type":"text","text":"second rule"}],
+			"messages":[
+				{"role":"assistant","content":[{"type":"tool_use","id":"tool_a","name":"read","input":{"path":"a"}},{"type":"tool_use","id":"tool_b","name":"read","input":{"path":"b"}}]},
+				{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool_a","content":"file a"},{"type":"text","text":"Compare these results."},{"type":"tool_result","tool_use_id":"tool_b","content":[{"type":"text","text":"file b"}]}]}
+			]
+		}`))
+		if withImage {
+			message := body["messages"].([]any)[1].(map[string]any)
+			message["content"] = append(message["content"].([]any), map[string]any{
+				"type": "image", "source": map[string]any{"type": "base64", "media_type": "image/png", "data": "aGVsbG8="},
+			})
+		}
+		out, err := ClaudeToOpenAIRequest(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages := out["messages"].([]any)
+		if len(messages) != 5 {
+			t.Fatalf("expected system, assistant, two results and user content: %#v", out)
+		}
+		if messages[0].(map[string]any)["content"] != "first rule\n\nsecond rule" {
+			t.Fatalf("system blocks lost: %#v", out)
+		}
+		for i, id := range []string{"tool_a", "tool_b"} {
+			result := messages[i+2].(map[string]any)
+			if result["role"] != "tool" || result["tool_call_id"] != id || result["content"] != []string{"file a", "file b"}[i] {
+				t.Fatalf("tool result changed: %#v", out)
+			}
+		}
+		user := messages[4].(map[string]any)
+		if user["role"] != "user" {
+			t.Fatalf("mixed content lost its role: %#v", user)
+		}
+		if withImage {
+			parts := user["content"].([]any)
+			if len(parts) != 2 || parts[0].(map[string]any)["text"] != "Compare these results." || parts[1].(map[string]any)["image_url"].(map[string]any)["url"] != "data:image/png;base64,aGVsbG8=" {
+				t.Fatalf("text/image beside tool results lost: %#v", user)
+			}
+		} else if user["content"] != "Compare these results." {
+			t.Fatalf("user instruction beside tool results lost: %#v", user)
+		}
+	}
+}
+
+func TestOpenAIToClaudeSSELateUsage(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("claude")
+	out, done, err := trans.TranslateChunk([]byte(`{"choices":[{"delta":{"content":"hello"}}]}`))
+	if err != nil || done || !strings.Contains(string(out), "hello") || !strings.Contains(string(out), "event: message_start") {
+		t.Fatalf("first content must stream immediately: %s done=%v err=%v", out, done, err)
+	}
+	if _, _, err := trans.TranslateChunk([]byte(`{"choices":[{"delta":{},"finish_reason":"stop"}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	out, done, err = trans.TranslateChunk([]byte(`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`))
+	if err != nil || done {
+		t.Fatalf("late usage must not terminate: done=%v err=%v", done, err)
+	}
+	var update map[string]any
+	for _, line := range strings.Split(string(out), "\n") {
+		if data, _, ok := ParseSSEDataLineString(line); ok {
+			update = decodeTranslatorPayload(t, []byte(data))
+		}
+	}
+	if update["type"] != "message_delta" {
+		t.Fatalf("late usage must immediately update message_delta: %s", out)
+	}
+	usage := update["usage"].(map[string]any)
+	if usage["input_tokens"] != float64(10) || usage["output_tokens"] != float64(2) {
+		t.Fatalf("late usage not authoritative: %s", out)
+	}
+	out, done, err = trans.TranslateChunk([]byte("[DONE]"))
+	if err != nil || !done || !strings.Contains(string(out), `"input_tokens":10`) || !strings.Contains(string(out), `"output_tokens":2`) {
+		t.Fatalf("final usage lost: %s done=%v err=%v", out, done, err)
+	}
+}
+
+func TestOpenAIToClaudeSSEAuthoritativeUsageWithContent(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("claude")
+	for _, input := range []string{
+		`{"choices":[{"delta":{"content":"hello"}}],"usage":{"prompt_tokens":10,"completion_tokens":2}}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"weather","arguments":"{}"}}]}}],"usage":{"prompt_tokens":10,"completion_tokens":4}}`,
+	} {
+		if _, done, err := trans.TranslateChunk([]byte(input)); err != nil || done {
+			t.Fatalf("unexpected content result: done=%v err=%v", done, err)
+		}
+	}
+	out, done, err := trans.TranslateChunk([]byte("[DONE]"))
+	if err != nil || !done || !strings.Contains(string(out), `"output_tokens":4`) || !strings.Contains(string(out), `"input_tokens":10`) {
+		t.Fatalf("estimated tokens must not inflate authoritative usage: %s done=%v err=%v", out, done, err)
+	}
+}

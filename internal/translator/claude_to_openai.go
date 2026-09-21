@@ -187,38 +187,20 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 					}
 				}
 
-				if len(toolResults) > 0 {
-					for _, tr := range toolResults {
-						openAIMessages = append(openAIMessages, tr)
+				for _, tr := range toolResults {
+					openAIMessages = append(openAIMessages, tr)
+				}
+				if len(toolCalls) > 0 || len(openAIParts) > 0 {
+					msgObj := map[string]any{"role": role}
+					if len(toolCalls) > 0 {
+						msgObj["tool_calls"] = toolCalls
 					}
-				} else if len(toolCalls) > 0 {
-					msgObj := map[string]any{
-						"role":       role,
-						"tool_calls": toolCalls,
-					}
-					if len(textParts) > 0 {
+					if len(openAIParts) > len(textParts) {
+						msgObj["content"] = openAIParts
+					} else if len(textParts) > 0 {
 						msgObj["content"] = strings.Join(textParts, "\n\n")
 					}
 					openAIMessages = append(openAIMessages, msgObj)
-				} else if len(openAIParts) > 0 {
-					hasNonText := false
-					for _, p := range openAIParts {
-						if pMap, ok := p.(map[string]any); ok && pMap["type"] != "text" {
-							hasNonText = true
-							break
-						}
-					}
-					if hasNonText {
-						openAIMessages = append(openAIMessages, map[string]any{
-							"role":    role,
-							"content": openAIParts,
-						})
-					} else {
-						openAIMessages = append(openAIMessages, map[string]any{
-							"role":    role,
-							"content": strings.Join(textParts, "\n\n"),
-						})
-					}
 				}
 			}
 		}
@@ -385,6 +367,7 @@ type OpenAIToClaudeSSETranslator struct {
 	nextBlockIndex   int
 	outputTokens     int
 	inTokens         int
+	outputUsageKnown bool
 	started          bool
 	ended            bool
 	blockStarted     bool
@@ -406,10 +389,10 @@ func NewOpenAIToClaudeSSETranslator(model string) *OpenAIToClaudeSSETranslator {
 // TranslateChunk takes an OpenAI SSE data payload (e.g. `{"id":"...","choices":[{"delta":{"content":"hi"}}]}` or `[DONE]`)
 // and returns the corresponding Anthropic SSE events formatted as raw SSE text.
 func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
+	if t.ended {
+		return nil, true, nil
+	}
 	if bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
-		if t.ended {
-			return nil, true, nil
-		}
 		t.ended = true
 		var out bytes.Buffer
 
@@ -453,12 +436,12 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		}
 
 		stopReason := "end_turn"
-		if t.hasToolCalls || t.finishReason == "tool_calls" || t.finishReason == "function_call" {
-			stopReason = "tool_use"
-		} else if t.finishReason == "length" {
+		if t.finishReason == "length" {
 			stopReason = "max_tokens"
+		} else if t.hasToolCalls || t.finishReason == "tool_calls" || t.finishReason == "function_call" {
+			stopReason = "tool_use"
 		}
-		out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", stopReason, t.outputTokens))
+		out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d}}\n\n", stopReason, t.inTokens, t.outputTokens))
 		out.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 		return out.Bytes(), true, nil
 	}
@@ -468,6 +451,19 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		return nil, false, nil
 	}
 
+	if upstreamError := chunk["error"]; upstreamError != nil {
+		t.ended = true
+		message := "Upstream stream failed"
+		if detail, ok := upstreamError.(map[string]any); ok {
+			if text, ok := detail["message"].(string); ok {
+				message = text
+			}
+		} else if text, ok := upstreamError.(string); ok {
+			message = text
+		}
+		payload, err := json.Marshal(map[string]any{"type": "error", "error": map[string]any{"type": "api_error", "message": message}})
+		return []byte(fmt.Sprintf("event: error\ndata: %s\n\n", payload)), true, err
+	}
 	var out bytes.Buffer
 
 	// Check for custom id or usage
@@ -481,12 +477,16 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		}
 		if ct, ok := usageMap["completion_tokens"].(float64); ok {
 			t.outputTokens = int(ct)
+			t.outputUsageKnown = true
+		}
+		if t.started {
+			out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{},\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d}}\n\n", t.inTokens, t.outputTokens))
 		}
 	}
 
 	choices, _ := chunk["choices"].([]any)
 	if len(choices) == 0 {
-		return nil, false, nil
+		return out.Bytes(), false, nil
 	}
 
 	choice, ok := choices[0].(map[string]any)
@@ -545,7 +545,9 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
 		}
 		if text != "" {
-			t.outputTokens++
+			if !t.outputUsageKnown {
+				t.outputTokens++
+			}
 			deltaEvent := map[string]any{
 				"type":  "content_block_delta",
 				"index": t.blockIndex,
@@ -625,7 +627,9 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 
 			if fnArgs != "" {
 				cIdx := t.toolBlockIndices[tcIdx]
-				t.outputTokens++
+				if !t.outputUsageKnown {
+					t.outputTokens++
+				}
 				deltaEvent := map[string]any{
 					"type":  "content_block_delta",
 					"index": cIdx,

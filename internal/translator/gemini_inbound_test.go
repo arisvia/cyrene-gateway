@@ -407,3 +407,109 @@ func TestOpenAIToGeminiSSETranslator_UsageOnlyChunk(t *testing.T) {
 		t.Fatalf("expected usageMetadata in emitted chunk, got: %s", s)
 	}
 }
+
+func TestGeminiParallelToolRoundTrip(t *testing.T) {
+	response := []byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_tokyo","type":"function","function":{"name":"weather","arguments":"{\"city\":\"Tokyo\"}"}},{"id":"call_paris","type":"function","function":{"name":"weather","arguments":"{\"city\":\"Paris\"}"}}]},"finish_reason":"tool_calls"}]}`)
+	geminiBytes, err := OpenAIToGeminiResponse(response, "gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := decodeTranslatorPayload(t, geminiBytes)["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)
+	parts := history["parts"].([]any)
+	for i, id := range []string{"call_tokyo", "call_paris"} {
+		if parts[i].(map[string]any)["functionCall"].(map[string]any)["id"] != id {
+			t.Fatalf("Gemini output dropped call ID: %s", geminiBytes)
+		}
+	}
+	for _, tc := range []struct {
+		name, responses string
+		want            []string
+	}{
+		{"idless_fifo", `[{"functionResponse":{"name":"weather","response":{"city":"Tokyo"}}},{"functionResponse":{"name":"weather","response":{"city":"Paris"}}}]`, []string{"call_tokyo", "call_paris"}},
+		{"explicit_reversed", `[{"functionResponse":{"id":"call_paris","name":"weather","response":{"city":"Paris"}}},{"functionResponse":{"id":"call_tokyo","name":"weather","response":{"city":"Tokyo"}}}]`, []string{"call_paris", "call_tokyo"}},
+		{"explicit_then_idless", `[{"functionResponse":{"id":"call_paris","name":"weather","response":{"city":"Paris"}}},{"functionResponse":{"name":"weather","response":{"city":"Tokyo"}}}]`, []string{"call_paris", "call_tokyo"}},
+		{"idless_then_explicit", `[{"functionResponse":{"name":"weather","response":{"city":"Paris"}}},{"functionResponse":{"id":"call_tokyo","name":"weather","response":{"city":"Tokyo"}}}]`, []string{"call_paris", "call_tokyo"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			results := decodeTranslatorPayload(t, []byte(`{"role":"user","parts":`+tc.responses+`}`))
+			request := map[string]any{"contents": []any{
+				map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Compare weather"}}},
+				history, results,
+			}}
+			openAI, err := GeminiToOpenAIRequest(request, "gemini")
+			if err != nil {
+				t.Fatal(err)
+			}
+			messages := openAI["messages"].([]any)
+			if len(messages) != 4 {
+				t.Fatalf("expected two calls and two results: %#v", openAI)
+			}
+			for i, id := range tc.want {
+				result := messages[i+2].(map[string]any)
+				if result["role"] != "tool" || result["tool_call_id"] != id {
+					t.Fatalf("result %d associated with wrong call: %#v", i, openAI)
+				}
+			}
+		})
+	}
+}
+
+func TestGeminiToOpenAIRequestIDlessCallsAcrossTurns(t *testing.T) {
+	body := decodeTranslatorPayload(t, []byte(`{"contents":[
+		{"role":"model","parts":[{"functionCall":{"name":"weather","args":{"city":"Tokyo"}}},{"functionCall":{"name":"weather","args":{"city":"Paris"}}}]},
+		{"role":"user","parts":[{"functionResponse":{"name":"weather","response":{"city":"Tokyo"}}}]},
+		{"role":"user","parts":[{"functionResponse":{"name":"weather","response":{"city":"Paris"}}}]},
+		{"role":"model","parts":[{"functionCall":{"name":"weather","args":{"city":"London"}}}]},
+		{"role":"user","parts":[{"functionResponse":{"name":"weather","response":{"city":"London"}}}]}
+	]}`))
+	out, err := GeminiToOpenAIRequest(body, "gemini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := out["messages"].([]any)
+	if len(messages) != 5 {
+		t.Fatalf("unexpected history: %#v", out)
+	}
+	calls := messages[0].(map[string]any)["tool_calls"].([]any)
+	calls = append(calls, messages[3].(map[string]any)["tool_calls"].([]any)...)
+	ids := make(map[string]bool)
+	for i, resultIndex := range []int{1, 2, 4} {
+		id, _ := calls[i].(map[string]any)["id"].(string)
+		if id == "" || ids[id] || messages[resultIndex].(map[string]any)["tool_call_id"] != id {
+			t.Fatalf("pending same-name calls not consumed once: %#v", out)
+		}
+		ids[id] = true
+	}
+}
+
+func TestOpenAIToGeminiSSEPreservesParallelIDs(t *testing.T) {
+	for _, terminal := range []string{"[DONE]", `{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`} {
+		trans := NewOpenAIToGeminiSSETranslator("gemini")
+		for _, input := range []string{
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","function":{"name":"weather","arguments":"{\"city\":"}},{"index":1,"id":"call_b","function":{"name":"weather","arguments":"{\"city\":"}}]}}]}`,
+			`{"choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"\"Paris\"}"}},{"index":0,"function":{"arguments":"\"Tokyo\"}"}}]}}]}`,
+		} {
+			if out, done, err := trans.TranslateChunk([]byte(input)); err != nil || done || len(out) != 0 {
+				t.Fatalf("partial tool arguments must remain buffered: %s done=%v err=%v", out, done, err)
+			}
+		}
+		out, done, err := trans.TranslateChunk([]byte(terminal))
+		if err != nil || !done {
+			t.Fatalf("unexpected terminal: done=%v err=%v", done, err)
+		}
+		payload, _, ok := ParseSSEDataLine(out)
+		if !ok {
+			t.Fatalf("missing SSE data: %s", out)
+		}
+		parts := decodeTranslatorPayload(t, payload)["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"].([]any)
+		if len(parts) != 2 {
+			t.Fatalf("parallel calls lost: %s", out)
+		}
+		for i, id := range []string{"call_a", "call_b"} {
+			fc := parts[i].(map[string]any)["functionCall"].(map[string]any)
+			if fc["id"] != id || fc["name"] != "weather" || fc["args"].(map[string]any)["city"] != []string{"Tokyo", "Paris"}[i] {
+				t.Fatalf("streamed functionCall lost identity or arguments: %s", out)
+			}
+		}
+	}
+}
