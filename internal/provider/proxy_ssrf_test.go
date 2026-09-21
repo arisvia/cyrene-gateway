@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -178,5 +179,51 @@ func TestProxyManager_ConcurrentUpdateAndNext(t *testing.T) {
 
 	for range 5 {
 		<-done
+	}
+}
+func TestSafeHTTPClientHonorsEnvironmentProxy(t *testing.T) {
+	var proxied atomic.Bool
+	proxySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied.Store(true)
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "http://169.254.169.254/latest/meta-data/", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok from env proxy"))
+	}))
+	defer proxySrv.Close()
+
+	t.Setenv("HTTP_PROXY", proxySrv.URL)
+	t.Setenv("http_proxy", proxySrv.URL)
+
+	client := SafeHTTPClient(5*time.Second, false)
+	req, err := http.NewRequest("GET", "http://example.com/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request through env proxy failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if !proxied.Load() {
+		t.Fatal("request was not routed through the environment proxy")
+	}
+
+	// Ensure SSRF redirect blocking remains active through the environment proxy
+	badReq, err := http.NewRequest("GET", "http://example.com/redirect", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badResp, err := client.Do(badReq)
+	if err == nil {
+		badResp.Body.Close()
+		t.Fatal("expected redirect to metadata address to fail SSRF check")
+	}
+	if !errors.Is(err, ErrPrivateNetworkBlocked) {
+		t.Fatalf("expected ErrPrivateNetworkBlocked, got %v", err)
 	}
 }

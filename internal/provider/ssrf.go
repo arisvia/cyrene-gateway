@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -118,19 +119,42 @@ func safeDialer(allowPrivate bool, exempt map[string]bool) *net.Dialer {
 	}
 }
 
+// envProxyExemptHosts collects proxy hostnames and resolved IPs from environment variables
+// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY) to permit dial-time loopback connection to local proxies.
+func envProxyExemptHosts() map[string]bool {
+	exempt := make(map[string]bool)
+	for _, envVar := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
+		val := os.Getenv(envVar)
+		if val == "" {
+			continue
+		}
+		if !strings.Contains(val, "://") {
+			val = "http://" + val
+		}
+		if u, err := url.Parse(val); err == nil {
+			for k, v := range proxyExemptHosts(u) {
+				exempt[k] = v
+			}
+		}
+	}
+	return exempt
+}
+
 // SafeHTTPClient returns an HTTP client equipped with custom dialer checking every resolved IP against SSRF rules.
+// It honors environment proxy settings (HTTP_PROXY / HTTPS_PROXY) while exempting local proxy hosts from dial-time SSRF blocking.
 func SafeHTTPClient(timeout time.Duration, allowPrivate bool) *http.Client {
-	dialer := safeDialer(allowPrivate, nil)
+	exempt := envProxyExemptHosts()
+	dialer := safeDialer(allowPrivate, exempt)
 
 	transport := &http.Transport{
 		DialContext:           dialer.DialContext,
+		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-
 	return &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
