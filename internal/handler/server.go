@@ -82,6 +82,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 
 	s.Handler = middleware.Chain(mux,
 		middleware.Recovery,
+		middleware.SanitizeInternalHeaders,
 		middleware.Logging,
 		middleware.RequestSizeLimiter(),
 		middleware.CORS,
@@ -119,6 +120,11 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /v1/responses", s.handleResponses)
 	s.Router.HandleFunc("POST /v1/embeddings", s.handleEmbeddings)
 	s.Router.HandleFunc("POST /v1/messages", s.handleMessages)
+
+	// Google Gemini compatible API surface
+	s.Router.HandleFunc("POST /v1beta/models/{modelAction...}", s.handleGeminiGenerateContent)
+	s.Router.HandleFunc("POST /v1/models/{modelAction...}", s.handleGeminiGenerateContent)
+
 	// Dashboard management API
 	s.Router.HandleFunc("GET /api/settings", s.handleGetSettings)
 	s.Router.HandleFunc("PUT /api/settings", s.handlePutSettings)
@@ -419,13 +425,17 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		if isModelDisabled(c.Name, c.Name) {
 			continue
 		}
+		displayName := c.Name
+		if len(c.Models) > 0 {
+			displayName = fmt.Sprintf("%s (组合: %s)", c.Name, strings.Join(c.Models, " → "))
+		}
 		models = append(models, ModelEntry{
-			ID:      c.Name,
-			Object:  "model",
-			OwnedBy: "cyrene-gateway",
+			ID:          c.Name,
+			Object:      "model",
+			OwnedBy:     "cyrene-gateway",
+			DisplayName: displayName,
 		})
 	}
-
 	// Group active connections by provider
 	activeConnsByProvider := make(map[string][]model.ProviderConnection)
 	for _, conn := range conns {
