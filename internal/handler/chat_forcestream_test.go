@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +13,40 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/translator"
 )
+
+func TestStreamWithoutUsageKeepsRequestRecord(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			srv, database := setupTestServer(t)
+			body := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+			resp := &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}
+			w := httptest.NewRecorder()
+			srv.proxyResponse(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, stream, true, translator.FormatOpenAI, "model", &usageContext{Provider: "no-usage", Model: "model", StartedAt: time.Now(), Status: 200})
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "answer") {
+				t.Fatalf("invalid response: %s", w.Body.String())
+			}
+			if strings.Contains(w.Body.String(), `"usage"`) {
+				t.Fatalf("invented usage: %s", w.Body.String())
+			}
+			details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: "no-usage", Page: 1, PageSize: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if details.Pagination.TotalItems != 1 {
+				t.Fatalf("missing request record: %d", details.Pagination.TotalItems)
+			}
+			var entry map[string]any
+			if err := json.Unmarshal(details.Details[0], &entry); err != nil {
+				t.Fatal(err)
+			}
+			if entry["usageKnown"] != false || entry["output"] != "answer" {
+				t.Fatalf("missing unknown-usage metadata: %v", entry)
+			}
+		})
+	}
+}
 
 func TestForceStreamAggregation(t *testing.T) {
 	// Upstream mock that only accepts streaming requests and returns SSE chunks
@@ -27,8 +61,10 @@ func TestForceStreamAggregation(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "data: {\"id\":\"chunk-1\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n")
-		fmt.Fprintf(w, "data: {\"id\":\"chunk-1\",\"choices\":[{\"delta\":{\"content\":\" World!\"}}]}\n\n")
-		fmt.Fprintf(w, "data: {\"id\":\"chunk-1\",\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\n")
+		fmt.Fprintf(w, "data: {\"id\":\"chunk-1\",\"choices\":[{\"delta\":{\"content\":\" World!\"},\"finish_reason\":\"stop\"}]}\n\n")
+		if options, ok := req["stream_options"].(map[string]any); ok && options["include_usage"] == true {
+			fmt.Fprintf(w, "data: {\"id\":\"chunk-1\",\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\n")
+		}
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 	}))
 	defer upstream.Close()

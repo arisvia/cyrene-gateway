@@ -1301,7 +1301,7 @@ func TestChatToResponsesUpstream_NonStreamAndStream(t *testing.T) {
 			flusher.Flush()
 			w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"Streamed Responses!\"}\n\n"))
 			flusher.Flush()
-			w.Write([]byte("event: response.done\ndata: {\"type\":\"response.done\",\"response\":{\"usage\":{\"input_tokens\":5,\"output_tokens\":5,\"total_tokens\":10}}}\n\n"))
+			w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":5,\"total_tokens\":10}}}\n\n"))
 			flusher.Flush()
 			return
 		}

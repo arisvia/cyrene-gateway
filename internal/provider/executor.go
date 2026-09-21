@@ -77,79 +77,80 @@ func PrepareUpstreamRequest(
 
 	var bodyMap map[string]any
 	if err := json.Unmarshal(req.RawBody, &bodyMap); err != nil {
-		bodyMap = make(map[string]any)
+		return nil, "", fmt.Errorf("invalid request body: %w", err)
 	}
+	if bodyMap == nil {
+		return nil, "", fmt.Errorf("request body must be an object")
+	}
+	upstreamStream := req.Stream || providerInfo.ForceStream
 	bodyMap["model"] = modelInfo.Model
-
-	formatStr := "openai"
-	if targetFormat != translator.FormatOpenAI {
-		formatStr = string(targetFormat)
+	bodyMap["stream"] = upstreamStream
+	if targetFormat == translator.FormatOpenAI && upstreamStream && !req.Stream {
+		options, _ := bodyMap["stream_options"].(map[string]any)
+		if options == nil {
+			options = make(map[string]any)
+		}
+		options["include_usage"] = true
+		bodyMap["stream_options"] = options
 	}
 
-	// Loop guard
-	if req.Messages != nil {
-		// Convert to loopguard messages
-		lgMsgs := make([]loopguard.Message, 0, len(req.Messages))
-		for _, m := range req.Messages {
-			role, _ := m["role"].(string)
-			content, _ := m["content"].(string)
-			lgMsgs = append(lgMsgs, loopguard.Message{Role: role, Content: json.RawMessage(fmt.Sprintf("%q", content))})
-		}
-		if lgRes := loopguard.DetectLoop(lgMsgs); lgRes.Detected {
-			loopguard.InjectLoopHint(bodyMap, formatStr, lgRes.Hint)
-		}
+	var history struct {
+		Messages []loopguard.Message `json:"messages"`
 	}
-
-	// Termination prompt
+	if err := json.Unmarshal(req.RawBody, &history); err != nil {
+		return nil, "", fmt.Errorf("invalid messages: %w", err)
+	}
+	if result := loopguard.DetectLoop(history.Messages); result.Detected {
+		loopguard.InjectLoopHint(bodyMap, "openai", result.Hint)
+	}
 	if req.HasTools {
-		loopguard.InjectTerminationPrompt(bodyMap, formatStr)
+		loopguard.InjectTerminationPrompt(bodyMap, "openai")
 	}
-
-	var bodyBytes []byte
-	var err error
-
-	if targetFormat == translator.FormatOpenAI {
-		ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
-		if applyTokenSaverFn != nil {
-			applyTokenSaverFn(bodyMap, "openai")
+	if modelInfo.Provider == "codex" {
+		if tools, ok := bodyMap["tools"].([]any); ok {
+			for _, tool := range tools {
+				if tm, ok := tool.(map[string]any); ok {
+					if fn, ok := tm["function"].(map[string]any); ok {
+						if params, ok := fn["parameters"].(map[string]any); ok {
+							translator.StripCodexUnsupportedPatterns(params)
+						}
+					}
+				}
+			}
 		}
-		bodyBytes, err = json.Marshal(bodyMap)
-	} else {
-		translated, trErr := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, req.Stream)
-		if trErr != nil {
-			return nil, "", fmt.Errorf("translation failed: %w", trErr)
-		}
-		ClampMaxTokens(modelInfo.Provider, modelInfo.Model, translated)
-		if applyTokenSaverFn != nil {
-			applyTokenSaverFn(translated, string(targetFormat))
-		}
-		bodyBytes, err = json.Marshal(translated)
 	}
-
+	ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
+	if applyTokenSaverFn != nil {
+		applyTokenSaverFn(bodyMap, "openai")
+	}
+	translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, upstreamStream)
+	if err != nil {
+		return nil, "", fmt.Errorf("translation failed: %w", err)
+	}
+	if modelInfo.Provider == "codex" {
+		translated["store"] = false
+		if _, ok := translated["instructions"]; !ok {
+			translated["instructions"] = ""
+		}
+	}
+	bodyBytes, err := json.Marshal(translated)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	targetURL := BuildTransportURL(transport, modelInfo.Model, req.Stream)
+	targetURL := BuildTransportURL(transport, modelInfo.Model, upstreamStream)
 	upstreamReq, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create upstream request: %w", err)
 	}
-
 	for k, v := range transport.Headers {
 		upstreamReq.Header.Set(k, v)
 	}
-	creds := Credentials{
-		APIKey:               conn.Data.APIKey,
-		AccessToken:          conn.Data.AccessToken,
-		ProviderSpecificData: conn.Data.ProviderSpecificData,
-	}
-	ApplyAuth(upstreamReq, transport, creds)
+	ApplyAuth(upstreamReq, transport, ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
 	upstreamReq.Header.Set("Content-Type", "application/json")
-	if req.Stream {
+	if upstreamStream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")
 	}
-
 	return upstreamReq, targetFormat, nil
 }
 

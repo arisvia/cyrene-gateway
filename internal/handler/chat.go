@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -458,53 +460,16 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			return
 		}
 
-		baseURL, comboAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
-		if conn.Data.BaseURL != "" {
-			baseURL = conn.Data.BaseURL
-			comboAPIType = providerInfo.APIType
-		}
-		if baseURL == "" {
-			lastError = fmt.Sprintf("no base URL for provider: %s", modelInfo.Provider)
-			lastStatus = 503
-			continue
-		}
-
-		upstreamStream := req.Stream
-		if providerInfo.ForceStream {
-			upstreamStream = true
-		}
-
-		// Build and execute upstream request — use raw body to preserve unknown fields
-		var comboBody map[string]any
-		json.Unmarshal(rawBody, &comboBody)
-		comboBody["model"] = modelInfo.Model
-		if providerInfo.ForceStream {
-			comboBody["stream"] = true
-		}
-		bodyBytes, err := json.Marshal(comboBody)
+		upstreamStream := req.Stream || providerInfo.ForceStream
+		upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
+			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil},
+			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
+		)
 		if err != nil {
-			lastError = "failed to marshal request"
-			lastStatus = 500
+			lastError = err.Error()
+			lastStatus = http.StatusBadRequest
 			continue
-		}
-
-		comboTransport := provider.ResolveTransport(providerInfo, baseURL, comboAPIType, conn)
-		targetURL := provider.BuildTransportURL(comboTransport, modelInfo.Model, upstreamStream)
-		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
-		if err != nil {
-			lastError = "failed to create upstream request"
-			lastStatus = 500
-			continue
-		}
-
-		for k, v := range comboTransport.Headers {
-			upstreamReq.Header.Set(k, v)
-		}
-		comboCreds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
-		provider.ApplyAuth(upstreamReq, comboTransport, comboCreds)
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		if upstreamStream {
-			upstreamReq.Header.Set("Accept", "text/event-stream")
 		}
 
 		endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
@@ -549,7 +514,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				Status:       resp.StatusCode,
 				Prompt:       extractPromptSummary(req.Messages),
 			}
-			s.proxyResponse(w, r, resp, req.Stream, upstreamStream, translator.FormatOpenAI, modelInfo.Model, uc)
+			s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
 			resp.Body.Close()
 			return
 		}
@@ -656,144 +621,15 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	// Determine base URL (auth-mode-aware: 9router#2881)
-	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
-	if conn.Data.BaseURL != "" {
-		baseURL = conn.Data.BaseURL
-		effectiveAPIType = providerInfo.APIType // user override resets to provider default
-	}
-	if baseURL == "" {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("no base URL configured for provider: %s", modelInfo.Provider),
-		})
-		return
-	}
-
-	// Determine target format and build upstream request
-	targetFormat := translator.FormatOpenAI
-	switch effectiveAPIType {
-	case "anthropic":
-		targetFormat = translator.FormatAnthropic
-	case "gemini":
-		targetFormat = translator.FormatGemini
-	case "responses":
-		targetFormat = translator.FormatResponses
-	}
-
-	// Phase 30: resolve the provider transport (base URL, format, auth scheme,
-	// hooks) once and use it for both URL building and auth injection.
-	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
-
-	upstreamStream := req.Stream
-	if providerInfo.ForceStream {
-		upstreamStream = true
-	}
-
-	var bodyBytes []byte
-	var targetURL string
-
-	if targetFormat == translator.FormatOpenAI {
-		// Standard OpenAI-compatible passthrough — use raw body to preserve
-		// unknown fields (service_tier, top_p, stop, etc.) per 9router c97963c.
-		var bodyMap map[string]any
-		json.Unmarshal(rawBody, &bodyMap)
-		bodyMap["model"] = modelInfo.Model
-		if providerInfo.ForceStream {
-			bodyMap["stream"] = true
-		}
-
-		// Loop guard detection
-		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
-			loopguard.InjectLoopHint(bodyMap, "openai", loopHint)
-		}
-
-		// Termination prompt injection (only when tools are present)
-		if req.Tools != nil {
-			loopguard.InjectTerminationPrompt(bodyMap, "openai")
-		}
-
-		// Codex rejects Unicode property patterns in tool parameter schemas (9router#3922)
-		if modelInfo.Provider == "codex" {
-			if tools, ok := bodyMap["tools"].([]any); ok {
-				for _, t := range tools {
-					if tm, ok := t.(map[string]any); ok {
-						if fn, ok := tm["function"].(map[string]any); ok {
-							if params, ok := fn["parameters"].(map[string]any); ok {
-								translator.StripCodexUnsupportedPatterns(params)
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Max_tokens clamping for specific providers
-		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
-
-		// Phase 13: Token saver (RTK + caveman + ponytail)
-		s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider)
-		bodyBytes, err = json.Marshal(bodyMap)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal request"})
-			return
-		}
-		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, upstreamStream)
-	} else {
-		// Translate request to provider format — use raw body to preserve unknown fields
-		var bodyMap map[string]any
-		json.Unmarshal(rawBody, &bodyMap)
-		// Pre-compression of tool messages before translation ensures all formats (Anthropic/Gemini) inherit compressed outputs
-		if settings, err := s.DB.GetSettings(); err == nil && settings.RTKEnabled && !isTokenSaverExcluded(settings, modelInfo.Provider, modelInfo.Model) {
-			if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
-				slog.Debug("RTK pre-compressed tool results before translation", slog.Int("bytes_saved", saved))
-			}
-		}
-
-		// Phase 9: Loop guard + termination prompt for translated formats
-		if loopHint := runLoopGuard(req.Messages); loopHint != "" {
-			loopguard.InjectLoopHint(bodyMap, string(targetFormat), loopHint)
-		}
-		if req.Tools != nil {
-			loopguard.InjectTerminationPrompt(bodyMap, string(targetFormat))
-		}
-
-		translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, upstreamStream)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("translation failed: %v", err)})
-			return
-		}
-
-		// Max_tokens clamping on translated body
-		provider.ClampMaxTokens(modelInfo.Provider, modelInfo.Model, translated)
-
-		// Phase 13: Token saver (RTK + caveman + ponytail)
-		s.applyTokenSaver(translated, string(targetFormat), modelInfo.Provider)
-		bodyBytes, err = json.Marshal(translated)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to marshal translated request"})
-			return
-		}
-
-		targetURL = provider.BuildTransportURL(transport, modelInfo.Model, upstreamStream)
-	}
-
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
+	upstreamStream := req.Stream || providerInfo.ForceStream
+	upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
+		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil},
+		provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+		func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
+	)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
-	}
-
-	// Phase 30: apply transport headers + auth (scheme-aware injection + hooks).
-	// Headers first (matches 9router: config.headers spread before applyAuth) so
-	// the AnthropicVersion guard in ApplyAuth sees any pre-set anthropic-version.
-	for k, v := range transport.Headers {
-		upstreamReq.Header.Set(k, v)
-	}
-	creds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
-	provider.ApplyAuth(upstreamReq, transport, creds)
-	upstreamReq.Header.Set("Content-Type", "application/json")
-	if upstreamStream {
-		upstreamReq.Header.Set("Accept", "text/event-stream")
 	}
 
 	slog.Info("Proxying request",
@@ -829,8 +665,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// Phase 9: On-401 retry with token refresh
 	if resp.StatusCode == http.StatusUnauthorized && conn.Data.RefreshToken != "" {
-		io.ReadAll(resp.Body)
+		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(errBody))
 
 		result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
 		if refreshErr == nil {
@@ -839,19 +676,12 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 				slog.Error("Failed to persist connection after 401 refresh", "provider", conn.Provider, "error", errUpdate)
 			}
 
-			// Retry the request with new token
-			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
+			retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
+				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil},
+				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
+			)
 			if retryErr == nil {
-				for k, v := range transport.Headers {
-					retryReq.Header.Set(k, v)
-				}
-				retryCreds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
-				provider.ApplyAuth(retryReq, transport, retryCreds)
-				retryReq.Header.Set("Content-Type", "application/json")
-				if upstreamStream {
-					retryReq.Header.Set("Accept", "text/event-stream")
-				}
-
 				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))
 				resp, err = client.Do(retryReq)
 				if err != nil {
@@ -957,142 +787,170 @@ func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *htt
 	s.proxyStreaming(w, r, resp, format, model, uc)
 }
 
-// aggregateSSEToNonStreaming collects server-sent events from an upstream that requires streaming
-// and returns a standard non-streaming ChatCompletionResponse JSON to clients that requested non-stream.
+type chatStreamChunk struct {
+	ID      string          `json:"id"`
+	Created int64           `json:"created"`
+	Error   json.RawMessage `json:"error"`
+	Choices []struct {
+		Index        int    `json:"index"`
+		FinishReason string `json:"finish_reason"`
+		Delta        struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
 func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
 	reader := provider.NewSSEReader(resp.Body)
-	var contentBuilder strings.Builder
-	var reasoningBuilder strings.Builder
+	streamTranslator := translator.NewSSETranslator(format, model)
 	var lastUsage usage.Usage
 	var chunkID string
-	var created int64 = time.Now().Unix()
-	ctx := r.Context()
-	var responsesTranslator *translator.ResponsesSSEToOpenAITranslator
-	if format == translator.FormatResponses {
-		responsesTranslator = translator.NewResponsesSSEToOpenAITranslator(model)
+	created := time.Now().Unix()
+	type toolState struct {
+		id, kind        string
+		name, arguments strings.Builder
 	}
+	type choiceState struct {
+		content, reasoning strings.Builder
+		finishReason       string
+		tools              map[int]*toolState
+	}
+	choices := make(map[int]*choiceState)
+	ctx := r.Context()
 
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
 		event, err := reader.ReadEvent(ctx)
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			complete := len(choices) > 0
+			for _, choice := range choices {
+				complete = complete && choice.finishReason != ""
+			}
+			if !errors.Is(err, io.EOF) || !complete {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream stream ended before completion"})
+				return
+			}
 			break
 		}
 		if len(event.Data) == 0 {
 			continue
 		}
-
-		dataStr := strings.TrimSpace(string(event.Data))
-		if dataStr == "[DONE]" {
+		if strings.TrimSpace(string(event.Data)) == "[DONE]" {
 			break
 		}
-
-		// Extract usage if present in chunk
-		if u := usage.ExtractFromSSELine(event.Data); u.TotalTokens > 0 {
-			lastUsage = u
+		chunkData, done, err := streamTranslator.TranslateChunk(event.Data)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid upstream stream: " + err.Error()})
+			return
 		}
-
-		// Translate chunk if non-OpenAI format
-		chunkData := event.Data
-		if format != translator.FormatOpenAI {
-			var translated []byte
-			var isDone bool
-			var tErr error
-			if responsesTranslator != nil {
-				translated, isDone, tErr = responsesTranslator.TranslateChunk(event.Data)
-			} else {
-				translated, isDone, tErr = translator.TranslateSSEChunk(format, event.Data, model)
+		if len(chunkData) > 0 && string(chunkData) != "[DONE]" {
+			var chunk chatStreamChunk
+			if err := json.Unmarshal(chunkData, &chunk); err != nil {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid upstream stream payload"})
+				return
 			}
-			if isDone {
-				break
+			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+				writeJSON(w, http.StatusBadGateway, map[string]json.RawMessage{"error": chunk.Error})
+				return
 			}
-			if tErr != nil || translated == nil {
-				continue
+			if u := usage.ExtractFromSSELine(chunkData); u.TotalTokens > 0 {
+				lastUsage = u
 			}
-			chunkData = translated
-		}
-
-		var chunk struct {
-			ID      string `json:"id"`
-			Model   string `json:"model"`
-			Created int64  `json:"created"`
-			Choices []struct {
-				Delta struct {
-					Content          string `json:"content"`
-					ReasoningContent string `json:"reasoning_content"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal(chunkData, &chunk); err == nil {
 			if chunk.ID != "" {
 				chunkID = chunk.ID
 			}
 			if chunk.Created != 0 {
 				created = chunk.Created
 			}
-			if len(chunk.Choices) > 0 {
-				contentBuilder.WriteString(chunk.Choices[0].Delta.Content)
-				reasoningBuilder.WriteString(chunk.Choices[0].Delta.ReasoningContent)
+			for _, delta := range chunk.Choices {
+				choice := choices[delta.Index]
+				if choice == nil {
+					choice = &choiceState{tools: make(map[int]*toolState)}
+					choices[delta.Index] = choice
+				}
+				choice.content.WriteString(delta.Delta.Content)
+				choice.reasoning.WriteString(delta.Delta.ReasoningContent)
+				if delta.FinishReason != "" {
+					choice.finishReason = delta.FinishReason
+				}
+				for _, call := range delta.Delta.ToolCalls {
+					tool := choice.tools[call.Index]
+					if tool == nil {
+						tool = &toolState{kind: "function"}
+						choice.tools[call.Index] = tool
+					}
+					if call.ID != "" {
+						tool.id = call.ID
+					}
+					if call.Type != "" {
+						tool.kind = call.Type
+					}
+					tool.name.WriteString(call.Function.Name)
+					tool.arguments.WriteString(call.Function.Arguments)
+				}
 			}
+		}
+		if done {
+			break
 		}
 	}
 
+	if len(choices) == 0 {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream stream contained no choices"})
+		return
+	}
 	if chunkID == "" {
 		chunkID = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
 	}
-
-	msgMap := map[string]any{
-		"role":    "assistant",
-		"content": contentBuilder.String(),
+	var output []any
+	for _, index := range slices.Sorted(maps.Keys(choices)) {
+		choice := choices[index]
+		message := map[string]any{"role": "assistant", "content": choice.content.String()}
+		if choice.reasoning.Len() > 0 {
+			message["reasoning_content"] = choice.reasoning.String()
+		}
+		if len(choice.tools) > 0 {
+			var calls []any
+			for _, toolIndex := range slices.Sorted(maps.Keys(choice.tools)) {
+				call := choice.tools[toolIndex]
+				calls = append(calls, map[string]any{
+					"id": call.id, "type": call.kind,
+					"function": map[string]any{"name": call.name.String(), "arguments": call.arguments.String()},
+				})
+			}
+			message["tool_calls"] = calls
+			if choice.content.Len() == 0 {
+				message["content"] = nil
+			}
+		}
+		if choice.finishReason == "" {
+			choice.finishReason = "stop"
+			if len(choice.tools) > 0 {
+				choice.finishReason = "tool_calls"
+			}
+		}
+		output = append(output, map[string]any{"index": index, "message": message, "finish_reason": choice.finishReason})
+		if uc != nil && index == 0 {
+			uc.Response = choice.content.String()
+		}
 	}
-	if reasoningBuilder.Len() > 0 {
-		msgMap["reasoning_content"] = reasoningBuilder.String()
-	}
-
-	respObj := map[string]any{
-		"id":      chunkID,
-		"object":  "chat.completion",
-		"created": created,
-		"model":   model,
-		"choices": []any{
-			map[string]any{
-				"index":         0,
-				"message":       msgMap,
-				"finish_reason": "stop",
-			},
-		},
-	}
-	uc.Response = contentBuilder.String()
+	respObj := map[string]any{"id": chunkID, "object": "chat.completion", "created": created, "model": model, "choices": output}
 	if lastUsage.TotalTokens > 0 {
-		respObj["usage"] = map[string]any{
-			"prompt_tokens":     lastUsage.PromptTokens,
-			"completion_tokens": lastUsage.CompletionTokens,
-			"total_tokens":      lastUsage.TotalTokens,
-		}
-		s.recordUsage(uc, lastUsage)
-	} else {
-		estimatedPrompt := len(contentBuilder.String()) / 4
-		if estimatedPrompt < 1 {
-			estimatedPrompt = 1
-		}
-		fallbackUsage := usage.Usage{
-			PromptTokens:     10,
-			CompletionTokens: estimatedPrompt,
-			TotalTokens:      10 + estimatedPrompt,
-		}
-		respObj["usage"] = map[string]any{
-			"prompt_tokens":     fallbackUsage.PromptTokens,
-			"completion_tokens": fallbackUsage.CompletionTokens,
-			"total_tokens":      fallbackUsage.TotalTokens,
-		}
-		s.recordUsage(uc, fallbackUsage)
+		respObj["usage"] = lastUsage.OpenAI()
 	}
-
+	s.recordUsage(uc, lastUsage)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	w.WriteHeader(http.StatusOK)
@@ -1122,8 +980,25 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 		u = usage.ExtractFromClaude(body)
 	case translator.FormatGemini:
 		u = usage.ExtractFromGemini(body)
+	case translator.FormatResponses:
+		u = usage.ExtractFromResponses(body)
 	default:
 		u = usage.ExtractFromOpenAI(body)
+	}
+	if format != translator.FormatOpenAI {
+		translated, err := translator.TranslateResponse(format, body, model)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid upstream response: " + err.Error()})
+			return
+		}
+		body = translated
+	}
+	var protocolError struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(body, &protocolError); err == nil && len(protocolError.Error) > 0 && string(protocolError.Error) != "null" {
+		writeJSON(w, http.StatusBadGateway, map[string]json.RawMessage{"error": protocolError.Error})
+		return
 	}
 	var respObj struct {
 		Choices []struct {
@@ -1151,23 +1026,9 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 			slog.Int("prompt_tokens", u.PromptTokens),
 			slog.Int("completion_tokens", u.CompletionTokens),
 		)
-		s.recordUsage(uc, u)
-	} else {
-		s.recordUsage(uc, usage.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2})
 	}
+	s.recordUsage(uc, u)
 
-	// Translate response to OpenAI format if needed
-	if format != translator.FormatOpenAI {
-		translated, err := translator.TranslateResponse(format, body, model)
-		if err != nil {
-			// Fallback to raw response
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(resp.StatusCode)
-			w.Write(body)
-			return
-		}
-		body = translated
-	}
 	w.Header().Set("Content-Type", "application/json")
 	// Extract upstream served model if available
 	var modelObj struct {
@@ -1184,140 +1045,100 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 
 // proxyStreaming handles SSE streaming with disconnect awareness and [DONE] handling.
 func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		// Fallback: read all and write
-		io.Copy(w, resp.Body)
-		return
+	flush := func() {
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
 	}
-
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	flush()
 	ctx := r.Context()
 	reader := provider.NewSSEReader(resp.Body)
+	streamTranslator := translator.NewSSETranslator(format, model)
 	var lastUsage usage.Usage
-	var responsesTranslator *translator.ResponsesSSEToOpenAITranslator
-	if format == translator.FormatResponses {
-		responsesTranslator = translator.NewResponsesSSEToOpenAITranslator(model)
-	}
 	var respBuilder strings.Builder
+	finished := make(map[int]bool)
+	fail := func(message string) {
+		errChunk, _ := json.Marshal(map[string]any{"error": map[string]any{
+			"message": message, "type": "upstream_error", "code": "upstream_error",
+		}})
+		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", errChunk)
+		flush()
+	}
 
 	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("Client disconnected during stream", slog.String("model", model))
-			if lastUsage.TotalTokens > 0 {
-				s.recordUsage(uc, lastUsage)
-			}
-			return
-		default:
-		}
-
 		event, err := reader.ReadEvent(ctx)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				// Normal stream completion without explicit [DONE]
-				if lastUsage.TotalTokens > 0 {
-					s.recordUsage(uc, lastUsage)
-				}
-				fmt.Fprintf(w, "data: [DONE]\n\n")
-				flusher.Flush()
+			if ctx.Err() != nil {
 				return
 			}
-			if errors.Is(err, context.Canceled) {
+			complete := len(finished) > 0
+			for _, done := range finished {
+				complete = complete && done
+			}
+			if !errors.Is(err, io.EOF) || !complete {
+				fail("upstream stream ended before completion: " + err.Error())
 				return
 			}
-			// Mid-stream read error (network dropped or corrupted event): emit in-band error chunk so client fails fast
-			slog.Warn("Upstream SSE read error", slog.String("model", model), slog.String("error", err.Error()))
-			errChunk, _ := json.Marshal(map[string]any{
-				"error": map[string]any{
-					"message": fmt.Sprintf("upstream stream error: %s", err.Error()),
-					"type":    "upstream_error",
-					"code":    "upstream_error",
-				},
-			})
-			fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", errChunk)
-			flusher.Flush()
-			return
+			break
 		}
-
 		if len(event.Data) == 0 {
 			continue
 		}
-
-		dataStr := strings.TrimSpace(string(event.Data))
-		if dataStr == "[DONE]" {
-			if lastUsage.TotalTokens > 0 {
-				uc.Response = respBuilder.String()
-				s.recordUsage(uc, lastUsage)
-			}
-			fmt.Fprintf(w, "data: [DONE]\n\n")
-			flusher.Flush()
+		if strings.TrimSpace(string(event.Data)) == "[DONE]" {
+			break
+		}
+		chunkData, done, err := streamTranslator.TranslateChunk(event.Data)
+		if err != nil {
+			fail("invalid upstream stream: " + err.Error())
 			return
 		}
-
-		// Extract usage from SSE chunk
-		if u := usage.ExtractFromSSELine(event.Data); u.TotalTokens > 0 {
-			lastUsage = u
-		}
-
-		// Translate SSE chunks if needed
-		chunkData := event.Data
-		if format != translator.FormatOpenAI {
-			var translated []byte
-			var isDone bool
-			var tErr error
-			if responsesTranslator != nil {
-				translated, isDone, tErr = responsesTranslator.TranslateChunk(event.Data)
-			} else {
-				translated, isDone, tErr = translator.TranslateSSEChunk(format, event.Data, model)
-			}
-			if tErr != nil || translated == nil {
-				continue
-			}
-			if isDone {
-				if lastUsage.TotalTokens > 0 {
-					uc.Response = respBuilder.String()
-					s.recordUsage(uc, lastUsage)
-				}
-				fmt.Fprintf(w, "data: [DONE]\n\n")
-				flusher.Flush()
+		if len(chunkData) > 0 && string(chunkData) != "[DONE]" {
+			var chunk chatStreamChunk
+			if err := json.Unmarshal(chunkData, &chunk); err != nil {
+				fail("invalid upstream stream payload")
 				return
 			}
-			chunkData = translated
-			w.Write([]byte("data: "))
-			w.Write(translated)
-			w.Write([]byte("\n\n"))
-		} else {
-			// OpenAI format passthrough
-			w.Write(provider.FormatSSEEvent(*event))
-		}
-
-		// Accumulate response content preview (chunkData is guaranteed OpenAI format)
-		if respBuilder.Len() < 16384 {
-			var chunk struct {
-				Choices []struct {
-					Delta struct {
-						Content string `json:"content"`
-					} `json:"delta"`
-				} `json:"choices"`
+			if u := usage.ExtractFromSSELine(chunkData); u.TotalTokens > 0 {
+				lastUsage = u
 			}
-			if err := json.Unmarshal(chunkData, &chunk); err == nil {
-				for _, c := range chunk.Choices {
-					if c.Delta.Content != "" {
-						respBuilder.WriteString(c.Delta.Content)
-					}
+			for _, choice := range chunk.Choices {
+				finished[choice.Index] = finished[choice.Index] || choice.FinishReason != ""
+				if respBuilder.Len() < 16384 {
+					respBuilder.WriteString(choice.Delta.Content)
 				}
 			}
+			var writeErr error
+			if format == translator.FormatOpenAI {
+				_, writeErr = w.Write(provider.FormatSSEEvent(*event))
+			} else {
+				_, writeErr = fmt.Fprintf(w, "data: %s\n\n", chunkData)
+			}
+			if writeErr != nil {
+				return
+			}
+			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+				fmt.Fprint(w, "data: [DONE]\n\n")
+				flush()
+				return
+			}
+			flush()
 		}
-
-		flusher.Flush()
+		if done {
+			break
+		}
 	}
+	if uc != nil {
+		uc.Response = respBuilder.String()
+	}
+	s.recordUsage(uc, lastUsage)
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	flush()
 }
 
 // handleMessages implements the Anthropic-compatible /v1/messages passthrough endpoint.
@@ -1980,20 +1801,23 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 
 // recordUsage persists a usage entry to the database and publishes a real-time event.
 func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
-	if uc == nil || u.TotalTokens == 0 {
+	if uc == nil {
 		return
 	}
+	usageKnown := u.TotalTokens > 0
 	if s.Metrics != nil {
 		dur := time.Since(uc.StartedAt).Seconds()
 		if dur < 0 {
 			dur = 0
 		}
-		s.Metrics.ObserveRequest(uc.Provider, uc.Model, uc.Endpoint, uc.Status, dur, &metrics.Usage{
-			PromptTokens:     u.PromptTokens,
-			CompletionTokens: u.CompletionTokens,
-			CachedTokens:     u.CachedTokens,
-			ReasoningTokens:  u.ReasoningTokens,
-		})
+		var measuredUsage *metrics.Usage
+		if usageKnown {
+			measuredUsage = &metrics.Usage{
+				PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens,
+				CachedTokens: u.CachedTokens, ReasoningTokens: u.ReasoningTokens,
+			}
+		}
+		s.Metrics.ObserveRequest(uc.Provider, uc.Model, uc.Endpoint, uc.Status, dur, measuredUsage)
 	}
 	entry := &db.UsageEntry{
 		Provider:         uc.Provider,
@@ -2005,15 +1829,17 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		CompletionTokens: u.CompletionTokens,
 		Status:           "ok",
 	}
-	// Store cache/reasoning metadata (9router#2873)
-	if u.CachedTokens > 0 || u.ReasoningTokens > 0 {
-		meta := map[string]int{}
-		if u.CachedTokens > 0 {
-			meta["cached_tokens"] = u.CachedTokens
-		}
-		if u.ReasoningTokens > 0 {
-			meta["reasoning_tokens"] = u.ReasoningTokens
-		}
+	meta := map[string]any{}
+	if !usageKnown {
+		meta["usage_missing"] = true
+	}
+	if u.CachedTokens > 0 {
+		meta["cached_tokens"] = u.CachedTokens
+	}
+	if u.ReasoningTokens > 0 {
+		meta["reasoning_tokens"] = u.ReasoningTokens
+	}
+	if len(meta) > 0 {
 		b, _ := json.Marshal(meta)
 		entry.Meta = string(b)
 	}
@@ -2038,6 +1864,7 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		"cost":             entry.Cost,
 		"latencyMs":        latencyMs,
 		"endpoint":         uc.Endpoint,
+		"usageKnown":       usageKnown,
 	}
 	if uc.Prompt != "" {
 		rdData["input"] = uc.Prompt
