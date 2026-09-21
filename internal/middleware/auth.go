@@ -18,17 +18,14 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
 
-			// Only protect /v1/* routes
-			if !strings.HasPrefix(path, "/v1/") {
+			// Only protect /v1/* and /v1beta/* routes
+			if !strings.HasPrefix(path, "/v1/") && !strings.HasPrefix(path, "/v1beta/") {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			// Extract API key
-			keyStr := auth.ExtractAPIKey(
-				r.Header.Get("Authorization"),
-				r.Header.Get("x-api-key"),
-			)
+			keyStr := auth.ExtractAPIKey(r)
 
 			// Check if requireApiKey is enabled
 			settings, err := database.GetSettings()
@@ -37,13 +34,21 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 			if keyStr == "" {
 				if requireKey {
 					// Allow authenticated dashboard sessions from WebUI / Playground
-					if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" && auth.VerifySessionToken(cookie.Value) {
+					cookie, err := r.Cookie("auth_token")
+					hasValidCookie := err == nil && cookie.Value != "" && auth.VerifySessionToken(cookie.Value)
+					hasValidHeader := r.Header.Get("X-Cyrene-Auth-Token") != "" && auth.VerifySessionToken(r.Header.Get("X-Cyrene-Auth-Token"))
+					if hasValidCookie || hasValidHeader {
 						next.ServeHTTP(w, r)
 						return
 					}
 					writeAuthError(w, http.StatusUnauthorized, "API key required")
 					return
 				}
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Allow authenticated dashboard sessions passing session token in Authorization / Header
+			if auth.VerifySessionToken(keyStr) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -221,7 +226,9 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 				if token == "" {
 					token = r.Header.Get("X-Cyrene-Auth-Token")
 				}
-
+				if token == "" {
+					token = r.URL.Query().Get("token")
+				}
 				if token == "" || !auth.VerifySessionToken(token) {
 					writeAuthError(w, http.StatusUnauthorized, "unauthorized")
 					return

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -162,15 +163,31 @@ func VerifyAPIKeySignature(key string) bool {
 	return verify([]byte(parts[0]), parts[1])
 }
 
-// ExtractAPIKey extracts the API key from Authorization header or x-api-key header.
-func ExtractAPIKey(authHeader, xApiKeyHeader string) string {
-	if authHeader != "" {
-		if after, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
+// ExtractAPIKey pulls the caller credential from the request, supporting every
+// inbound protocol surface in one shared site (AGENTS.md §7):
+//   - OpenAI / generic: "Authorization: Bearer <key>" (or a bare Authorization value)
+//   - Anthropic Messages: "x-api-key: <key>"
+//   - Google Gemini SDK: "x-goog-api-key: <key>"
+//   - Google Gemini REST: "?key=<key>" query parameter
+//
+// Precedence follows the order above; the first non-empty source wins.
+func ExtractAPIKey(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if h := r.Header.Get("Authorization"); h != "" {
+		if after, ok := strings.CutPrefix(h, "Bearer "); ok {
 			return after
 		}
-		return authHeader
+		return h
 	}
-	return xApiKeyHeader
+	if k := r.Header.Get("x-api-key"); k != "" {
+		return k
+	}
+	if k := r.Header.Get("x-goog-api-key"); k != "" {
+		return k
+	}
+	return r.URL.Query().Get("key")
 }
 
 // ClientIP extracts the IP address from a host:port string.

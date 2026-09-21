@@ -81,7 +81,7 @@ func APIKeyRateLimit(limitFn func(key string) int) func(http.Handler) http.Handl
 	rl := NewRateLimiter(0)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !strings.HasPrefix(r.URL.Path, "/v1/") {
+			if !strings.HasPrefix(r.URL.Path, "/v1/") && !strings.HasPrefix(r.URL.Path, "/v1beta/") {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -97,7 +97,7 @@ func APIKeyRateLimit(limitFn func(key string) int) func(http.Handler) http.Handl
 				}
 			}
 			if keyStr == "" {
-				keyStr = auth.ExtractAPIKey(r.Header.Get("Authorization"), r.Header.Get("x-api-key"))
+				keyStr = auth.ExtractAPIKey(r)
 			}
 
 			if limit <= 0 && limitFn != nil {

@@ -179,6 +179,77 @@ func TestAPIKeyAuth_StrictGatewayMode(t *testing.T) {
 	}
 }
 
+// TestAPIKeyAuth_GeminiSurface locks the Gemini inbound surface: official Google
+// SDK clients send x-goog-api-key and REST callers use ?key=. Both must clear
+// APIKeyAuth on /v1beta/* (the middleware 401s before handleGeminiGenerateContent
+// ever runs) and attribute the resolved key into context.
+func TestAPIKeyAuth_GeminiSurface(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	st, _ := database.GetSettings()
+	st.RequireAPIKey = true
+	_ = database.SaveSettings(st)
+
+	validKey := &model.APIKey{
+		ID:        "key-gemini-1",
+		Key:       auth.GenerateAPIKey(),
+		Name:      "Gemini User",
+		IsActive:  true,
+		ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+	}
+	if err := database.CreateAPIKey(validKey); err != nil {
+		t.Fatalf("failed to create key: %v", err)
+	}
+
+	var capturedKey *model.APIKey
+	handler := APIKeyAuth(database)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedKey = auth.APIKeyFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := []struct {
+		name string
+		req  *http.Request
+	}{
+		{
+			name: "x-goog-api-key header",
+			req: func() *http.Request {
+				r := httptest.NewRequest("POST", "/v1beta/models/gemini-2.5-flash:generateContent", nil)
+				r.Header.Set("x-goog-api-key", validKey.Key)
+				return r
+			}(),
+		},
+		{
+			name: "rest ?key= query",
+			req:  httptest.NewRequest("POST", "/v1beta/models/gemini-2.5-flash:generateContent?key="+validKey.Key, nil),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			capturedKey = nil
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, tc.req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200 for %s, got %d", tc.name, rec.Code)
+			}
+			if capturedKey == nil || capturedKey.ID != validKey.ID {
+				t.Fatalf("expected context key %s for %s, got %v", validKey.ID, tc.name, capturedKey)
+			}
+		})
+	}
+
+	// Missing credential on the Gemini surface still 401s in strict mode.
+	t.Run("missing key 401", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/v1beta/models/gemini-2.5-flash:generateContent", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for missing gemini key, got %d", rec.Code)
+		}
+	})
+}
+
 func TestDashboardAuth_SecurityAndRebinding(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()

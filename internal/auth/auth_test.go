@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -126,28 +128,36 @@ func TestLoginRateLimiter(t *testing.T) {
 }
 
 func TestExtractAPIKey(t *testing.T) {
-	// Bearer token
-	key := ExtractAPIKey("Bearer sk-test123", "")
-	if key != "sk-test123" {
-		t.Fatalf("expected sk-test123, got %s", key)
+	req := func(target string, headers map[string]string) *http.Request {
+		r := httptest.NewRequest("POST", target, nil)
+		for k, v := range headers {
+			r.Header.Set(k, v)
+		}
+		return r
 	}
 
-	// x-api-key header
-	key = ExtractAPIKey("", "sk-header")
-	if key != "sk-header" {
-		t.Fatalf("expected sk-header, got %s", key)
+	cases := []struct {
+		name string
+		req  *http.Request
+		want string
+	}{
+		{"bearer token", req("/v1/chat/completions", map[string]string{"Authorization": "Bearer sk-test123"}), "sk-test123"},
+		{"bare authorization", req("/v1/chat/completions", map[string]string{"Authorization": "sk-raw"}), "sk-raw"},
+		{"anthropic x-api-key", req("/v1/messages", map[string]string{"x-api-key": "sk-ant"}), "sk-ant"},
+		{"gemini x-goog-api-key", req("/v1beta/models/gemini:generateContent", map[string]string{"x-goog-api-key": "AIza-sdk"}), "AIza-sdk"},
+		{"gemini rest ?key=", req("/v1beta/models/gemini:generateContent?key=AIza-query", nil), "AIza-query"},
+		{"bearer wins over x-api-key", req("/v1/messages", map[string]string{"Authorization": "Bearer sk-bearer", "x-api-key": "sk-ant"}), "sk-bearer"},
+		{"x-api-key wins over goog", req("/v1/messages", map[string]string{"x-api-key": "sk-ant", "x-goog-api-key": "AIza-sdk"}), "sk-ant"},
+		{"x-goog-api-key wins over ?key=", req("/v1beta/models/gemini?key=AIza-query", map[string]string{"x-goog-api-key": "AIza-sdk"}), "AIza-sdk"},
+		{"empty", req("/v1/chat/completions", nil), ""},
+		{"nil request", nil, ""},
 	}
-
-	// Bearer takes priority
-	key = ExtractAPIKey("Bearer sk-bearer", "sk-header")
-	if key != "sk-bearer" {
-		t.Fatalf("expected sk-bearer, got %s", key)
-	}
-
-	// Empty
-	key = ExtractAPIKey("", "")
-	if key != "" {
-		t.Fatalf("expected empty, got %s", key)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ExtractAPIKey(tc.req); got != tc.want {
+				t.Fatalf("ExtractAPIKey(%s) = %q, want %q", tc.name, got, tc.want)
+			}
+		})
 	}
 }
 
