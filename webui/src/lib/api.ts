@@ -110,7 +110,7 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
       }
     } catch { /* non-JSON error body */ }
 
-    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+    if (res.status === 401 && !path.startsWith('/api/auth/') && !path.startsWith('/v1/') && !path.startsWith('/v1beta/')) {
       setStoredSessionToken(null)
       onUnauthorizedCallback?.()
       if (!options.silent) {

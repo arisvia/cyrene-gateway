@@ -30,10 +30,10 @@ export const GatewayTopology: Component<TopologyProps> = props => {
     const latest = events[0]
     if (!latest || !latest.provider) return
 
-    // 仅针对 5 秒内生成的实时事件触发脉冲
+    // 针对近期生成的实时事件触发脉冲 (容忍时钟微小偏差)
     if (latest.timestamp) {
-      const age = Date.now() - new Date(latest.timestamp).getTime()
-      if (age > 5000) return
+      const age = Math.abs(Date.now() - new Date(latest.timestamp).getTime())
+      if (age > 30000) return
     }
 
     setActiveHit({
@@ -381,7 +381,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
 
           {/* 1. 中心枢纽：Cyrene Gateway (命中时激活温暖金橙色光晕) */}
           <div
-            class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[168px] h-[48px] px-2.5 py-1.5 rounded-xl glass-float transition-all duration-300 cursor-default flex items-center gap-2 ${
+            class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[180px] h-[52px] px-3 py-2 rounded-2xl glass-float transition-all duration-300 cursor-default flex items-center gap-2.5 ${
               activeHit()
                 ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_32px_rgba(245,158,11,0.45)] scale-105 animate-gateway-jitter'
                 : 'border-accent/40 shadow-lg shadow-accent/15 ring-1 ring-accent/20 hover:scale-105'
@@ -440,7 +440,7 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                 >
                   <A
                     href={`/providers/${node.id}`}
-                    class={`w-[164px] h-[46px] px-2.5 py-1.5 rounded-xl glass-float border shadow-sm flex items-center gap-2 transition-all duration-300 cursor-pointer block no-underline ${
+                    class={`w-[180px] h-[52px] px-3 py-2 rounded-2xl glass-float border shadow-sm flex items-center gap-2.5 transition-all duration-300 cursor-pointer block no-underline ${
                       node.isActive
                         ? node.isHitting
                           ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_26px_rgba(245,158,11,0.38)] scale-105 bg-amber-500/5'
@@ -460,18 +460,16 @@ export const GatewayTopology: Component<TopologyProps> = props => {
                     <div class="min-w-0 flex-1">
                       <div class="text-xs font-semibold text-foreground flex items-center justify-between gap-1">
                         <span class="truncate">{providerDisplayName()}</span>
-                        <div class="flex items-center gap-1.5 shrink-0">
-                          <Show when={node.accounts.length > 1}>
-                            <Badge tone="blue" class="text-[9px] px-1 py-0 font-mono">
-                              {node.accounts.length}
-                            </Badge>
+                        <span class="relative flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+                          <Show when={node.isActive && node.isHitting}>
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
                           </Show>
-                          <span class={`w-2 h-2 rounded-full shrink-0 ${
+                          <span class={`relative inline-flex rounded-full h-2 w-2 ${
                             node.isActive
-                              ? (node.isHitting ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]' : 'bg-success')
+                              ? (node.isHitting ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]')
                               : 'bg-zinc-600'
                           }`} />
-                        </div>
+                        </span>
                       </div>
                       <div class="text-[10px] text-faint font-mono truncate mt-0.5 flex items-center justify-between gap-1">
                         <span class="truncate">{accountSubtitle()}</span>

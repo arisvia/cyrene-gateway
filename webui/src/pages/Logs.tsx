@@ -1,5 +1,5 @@
 import { type Component, For, Show, createSignal, onMount, onCleanup, createMemo } from 'solid-js'
-import { api } from '@/lib/api'
+import { api, getStoredSessionToken } from '@/lib/api'
 import { Card, Button, Input, Select, PageHeader, StatusPulse } from '@/components/ui'
 import { useI18n } from '@/i18n'
 
@@ -82,7 +82,8 @@ const LogsPage: Component = () => {
 
     if (disposed) return
     // 2. 建立 SSE 实时流
-    const streamUrl = '/api/system/logs/stream'
+    const token = getStoredSessionToken()
+    const streamUrl = token ? `/api/system/logs/stream?token=${encodeURIComponent(token)}` : '/api/system/logs/stream'
     es = new EventSource(streamUrl)
     es.onopen = () => {
       setConnected(true)

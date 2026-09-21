@@ -5,6 +5,7 @@ import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, 
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
+import { getStoredSessionToken } from '@/lib/api'
 import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail, LiveUsageEvent } from '@/types/domain'
 
@@ -40,6 +41,7 @@ const Usage: Component = () => {
     load()
     store.loadRequestDetails(1, 10)
     fetchModelDisplayNameMap().then(setModelNameMap)
+    toggleLive()
   })
   onCleanup(() => { es?.close(); es = null })
 
@@ -52,8 +54,9 @@ const Usage: Component = () => {
     }
 
     try {
-
-      es = new EventSource('/api/usage/stream')
+      const token = getStoredSessionToken()
+      const streamUrl = token ? `/api/usage/stream?token=${encodeURIComponent(token)}` : '/api/usage/stream'
+      es = new EventSource(streamUrl)
       const handleData = (ev: MessageEvent) => {
         try {
           const d = JSON.parse(ev.data)
@@ -65,6 +68,7 @@ const Usage: Component = () => {
 
       es.onmessage = handleData
       es.addEventListener('request', handleData as EventListener)
+      es.addEventListener('routing', handleData as EventListener)
       es.addEventListener('connected', () => {
         setLive(true)
       })
@@ -314,7 +318,7 @@ const Usage: Component = () => {
                           <span class="text-[10px] text-faint font-mono truncate">({e.model})</span>
                         </Show>
                       </div>
-                      <Badge tone={e.status === 'ok' ? 'green' : 'red'}>{e.status || '-'}</Badge>
+                      <Badge tone={e.status === 'ok' ? 'green' : e.status === 'routing' ? 'blue' : 'red'}>{e.status || '-'}</Badge>
                       <Show when={e.latencyMs}><span class="ml-auto text-faint">{e.latencyMs}ms</span></Show>
                     </div>
                   )}
@@ -332,7 +336,7 @@ const Usage: Component = () => {
             <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>
           </div>
           <Show when={store.requestDetails().length > 0} fallback={<Empty message={t('usage.noRecords')} />}>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto max-h-[calc(100vh-320px)] overflow-y-auto px-1">
               <table class="w-full text-xs">
                 <thead>
                   <tr class="text-faint text-left border-b border-subtle">
@@ -350,9 +354,9 @@ const Usage: Component = () => {
                     {d => (
                       <tr class="border-b border-subtle/40 last:border-0 hover:bg-hover/30 transition-colors">
                         <td class="py-2.5 text-faint font-mono">{fmtTime(d.timestamp, timeUnits())}</td>
-                        <td class="py-2.5 max-w-[220px]">
+                        <td class="py-2.5 max-w-[260px]">
                           <div class="flex flex-col min-w-0" title={d.model || '-'}>
-                            <span class="font-medium text-foreground truncate">{resolveModelDisplayName(modelNameMap(), d.model) || '-'}</span>
+                            <span class="font-medium text-foreground truncate">{resolveModelDisplayName(modelNameMap(), d.model) || d.model || '-'}</span>
                             <Show when={Boolean(d.model && resolveModelDisplayName(modelNameMap(), d.model) !== d.model)}>
                               <span class="text-[10px] text-faint font-mono truncate">{d.model}</span>
                             </Show>

@@ -43,9 +43,14 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
     const raw = detail()
     if (!raw || typeof raw !== 'object') return null
     const d = raw as Record<string, unknown>
-    const dataObj = (d.data && typeof d.data === 'object' ? d.data : null) as Record<string, unknown> | null
-    let input = d.input ?? d.prompt ?? d.messages ?? dataObj?.input ?? null
-    let output = d.output ?? d.response ?? d.content ?? dataObj?.output ?? null
+    let dataObj = (d.data && typeof d.data === 'object' ? d.data : null) as Record<string, unknown> | null
+    if (typeof d.data === 'string') {
+      try {
+        dataObj = JSON.parse(d.data) as Record<string, unknown>
+      } catch { /* ignore */ }
+    }
+    let input = d.input ?? d.prompt ?? d.messages ?? dataObj?.input ?? dataObj?.prompt ?? dataObj?.messages ?? null
+    let output = d.output ?? d.response ?? d.content ?? dataObj?.output ?? dataObj?.response ?? dataObj?.content ?? null
 
     // 如果为字符串，过滤思考块
     if (typeof output === 'string') {
