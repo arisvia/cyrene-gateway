@@ -1,5 +1,5 @@
-import { createSignal, createRoot } from 'solid-js'
-import { createStore } from 'solid-js/store'
+import { batch, createSignal, createRoot } from 'solid-js'
+import { createStore, reconcile } from 'solid-js/store'
 import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized, setStoredSessionToken } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import type {
@@ -127,41 +127,74 @@ function createGatewayStore() {
   const [usageLogs, setUsageLogs] = createSignal<unknown[]>([])
   const [quotaEntries, setQuotaEntries] = createSignal<unknown[]>([])
 
+  const [loaded, setLoaded] = createStore({ combos: false, endpoints: false, keys: false, pools: false, settings: false })
+  const [loadErrors, setLoadErrors] = createStore({ combos: false, endpoints: false, keys: false, pools: false, settings: false, usage: false })
+  type Resource = keyof typeof loaded
+  const pendingLoads: Partial<Record<Resource, Promise<void>>> = {}
+  const [usagePeriod, setUsagePeriod] = createSignal<string | null>(null)
+  let usageRequest = 0
+
+  function loadData(resource: Resource, fetchData: () => Promise<void>): Promise<void> {
+    const pending = pendingLoads[resource]
+    if (pending) return pending
+    setLoadErrors(resource, false)
+    const request = fetchData()
+      .then(() => { setLoaded(resource, true) })
+      .catch(() => { setLoadErrors(resource, true) })
+      .finally(() => { delete pendingLoads[resource] })
+    pendingLoads[resource] = request
+    return request
+  }
+
   const registryList = () =>
     registryCategories().flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name))
   const activeConnections = () => providers().filter(p => p.isActive).length
 
   // ── loaders ──
   async function loadCore() {
-    const isAuthed = await checkAuth()
-    if (requireLogin() && !isAuthed) {
-      return
-    }
     try {
-      const [v, h, p, c, reg, ep, a] = await Promise.all([
-        api<{ version?: string }>('/api/version'),
-        api<Record<string, unknown>>('/api/health'),
-        api<Provider[]>('/api/providers'),
-        api<Combo[]>('/api/combos'),
-        api<{ categories?: RegistryCategory[] }>('/api/registry'),
-        api<{ endpoints?: Endpoint[] }>('/api/endpoints'),
-        api<Record<string, string>>('/api/models/alias'),
+      const isAuthed = await checkAuth()
+      if (requireLogin() && !isAuthed) return
+      const results = await Promise.allSettled([
+        api<{ version?: string }>('/api/version').then(v => setVersion(v?.version || 'dev')),
+        api<Record<string, unknown>>('/api/health').then(h => setHealth(h || {})),
+        loadProvidersOnly(),
+        loadCombos(),
+        api<{ categories?: RegistryCategory[] }>('/api/registry').then(reg => {
+          if (Array.isArray(reg?.categories)) {
+            setRegistryCategories(reg.categories)
+            saveRegistryCache(reg.categories)
+          }
+        }),
+        loadEndpoints(),
+        api<Record<string, string>>('/api/models/alias').then(a => setAliases(a || {})),
+        loadKeys(),
+        loadProxyPools(),
       ])
-      setVersion(v?.version || 'dev')
-      setHealth(h || {})
-      setProviders(Array.isArray(p) ? p : [])
-      setCombos(Array.isArray(c) ? c : [])
-      if (Array.isArray(reg?.categories)) {
-        setRegistryCategories(reg.categories)
-        saveRegistryCache(reg.categories)
+      for (const result of results) {
+        if (result.status === 'rejected') console.error('[store] loadCore failed:', result.reason)
       }
-      setEndpoints(Array.isArray(ep?.endpoints) ? ep.endpoints : [])
-      setAliases(a || {})
     } catch (e) {
+      batch(() => {
+        setLoadErrors('combos', true)
+        setLoadErrors('endpoints', true)
+      })
       console.error('[store] loadCore failed:', e)
     }
-    loadKeys()
-    loadProxyPools()
+  }
+
+  function loadCombos() {
+    return loadData('combos', async () => {
+      const result = await api<Combo[]>('/api/combos')
+      setCombos(Array.isArray(result) ? result : [])
+    })
+  }
+
+  function loadEndpoints() {
+    return loadData('endpoints', async () => {
+      const result = await api<{ endpoints?: Endpoint[] }>('/api/endpoints')
+      setEndpoints(Array.isArray(result?.endpoints) ? result.endpoints : [])
+    })
   }
 
   async function loadProvidersOnly() {
@@ -173,11 +206,11 @@ function createGatewayStore() {
     }
   }
 
-  async function loadKeys() {
-    try {
+  function loadKeys() {
+    return loadData('keys', async () => {
       const r = await api<ApiKey[]>('/api/keys')
       setApiKeys(Array.isArray(r) ? r : [])
-    } catch { setApiKeys([]) }
+    })
   }
 
   interface RawProxyPoolItem {
@@ -198,8 +231,8 @@ function createGatewayStore() {
     boundConnections?: number
   }
 
-  async function loadProxyPools() {
-    try {
+  function loadProxyPools() {
+    return loadData('pools', async () => {
       const r = await api<{ proxyPools?: RawProxyPoolItem[] } | RawProxyPoolItem[]>('/api/proxy-pools')
       const rawList = r && 'proxyPools' in r && Array.isArray(r.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : [])
       const mapped: ProxyPool[] = rawList.map(p => ({
@@ -213,25 +246,34 @@ function createGatewayStore() {
         boundConnections: p.boundConnections ?? 0,
       }))
       setProxyPools(mapped)
-    } catch { setProxyPools([]) }
+    })
   }
 
-  async function loadSettings() {
-    try { setSettings((await api<Record<string, unknown>>('/api/settings')) || {}) } catch { setSettings({}) }
+  function loadSettings() {
+    return loadData('settings', async () => {
+      setSettings((await api<Record<string, unknown>>('/api/settings')) || {})
+    })
   }
 
   async function loadUsage(period: string) {
+    const request = ++usageRequest
+    setLoadErrors('usage', false)
     try {
-      const [stats, chart, details] = await Promise.all([
+      const [stats, chart] = await Promise.all([
         api<UsageStats>(`/api/usage/stats?period=${period}`),
         api<{ label: string; tokens: number }[]>(`/api/usage/chart?period=${period}`),
-        api<{ details?: RequestDetail[] } | RequestDetail[]>('/api/usage/request-details?page=1&pageSize=10'),
       ])
-      setUsageStats(stats || {})
-      setUsageChart(Array.isArray(chart) ? chart : [])
-      const detailList = details && 'details' in details && Array.isArray(details.details) ? details.details : (Array.isArray(details) ? details : [])
-      setRequestDetails(detailList)
-    } catch (e) { console.error('[store] loadUsage failed:', e) }
+      if (request !== usageRequest) return
+      batch(() => {
+        setUsageStats(reconcile(stats || {}))
+        setUsageChart(Array.isArray(chart) ? chart : [])
+        setUsagePeriod(period)
+      })
+    } catch (e) {
+      if (request !== usageRequest) return
+      setLoadErrors('usage', true)
+      console.error('[store] loadUsage failed:', e)
+    }
   }
 
   async function loadRequestDetails(page = 1, pageSize = 10, filters: Record<string, string> = {}) {
@@ -306,6 +348,7 @@ function createGatewayStore() {
     const payload = typeof input === 'string' ? { name: input } : input
     const k = await apiPost<ApiKey>('/api/keys', payload)
     toast.success(`API Key「${payload.name || k?.id?.slice(0, 8)}」创建成功`)
+    await pendingLoads.keys
     await loadKeys()
     return k
   }
@@ -313,12 +356,14 @@ function createGatewayStore() {
   async function updateKey(id: string, payload: Partial<ApiKeyInput> & { isActive?: boolean }) {
     const k = await apiPut<ApiKey>(`/api/keys/${id}`, payload)
     toast.success(`API Key「${k.name || id.slice(0, 8)}」已更新`)
+    await pendingLoads.keys
     await loadKeys()
     return k
   }
   async function deleteKey(id: string) {
     await apiDelete(`/api/keys/${id}`)
     toast.success('API Key 已删除')
+    await pendingLoads.keys
     await loadKeys()
   }
   // ── combos ──
@@ -329,13 +374,15 @@ function createGatewayStore() {
       await apiPost('/api/combos', payload)
     }
     toast.success(`模型组合「${payload.name}」已保存`)
-    await loadCore()
+    await pendingLoads.combos
+    await loadCombos()
   }
 
   async function deleteCombo(id: string) {
     await apiDelete(`/api/combos/${id}`)
     toast.success('模型组合已删除')
-    await loadCore()
+    await pendingLoads.combos
+    await loadCombos()
   }
 
   // ── proxy pools ──
@@ -346,17 +393,20 @@ function createGatewayStore() {
       await apiPost('/api/proxy-pools', payload)
     }
     toast.success(`代理池「${payload.name}」已保存`)
+    await pendingLoads.pools
     await loadProxyPools()
   }
 
   async function toggleProxyPool(pp: ProxyPool) {
     await apiPut(`/api/proxy-pools/${pp.id}`, { isActive: !pp.isActive })
+    await pendingLoads.pools
     await loadProxyPools()
   }
 
   async function deleteProxyPool(id: string) {
     await apiDelete(`/api/proxy-pools/${id}`)
     toast.success('代理池已删除')
+    await pendingLoads.pools
     await loadProxyPools()
   }
   // ── aliases ──
@@ -380,6 +430,7 @@ function createGatewayStore() {
   async function saveSettings(patch: Record<string, unknown>) {
     await apiPatch('/api/settings', patch)
     toast.success('系统设置已保存')
+    await pendingLoads.settings
     await loadSettings()
   }
   async function setPassword(password: string) {
@@ -500,6 +551,7 @@ function createGatewayStore() {
     registryCategories, registryList, settings, aliases,
     usageStats, usageChart, requestDetails, requestDetailsPagination,
     providerUsage, usageLogs, quotaEntries, activeConnections,
+    loaded, loadErrors, usagePeriod,
     loadCore, loadProvidersOnly, loadKeys, loadProxyPools, loadSettings, loadUsage,
     loadRequestDetails, loadProviderUsage, loadUsageLogs, loadQuota,
     addProvider, toggleProvider, resetCooldown, deleteProvider, testProvider,
