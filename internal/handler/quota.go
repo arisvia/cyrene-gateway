@@ -112,6 +112,7 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 		APIKey:      conn.Data.APIKey,
 		AccessToken: conn.Data.AccessToken,
 		ProjectID:   projectID,
+		BaseURL:     conn.Data.BaseURL,
 	})
 	writeJSON(w, http.StatusOK, res)
 }

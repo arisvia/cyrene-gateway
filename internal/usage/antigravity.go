@@ -43,8 +43,12 @@ type AntigravityQuotaSummaryResponse struct {
 }
 
 func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentials) QuotaResult {
-	if c.AccessToken == "" {
-		return QuotaResult{Message: "Antigravity OAuth access token is missing"}
+	token := strings.TrimSpace(c.AccessToken)
+	if token == "" {
+		token = strings.TrimSpace(c.APIKey)
+	}
+	if token == "" {
+		return QuotaResult{Message: "Antigravity credentials missing"}
 	}
 
 	endpoints := []string{provider.AntigravityBaseURL, provider.AntigravityDailyURL}
@@ -65,7 +69,7 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 		if err != nil {
 			continue
 		}
-		req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
 
@@ -97,7 +101,7 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 			continue
 		}
 
-		req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
 
