@@ -2,7 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
@@ -180,5 +185,73 @@ func TestAntigravityConvertOpenAIToGeminiContents(t *testing.T) {
 	fc, ok := fcPart["functionCall"].(map[string]any)
 	if !ok || fc["name"] != "get_weather" {
 		t.Errorf("expected functionCall get_weather, got %+v", fc)
+	}
+}
+
+func TestAntigravityStreamingCandidatesPayloads(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// Test 1: root candidates with thought and text
+	sseData := `data: {"candidates": [{"content": {"role": "model", "parts": [{"thought": true, "text": "Thinking..."}]}}]}
+
+data: {"candidates": [{"content": {"role": "model", "parts": [{"text": "Hello world"}]}}]}
+
+data: [DONE]
+`
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(sseData)),
+		Header:     make(http.Header),
+	}
+	uc := &usageContext{
+		StartedAt: time.Now(),
+		Provider:  "antigravity",
+		Model:     "claude-sonnet-4-6",
+	}
+	w := httptest.NewRecorder()
+	srv.proxyAntigravityStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "claude-sonnet-4-6", uc)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if uc.Response != "Hello world" {
+		t.Errorf("expected uc.Response to be 'Hello world', got %q", uc.Response)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "Thinking...") || !strings.Contains(body, "Hello world") {
+		t.Errorf("expected stream to contain both reasoning and content: %s", body)
+	}
+}
+
+func TestAntigravityNonStreamingFormats(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// 1. Raw JSON response (from generateContent or direct JSON relay)
+	rawJSON := `{"response": {"candidates": [{"content": {"role": "model", "parts": [{"thought": true, "text": "Reasoning"}, {"text": "Answer"}]}}]}, "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 10}}`
+	respJSON := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(rawJSON)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+	uc1 := &usageContext{
+		StartedAt: time.Now(),
+		Provider:  "antigravity",
+		Model:     "gemini-3.8-flash",
+	}
+	w1 := httptest.NewRecorder()
+	srv.proxyAntigravityNonStreaming(w1, respJSON, "gemini-3.8-flash", uc1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("raw JSON: expected 200, got %d", w1.Code)
+	}
+	if uc1.Response != "Answer" {
+		t.Errorf("expected 'Answer', got %q", uc1.Response)
+	}
+	var obj1 map[string]any
+	if err := json.Unmarshal(w1.Body.Bytes(), &obj1); err != nil {
+		t.Fatalf("unmarshal json: %v", err)
+	}
+	msg := obj1["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	if msg["content"] != "Answer" || msg["reasoning_content"] != "Reasoning" {
+		t.Errorf("unexpected message payload: %+v", msg)
 	}
 }

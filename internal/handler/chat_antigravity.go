@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -29,18 +30,33 @@ func (s *Server) handleAntigravityChat(
 	providerInfo provider.ProviderInfo,
 ) {
 	token := conn.Data.AccessToken
+	if token == "" && conn.Data.APIKey != "" {
+		token = conn.Data.APIKey
+	}
 	if token == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "antigravity token missing"})
 		return
 	}
 
 	client := s.getHTTPClient(3 * time.Minute)
-	projectID, err := s.EnsureAntigravityProject(r.Context(), conn, client)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": fmt.Sprintf("antigravity project not configured and discovery failed: %v", err),
-		})
-		return
+	projectID := ""
+	if conn.Data.ProviderSpecificData != nil {
+		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && pid != "" {
+			projectID = pid
+		}
+	}
+	if projectID == "" {
+		pid, err := s.EnsureAntigravityProject(r.Context(), conn, client)
+		if err != nil {
+			if conn.Data.BaseURL == "" && providerInfo.BaseURL == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("antigravity project not configured and discovery failed: %v", err),
+				})
+				return
+			}
+		} else {
+			projectID = pid
+		}
 	}
 
 	// Transform OpenAI messages into Gemini contents format
@@ -100,11 +116,13 @@ func (s *Server) handleAntigravityChat(
 
 	reqID := fmt.Sprintf("agent-%d-%s", time.Now().UnixMilli(), randomHex(4))
 	envelope := map[string]any{
-		"project":   projectID,
 		"model":     targetModel,
 		"request":   innerRequest,
 		"userAgent": "antigravity",
 		"requestId": reqID,
+	}
+	if projectID != "" {
+		envelope["project"] = projectID
 	}
 	if isImage {
 		envelope["requestType"] = "image_gen"
@@ -116,7 +134,13 @@ func (s *Server) handleAntigravityChat(
 		return
 	}
 
-	upstreamURL := fmt.Sprintf("%s/v1internal:%s", provider.AntigravityBaseURL, upstreamAction)
+	baseURL := provider.AntigravityBaseURL
+	if conn.Data.BaseURL != "" {
+		baseURL = strings.TrimRight(conn.Data.BaseURL, "/")
+	} else if providerInfo.BaseURL != "" {
+		baseURL = strings.TrimRight(providerInfo.BaseURL, "/")
+	}
+	upstreamURL := fmt.Sprintf("%s/v1internal:%s", baseURL, upstreamAction)
 	upReq, err := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
@@ -146,6 +170,32 @@ func (s *Server) handleAntigravityChat(
 		return
 	}
 	defer resp.Body.Close()
+
+	// Phase 9: On-401 retry with token refresh for OAuth connections
+	if resp.StatusCode == http.StatusUnauthorized && conn.Data.RefreshToken != "" {
+		resp.Body.Close()
+		slog.Warn("Antigravity upstream returned 401, attempting token refresh and retry",
+			slog.String("provider", conn.Provider),
+			slog.String("connection_id", conn.ID))
+		refreshResult, refreshErr := provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
+		if refreshErr == nil {
+			provider.ApplyRefreshResult(conn, refreshResult)
+			if s.DB != nil {
+				_ = s.DB.UpdateConnection(conn)
+			}
+			token = conn.Data.AccessToken
+			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
+			if retryErr == nil {
+				retryReq.Header.Set("Authorization", "Bearer "+token)
+				retryReq.Header.Set("Content-Type", "application/json")
+				retryReq.Header.Set("Accept", "text/event-stream")
+				retryReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
+				if newResp, newErr := client.Do(retryReq); newErr == nil {
+					resp = newResp
+				}
+			}
+		}
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -305,6 +355,32 @@ func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[
 	return contents, systemParts
 }
 
+type antigravityCandidatePart struct {
+	Text    string `json:"text"`
+	Thought bool   `json:"thought"`
+}
+
+type antigravityCandidateItem struct {
+	Content struct {
+		Parts []antigravityCandidatePart `json:"parts"`
+	} `json:"content"`
+	FinishReason string `json:"finishReason"`
+}
+
+type antigravityChunkPayload struct {
+	Response struct {
+		Candidates []antigravityCandidateItem `json:"candidates"`
+	} `json:"response"`
+	Candidates []antigravityCandidateItem `json:"candidates"`
+}
+
+func (p *antigravityChunkPayload) getCandidates() []antigravityCandidateItem {
+	if len(p.Response.Candidates) > 0 {
+		return p.Response.Candidates
+	}
+	return p.Candidates
+}
+
 func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -326,25 +402,14 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	chatSeq := 0
 	chatCmpleID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())
 	var outBuilder strings.Builder
+	var reasoningBuilder strings.Builder
 	for scanner.Scan() {
 		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
 		if !ok || isDone {
 			continue
 		}
 
-		var payload struct {
-			Response struct {
-				Candidates []struct {
-					Content struct {
-						Parts []struct {
-							Text    string `json:"text"`
-							Thought bool   `json:"thought"`
-						} `json:"parts"`
-					} `json:"content"`
-					FinishReason string `json:"finishReason"`
-				} `json:"candidates"`
-			} `json:"response"`
-		}
+		var payload antigravityChunkPayload
 		if err := json.Unmarshal([]byte(data), &payload); err != nil {
 			continue
 		}
@@ -352,7 +417,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		textChunk := ""
 		reasoningChunk := ""
 		finishReason := ""
-		for _, cand := range payload.Response.Candidates {
+		for _, cand := range payload.getCandidates() {
 			if cand.FinishReason != "" {
 				finishReason = strings.ToLower(cand.FinishReason)
 			}
@@ -378,6 +443,9 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		}
 		if reasoningChunk != "" {
 			delta["reasoning_content"] = reasoningChunk
+			if reasoningBuilder.Len() < 16384 {
+				reasoningBuilder.WriteString(reasoningChunk)
+			}
 		}
 
 		var fr any = nil
@@ -413,45 +481,60 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
 
-	uc.Response = outBuilder.String()
-	s.recordUsage(uc, usage.Usage{TotalTokens: chatSeq * 4})
+	finalOutput := outBuilder.String()
+	if finalOutput == "" && reasoningBuilder.Len() > 0 {
+		finalOutput = reasoningBuilder.String()
+	}
+	uc.Response = finalOutput
+	s.recordUsage(uc, usage.Usage{
+		TotalTokens:     chatSeq * 4,
+		ReasoningTokens: len(reasoningBuilder.String()) / 4,
+	})
 }
 
 func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.Response, model string, uc *usageContext) {
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 1024*1024), 5*1024*1024)
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read antigravity response: " + err.Error()})
+		return
+	}
 
 	fullText := ""
 	reasoningText := ""
-	for scanner.Scan() {
-		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
-		if !ok || isDone {
-			continue
-		}
 
-		var payload struct {
-			Response struct {
-				Candidates []struct {
-					Content struct {
-						Parts []struct {
-							Text    string `json:"text"`
-							Thought bool   `json:"thought"`
-						} `json:"parts"`
-					} `json:"content"`
-					FinishReason string `json:"finishReason"`
-				} `json:"candidates"`
-			} `json:"response"`
+	trimmed := bytes.TrimSpace(respBytes)
+	if bytes.HasPrefix(trimmed, []byte("{")) {
+		var payload antigravityChunkPayload
+		if err := json.Unmarshal(trimmed, &payload); err == nil {
+			for _, cand := range payload.getCandidates() {
+				for _, part := range cand.Content.Parts {
+					if part.Thought {
+						reasoningText += part.Text
+					} else {
+						fullText += part.Text
+					}
+				}
+			}
 		}
-		if err := json.Unmarshal([]byte(data), &payload); err != nil {
-			continue
-		}
-
-		for _, cand := range payload.Response.Candidates {
-			for _, part := range cand.Content.Parts {
-				if part.Thought {
-					reasoningText += part.Text
-				} else {
-					fullText += part.Text
+	} else {
+		scanner := bufio.NewScanner(bytes.NewReader(respBytes))
+		scanner.Buffer(make([]byte, 1024*1024), 5*1024*1024)
+		for scanner.Scan() {
+			data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
+			if !ok || isDone {
+				continue
+			}
+			var payload antigravityChunkPayload
+			if err := json.Unmarshal([]byte(data), &payload); err != nil {
+				continue
+			}
+			for _, cand := range payload.getCandidates() {
+				for _, part := range cand.Content.Parts {
+					if part.Thought {
+						reasoningText += part.Text
+					} else {
+						fullText += part.Text
+					}
 				}
 			}
 		}
@@ -483,8 +566,15 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	json.NewEncoder(w).Encode(respObj)
-	uc.Response = fullText
-	s.recordUsage(uc, usage.Usage{TotalTokens: len(fullText) / 4})
+	finalResp := fullText
+	if finalResp == "" && reasoningText != "" {
+		finalResp = reasoningText
+	}
+	uc.Response = finalResp
+	s.recordUsage(uc, usage.Usage{
+		TotalTokens:     len(fullText) / 4,
+		ReasoningTokens: len(reasoningText) / 4,
+	})
 }
 func randomHex(n int) string {
 	b := make([]byte, n)

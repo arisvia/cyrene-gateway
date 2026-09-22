@@ -548,7 +548,7 @@ const Playground: Component = () => {
 
   // 跨协议提取非流式响应文本
   function extractResponseContent(proto: ProtocolType, data: unknown): string {
-    const openAIFallback = () => str(dig(data, 'choices', 0, 'message', 'content')) ?? ''
+    const openAIFallback = () => str(dig(data, 'choices', 0, 'message', 'content')) || str(dig(data, 'choices', 0, 'message', 'reasoning_content')) || ''
     switch (proto) {
       case 'responses': {
         const outText = str(dig(data, 'output_text'))
@@ -585,7 +585,7 @@ const Playground: Component = () => {
   // 跨协议提取 SSE 增量文本
   function extractSSEDelta(proto: ProtocolType, parsed: unknown): string | null {
     if (!parsed) return null
-    const openAIFallback = () => str(dig(parsed, 'choices', 0, 'delta', 'content'))
+    const openAIFallback = () => str(dig(parsed, 'choices', 0, 'delta', 'content')) ?? str(dig(parsed, 'choices', 0, 'delta', 'reasoning_content'))
     switch (proto) {
       case 'responses': {
         if (dig(parsed, 'type') === 'response.output_text.delta') {

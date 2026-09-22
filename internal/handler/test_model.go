@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -69,7 +70,7 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 				projID = p
 			}
 		}
-		if projID == "" {
+		if projID == "" && conn.Data.BaseURL == "" {
 			var err error
 			projID, err = DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
 			if err != nil {
@@ -103,25 +104,34 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		envelope := map[string]any{
-			"project":     projID,
 			"model":       targetModel,
 			"request":     innerReq,
 			"requestType": reqType,
 			"userAgent":   "antigravity",
 			"requestId":   fmt.Sprintf("test-%d", time.Now().UnixMilli()),
 		}
+		if projID != "" {
+			envelope["project"] = projID
+		}
 		envelopeBytes, _ := json.Marshal(envelope)
-		upstreamURL := fmt.Sprintf("%s/v1internal:%s", provider.AntigravityBaseURL, upstreamAction)
+		baseURL := provider.AntigravityBaseURL
+		if conn.Data.BaseURL != "" {
+			baseURL = strings.TrimRight(conn.Data.BaseURL, "/")
+		}
+		upstreamURL := fmt.Sprintf("%s/v1internal:%s", baseURL, upstreamAction)
 		upReq, err := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "latency": time.Since(start).String()})
 			return
 		}
-		upReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+		token := conn.Data.AccessToken
+		if token == "" && conn.Data.APIKey != "" {
+			token = conn.Data.APIKey
+		}
+		upReq.Header.Set("Authorization", "Bearer "+token)
 		upReq.Header.Set("Content-Type", "application/json")
 		upReq.Header.Set("Accept", "text/event-stream")
 		upReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
-
 		resp, err := client.Do(upReq)
 		latency := time.Since(start)
 		if err != nil {

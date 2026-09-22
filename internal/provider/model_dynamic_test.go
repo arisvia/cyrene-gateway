@@ -97,6 +97,47 @@ func TestResolveModel_NamespacedVendorModel(t *testing.T) {
 	}
 }
 
+func TestResolveModel_ActiveProviderPrecedence(t *testing.T) {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	defer database.Close()
+
+	// Inactive provider cache has claude-sonnet-4-6
+	opencodeCache := model.CachedModels{
+		Models: []model.ModelMetadata{{ID: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6"}},
+	}
+	raw1, _ := json.Marshal(opencodeCache)
+	database.KVSet("providerModelCache", "opencode", string(raw1))
+
+	// Active provider antigravity cache ALSO has claude-sonnet-4-6
+	antigravityCache := model.CachedModels{
+		Models: []model.ModelMetadata{{ID: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6"}},
+	}
+	raw2, _ := json.Marshal(antigravityCache)
+	database.KVSet("providerModelCache", "antigravity", string(raw2))
+
+	// Insert active connection ONLY for antigravity
+	conn := &model.ProviderConnection{
+		ID:       "ag-conn-1",
+		Provider: "antigravity",
+		IsActive: true,
+	}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
+	// Resolution must pick antigravity, NOT inactive opencode
+	info, err := ResolveModel("claude-sonnet-4-6", database)
+	if err != nil {
+		t.Fatalf("resolve failed: %v", err)
+	}
+	if info.Provider != "antigravity" {
+		t.Errorf("expected provider=antigravity, got %s", info.Provider)
+	}
+}
+
 func TestExtractModelReasoningEffort(t *testing.T) {
 	tests := []struct {
 		input      string

@@ -101,6 +101,17 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	} else if len(caches) > 0 {
 		lowerFull := strings.ToLower(modelStr)
 		lowerModel := strings.ToLower(parsed.Model)
+
+		activeProviders := make(map[string]bool)
+		if conns, err := database.ListConnections(); err == nil && len(conns) > 0 {
+			for _, c := range conns {
+				if c.IsActive {
+					activeProviders[c.Provider] = true
+				}
+			}
+		}
+
+		var fallbackMatch *model.ModelInfo
 		for providerID, raw := range caches {
 			var cached model.CachedModels
 			if err := json.Unmarshal([]byte(raw), &cached); err != nil {
@@ -109,12 +120,21 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 			for _, m := range cached.Models {
 				if strings.EqualFold(m.ID, lowerFull) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerFull)) ||
 					strings.EqualFold(m.ID, lowerModel) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerModel)) {
-					return model.ModelInfo{
+					match := model.ModelInfo{
 						Provider: providerID,
 						Model:    m.ID,
-					}, nil
+					}
+					if activeProviders[providerID] {
+						return match, nil
+					}
+					if fallbackMatch == nil && len(activeProviders) == 0 {
+						fallbackMatch = &match
+					}
 				}
 			}
+		}
+		if fallbackMatch != nil {
+			return *fallbackMatch, nil
 		}
 	}
 
