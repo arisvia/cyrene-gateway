@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 const (
@@ -74,7 +76,7 @@ func CheckForUpdate(currentVersion string, client *http.Client, repo string) (*U
 		repo = DefaultGitHubRepo
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = provider.SafeHTTPClient(15*time.Second, false)
 	}
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)

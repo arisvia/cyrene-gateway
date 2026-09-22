@@ -11,14 +11,16 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // DownloadAndVerify downloads the asset and verifies its SHA-256 checksum against checksums.txt.
 func DownloadAndVerify(assetURL, checksumURL, expectedAssetName, targetDir string, client *http.Client) (string, error) {
 	if client == nil {
-		client = http.DefaultClient
+		client = provider.SafeHTTPClient(120*time.Second, false)
 	}
-
 	// 1. Fetch checksums.txt
 	reqCs, err := http.NewRequest("GET", checksumURL, nil)
 	if err != nil {
