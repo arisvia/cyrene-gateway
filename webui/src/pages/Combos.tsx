@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import type { Combo } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Modal, Field, Empty, PageHeader, IconClose, IconLayers, IconExternalLink, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Modal, Field, Empty, PageHeader, IconClose, IconLayers, IconExternalLink, Skeleton, LoadState, confirm } from '@/components/ui'
 
 const Combos: Component = () => {
   const store = useGatewayStore()
@@ -96,6 +96,19 @@ const Combos: Component = () => {
         }
       />
 
+      <LoadState ready={store.loaded.combos} error={store.loadErrors.combos} onRetry={() => store.loadCore()} fallback={
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <For each={[1, 2, 3, 4]}>
+            {() => (
+              <Card class="p-4 space-y-3">
+                <Skeleton class="h-5 w-32" />
+                <Skeleton class="h-3 w-full" />
+                <Skeleton class="h-3 w-24" />
+              </Card>
+            )}
+          </For>
+        </div>
+      }>
       <Show when={store.combos().length > 0} fallback={
         <Card class="p-12 border-dashed border-subtle">
           <Empty
@@ -171,6 +184,7 @@ const Combos: Component = () => {
           </For>
         </div>
       </Show>
+      </LoadState>
 
       <Modal open={open()} title={editing() ? t('combos.editCombo') : t('combos.newCombo')} onClose={() => setOpen(false)}>
         <div class="space-y-4">

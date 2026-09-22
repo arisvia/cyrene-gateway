@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, confirm } from '@/components/ui'
+import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, Skeleton, LoadState, confirm } from '@/components/ui'
 import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -150,6 +150,18 @@ const Home: Component = () => {
               <Badge tone="blue">{t('home.multiProtocol')}</Badge>
             </div>
 
+            <LoadState ready={store.loaded.endpoints} error={store.loadErrors.endpoints} onRetry={() => store.loadCore()} fallback={
+              <div class="space-y-2.5">
+                <For each={[1, 2, 3]}>
+                  {() => (
+                    <div class="rounded-xl border border-subtle px-3.5 py-3 bg-card/40 space-y-2">
+                      <Skeleton class="h-4 w-32" />
+                      <Skeleton class="h-3 w-48" />
+                    </div>
+                  )}
+                </For>
+              </div>
+            }>
             <div class="space-y-2.5">
               <For each={effectiveEndpoints()}>
                 {ep => {
@@ -186,6 +198,7 @@ const Home: Component = () => {
                 <Empty message={t('home.noEndpoints')} />
               </Show>
             </div>
+            </LoadState>
           </Card>
         </div>
 
@@ -252,6 +265,21 @@ const Home: Component = () => {
             </div>
 
             {/* 密钥列表展示 */}
+            <LoadState ready={store.loaded.keys} error={store.loadErrors.keys} onRetry={() => store.loadKeys()} fallback={
+              <div class="space-y-2.5">
+                <For each={[1, 2]}>
+                  {() => (
+                    <div class="p-3.5 rounded-xl border border-subtle bg-card/40 space-y-2">
+                      <div class="flex items-center gap-2">
+                        <Skeleton class="h-4 w-24" />
+                        <Skeleton class="h-4 w-12 rounded-full" />
+                      </div>
+                      <Skeleton class="h-3 w-40" />
+                    </div>
+                  )}
+                </For>
+              </div>
+            }>
             <div class="space-y-2.5">
               <Show
                   when={store.apiKeys().length > 0}
@@ -340,6 +368,7 @@ const Home: Component = () => {
                 </For>
               </Show>
             </div>
+            </LoadState>
           </Card>
         </div>
       </div>

@@ -1,8 +1,8 @@
-import { type Component, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, batch, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
 import { api } from '@/lib/api'
-import { Card, Badge, Button, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, IconZap, PageHeader } from '@/components/ui'
+import { Card, Badge, Button, Alert, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, IconZap, PageHeader } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
 import { A } from '@solidjs/router'
 import type { ProviderUsage } from '@/types/domain'
@@ -32,6 +32,8 @@ const Quota: Component = () => {
   const [loading, setLoading] = createSignal(true)
   const [refreshing, setRefreshing] = createSignal(false)
   const [details, setDetails] = createSignal<Record<string, ConnQuota>>({})
+  const [pendingIds, setPendingIds] = createSignal<Set<string>>(new Set())
+  const [failedIds, setFailedIds] = createSignal<Set<string>>(new Set())
   const [providerFilter, setProviderFilter] = createSignal('')
   const [autoRefresh, setAutoRefresh] = createSignal(false)
   const [countdown, setCountdown] = createSignal(REFRESH_INTERVAL_SECS)
@@ -57,10 +59,18 @@ const Quota: Component = () => {
       const conns = store.providers()
       const cacheBust = Date.now()
 
+      // 汇总独立更新，不阻塞逐账号额度，也不因失败提前结束本轮刷新。
       const rPromise = api<{ providers?: ProviderUsage[] }>(`/api/usage/providers?period=7d&_t=${cacheBust}`, { signal })
+        .then(r => {
+          if (!signal.aborted) setRows(r?.providers ?? [])
+        })
 
-      // 先让卡片网格渲染出来，真实额度逐个连接异步流式填充并等待全部就绪
-      setLoading(false)
+      // 先同步初始化本轮状态，再展示网格，避免首屏短暂显示无额度接口。
+      batch(() => {
+        setPendingIds(new Set(conns.map(c => c.id)))
+        setFailedIds(new Set<string>())
+        setLoading(false)
+      })
 
       const quotaPromises = conns.map(async c => {
         try {
@@ -70,17 +80,20 @@ const Quota: Component = () => {
             setDetails(prev => ({ ...prev, [c.id]: res }))
           }
         } catch {
-          // provider 不支持或请求取消
+          if (!signal.aborted) setFailedIds(prev => new Set([...prev, c.id]))
+        } finally {
+          // 被取消的旧轮次不能删除新轮次的 pending。
+          if (!signal.aborted) {
+            setPendingIds(prev => {
+              const next = new Set(prev)
+              next.delete(c.id)
+              return next
+            })
+          }
         }
       })
 
-      const [r] = await Promise.all([
-        rPromise,
-        Promise.allSettled(quotaPromises),
-      ])
-      if (signal.aborted) return
-
-      setRows(r?.providers ?? [])
+      await Promise.allSettled([rPromise, ...quotaPromises])
     } catch {
       if (signal.aborted) return
       setRows([])
@@ -267,9 +280,9 @@ const Quota: Component = () => {
         <div class="space-y-0.5 max-h-[360px] overflow-y-auto px-0.5">
           <For each={currentKeys()}>
             {k => {
-              const b = props.quotasObj[k]
-              const label = b.displayName || (k === 'user' ? t('quota.bucketUser') : k === 'organization' ? t('quota.bucketOrg') : k)
-              return <QuotaItem name={label} quota={b} />
+              const b = () => props.quotasObj[k]
+              const label = () => b().displayName || (k === 'user' ? t('quota.bucketUser') : k === 'organization' ? t('quota.bucketOrg') : k)
+              return <QuotaItem name={label()} quota={b()} />
             }}
           </For>
           <Show when={currentKeys().length === 0}>
@@ -455,33 +468,64 @@ const Quota: Component = () => {
                       </div>
 
                       <div class="mt-2 space-y-1">
+                        <Show when={failedIds().has(conn.id)}>
+                          <Alert variant="danger" title={t('common.error')}>
+                            <Button size="sm" variant="secondary" onClick={() => { load(true) }}>
+                              {t('common.retry')}
+                            </Button>
+                          </Alert>
+                        </Show>
                         <Show
-                          when={hasRealQuotas()}
+                          when={!qData() && pendingIds().has(conn.id)}
                           fallback={
                             <Show
-                              when={qData()?.message}
+                              when={hasRealQuotas()}
                               fallback={
-                                <div class="p-3 text-center text-xs text-faint bg-bg/50 rounded-lg border border-subtle">
-                                  {t('quota.noOnlineApiShort')}
-                                </div>
+                                <Show when={!failedIds().has(conn.id)}>
+                                  <Show
+                                    when={qData()?.message}
+                                    fallback={
+                                      <div class="p-3 text-center text-xs text-faint bg-bg/50 rounded-lg border border-subtle">
+                                        {t('quota.noOnlineApiShort')}
+                                      </div>
+                                    }
+                                  >
+                                    <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                      <span class="min-w-0 flex-1 leading-relaxed">
+                                        {qData()!.message?.startsWith('Usage API not implemented')
+                                          ? t('quota.usageApiUnavailable')
+                                          : conn.provider === 'opencode' && (qData()!.plan === 'OpenCode Zen' || qData()!.message?.includes('OpenCode Zen'))
+                                            ? t('quota.opencodeZenNotice')
+                                            : qData()!.message}
+                                      </span>
+                                      <span class="text-[10px] text-faint font-mono shrink-0 whitespace-nowrap self-end sm:self-center px-1.5 py-0.5 rounded bg-hover/50">
+                                        {t('quota.adaptiveThrottle')}
+                                      </span>
+                                    </div>
+                                  </Show>
+                                </Show>
                               }
                             >
-                              <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                <span class="min-w-0 flex-1 leading-relaxed">
-                                  {qData()!.message?.startsWith('Usage API not implemented')
-                                    ? t('quota.usageApiUnavailable')
-                                    : conn.provider === 'opencode' && (qData()!.plan === 'OpenCode Zen' || qData()!.message?.includes('OpenCode Zen'))
-                                      ? t('quota.opencodeZenNotice')
-                                      : qData()!.message}
-                                </span>
-                                <span class="text-[10px] text-faint font-mono shrink-0 whitespace-nowrap self-end sm:self-center px-1.5 py-0.5 rounded bg-hover/50">
-                                  {t('quota.adaptiveThrottle')}
-                                </span>
-                              </div>
+                              <QuotaList quotasObj={quotasObj()} />
                             </Show>
                           }
                         >
-                          <QuotaList quotasObj={quotasObj()} />
+                          <div class="space-y-2 py-1">
+                            <For each={[1, 2, 3]}>
+                              {() => (
+                                <div class="flex min-w-0 items-center gap-2.5 py-1.5 px-2">
+                                  <Skeleton class="w-2 h-2 rounded-full shrink-0" />
+                                  <Skeleton class="h-3 w-1/4 max-w-32 min-w-0" />
+                                  <Skeleton class="h-3 w-1/6 max-w-20 min-w-0" />
+                                  <div class="flex-1 min-w-0 h-1.5 rounded-full bg-hover overflow-hidden mx-1.5">
+                                    <Skeleton class="h-full w-1/2 rounded-full" />
+                                  </div>
+                                  <Skeleton class="h-3 w-10 min-w-0" />
+                                  <Skeleton class="h-3 w-16 min-w-0" />
+                                </div>
+                              )}
+                            </For>
+                          </div>
                         </Show>
                       </div>
                     </div>

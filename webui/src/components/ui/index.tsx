@@ -961,6 +961,35 @@ export const Skeleton: Component<{ class?: string }> = props => (
   <div class={`animate-pulse rounded-control bg-hover ${props.class ?? 'h-4 w-full'}`} aria-hidden="true" />
 )
 
+export const LoadState: Component<{
+  ready: boolean
+  error: boolean
+  onRetry: () => void
+  fallback: JSX.Element
+  children?: JSX.Element
+}> = props => {
+  const { t } = useI18n()
+  return (
+    <>
+      <Show when={props.error}>
+        <Alert variant="danger" class="mb-3">
+          <div class="flex items-center justify-between gap-3">
+            <span>{t('common.loadFailed')}</span>
+            <Button size="sm" onClick={props.onRetry}>{t('common.retry')}</Button>
+          </div>
+        </Alert>
+      </Show>
+      <Show when={props.ready} fallback={
+        <Show when={!props.error}>
+          <div role="status" aria-label={t('common.loading')} aria-busy="true">{props.fallback}</div>
+        </Show>
+      }>
+        {props.children}
+      </Show>
+    </>
+  )
+}
+
 export const Field: Component<{ label: string; hint?: string; children?: JSX.Element }> = props => (
   <label class="block space-y-2">
     <span class="block text-xs font-medium text-muted/90 select-none">{props.label}</span>

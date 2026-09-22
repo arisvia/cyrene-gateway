@@ -1,9 +1,9 @@
-import { type Component, For, Show, Switch, Match, createSignal, createEffect, onMount } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createEffect, on, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
-  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition,
+  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition, Skeleton, LoadState,
   IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDownload, IconUpload, IconAlertTriangle, IconDatabase, IconServer, IconRotateCcw, IconActivity,
 } from '@/components/ui'
@@ -50,9 +50,11 @@ const Settings: Component = () => {
   const bgStore = useBackgroundStore()
   const toast = useToast()
   const [saving, setSaving] = createSignal(false)
-  const [local, setLocal] = createSignal<Record<string, unknown>>({})
+  const [local, setLocal] = createSignal<Record<string, unknown>>({ ...store.settings() })
+  const [initialized, setInitialized] = createSignal(store.loaded.settings)
+  const [edited, setEdited] = createSignal(false)
   const [pw, setPw] = createSignal('')
-  const [hasPw, setHasPw] = createSignal(false)
+  const [hasPw, setHasPw] = createSignal(!!store.settings().hasPassword)
 
   // 背景自定义状态
   const [bgUrlInput, setBgUrlInput] = createSignal(bgStore.config().remoteUrl || '')
@@ -63,6 +65,13 @@ const Settings: Component = () => {
       setBgUrlInput(rUrl)
     }
   })
+  createEffect(on([store.settings, () => store.loaded.settings], ([settings, ready]) => {
+    if (ready) {
+      if (!edited()) setLocal({ ...settings })
+      setHasPw(!!settings.hasPassword)
+      setInitialized(true)
+    }
+  }))
   // 响应缓存状态
   const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
   const [clearingCache, setClearingCache] = createSignal(false)
@@ -405,17 +414,15 @@ const Settings: Component = () => {
     }
   }
 
-  onMount(async () => {
-    await store.loadSettings()
+  onMount(() => {
+    void store.loadSettings()
     if (store.providers().length === 0) {
       void store.loadProvidersOnly()
     }
-    setLocal({ ...store.settings() })
-    setHasPw(!!store.settings().hasPassword)
     if (bgStore.config().sourceType === 'remote' && bgStore.config().remoteUrl) {
       setBgUrlInput(bgStore.config().remoteUrl || '')
     }
-    await fetchCacheStats()
+    void fetchCacheStats()
   })
 
   const dirty = () => {
@@ -435,7 +442,10 @@ const Settings: Component = () => {
     return false
   }
 
-  const set = (k: string, v: unknown) => setLocal(l => ({ ...l, [k]: v }))
+  const set = (k: string, v: unknown) => {
+    setEdited(true)
+    setLocal(l => ({ ...l, [k]: v }))
+  }
 
   async function save() {
     setSaving(true)
@@ -444,8 +454,11 @@ const Settings: Component = () => {
       delete payload.hasPassword
       delete payload.passwordHash
       await store.saveSettings(payload)
-      setLocal({ ...store.settings() })
-      setHasPw(!!store.settings().hasPassword)
+      if (!store.loadErrors.settings) {
+        setEdited(false)
+        setLocal({ ...store.settings() })
+        setHasPw(!!store.settings().hasPassword)
+      }
     } catch {
       // Error surfaced by api.ts
     } finally {
@@ -475,7 +488,7 @@ const Settings: Component = () => {
         subtitle={t('settings.subtitle')}
         actions={
           <Show when={activeTab() === 'gateway'}>
-            <Button variant="primary" loading={saving()} disabled={!dirty()} onClick={save} class="shrink-0">
+            <Button variant="primary" loading={saving()} disabled={!initialized() || !dirty()} onClick={save} class="shrink-0">
               {dirty() ? t('common.save') : t('common.saved')}
             </Button>
           </Show>
@@ -521,6 +534,11 @@ const Settings: Component = () => {
         {tab => (
           <Switch>
             <Match when={tab === 'gateway'}>
+              <LoadState ready={initialized()} error={store.loadErrors.settings} onRetry={() => store.loadSettings()} fallback={
+                <div class="space-y-3.5">
+                  <For each={[0, 1, 2]}>{() => <Card class="p-5 space-y-4"><Skeleton class="h-5 w-32" /><Skeleton class="h-32 w-full" /></Card>}</For>
+                </div>
+              }>
               <div class="space-y-3.5">
 
         {/* 访问控制卡片 */}
@@ -873,6 +891,7 @@ const Settings: Component = () => {
           </div>
         </Card>
               </div>
+              </LoadState>
             </Match>
             <Match when={tab === 'appearance'}>
               <div class="space-y-3.5">

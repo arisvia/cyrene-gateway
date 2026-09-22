@@ -49,6 +49,7 @@ export const zhCN = {
     close: '关闭',
     back: '返回',
     loading: '加载中...',
+    loadFailed: '加载失败，请重试',
     search: '搜索',
     all: '全部',
     filter: '筛选',

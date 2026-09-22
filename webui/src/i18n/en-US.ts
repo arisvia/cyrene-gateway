@@ -51,6 +51,7 @@ export const enUS: TranslationDict = {
     close: 'Close',
     back: 'Back',
     loading: 'Loading...',
+    loadFailed: 'Unable to load data. Please retry.',
     search: 'Search',
     all: 'All',
     filter: 'Filter',

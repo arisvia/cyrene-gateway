@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, IconGlobe, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, IconGlobe, Skeleton, LoadState, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
@@ -52,6 +52,19 @@ const ProxyPools: Component = () => {
           </Show>
         }
       />
+      <LoadState ready={store.loaded.pools} error={store.loadErrors.pools} onRetry={() => store.loadProxyPools()} fallback={
+        <div class="grid gap-3">
+          <For each={[1, 2, 3]}>
+            {() => (
+              <Card class="p-4 space-y-3">
+                <Skeleton class="h-5 w-40" />
+                <Skeleton class="h-3 w-full" />
+                <Skeleton class="h-3 w-32" />
+              </Card>
+            )}
+          </For>
+        </div>
+      }>
       <Show when={store.proxyPools().length > 0} fallback={
         <Card class="p-12 border-dashed border-subtle">
           <Empty
@@ -111,6 +124,7 @@ const ProxyPools: Component = () => {
           </For>
         </div>
       </Show>
+      </LoadState>
 
       <Modal open={open()} title={editing() ? t('proxies.editPool') : t('proxies.newPool')} onClose={() => setOpen(false)}>
         <div class="space-y-4">

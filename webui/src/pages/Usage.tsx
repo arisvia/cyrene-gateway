@@ -1,7 +1,7 @@
 import { type Component, For, Show, Switch, Match, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, Select, Empty, Skeleton, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
+import { Card, Badge, Button, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -21,7 +21,7 @@ const Usage: Component = () => {
   const [selectedDetail, setSelectedDetail] = createSignal<RequestDetail | null>(null)
   const [period, setPeriod] = createSignal('7d')
   const [hoveredPoint, setHoveredPoint] = createSignal<{ label: string; tokens: number } | null>(null)
-  const [loading, setLoading] = createSignal(true)
+  const loading = () => store.usagePeriod() !== period()
   const [live, setLive] = createSignal(false)
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
   const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
@@ -33,9 +33,9 @@ const Usage: Component = () => {
     daysAgo: (d: number) => t('time.daysAgo', { d }),
   })
 
-  async function load() {
-    setLoading(true)
-    try { await store.loadUsage(period()) } finally { setLoading(false) }
+  function load() {
+    setHoveredPoint(null)
+    return store.loadUsage(period())
   }
   onMount(() => {
     load()
@@ -156,7 +156,7 @@ const Usage: Component = () => {
                 />
                 {/* 概览视图：KPI、Token 趋势、按提供商与实时事件 */}
         {/* KPI */}
-        <Show when={!loading()} fallback={
+        <LoadState ready={!loading()} error={store.loadErrors.usage} onRetry={load} fallback={
           <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <For each={[0, 1, 2, 3]}>{() => <Card class="p-4"><Skeleton class="h-8 w-24" /></Card>}</For>
           </div>
@@ -171,7 +171,7 @@ const Usage: Component = () => {
               )}
             </For>
           </div>
-        </Show>
+        </LoadState>
         {/* 图表 */}
         <Card class="p-5">
           <div class="flex items-center justify-between gap-3 mb-4 min-h-[44px]">
@@ -191,6 +191,7 @@ const Usage: Component = () => {
             <Select class="w-36 sm:w-40 shrink-0" size="sm" value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
           </div>
 
+          <Show when={!loading()} fallback={<Show when={!store.loadErrors.usage}><Skeleton class="h-48 w-full" /></Show>}>
           <Show when={chart().length > 0} fallback={<Empty message={t('usage.noDataForPeriod')} />}>
             <div class="relative h-48 w-full flex flex-col justify-end pt-6 pb-1">
               {/* 背景水平参考基准线 */}
@@ -274,12 +275,14 @@ const Usage: Component = () => {
               </div>
             </div>
           </Show>
+          </Show>
         </Card>
 
         <div class="grid lg:grid-cols-2 gap-4">
           {/* 按提供商 */}
           <Card class="p-5">
             <h3 class="text-sm font-semibold mb-3">{t('usage.byProvider')}</h3>
+            <Show when={!loading()} fallback={<Show when={!store.loadErrors.usage}><Skeleton class="h-24 w-full" /></Show>}>
             <Show when={byProvider().length > 0} fallback={<Empty message={t('common.noData')} />}>
               <div class="space-y-2">
                 <For each={byProvider()}>
@@ -297,6 +300,7 @@ const Usage: Component = () => {
                   )}
                 </For>
               </div>
+            </Show>
             </Show>
           </Card>
 

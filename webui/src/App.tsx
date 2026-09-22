@@ -1,10 +1,10 @@
-import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup, createEffect, lazy } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, onMount, onCleanup, createEffect, lazy, Suspense } from 'solid-js'
 import { HashRouter, Route, A, useLocation } from '@solidjs/router'
 import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
 import { useI18n } from './i18n'
-import { ToastHost, ConfirmDialogHost, CyreneLogo, IconHome, IconServer, IconPlayground, IconLayers, IconActivity, IconClock, IconImage, IconGlobe, IconFileText, IconSettings, IconClose, IconMenu, IconLogout } from './components/ui'
+import { ToastHost, ConfirmDialogHost, CyreneLogo, Skeleton, IconHome, IconServer, IconPlayground, IconLayers, IconActivity, IconClock, IconImage, IconGlobe, IconFileText, IconSettings, IconClose, IconMenu, IconLogout } from './components/ui'
 import { LoginModal } from './components/layout/LoginModal'
 import Home from './pages/Home'
 const Providers = lazy(() => import('./pages/Providers'))
@@ -205,7 +205,14 @@ const App: Component = () => {
           </div>
         </header>
         <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-10 py-6 lg:py-8 animate-fade-in">
-          {props.children}
+          <Suspense fallback={
+            <div class="space-y-5" role="status" aria-label={t('common.loading')} aria-busy="true">
+              <Skeleton class="h-7 w-40" />
+              <Skeleton class="h-48 w-full" />
+            </div>
+          }>
+            {props.children}
+          </Suspense>
         </main>
       </div>
 
