@@ -4,7 +4,7 @@ import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
 import { useI18n } from './i18n'
-import { ToastHost, ConfirmDialogHost, CyreneLogo, Skeleton, IconHome, IconServer, IconPlayground, IconLayers, IconActivity, IconClock, IconImage, IconGlobe, IconFileText, IconSettings, IconClose, IconMenu, IconLogout } from './components/ui'
+import { ToastHost, ConfirmDialogHost, CyreneLogo, Skeleton, Button, IconButton, IconHome, IconServer, IconPlayground, IconLayers, IconActivity, IconClock, IconImage, IconGlobe, IconFileText, IconSettings, IconClose, IconMenu, IconLogout } from './components/ui'
 import { LoginModal } from './components/layout/LoginModal'
 import Home from './pages/Home'
 const Providers = lazy(() => import('./pages/Providers'))
@@ -44,14 +44,55 @@ const App: Component = () => {
   // 布局作为 root 传入 Router：这样侧栏/头部里的 <A> 处于路由上下文内
   const Layout: Component<{ children?: JSX.Element }> = props => {
     const location = useLocation()
-    const [scrolled, setScrolled] = createSignal(false)
+    const pageTitle = () => {
+      const titles = {
+        providers: 'nav.providers', playground: 'nav.playground', combos: 'nav.combos',
+        usage: 'nav.usage', quota: 'nav.quota', media: 'nav.media',
+        'proxy-pools': 'nav.proxies', logs: 'nav.logs', settings: 'nav.settings',
+      } as const
+      const route = location.pathname.split('/')[1] as keyof typeof titles
+      return t(titles[route] ?? 'nav.home')
+    }
+    let drawer: HTMLElement | undefined
 
     createEffect(() => {
-      // 路由切换时平滑滚回顶部并重置吸顶加深状态
       location.pathname
       window.scrollTo(0, 0)
-      setScrolled(false)
+      setOpen(false)
       document.documentElement.setAttribute('data-scrolled', 'false')
+    })
+
+    createEffect(() => {
+      if (!open()) return
+      const previousFocus = document.activeElement as HTMLElement | null
+      const previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      queueMicrotask(() => drawer?.querySelector<HTMLElement>('button, a[href]')?.focus())
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') setOpen(false)
+        if (event.key !== 'Tab') return
+        const controls = drawer?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)')
+        if (!controls?.length) return
+        const first = controls[0]
+        const last = controls[controls.length - 1]
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
+      const desktop = window.matchMedia('(min-width: 768px)')
+      const onResize = () => { if (desktop.matches) setOpen(false) }
+      desktop.addEventListener('change', onResize)
+      document.addEventListener('keydown', onKey)
+      onCleanup(() => {
+        document.body.style.overflow = previousOverflow
+        document.removeEventListener('keydown', onKey)
+        desktop.removeEventListener('change', onResize)
+        previousFocus?.focus()
+      })
     })
 
     onMount(() => {
@@ -60,7 +101,6 @@ const App: Component = () => {
         if (!ticking) {
           window.requestAnimationFrame(() => {
             const isS = window.scrollY > 8
-            setScrolled(isS)
             document.documentElement.setAttribute('data-scrolled', isS ? 'true' : 'false')
             ticking = false
           })
@@ -90,18 +130,15 @@ const App: Component = () => {
                 transform: bgStore.config().blur ? 'scale(1.05)' : undefined,
               }}
             />
-            {/* 仅在暗色模式下提供适度暗色微调，亮色模式保持壁纸原画通透鲜亮 */}
-            <div class="absolute inset-0 bg-transparent dark:bg-black/25 pointer-events-none" />
+            <div class="absolute inset-0 bg-wallpaper-scrim pointer-events-none" />
           </div>
         </Show>
-        {/* 2026 现代极光光晕背景 (Ambient Gradient Glows) */}
-        <div class="fixed top-[-10%] left-[20%] w-125 h-125 bg-accent/5 rounded-full blur-[140px] pointer-events-none z-0" />
-        <div class="fixed bottom-[-10%] right-[10%] w-150 h-150 bg-accent-2/5 rounded-full blur-[160px] pointer-events-none z-0" />
+        <div class="app-ambient" aria-hidden="true" />
         <ToastHost />
         <ConfirmDialogHost />
         {/* 桌面侧栏 */}
-        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 glass-panel border-r border-glass-border shadow-glass">
-          <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle box-border">
+        <aside class="hidden md:flex flex-col fixed inset-y-0 left-0 w-(--sidebar-w) z-40 app-sidebar">
+          <div class="h-19 flex items-center gap-3 px-5 shrink-0">
             <CyreneLogo class="w-8 h-8 shrink-0" />
             <div class="min-w-0">
               <div class="text-sm font-bold leading-tight truncate text-foreground">Cyrene Gateway</div>
@@ -115,7 +152,7 @@ const App: Component = () => {
             </div>
             <A
               href="/settings"
-              class="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
+              class="flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
               title={t('nav.settings')}
               aria-label={t('nav.settings')}
             >
@@ -127,24 +164,24 @@ const App: Component = () => {
       {/* 移动端抽屉 */}
       <Show when={open()}>
         <div class="md:hidden fixed inset-0 z-50">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             aria-label={t('nav.closeMenuOverlay')}
-            class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-sm animate-fade-in border-none cursor-default"
+            tabindex={-1}
+            class="absolute inset-0 w-full h-full! rounded-none! bg-overlay! backdrop-blur-sm animate-fade-in border-none! active:scale-100!"
             onClick={() => setOpen(false)}
           />
-          <aside class="absolute inset-y-0 left-0 w-65 glass-panel border-r border-glass-border flex flex-col animate-slide-up shadow-xl">
-            <div class="h-16 flex items-center gap-3 px-5 border-b border-subtle">
+          <aside ref={drawer} role="dialog" aria-modal="true" aria-label={t('nav.groupAccess')} class="absolute inset-y-0 left-0 w-68 max-w-[85vw] app-sidebar flex flex-col animate-slide-up">
+            <div class="h-19 flex items-center gap-3 px-5 shrink-0">
               <CyreneLogo class="w-8 h-8 shrink-0" />
-              <span class="text-sm font-bold flex-1">Cyrene Gateway</span>
-              <button
-                type="button"
-                class="flex h-8 w-8 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover"
+              <span class="text-sm font-semibold flex-1">Cyrene Gateway</span>
+              <IconButton
+                size="lg"
                 onClick={() => setOpen(false)}
                 aria-label={t('nav.closeMenu')}
               >
-                <IconClose size={16} />
-              </button>
+                <IconClose size={18} />
+              </IconButton>
             </div>
             <SidebarNav onNavigate={() => setOpen(false)} />
             <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40 shrink-0">
@@ -155,7 +192,7 @@ const App: Component = () => {
               <A
                 href="/settings"
                 onClick={() => setOpen(false)}
-                class="flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
+                class="flex h-9 w-9 items-center justify-center rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors"
                 title={t('nav.settings')}
                 aria-label={t('nav.settings')}
               >
@@ -167,44 +204,43 @@ const App: Component = () => {
       </Show>
 
       {/* 主区 */}
-      <div class="flex flex-col md:pl-(--sidebar-w) min-h-screen relative z-10">
-        <header class={`sticky top-0 z-30 px-4 lg:px-10 transition-all duration-300 pointer-events-none ${scrolled() ? 'pt-2 pb-2' : 'pt-3.5 pb-2'}`}>
-          <div class="h-14 flex items-center justify-between gap-3 px-4.5 rounded-2xl border border-glass-border glass-sticky shadow-glass transition-all duration-300 pointer-events-auto">
-            <button
-              type="button"
-              class="md:hidden flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:text-text hover:bg-hover border border-subtle shrink-0"
+      <div class="flex flex-col md:pl-(--sidebar-w) min-h-dvh relative z-10">
+        <header class="sticky top-0 z-30 px-4 lg:px-8 pt-3 pb-2 pointer-events-none">
+          <div class="max-w-7xl mx-auto h-13 flex items-center justify-between gap-3 px-3 sm:px-4 rounded-2xl glass-sticky pointer-events-auto">
+            <IconButton
+              size="lg"
+              class="md:hidden"
               onClick={() => setOpen(true)}
               aria-label={t('nav.openMenu')}
+              aria-expanded={open()}
             >
-              <IconMenu size={16} />
-            </button>
-            <div class="flex items-center gap-2 text-xs font-medium text-muted truncate">
-              <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <span class="text-foreground font-semibold">Cyrene Gateway</span>
-              <span class="text-faint hidden sm:inline">/</span>
-              <span class="text-faint hidden sm:inline">{t('nav.tagline')}</span>
+              <IconMenu size={18} />
+            </IconButton>
+            <div class="min-w-0 flex items-center gap-2 text-xs text-muted">
+              <span class="truncate font-medium">{pageTitle()}</span>
+              <span class="text-faint hidden lg:inline" aria-hidden="true">/</span>
+              <span class="text-faint hidden lg:inline">{t('nav.tagline')}</span>
             </div>
-            <div class="ml-auto flex items-center gap-3">
-              <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/60 border border-glass-border shadow-sm text-xs backdrop-blur-md">
-                <span class="w-2 h-2 rounded-full bg-success animate-pulse" />
-                <span class="font-medium text-foreground">{store.activeConnections()}</span>
-                <span class="text-faint">{t('common.activeConns')}</span>
+            <div class="ml-auto flex items-center gap-2 shrink-0">
+              <div class="flex items-center gap-2 text-xs">
+                <span class="w-1.5 h-1.5 rounded-full bg-success" />
+                <span class="font-medium text-text tabular-nums">{store.activeConnections()}</span>
+                <span class="text-muted hidden sm:inline">{t('common.activeConns')}</span>
               </div>
               <Show when={store.requireLogin() && store.authenticated()}>
-                <button
-                  type="button"
-                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card/60 border border-glass-border shadow-sm text-xs text-muted hover:text-danger hover:border-danger/40 transition-all cursor-pointer backdrop-blur-md"
+                <IconButton
                   onClick={() => store.logout()}
                   title={t('login.logout')}
+                  aria-label={t('login.logout')}
+                  class="hover:text-danger"
                 >
-                  <IconLogout size={14} />
-                  <span class="hidden sm:inline">{t('login.logout')}</span>
-                </button>
+                  <IconLogout size={15} />
+                </IconButton>
               </Show>
             </div>
           </div>
         </header>
-        <main class="flex-1 max-w-7xl w-full mx-auto px-4 lg:px-10 py-6 lg:py-8 animate-fade-in">
+        <main class="flex-1 min-w-0 max-w-7xl w-full mx-auto px-4 lg:px-8 py-6 lg:py-8">
           <Suspense fallback={
             <div class="space-y-5" role="status" aria-label={t('common.loading')} aria-busy="true">
               <Skeleton class="h-7 w-40" />
@@ -279,8 +315,8 @@ function SidebarNav(props: { onNavigate?: () => void }) {
                     href={item.href}
                     end={item.end}
                     onClick={props.onNavigate}
-                    class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium text-muted hover:text-text hover:bg-hover transition-all border border-transparent"
-                    activeClass="text-foreground! bg-accent/15! border-accent/30! text-accent shadow-sm font-semibold"
+                    class="nav-link"
+                    activeClass="nav-active"
                   >
                     <item.icon />
                     <span>{item.label}</span>

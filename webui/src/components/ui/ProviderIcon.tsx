@@ -65,10 +65,15 @@ const RAW_SVGS = import.meta.glob<string>('../../assets/providers/*.svg', {
 })
 
 const PROVIDER_DATA_URLS: Record<string, string> = {}
+const MONOCHROME_IMAGES = new Set<string>()
 for (const [path, content] of Object.entries(RAW_SVGS)) {
   const match = path.match(/\/([^/]+)\.svg$/)
   if (match && match[1]) {
-    PROVIDER_DATA_URLS[match[1]] = `data:image/svg+xml;utf8,${encodeURIComponent(content)}`
+    const url = `data:image/svg+xml;utf8,${encodeURIComponent(content)}`
+    PROVIDER_DATA_URLS[match[1]] = url
+    if (content.includes('currentColor') && !/(?:#[\da-f]{3,8}\b|rgba?\(|url\()/i.test(content)) {
+      MONOCHROME_IMAGES.add(url)
+    }
   }
 }
 
@@ -154,7 +159,7 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
   }
   return (
     <div
-      class={`shrink-0 flex items-center justify-center rounded-xl overflow-hidden glass-avatar transition-transform group-hover:scale-105 ${sizeClass()} ${props.class ?? ''}`}
+      class={`shrink-0 flex items-center justify-center overflow-hidden glass-avatar text-text ${sizeClass()} ${props.class ?? ''}`}
       style={{
         background: imgSrc() ? undefined : (props.color || undefined),
       }}
@@ -167,12 +172,23 @@ export const ProviderAvatar: Component<ProviderIconProps> = props => {
         when={imgSrc()}
         fallback={<ProviderBrandIcon provider={props.provider} name={props.name} size={iconPx()} />}
       >
-        <img
-          src={imgSrc()!}
-          alt={name()}
-          class="w-full h-full object-contain p-1.5 rounded-xl filter drop-shadow-xs"
-          onError={() => setImgFailed(true)}
-        />
+        <Show when={MONOCHROME_IMAGES.has(imgSrc()!)} fallback={
+          <img
+            src={imgSrc()!}
+            alt={name()}
+            width={iconPx()}
+            height={iconPx()}
+            class="object-contain"
+            onError={() => setImgFailed(true)}
+          />
+        }>
+          <span
+            role="img"
+            aria-label={name()}
+            class="block bg-current"
+            style={{ width: `${iconPx()}px`, height: `${iconPx()}px`, 'mask-image': `url("${imgSrc()}")`, 'mask-size': 'contain', 'mask-repeat': 'no-repeat', 'mask-position': 'center' }}
+          />
+        </Show>
       </Show>
     </div>
   )

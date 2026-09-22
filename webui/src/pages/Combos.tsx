@@ -4,7 +4,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import type { Combo } from '@/types/domain'
-import { Card, Badge, Button, Input, Select, Modal, Field, Empty, PageHeader, IconClose, IconLayers, IconExternalLink, Skeleton, LoadState, confirm } from '@/components/ui'
+import { Card, Badge, Button, IconButton, Input, Select, Modal, Field, Empty, PageHeader, IconClose, IconLayers, IconExternalLink, Skeleton, LoadState, confirm } from '@/components/ui'
 
 const Combos: Component = () => {
   const store = useGatewayStore()
@@ -135,10 +135,10 @@ const Combos: Component = () => {
           <For each={store.combos()}>
             {c => (
               <Card hover class="p-4">
-                <div class="flex items-start justify-between gap-4">
+                <div class="flex flex-col sm:flex-row items-start justify-between gap-4">
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <span class="font-medium text-sm">{c.name}</span>
+                      <span class="min-w-0 font-medium text-sm wrap-anywhere">{c.name}</span>
                       <Badge tone="blue">{strategyLabel()[c.kind] || c.kind}</Badge>
                       <Badge tone="gray">{t('combos.modelCount', { count: c.models?.length ?? 0 })}</Badge>
                     </div>
@@ -148,10 +148,10 @@ const Combos: Component = () => {
                           const displayName = () => modelNames()[m] || m
                           const hasDifferentName = () => displayName() !== m
                           return (
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-hover text-[11px] font-sans text-muted hover:text-foreground transition-colors" title={m}>
+                            <span class="inline-flex flex-wrap max-w-full min-w-0 items-center gap-x-1 gap-y-0.5 px-2 py-1 rounded-md bg-surface-inset text-xs font-sans text-muted hover:text-foreground transition-colors wrap-anywhere" title={m}>
                               <span class="font-medium">{displayName()}</span>
                               <Show when={hasDifferentName()}>
-                                <span class="text-[10px] text-faint font-mono opacity-80">({m})</span>
+                                <span class="min-w-0 text-xs text-faint font-mono opacity-80 wrap-anywhere">({m})</span>
                               </Show>
                             </span>
                           )
@@ -159,7 +159,7 @@ const Combos: Component = () => {
                       </For>
                     </div>
                   </div>
-                  <div class="flex gap-1.5 shrink-0">
+                  <div class="flex flex-wrap gap-1.5 shrink-0">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>{t('common.edit')}</Button>
                     <Button
                       size="sm"
@@ -205,7 +205,7 @@ const Combos: Component = () => {
           <Field label={t('combos.memberModels')} hint={t('combos.memberModelsHint')}>
             <div class="flex gap-2">
               <Select
-                class="flex-1"
+                class="flex-1 min-w-0"
                 value={modelPick()}
                 options={[
                   { value: '', label: t('combos.selectModel') },
@@ -225,12 +225,12 @@ const Combos: Component = () => {
                     const displayName = () => modelNames()[m] || m
                     const hasDifferentName = () => displayName() !== m
                     return (
-                      <span class="inline-flex items-center gap-1 px-2 py-1 rounded-control bg-hover text-xs" title={m}>
-                        <span class="font-medium text-foreground">{displayName()}</span>
+                      <span class="inline-flex flex-wrap max-w-full min-w-0 items-center gap-1 px-2 py-1 rounded-control bg-surface-inset text-xs wrap-anywhere" title={m}>
+                        <span class="min-w-0 font-medium text-foreground">{displayName()}</span>
                         <Show when={hasDifferentName()}>
-                          <span class="text-[10px] text-faint font-mono opacity-80">({m})</span>
+                          <span class="min-w-0 text-xs text-faint font-mono opacity-80 wrap-anywhere">({m})</span>
                         </Show>
-                        <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" onClick={() => removeModel(m)} title={t('combos.remove')}><IconClose size={12} /></button>
+                        <IconButton size="sm" variant="ghost" class="text-faint hover:text-danger ml-0.5" onClick={() => removeModel(m)} title={t('combos.remove')} aria-label={t('combos.remove')}><IconClose size={12} /></IconButton>
                       </span>
                     )
                   }}

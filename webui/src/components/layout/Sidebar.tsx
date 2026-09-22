@@ -1,53 +1,48 @@
-import { createSignal } from 'solid-js'
+import { createSignal, onCleanup } from 'solid-js'
 import { useI18n } from '@/i18n'
-import { IconSun, IconMoon, IconGlobe } from '@/components/ui'
+import { Button, IconButton, IconSun, IconMoon, IconGlobe } from '@/components/ui'
+
 export function ThemeToggle() {
   const { t } = useI18n()
   const [light, setLight] = createSignal(document.documentElement.classList.contains('light'))
+  const observer = new MutationObserver(() => setLight(document.documentElement.classList.contains('light')))
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  onCleanup(() => observer.disconnect())
+
   const toggle = () => {
-    const next = !light()
-    setLight(next)
+    const next = !document.documentElement.classList.contains('light')
     document.documentElement.classList.toggle('light', next)
+    setLight(next)
     localStorage.setItem('cyrene-theme', next ? 'light' : 'dark')
   }
+
   return (
-    <button
-      type="button"
-      class="relative flex h-8 w-8 items-center justify-center rounded-control text-muted hover:text-text hover:bg-hover transition-colors overflow-hidden"
+    <IconButton
+      size="lg"
+      class="relative"
       onClick={toggle}
       aria-label={t('sidebar.themeToggle')}
+      aria-pressed={light()}
       title={light() ? t('sidebar.switchToDark') : t('sidebar.switchToLight')}
     >
-      {/* 太阳图标（暗色模式显示） */}
-      <IconSun
-        size={16}
-        class={`absolute transition-all duration-300 ${
-          light() ? 'opacity-0 scale-75 rotate-90 pointer-events-none' : 'opacity-100 scale-100 rotate-0'
-        }`}
-      />
-
-      {/* 月亮图标（亮色模式显示） */}
-      <IconMoon
-        size={16}
-        class={`absolute transition-all duration-300 ${
-          light() ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 -rotate-90 pointer-events-none'
-        }`}
-      />
-    </button>
+      <IconSun size={17} class={`absolute transition-[opacity,transform] duration-200 ${light() ? 'opacity-0 scale-75 rotate-45' : 'opacity-100 scale-100 rotate-0'}`} />
+      <IconMoon size={17} class={`absolute transition-[opacity,transform] duration-200 ${light() ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-75 -rotate-45'}`} />
+    </IconButton>
   )
 }
+
 export function LanguageToggle() {
   const { locale, toggleLocale, t } = useI18n()
   return (
-    <button
-      type="button"
-      class="flex h-8 px-2 items-center justify-center gap-1 rounded-control text-xs font-medium text-muted hover:text-foreground hover:bg-hover transition-colors cursor-pointer"
+    <Button
+      variant="ghost"
+      size="sm"
       onClick={toggleLocale}
       aria-label={t('sidebar.languageToggle')}
       title={locale() === 'zh-CN' ? t('sidebar.switchToEnglish') : t('sidebar.switchToChinese')}
     >
-      <IconGlobe size={14} class="shrink-0" />
-      <span class="font-mono text-[11px] uppercase tracking-wider">{locale() === 'zh-CN' ? 'EN' : '中'}</span>
-    </button>
+      <IconGlobe size={15} />
+      <span class="text-xs font-medium">{locale() === 'zh-CN' ? 'EN' : '中'}</span>
+    </Button>
   )
 }

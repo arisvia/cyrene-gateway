@@ -83,10 +83,10 @@ const ProxyPools: Component = () => {
           <For each={store.proxyPools()}>
             {p => (
               <Card hover class="p-4">
-                <div class="flex items-center justify-between gap-4 flex-wrap">
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="font-medium text-sm">{p.name}</span>
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 flex-wrap">
+                  <div class="min-w-0 w-full sm:w-auto sm:flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="min-w-0 wrap-anywhere font-medium text-sm">{p.name}</span>
                       <Show when={!p.isActive}>
                         <Badge tone="gray">{t('common.disabled')}</Badge>
                       </Show>
@@ -95,12 +95,12 @@ const ProxyPools: Component = () => {
                     </div>
                     <div class="mt-1 text-xs text-faint font-mono truncate">{p.proxyUrl}</div>
                     <Show when={p.noProxy}>
-                      <div class="text-[11px] text-faint truncate">{t('proxies.noProxyPrefix')}{p.noProxy}</div>
+                      <div class="text-xs text-faint truncate">{t('proxies.noProxyPrefix')}{p.noProxy}</div>
                     </Show>
                   </div>
-                  <div class="flex items-center gap-1.5 shrink-0">
+                  <div class="flex flex-wrap items-center gap-1.5 shrink-0">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>{t('common.edit')}</Button>
-                    <Toggle checked={p.isActive} onChange={() => store.toggleProxyPool(p)} />
+                    <Toggle ariaLabel={`${t('common.enabled')}: ${p.name}`} checked={p.isActive} onChange={() => store.toggleProxyPool(p)} />
                     <Button
                       size="sm"
                       variant="danger"
@@ -144,7 +144,7 @@ const ProxyPools: Component = () => {
             <Input value={form().noProxy} onInput={v => setForm(f => ({ ...f, noProxy: v }))} placeholder="localhost,127.0.0.1" />
           </Field>
           <Field label={t('proxies.strictProxy')} hint={t('proxies.strictProxyHint')}>
-            <Toggle checked={form().strictProxy} onChange={v => setForm(f => ({ ...f, strictProxy: v }))} />
+            <Toggle ariaLabel={t('proxies.strictProxy')} checked={form().strictProxy} onChange={v => setForm(f => ({ ...f, strictProxy: v }))} />
           </Field>
           <div class="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel')}</Button>

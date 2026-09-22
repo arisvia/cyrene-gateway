@@ -3,7 +3,7 @@ import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
 import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
-  Card, Badge, Button, Input, Select, Toggle, Field, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition, Skeleton, LoadState,
+  Card, Badge, Button, IconButton, Input, Select, Toggle, Field, Empty, Alert, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition, Skeleton, LoadState,
   IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
   IconDownload, IconUpload, IconAlertTriangle, IconDatabase, IconServer, IconRotateCcw, IconActivity,
 } from '@/components/ui'
@@ -506,7 +506,7 @@ const Settings: Component = () => {
             value={activeTab()}
             onChange={handleTabChange}
           />
-          <div class="text-[11px] text-faint flex items-center gap-1.5 px-0.5 min-w-0 overflow-hidden">
+          <div class="text-xs text-faint flex items-center gap-1.5 px-0.5 min-w-0 overflow-hidden">
             <Show when={activeTab() === 'gateway'}>
               <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
               <span class="truncate">{t('settings.hosts.gateway')}</span>
@@ -543,8 +543,8 @@ const Settings: Component = () => {
 
         {/* 访问控制卡片 */}
         <Card class="p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <IconLock size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">{t('settings.access.cardTitle')}</h3>
             </div>
@@ -552,7 +552,7 @@ const Settings: Component = () => {
               {local().requireLogin || local().requireApiKey ? t('settings.access.protected') : t('settings.access.open')}
             </Badge>
           </div>
-          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-4">
+          <div class="p-4 rounded-xl bg-surface-inset space-y-4">
             <div class="flex items-start justify-between gap-4">
               <Field
                 label={t('settings.access.requireLogin')}
@@ -567,6 +567,7 @@ const Settings: Component = () => {
                 <span />
               </Field>
               <Toggle
+                ariaLabel={t('settings.access.requireLogin')}
                 checked={store.isWan() || !!local().requireLogin}
                 disabled={store.isWan() || !hasPw()}
                 onChange={v => {
@@ -584,7 +585,7 @@ const Settings: Component = () => {
               <Field label={t('settings.access.requireApiKey')} hint={t('settings.access.requireApiKeyHint')}>
                 <span />
               </Field>
-              <Toggle checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
+              <Toggle ariaLabel={t('settings.access.requireApiKey')} checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
             </div>
 
             <div class="pt-3 border-t border-subtle/50">
@@ -602,8 +603,8 @@ const Settings: Component = () => {
 
         {/* 管理密码卡片 */}
         <Card class="p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <IconKey size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">{t('settings.access.managePassword')}</h3>
             </div>
@@ -611,15 +612,15 @@ const Settings: Component = () => {
               {hasPw() ? t('settings.access.pwConfigured') : t('settings.access.pwUnset')}
             </Badge>
           </div>
-          <div class="p-4 rounded-xl border border-subtle bg-card/40">
+          <div class="min-w-0">
             <Field label={t('settings.access.changePassword')} hint={t('settings.access.pwHelpText')}>
-              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+              <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 pt-1">
                 <Input
                   type="password"
                   value={pw()}
                   onInput={setPw}
                   placeholder={t('settings.pwPlaceholder')}
-                  class="flex-1 w-full!"
+                  class="min-w-0"
                 />
                 <Button
                   variant="secondary"
@@ -636,8 +637,8 @@ const Settings: Component = () => {
 
         {/* 响应精确缓存卡片 */}
         <Card class="p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <IconZap size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">{t('settings.cache.title')}</h3>
               <Badge tone="blue">{t('settings.cache.badge')}</Badge>
@@ -666,45 +667,46 @@ const Settings: Component = () => {
           </div>
 
           {/* 缓存指标数据小横条：移动端 2 列，平板及以上 4 列 */}
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-card/40 p-4 rounded-xl border border-subtle text-xs">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-surface-inset p-4 rounded-xl text-xs wrap-anywhere">
             <div class="space-y-0.5">
-              <span class="text-faint block text-[11px]">{t('settings.cache.hitRate')}</span>
+              <span class="text-faint block text-xs">{t('settings.cache.hitRate')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {((cacheStats()?.hitRate ?? 0) * 100).toFixed(1)}%
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">
+              <span class="text-xs leading-relaxed text-muted block mt-0.5">
                 {t('settings.cache.hitsAndMisses', { hits: cacheStats()?.hits ?? 0, misses: cacheStats()?.misses ?? 0 })}
               </span>
             </div>
             <div class="space-y-0.5">
-              <span class="text-faint block text-[11px]">{t('settings.cache.tokensSaved')}</span>
+              <span class="text-faint block text-xs">{t('settings.cache.tokensSaved')}</span>
               <span class="font-semibold text-accent text-sm">
                 {(cacheStats()?.tokensSaved ?? 0).toLocaleString()}
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.directSavings')}</span>
+              <span class="text-xs leading-relaxed text-muted block mt-0.5">{t('settings.cache.directSavings')}</span>
             </div>
             <div class="space-y-0.5">
-              <span class="text-faint block text-[11px]">{t('settings.cache.entries')}</span>
+              <span class="text-faint block text-xs">{t('settings.cache.entries')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {cacheStats()?.entries ?? 0} / {cacheStats()?.maxEntries ?? 1000}
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.lruPool')}</span>
+              <span class="text-xs leading-relaxed text-muted block mt-0.5">{t('settings.cache.lruPool')}</span>
             </div>
             <div class="space-y-0.5">
-              <span class="text-faint block text-[11px]">{t('settings.cache.memory')}</span>
+              <span class="text-faint block text-xs">{t('settings.cache.memory')}</span>
               <span class="font-semibold text-foreground text-sm">
                 {formatBytes(cacheStats()?.bytesUsed ?? 0)}
               </span>
-              <span class="text-[10px] text-muted block mt-0.5 truncate">{t('settings.cache.entrySizeLimit')}</span>
+              <span class="text-xs leading-relaxed text-muted block mt-0.5">{t('settings.cache.entrySizeLimit')}</span>
             </div>
           </div>
           {/* 控制项 */}
-          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3.5">
+          <div class="space-y-3.5">
             <div class="flex items-start justify-between gap-4">
               <Field label={t('settings.cache.enabled')} hint={t('settings.cache.enabledHint')}>
                 <span />
               </Field>
               <Toggle
+                ariaLabel={t('settings.cache.enabled')}
                 checked={!!local().responseCacheEnabled}
                 onChange={v => {
                   set('responseCacheEnabled', v)
@@ -728,6 +730,7 @@ const Settings: Component = () => {
                     <span />
                   </Field>
                   <Toggle
+                    ariaLabel={t('settings.cache.enableAllRequests')}
                     checked={!!local().responseCacheAll}
                     onChange={v => set('responseCacheAll', v)}
                   />
@@ -739,8 +742,8 @@ const Settings: Component = () => {
 
         {/* 令牌节省引擎卡片 */}
         <Card class="p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <IconSparkles size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">{t('settings.tokenSaver.title')}</h3>
               <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
@@ -748,13 +751,13 @@ const Settings: Component = () => {
           </div>
 
           {/* 压缩策略模块 */}
-          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-4">
+          <div class="p-4 rounded-xl bg-surface-inset space-y-4">
             {/* RTK 压缩 */}
             <div class="flex items-start justify-between gap-4">
               <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
                 <span />
               </Field>
-              <Toggle checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
+              <Toggle ariaLabel={t('settings.tokenSaver.rtkTitle')} checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
             </div>
 
             {/* Caveman 极简表达 */}
@@ -764,6 +767,7 @@ const Settings: Component = () => {
                   <span />
                 </Field>
                 <Toggle
+                  ariaLabel={t('settings.tokenSaver.cavemanTitle')}
                   checked={!!local().cavemanEnabled}
                   onChange={v => {
                     set('cavemanEnabled', v)
@@ -792,6 +796,7 @@ const Settings: Component = () => {
                   <span />
                 </Field>
                 <Toggle
+                  ariaLabel={t('settings.tokenSaver.ponytailTitle')}
                   checked={!!local().ponytailEnabled}
                   onChange={v => {
                     set('ponytailEnabled', v)
@@ -815,7 +820,7 @@ const Settings: Component = () => {
           </div>
 
           {/* 排除名单模块 */}
-          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3">
+          <div class="pt-4 border-t border-subtle/50 space-y-3">
             <div>
               <Field
                 label={t('settings.tokenSaver.exclusionsTitle')}
@@ -825,23 +830,26 @@ const Settings: Component = () => {
               </Field>
             </div>
 
-            <div class="flex flex-wrap items-center gap-1.5 min-h-[38px] p-2.5 rounded-xl bg-card/40 border border-subtle">
+            <div class="flex flex-wrap items-center gap-1.5 min-w-0 min-h-[38px] py-1">
               <Show
                 when={excludedProviders().length > 0}
-                fallback={<span class="text-xs text-faint flex items-center gap-1.5"><IconInfo size={13} class="text-faint/80 shrink-0" />{t('settings.tokenSaver.noExclusions')}</span>}
+                fallback={<Empty message={t('settings.tokenSaver.noExclusions')} class="py-2! text-left!" />}
               >
                 <For each={excludedProviders()}>
                   {p => (
-                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-warning/10 text-warning text-xs font-mono">
+                    <span class="inline-flex max-w-full min-w-0 items-center gap-1.5 px-2 py-0.5 rounded bg-control text-foreground text-xs font-mono wrap-anywhere">
                       <span>{p}</span>
-                      <button
+                      <IconButton
+                        size="sm"
+                        variant="ghost"
                         type="button"
-                        class="hover:opacity-75 focus:outline-none"
+                        class="text-muted hover:text-danger"
                         title={t('settings.removeExclude')}
+                        aria-label={t('settings.removeExclude')}
                         onClick={() => removeExcludeProvider(p)}
                       >
                         &times;
-                      </button>
+                      </IconButton>
                     </span>
                   )}
                 </For>
@@ -849,10 +857,10 @@ const Settings: Component = () => {
             </div>
 
             {/* 输入框与添加按钮 */}
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
               <Input
                 placeholder={t('settings.excludePlaceholder')}
-                class="flex-1 text-xs w-full!"
+                class="text-xs"
                 value={excludeInput()}
                 onInput={setExcludeInput}
                 onKeyDown={e => {
@@ -873,17 +881,19 @@ const Settings: Component = () => {
             </div>
 
             <Show when={quickSuggestions().length > 0}>
-              <div class="flex flex-wrap items-center gap-1 text-[11px] text-faint">
+              <div class="flex flex-wrap items-center gap-1 text-xs text-faint">
                 <span>{t('settings.tokenSaver.quickAddConfigured')}</span>
                 <For each={quickSuggestions()}>
                   {name => (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="secondary"
                       type="button"
-                      class="px-1.5 py-0.5 rounded bg-subtle hover:bg-hover text-muted hover:text-foreground transition-colors font-mono"
+                      class="max-w-full min-w-0! h-auto! min-h-8 py-2 whitespace-normal! wrap-anywhere font-mono"
                       onClick={() => addExcludeProvider(name)}
                     >
                       +{name}
-                    </button>
+                    </Button>
                   )}
                 </For>
               </div>
@@ -898,8 +908,8 @@ const Settings: Component = () => {
 
         {/* 界面与壁纸卡片 */}
         <Card class="p-5 space-y-4">
-          <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <IconPalette size={16} class="text-accent shrink-0" />
               <div>
                 <h3 class="text-sm font-semibold">{t('settings.appearance.cardTitle')}</h3>
@@ -927,19 +937,19 @@ const Settings: Component = () => {
             </Show>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* 远程图片链接 */}
-            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-2.5">
+            <div class="min-w-0 p-4 rounded-xl bg-surface-inset space-y-2.5">
               <label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <IconDownload size={14} class="text-accent" />
                 <span>{t('settings.remoteImageUrl')}</span>
               </label>
-              <div class="flex flex-col sm:flex-row gap-2 pt-0.5">
+              <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pt-0.5">
                 <Input
                   value={bgUrlInput()}
                   placeholder="https://..."
                   onInput={setBgUrlInput}
-                  class="flex-1 w-full!"
+                  class="min-w-0"
                 />
                 <Button
                   variant="secondary"
@@ -993,7 +1003,7 @@ const Settings: Component = () => {
             </div>
 
             {/* 本地图片上传 */}
-            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-2.5">
+            <div class="p-4 rounded-xl bg-surface-inset space-y-2.5">
               <label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <IconUpload size={14} class="text-accent" />
                 <span>{t('settings.localImageUpload')}</span>
@@ -1020,7 +1030,7 @@ const Settings: Component = () => {
 
           {/* 壁纸与毛玻璃微调控制面板（仿 zashboard 外观微调系统） */}
           <Show when={bgStore.hasCustomBg()}>
-            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3.5">
+            <div class="p-4 rounded-xl bg-surface-inset space-y-3.5">
               <div class="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <IconSparkles size={14} class="text-accent" />
                 <span>{t('settings.appearance.appearanceSliders')}</span>
@@ -1073,8 +1083,8 @@ const Settings: Component = () => {
 
           {/* 数据备份导出卡片 */}
           <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-              <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+              <div class="flex flex-wrap items-center gap-2 min-w-0">
                 <IconDownload size={16} class="text-accent shrink-0" />
                 <div>
                   <h3 class="text-sm font-semibold">{t('settings.data.backupCardTitle')}</h3>
@@ -1084,13 +1094,13 @@ const Settings: Component = () => {
               <Badge tone="blue">{t('settings.data.snapshotBadge')}</Badge>
             </div>
 
-          <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-3.5">
+          <div class="p-4 rounded-xl bg-surface-inset space-y-3.5">
             <Checkbox
               checked={includeSecrets()}
               onChange={setIncludeSecrets}
               label={t('settings.data.includeSecrets')}
               description={
-                <div class="flex items-center gap-1.5 mt-1 text-[11px]">
+                <div class="flex items-center gap-1.5 mt-1 text-xs">
                   <Show
                     when={includeSecrets()}
                     fallback={
@@ -1134,8 +1144,8 @@ const Settings: Component = () => {
 
           {/* 备份恢复与导入卡片 */}
           <Card class="p-5 space-y-4">
-            <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-              <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+              <div class="flex flex-wrap items-center gap-2 min-w-0">
                 <IconUpload size={16} class="text-warning shrink-0" />
                 <div>
                   <h3 class="text-sm font-semibold">{t('settings.data.restoreCardTitle')}</h3>
@@ -1146,7 +1156,7 @@ const Settings: Component = () => {
             </div>
 
           <div class="space-y-3.5 text-xs">
-            <div class="p-4 rounded-xl border border-subtle bg-card/40 space-y-4">
+            <div class="p-4 rounded-xl bg-surface-inset space-y-4">
               <Field label={t('settings.backupFileLabel')} hint={t('settings.backupFileHint')}>
                 <FileUpload
                   accept=".json,.cyrene.json"
@@ -1169,19 +1179,13 @@ const Settings: Component = () => {
               </Field>
             </div>
 
-            <div class="p-3.5 bg-warning/10 border border-warning/25 rounded-xl text-[11px] text-warning space-y-1">
-              <div class="font-semibold flex items-center gap-1">
-                <IconAlertTriangle size={13} />
-                <span>{t('settings.data.importantNotice')}</span>
-              </div>
-              <p>
-                {t('settings.restoreNotice')}
-              </p>
-            </div>
+            <Alert variant="warning" title={t('settings.data.importantNotice')}>
+              {t('settings.restoreNotice')}
+            </Alert>
           </div>
 
-          <div class="pt-1 flex items-center justify-between">
-              <span class="text-xs text-faint font-mono">
+          <div class="pt-1 flex flex-wrap items-center justify-between gap-3">
+              <span class="min-w-0 flex-1 basis-full sm:basis-64 text-xs text-faint font-mono wrap-anywhere">
                 {restoreFile() ? t('settings.fileReady', { name: restoreFile()!.name }) : t('settings.noFileSelected')}
               </span>
               <Button
@@ -1202,8 +1206,8 @@ const Settings: Component = () => {
               <div class="space-y-4">
                 {/* 1. 系统运行指标卡片 */}
                 <Card class="p-5 space-y-4">
-                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-                    <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
                       <IconActivity size={16} class="text-accent shrink-0" />
                       <div>
                         <h3 class="text-sm font-semibold">{t('settings.ops.statsTitle')}</h3>
@@ -1225,38 +1229,40 @@ const Settings: Component = () => {
                   <Show
                     when={systemStats()}
                     fallback={
-                      <div class="py-8 text-center text-xs text-faint space-y-2">
-                        <p>{t('settings.ops.noStatsLoaded')}</p>
-                        <Button variant="secondary" size="sm" onClick={fetchSystemStats}>
-                          {t('settings.ops.refreshStats')}
-                        </Button>
-                      </div>
+                      <Empty
+                        title={t('settings.ops.noStatsLoaded')}
+                        action={
+                          <Button variant="secondary" size="sm" onClick={fetchSystemStats}>
+                            {t('settings.ops.refreshStats')}
+                          </Button>
+                        }
+                      />
                     }
                   >
                     {stats => (
                       <div class="space-y-4">
                         {/* 状态徽标与基础环境 */}
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
-                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.osArch')}</span>
+                          <div class="p-3.5 rounded-xl bg-surface-inset space-y-1 hover:bg-hover transition-colors">
+                            <span class="text-xs text-faint font-medium">{t('settings.ops.osArch')}</span>
                             <div class="text-xs font-mono font-semibold text-foreground truncate">
                               {stats().os} / {stats().arch}
                             </div>
                           </div>
-                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
-                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.uptime')}</span>
+                          <div class="p-3.5 rounded-xl bg-surface-inset space-y-1 hover:bg-hover transition-colors">
+                            <span class="text-xs text-faint font-medium">{t('settings.ops.uptime')}</span>
                             <div class="text-xs font-mono font-semibold text-foreground">
                               {formatUptime(stats().uptimeSeconds, uptimeUnits())}
                             </div>
                           </div>
-                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
-                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.pid')} / CPU</span>
+                          <div class="p-3.5 rounded-xl bg-surface-inset space-y-1 hover:bg-hover transition-colors">
+                            <span class="text-xs text-faint font-medium">{t('settings.ops.pid')} / CPU</span>
                             <div class="text-xs font-mono font-semibold text-foreground">
                               PID {stats().pid} · {stats().numCPU} Cores
                             </div>
                           </div>
-                          <div class="p-3.5 rounded-xl bg-card/40 border border-subtle space-y-1 hover:bg-card/60 transition-colors">
-                            <span class="text-[11px] text-faint font-medium">{t('settings.ops.goroutines')}</span>
+                          <div class="p-3.5 rounded-xl bg-surface-inset space-y-1 hover:bg-hover transition-colors">
+                            <span class="text-xs text-faint font-medium">{t('settings.ops.goroutines')}</span>
                             <div class="text-xs font-mono font-semibold text-foreground">
                               {stats().goroutines}
                             </div>
@@ -1266,7 +1272,7 @@ const Settings: Component = () => {
                         {/* 内存与存储仪表 */}
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-subtle/50">
                           {/* 内存 */}
-                          <div class="p-4 rounded-xl bg-card/40 border border-subtle space-y-3">
+                          <div class="p-4 rounded-xl bg-surface-inset space-y-3">
                             <div class="flex items-center justify-between text-xs font-semibold">
                               <span class="flex items-center gap-1.5 text-accent">
                                 <IconServer size={15} />
@@ -1276,26 +1282,26 @@ const Settings: Component = () => {
                             </div>
                             <div class="grid grid-cols-2 gap-3 text-xs pt-0.5">
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.memoryAlloc')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.memoryAlloc')}</span>
                                 <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.allocBytes)}</span>
                               </div>
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.memoryInuse')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.memoryInuse')}</span>
                                 <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.heapInuseBytes)}</span>
                               </div>
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.memorySys')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.memorySys')}</span>
                                 <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.sysBytes)}</span>
                               </div>
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.memoryTotalAlloc')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.memoryTotalAlloc')}</span>
                                 <span class="font-mono font-semibold text-foreground">{formatBytes(stats().memory.totalAllocBytes)}</span>
                               </div>
                             </div>
                           </div>
 
                           {/* SQLite 存储 */}
-                          <div class="p-4 rounded-xl bg-card/40 border border-subtle space-y-3">
+                          <div class="p-4 rounded-xl bg-surface-inset space-y-3">
                             <div class="flex items-center justify-between text-xs font-semibold">
                               <span class="flex items-center gap-1.5 text-warning">
                                 <IconDatabase size={15} />
@@ -1307,19 +1313,19 @@ const Settings: Component = () => {
                             </div>
                             <div class="grid grid-cols-2 gap-3 text-xs pt-0.5">
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.dbSize')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.dbSize')}</span>
                                 <span class="font-mono font-semibold text-foreground">{formatBytes(stats().storage?.dbSizeBytes ?? 0)}</span>
                               </div>
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.walSize')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.walSize')}</span>
                                 <span class="font-mono font-semibold text-foreground">{formatBytes(stats().storage?.walSizeBytes ?? 0)}</span>
                               </div>
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.totalRequests')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.totalRequests')}</span>
                                 <span class="font-mono font-semibold text-foreground">{stats().storage?.totalRequests ?? 0}</span>
                               </div>
                               <div class="space-y-0.5">
-                                <span class="text-[11px] text-faint block">{t('settings.ops.totalDetails')}</span>
+                                <span class="text-xs text-faint block">{t('settings.ops.totalDetails')}</span>
                                 <span class="font-mono font-semibold text-foreground">{stats().storage?.totalDetails ?? 0}</span>
                               </div>
                             </div>
@@ -1332,15 +1338,15 @@ const Settings: Component = () => {
 
                 {/* 2. 在线自更新卡片 */}
                 <Card class="p-5 space-y-4">
-                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-                    <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
                       <IconDownload size={16} class="text-accent shrink-0" />
                       <div>
                         <h3 class="text-sm font-semibold">{t('settings.ops.updateTitle')}</h3>
                         <p class="text-xs text-faint mt-0.5">{t('settings.ops.updateSubtitle')}</p>
                       </div>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
                       <Button
                         variant="secondary"
                         size="sm"
@@ -1357,16 +1363,13 @@ const Settings: Component = () => {
                   <Show
                     when={!systemStats()?.inDocker}
                     fallback={
-                      <div class="p-3.5 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning leading-relaxed flex items-start gap-2">
-                        <IconAlertTriangle size={15} class="shrink-0 mt-0.5" />
-                        <span>{t('settings.ops.dockerNotice')}</span>
-                      </div>
+                      <Alert variant="warning">{t('settings.ops.dockerNotice')}</Alert>
                     }
                   >
                     <div class="space-y-3.5">
-                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle">
+                      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface-inset">
                         <div class="space-y-1">
-                          <div class="flex items-center gap-2">
+                          <div class="flex flex-wrap items-center gap-2 min-w-0">
                             <span class="text-xs text-faint">{t('settings.ops.currentVersion')}:</span>
                             <span class="font-mono text-xs font-semibold">v{store.version()}</span>
                             <Show when={updateInfo()}>
@@ -1379,7 +1382,7 @@ const Settings: Component = () => {
                             </Show>
                           </div>
                           <Show when={updateInfo()?.hasUpdate}>
-                            <p class="text-[11px] text-faint">
+                            <p class="text-xs text-faint">
                               {updateInfo()?.assetName} ({formatBytes(updateInfo()?.assetSize ?? 0)}) · {updateInfo()?.publishedAt?.slice(0, 10)}
                             </p>
                           </Show>
@@ -1409,7 +1412,7 @@ const Settings: Component = () => {
                       </div>
 
                       <Show when={updateInfo()?.hasUpdate && updateInfo()?.releaseNotes}>
-                        <div class="p-3.5 rounded-xl bg-code-bg border border-subtle text-xs font-mono text-muted max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                        <div class="p-3.5 rounded-xl bg-code-bg border border-subtle text-xs font-mono text-muted max-h-40 overflow-y-auto whitespace-pre-wrap wrap-anywhere leading-relaxed">
                           {updateInfo()?.releaseNotes}
                         </div>
                       </Show>
@@ -1419,8 +1422,8 @@ const Settings: Component = () => {
 
                 {/* 3. 服务控制与平滑重启 */}
                 <Card class="p-5 space-y-4">
-                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-                    <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
                       <IconRotateCcw size={16} class="text-warning shrink-0" />
                       <div>
                         <h3 class="text-sm font-semibold">{t('settings.ops.restartTitle')}</h3>
@@ -1429,7 +1432,7 @@ const Settings: Component = () => {
                     </div>
                   </div>
 
-                  <div class="p-4 rounded-xl bg-card/40 border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div class="p-4 rounded-xl bg-surface-inset flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div class="text-xs text-faint leading-relaxed max-w-xl">
                       {t('settings.ops.restartDesc')}
                     </div>
@@ -1447,8 +1450,8 @@ const Settings: Component = () => {
 
                 {/* 4. 存储与数据库维护 */}
                 <Card class="p-5 space-y-4">
-                  <div class="flex items-center justify-between border-b border-subtle/50 pb-3">
-                    <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
                       <IconDatabase size={16} class="text-accent shrink-0" />
                       <div>
                         <h3 class="text-sm font-semibold">{t('settings.ops.maintTitle')}</h3>
@@ -1459,10 +1462,10 @@ const Settings: Component = () => {
 
                   <div class="space-y-3.5">
                     {/* Checkpoint */}
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle hover:bg-card/60 transition-colors">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface-inset hover:bg-hover transition-colors">
                       <div class="space-y-0.5">
                         <div class="text-xs font-semibold text-foreground">{t('settings.ops.checkpointBtn')}</div>
-                        <div class="text-[11px] text-faint">{t('settings.ops.checkpointDesc')}</div>
+                        <div class="text-xs text-faint">{t('settings.ops.checkpointDesc')}</div>
                       </div>
                       <Button
                         variant="secondary"
@@ -1476,10 +1479,10 @@ const Settings: Component = () => {
                     </div>
 
                     {/* Vacuum */}
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle hover:bg-card/60 transition-colors">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface-inset hover:bg-hover transition-colors">
                       <div class="space-y-0.5">
                         <div class="text-xs font-semibold text-foreground">{t('settings.ops.vacuumBtn')}</div>
-                        <div class="text-[11px] text-faint">{t('settings.ops.vacuumDesc')}</div>
+                        <div class="text-xs text-faint">{t('settings.ops.vacuumDesc')}</div>
                       </div>
                       <Button
                         variant="secondary"
@@ -1493,17 +1496,17 @@ const Settings: Component = () => {
                     </div>
 
                     {/* Prune Logs */}
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-card/40 border border-subtle hover:bg-card/60 transition-colors">
-                      <div class="space-y-1">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-surface-inset hover:bg-hover transition-colors">
+                      <div class="min-w-0 space-y-1">
                         <div class="text-xs font-semibold text-foreground">{t('settings.ops.pruneBtn')}</div>
-                        <div class="text-[11px] text-faint">{t('settings.ops.pruneDesc')}</div>
-                        <div class="flex items-center gap-2 pt-1">
-                          <span class="text-[11px] text-muted">{t('settings.ops.retentionDaysLabel')}:</span>
+                        <div class="text-xs text-faint">{t('settings.ops.pruneDesc')}</div>
+                        <div class="flex flex-wrap items-center gap-2 pt-1">
+                          <span class="text-xs text-muted">{t('settings.ops.retentionDaysLabel')}:</span>
                           <Select
                             options={[7, 14, 30, 60, 90].map(n => ({ value: String(n), label: t('settings.ops.days', { n }) }))}
                             value={String(pruneDays())}
                             onChange={v => setPruneDays(Number(v))}
-                            class="!w-24 text-xs"
+                            class="w-24 shrink-0 text-xs"
                           />
                         </div>
                       </div>
@@ -1528,19 +1531,19 @@ const Settings: Component = () => {
       {/* ── 底部通用系统与存储信息 ── */}
       <Card class="p-4 text-xs text-faint">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-2.5 min-w-0 shrink-0">
+          <div class="flex flex-wrap items-center gap-2.5 min-w-0">
             <div class="w-6 h-6 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
               <IconInfo size={14} class="text-accent" />
             </div>
             <span class="font-semibold text-foreground whitespace-nowrap">Cyrene Gateway</span>
             <span
-              class="font-mono text-[11px] px-2 py-0.5 rounded-full bg-black/6 dark:bg-white/10 text-muted border border-black/10 dark:border-white/15 whitespace-nowrap"
+              class="font-mono text-xs px-2 py-0.5 rounded-full bg-control text-muted border border-subtle whitespace-nowrap"
               title={`${t('settings.fullVersion')}: v${store.version() || 'dev'}`}
             >
               v{formatVersion(store.version())}
             </span>
           </div>
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint sm:justify-end">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint sm:justify-end">
             <div class="flex items-center gap-1 whitespace-nowrap">
               <StatusPulse status={store.health().db === 'ok' ? 'active' : 'paused'} tone={store.health().db === 'ok' ? 'green' : 'amber'} size="xs" />
               <span>{t('common.database')}:</span>
@@ -1562,7 +1565,7 @@ const Settings: Component = () => {
 
       {/* ── 重启全屏探活与重连遮罩 ── */}
       <Show when={restarting()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-overlay/60 backdrop-blur-sm p-4 animate-fade-in">
           <Card class="max-w-md w-full p-6 text-center space-y-4 shadow-glass-hover border border-accent/30">
             <div class="w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center mx-auto text-accent">
               <IconRotateCcw size={24} class="animate-spin" />

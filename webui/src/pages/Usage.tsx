@@ -1,7 +1,7 @@
 import { type Component, For, Show, Switch, Match, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
+import { Card, Badge, Button, IconButton, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -174,21 +174,21 @@ const Usage: Component = () => {
         </LoadState>
         {/* 图表 */}
         <Card class="p-5">
-          <div class="flex items-center justify-between gap-3 mb-4 min-h-[44px]">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap h-6">
+              <div class="flex flex-col items-start justify-center gap-1 h-14 lg:flex-row lg:items-center lg:justify-start lg:gap-2 lg:h-6">
                 <h3 class="text-sm font-semibold whitespace-nowrap">{t('usage.tokenTrend')}</h3>
-                <span class={`transition-opacity duration-150 ${hoveredPoint() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                  <Badge tone="blue" class="text-[11px] font-mono px-2 py-0.5 whitespace-nowrap shrink-0">
-                    {hoveredPoint()?.label ?? ''} · {fmtNum(hoveredPoint()?.tokens ?? 0)} Tokens
+                <span class={`block min-w-0 max-w-full h-6 transition-opacity duration-150 ${hoveredPoint() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                  <Badge tone="blue" class="max-w-full text-xs font-mono px-2 py-0.5 whitespace-nowrap">
+                    <span class="truncate">{hoveredPoint()?.label ?? ''} · {fmtNum(hoveredPoint()?.tokens ?? 0)} Tokens</span>
                   </Badge>
                 </span>
               </div>
-              <p class="text-xs text-faint mt-0.5 truncate">
+              <p class="text-xs text-faint mt-0.5 wrap-anywhere">
                 {t('usage.chartAggregateHint', { peak: fmtNum(maxTokens()) })}
               </p>
             </div>
-            <Select class="w-36 sm:w-40 shrink-0" size="sm" value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
+            <Select class="w-full sm:w-40 min-w-0 shrink-0" size="sm" value={period()} options={periods()} onChange={v => { setPeriod(v); load() }} align="right" />
           </div>
 
           <Show when={!loading()} fallback={<Show when={!store.loadErrors.usage}><Skeleton class="h-48 w-full" /></Show>}>
@@ -289,7 +289,7 @@ const Usage: Component = () => {
                   {p => (
                     <div class="flex items-center gap-3 text-sm">
                       <span class="w-28 truncate font-mono text-xs">{p.provider}</span>
-                      <div class="flex-1 h-1.5 rounded-full bg-hover overflow-hidden">
+                      <div class="flex-1 min-w-0 h-1.5 rounded-full bg-control overflow-hidden">
                         <div
                           class="h-full bg-accent"
                           style={{ width: `${(p.requests / Math.max(1, byProvider()[0].requests)) * 100}%` }}
@@ -311,10 +311,10 @@ const Usage: Component = () => {
               <Show when={live()}><Badge tone="green">{t('usage.connecting')}</Badge></Show>
             </div>
             <Show when={liveEvents().length > 0} fallback={<Empty message={live() ? t('usage.waitingEvents') : t('usage.clickLiveToListen')} />}>
-              <div class="space-y-1 max-h-64 overflow-y-auto">
+              <div class="space-y-1 max-h-64 overflow-y-auto px-1">
                 <For each={liveEvents()}>
                   {e => (
-                    <div class="flex items-center gap-2 text-xs py-1 border-b border-subtle/50 last:border-0">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0 text-xs py-2 border-b border-subtle/50 last:border-0">
                       <span class="text-faint font-mono">{fmtTime(e.timestamp, timeUnits())}</span>
                       <div class="truncate flex items-baseline gap-1" title={e.model || e.endpoint || '-'}>
                         <span class="font-medium text-foreground">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
@@ -335,13 +335,13 @@ const Usage: Component = () => {
             </Match>
             <Match when={tab === 'details'}>
               <Card class="p-5">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
             <h3 class="text-sm font-semibold">{t('usage.requestDetailsLog')}</h3>
             <span class="text-xs text-faint">{t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}</span>
           </div>
           <Show when={store.requestDetails().length > 0} fallback={<Empty message={t('usage.noRecords')} />}>
-            <div class="overflow-x-auto max-h-[calc(100vh-320px)] overflow-y-auto px-1">
-              <table class="w-full text-xs">
+            <div class="overflow-x-auto max-h-[max(12rem,calc(100dvh-320px))] overflow-y-auto px-1">
+              <table class="w-full text-xs [&_th]:px-3 [&_td]:px-3 [&_th]:whitespace-nowrap [&_td]:align-middle">
                 <thead>
                   <tr class="text-faint text-left border-b border-subtle">
                     <th class="pb-2.5 font-medium">{t('usage.tableHeaders.time')}</th>
@@ -371,15 +371,16 @@ const Usage: Component = () => {
                         <td class="py-2.5 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
                         <td class="py-2.5 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
                         <td class="py-2.5 text-right">
-                          <button
+                          <IconButton
+                            size="sm"
+                            variant="ghost"
                             type="button"
-                            class="inline-flex items-center justify-center w-7 h-7 rounded-lg text-muted hover:text-foreground hover:bg-hover transition-colors cursor-pointer"
                             onClick={() => setSelectedDetail(d)}
                             title={t('usage.viewDetailTitle')}
                             aria-label={t('usage.viewDetailTitle')}
                           >
                             <IconEye size={14} />
-                          </button>
+                          </IconButton>
                         </td>
                       </tr>
                     )}
@@ -388,7 +389,7 @@ const Usage: Component = () => {
               </table>
             </div>
             {/* 分页 */}
-            <div class="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-subtle/50">
+            <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-subtle/50">
               <span class="text-xs text-faint">
                 {t('usage.totalRecords', { count: store.requestDetailsPagination().totalItems })}
               </span>

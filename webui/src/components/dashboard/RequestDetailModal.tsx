@@ -1,6 +1,6 @@
 import { type Component, Show, createSignal, createResource } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { Badge, Button, ProviderAvatar, Spinner, SegmentedControl, IconClose, IconMessageSquare, IconSparkles } from '@/components/ui'
+import { Badge, Button, IconButton, ProviderAvatar, Spinner, SegmentedControl, IconClose, IconMessageSquare, IconSparkles } from '@/components/ui'
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
@@ -73,22 +73,22 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
           <button
             type="button"
             aria-label={t('requestDetail.closeOverlay')}
-            class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-sm border-none cursor-default"
+            class="absolute inset-0 w-full h-full bg-overlay backdrop-blur-sm border-none cursor-default"
             onClick={props.onClose}
           />
         {/* 弹窗主体卡片 */}
-        <div class="relative w-full max-w-2xl max-h-[85vh] bg-bg-elevated border border-subtle rounded-2xl shadow-xl flex flex-col overflow-hidden animate-slide-up z-10">
+        <div class="relative w-full min-w-0 max-w-2xl max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)] glass-float rounded-card flex flex-col overflow-hidden animate-slide-up z-10">
           {/* 顶栏：标题、模型与关闭按钮 */}
-          <div class="h-16 px-6 border-b border-subtle flex items-center justify-between gap-4 shrink-0 bg-card/40">
+          <div class="min-h-16 px-4 sm:px-6 py-4 border-b border-subtle flex items-center justify-between gap-3 shrink-0">
             <div class="flex items-center gap-3 min-w-0">
               <ProviderAvatar provider={props.item?.provider || 'default'} name={props.item?.provider} size="sm" class="shrink-0" />
               <div class="min-w-0">
-                <div class="text-sm font-bold truncate text-foreground flex items-center gap-2">
-                  <span>{resolveModelDisplayName(modelNameMap(), props.item?.model) || t('common.unknownModel')}</span>
+                <div class="text-sm font-semibold text-text flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                  <span class="min-w-0 break-words [overflow-wrap:anywhere]">{resolveModelDisplayName(modelNameMap(), props.item?.model) || t('common.unknownModel')}</span>
                   <Show when={Boolean(props.item?.model && resolveModelDisplayName(modelNameMap(), props.item?.model) !== props.item?.model)}>
-                    <span class="text-xs text-faint font-mono font-normal">({props.item?.model})</span>
+                    <span class="text-xs text-muted font-mono font-normal min-w-0 break-words [overflow-wrap:anywhere]">({props.item?.model})</span>
                   </Show>
-                  <Badge tone={props.item?.status === 'ok' ? 'green' : 'red'} class="text-[10px]">
+                  <Badge tone={props.item?.status === 'ok' ? 'green' : 'red'} class="text-xs shrink-0">
                     {props.item?.status || t('common.unknown')}
                   </Badge>
                 </div>
@@ -98,19 +98,19 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               </div>
             </div>
 
-            <button
-              type="button"
-              class="w-8 h-8 rounded-control text-muted hover:text-foreground hover:bg-hover transition-colors flex items-center justify-center"
+            <IconButton
+              size="sm"
+              class="shrink-0"
               onClick={props.onClose}
               title={t('requestDetail.closeEsc')}
               aria-label={t('requestDetail.close')}
             >
               <IconClose size={16} />
-            </button>
+            </IconButton>
           </div>
 
           {/* 分段 Tab 切换器 */}
-          <div class="px-6 pt-3 pb-2 border-b border-subtle/60 flex items-center justify-between gap-3 bg-bg/50 shrink-0">
+          <div class="px-4 sm:px-6 py-3 border-b border-subtle flex flex-wrap items-center justify-between gap-3 shrink-0">
             <SegmentedControl
               value={activeTab()}
               onChange={setActiveTab}
@@ -130,31 +130,31 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
           </div>
 
           {/* 内容区 */}
-          <div class="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
+          <div class="flex-1 min-h-0 min-w-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5 text-sm">
             {/* 1. 调度概览与 Token KPI */}
             <Show when={activeTab() === 'overview'}>
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">{t('requestDetail.promptTokens')}</div>
-                  <div class="text-base font-semibold mt-1 tabular-nums text-foreground">
+                <div class="p-3.5 rounded-xl bg-surface-inset border border-subtle">
+                  <div class="text-xs text-faint">{t('requestDetail.promptTokens')}</div>
+                  <div class="text-base font-semibold mt-1 tabular-nums text-text">
                     {fmtNum(props.item?.promptTokens ?? 0)}
                   </div>
                 </div>
-                <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">{t('requestDetail.completionTokens')}</div>
-                  <div class="text-base font-semibold mt-1 tabular-nums text-foreground">
+                <div class="p-3.5 rounded-xl bg-surface-inset border border-subtle">
+                  <div class="text-xs text-faint">{t('requestDetail.completionTokens')}</div>
+                  <div class="text-base font-semibold mt-1 tabular-nums text-text">
                     {fmtNum(props.item?.completionTokens ?? 0)}
                   </div>
                 </div>
-                <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">{t('requestDetail.totalLatency')}</div>
+                <div class="p-3.5 rounded-xl bg-surface-inset border border-subtle">
+                  <div class="text-xs text-faint">{t('requestDetail.totalLatency')}</div>
                   <div class="text-base font-semibold mt-1 tabular-nums text-accent">
                     {props.item?.latencyMs ?? '-'} ms
                   </div>
                 </div>
-                <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">{t('requestDetail.estimatedCost')}</div>
-                  <div class="text-base font-semibold mt-1 tabular-nums text-foreground">
+                <div class="p-3.5 rounded-xl bg-surface-inset border border-subtle">
+                  <div class="text-xs text-faint">{t('requestDetail.estimatedCost')}</div>
+                  <div class="text-base font-semibold mt-1 tabular-nums text-text">
                     {fmtCost(props.item?.cost ?? 0)}
                   </div>
                 </div>
@@ -162,24 +162,24 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
 
               {/* 路由与调度属性列表 */}
               <div class="rounded-xl border border-subtle bg-card/40 divide-y divide-subtle/50">
-                <div class="px-4 py-2.5 flex items-center justify-between">
+                <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.provider')}</span>
-                  <span class="font-semibold text-foreground">{props.item?.provider || '-'}</span>
+                  <span class="font-semibold text-text">{props.item?.provider || '-'}</span>
                 </div>
-                <div class="px-4 py-2.5 flex items-center justify-between">
+                <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.targetModel')}</span>
-                  <span class="font-mono text-foreground">{props.item?.model || '-'}</span>
+                  <span class="font-mono text-text">{props.item?.model || '-'}</span>
                 </div>
-                <div class="px-4 py-2.5 flex items-center justify-between">
+                <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.endpoint')}</span>
                   <span class="font-mono text-faint">{props.item?.endpoint || '/v1/chat/completions'}</span>
                 </div>
-                <div class="px-4 py-2.5 flex items-center justify-between">
+                <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.timestamp')}</span>
                   <span class="font-mono text-faint">{props.item?.timestamp || '-'}</span>
                 </div>
                 <Show when={props.item?.connectionId}>
-                  <div class="px-4 py-2.5 flex items-center justify-between">
+                  <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                     <span class="text-faint">{t('requestDetail.properties.connectionId')}</span>
                     <span class="font-mono text-faint">{props.item?.connectionId}</span>
                   </div>
@@ -192,11 +192,11 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
               <div class="space-y-4">
                 {/* 客户端输入 */}
                 <div class="space-y-1.5">
-                  <div class="font-semibold text-foreground flex items-center gap-1.5 text-xs">
+                  <div class="font-semibold text-text flex items-center gap-1.5 text-xs">
                     <IconMessageSquare size={14} class="text-accent" />
                     {t('requestDetail.inputContent')}
                   </div>
-                  <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
+                  <div class="min-w-0 p-3.5 rounded-xl bg-code-bg text-text border border-subtle font-mono text-xs leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] select-text">
                     {cleanPayload()?.input
                       ? (typeof cleanPayload()!.input === 'object' ? JSON.stringify(cleanPayload()!.input, null, 2) : String(cleanPayload()!.input))
                       : t('requestDetail.noPromptContent')}
@@ -205,11 +205,11 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
 
                 {/* 模型回复 */}
                 <div class="space-y-1.5">
-                  <div class="font-semibold text-foreground flex items-center gap-1.5 text-xs">
+                  <div class="font-semibold text-text flex items-center gap-1.5 text-xs">
                     <IconSparkles size={14} class="text-accent-2" />
                     {t('requestDetail.outputContent')}
                   </div>
-                  <div class="p-3.5 rounded-xl bg-hover/40 border border-subtle font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-all select-text">
+                  <div class="min-w-0 p-3.5 rounded-xl bg-code-bg text-text border border-subtle font-mono text-xs leading-relaxed max-h-52 overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] select-text">
                     {cleanPayload()?.output
                       ? (typeof cleanPayload()!.output === 'object' ? JSON.stringify(cleanPayload()!.output, null, 2) : String(cleanPayload()!.output))
                       : t('requestDetail.noResponseContent')}
@@ -220,14 +220,14 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
 
             {/* 3. 原始元数据 JSON */}
             <Show when={activeTab() === 'raw'}>
-              <div class="p-4 rounded-xl bg-code-bg border border-subtle font-mono text-[11px] leading-relaxed overflow-x-auto max-h-80 select-text">
-                <pre>{JSON.stringify(detail(), null, 2)}</pre>
+              <div class="min-w-0 p-4 rounded-xl bg-code-bg text-text border border-subtle font-mono text-xs leading-relaxed overflow-auto max-h-80 select-text">
+                <pre class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{JSON.stringify(detail(), null, 2)}</pre>
               </div>
             </Show>
           </div>
 
           {/* 底栏 */}
-          <div class="h-14 px-6 border-t border-subtle flex items-center justify-end bg-card/20 shrink-0">
+          <div class="min-h-14 px-4 sm:px-6 py-3 border-t border-subtle flex items-center justify-end shrink-0">
             <Button size="sm" variant="secondary" onClick={props.onClose}>
               {t('common.close')}
             </Button>

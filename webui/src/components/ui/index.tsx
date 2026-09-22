@@ -1,9 +1,9 @@
-import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, onMount, onCleanup, splitProps } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, createUniqueId, onMount, onCleanup, splitProps } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import { formatBytes } from '@/lib/format'
-import { IconClose, IconCheck, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
+import { IconClose, IconCheck, IconChevronDown, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
 import type { BadgeTone } from '@/types/domain'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export * from './CyreneLogo'
@@ -21,7 +21,7 @@ export const Card: Component<{
       if (typeof props.ref === 'function') props.ref(el)
       else if (props.ref) (props as unknown as { ref: HTMLDivElement }).ref = el
     }}
-    class={`rounded-card glass-card ${props.hover ? 'hover:bg-hover hover:-translate-y-0.5 hover:shadow-glass-hover' : ''} transition-all duration-200 ${props.class ?? ''}`}
+    class={`rounded-card glass-card ${props.hover ? 'hover:bg-card-hover hover:border-glass-border-hover hover:shadow-glass-hover' : ''} transition-[background-color,border-color,box-shadow] duration-200 ${props.class ?? ''}`}
     onClick={props.onClick}
   >
     {props.children}
@@ -38,53 +38,50 @@ export interface PageHeaderProps {
 }
 
 export const PageHeader: Component<PageHeaderProps> = props => {
-  const isSticky = () => props.sticky !== false
+  const isSticky = () => props.sticky === true
   return (
-    <header class={`${isSticky() ? 'sticky top-19 z-20' : 'relative'} rounded-2xl glass-sticky px-5 py-4 transition-all space-y-3 overflow-hidden ${props.class ?? ''}`}>
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div class="min-w-0">
-        <div class="flex items-center gap-2.5 flex-wrap">
-          <h1 class="text-lg sm:text-xl font-semibold text-foreground truncate">{props.title}</h1>
-          {props.badge}
+    <header class={`${isSticky() ? 'sticky top-19 z-20 rounded-2xl glass-sticky px-5 py-4' : 'relative'} space-y-3 ${props.class ?? ''}`}>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <h1 class="text-2xl font-semibold tracking-tight text-foreground wrap-break-word">{props.title}</h1>
+            {props.badge}
+          </div>
+          <Show when={props.subtitle}>
+            <p class="text-sm text-muted mt-1 wrap-break-word">{props.subtitle}</p>
+          </Show>
         </div>
-        <Show when={props.subtitle}>
-          <p class="text-xs sm:text-sm text-faint mt-0.5 truncate">{props.subtitle}</p>
+        <Show when={props.actions}>
+          <div class="flex items-center gap-2.5 flex-wrap sm:justify-end">
+            {props.actions}
+          </div>
         </Show>
       </div>
-      <Show when={props.actions}>
-        <div class="flex items-center gap-2.5 flex-wrap shrink-0">
-          {props.actions}
+      <Show when={props.children}>
+        <div class="pt-0.5">
+          {props.children}
         </div>
       </Show>
-    </div>
-    <Show when={props.children}>
-      <div class="pt-0.5">
-        {props.children}
-      </div>
-    </Show>
     </header>
   )
 }
 
 
 export const Badge: Component<{ tone?: BadgeTone; class?: string; children?: JSX.Element }> = props => {
-  // 状态色已按主题在 app.css 中分别调校（浅色用深色系保证 AA 对比度）；
-  // gray 不能用 bg-hover —— 它在浅色下是 92% 白，叠加在白色卡片上等于隐形。
-  // 扩展色调（purple/cyan/pink）同样遵循 light 深色系 + dark 亮色系。
-  const tones: Record<string, string> = {
+  const tones: Record<BadgeTone, string> = {
     green: 'text-success bg-success/12 border-success/30',
     amber: 'text-warning bg-warning/12 border-warning/30',
     red: 'text-danger bg-danger/12 border-danger/30',
     blue: 'text-info bg-info/12 border-info/30',
-    purple: 'text-purple-700 dark:text-purple-300 bg-purple-500/12 border-purple-500/30',
-    violet: 'text-violet-700 dark:text-violet-300 bg-violet-500/12 border-violet-500/30',
-    teal: 'text-teal-700 dark:text-teal-300 bg-teal-500/12 border-teal-500/30',
-    rose: 'text-rose-700 dark:text-rose-300 bg-rose-500/12 border-rose-500/30',
-    orange: 'text-orange-700 dark:text-orange-300 bg-orange-500/12 border-orange-500/30',
-    indigo: 'text-indigo-700 dark:text-indigo-300 bg-indigo-500/12 border-indigo-500/30',
-    cyan: 'text-cyan-700 dark:text-cyan-300 bg-cyan-500/12 border-cyan-500/30',
-    pink: 'text-pink-700 dark:text-pink-300 bg-pink-500/12 border-pink-500/30',
-    gray: 'text-muted bg-black/6 dark:bg-white/10 border-black/10 dark:border-white/15',
+    purple: 'text-accent bg-accent/12 border-accent/30',
+    violet: 'text-accent bg-accent/12 border-accent/30',
+    teal: 'text-accent-2 bg-accent-2/12 border-accent-2/30',
+    rose: 'text-danger bg-danger/12 border-danger/30',
+    orange: 'text-warning bg-warning/12 border-warning/30',
+    indigo: 'text-accent bg-accent/12 border-accent/30',
+    cyan: 'text-accent-2 bg-accent-2/12 border-accent-2/30',
+    pink: 'text-danger bg-danger/12 border-danger/30',
+    gray: 'text-muted bg-surface-inset border-subtle',
   }
   return (
     <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${tones[props.tone ?? 'gray']} ${props.class ?? ''}`}>
@@ -227,7 +224,7 @@ export function ToastHost() {
   }
 
   return (
-    <div class="fixed top-4 right-4 z-130 w-full max-w-sm pointer-events-none flex flex-col gap-2.5 px-3 sm:px-0" role="status" aria-live="polite">
+    <div class="fixed top-4 right-4 z-130 w-[calc(100%-2rem)] max-w-sm pointer-events-none flex flex-col gap-2.5" role="status" aria-live="polite">
       <For each={toasts()}>
         {toastItem => {
           const style = () => kindStyles[toastItem.kind] || kindStyles.info
@@ -290,8 +287,8 @@ export const Alert: Component<{
 
   const styles = {
     info: {
-      box: 'bg-black/4 dark:bg-white/6 text-foreground shadow-xs',
-      iconWrap: 'text-accent',
+      box: 'bg-info/10 text-foreground shadow-xs',
+      iconWrap: 'text-info',
     },
     success: {
       box: 'bg-success/10 text-foreground shadow-xs',
@@ -367,6 +364,14 @@ export const controlSizes = {
 
 export type ControlSize = keyof typeof controlSizes
 
+const buttonBase = 'ui-control inline-flex items-center justify-center border font-medium leading-none [&>svg]:block [&>svg]:shrink-0 select-none whitespace-nowrap shrink-0 disabled:opacity-50 disabled:pointer-events-none cursor-pointer rounded-control'
+const buttonVariants = {
+  primary: 'bg-accent border-transparent text-on-accent hover:bg-accent-hover shadow-accent',
+  secondary: 'bg-control border-control-border text-text hover:bg-hover hover:border-glass-border-hover',
+  ghost: 'border-transparent text-muted hover:text-foreground hover:bg-hover',
+  danger: 'bg-danger/10 border-danger/20 text-danger hover:bg-danger/20',
+}
+
 export interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'ghost' | 'danger' | 'secondary'
   size?: 'sm' | 'md' | 'lg'
@@ -382,24 +387,16 @@ export interface ButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement>
 
 export const Button: Component<ButtonProps> = props => {
   const [local, others] = splitProps(props, ['variant', 'size', 'disabled', 'loading', 'children', 'class', 'ref', 'type'])
-  const base =
-    'inline-flex items-center justify-center font-medium leading-none [&>svg]:block [&>svg]:shrink-0 transition-all duration-150 select-none whitespace-nowrap shrink-0 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
   const sizes: Record<ControlSize, string> = {
     sm: `${controlSizes.sm} px-3 min-w-fit gap-1.5`,
     md: `${controlSizes.md} px-4 min-w-fit gap-2`,
     lg: `${controlSizes.lg} px-5 min-w-fit gap-2.5`,
   }
-  const variants = {
-    primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
-    secondary: 'bg-black/4 dark:bg-white/6 text-muted hover:text-foreground hover:bg-black/8 dark:hover:bg-white/10 shadow-xs',
-    ghost: 'text-muted hover:text-foreground hover:bg-black/4 dark:hover:bg-white/6',
-    danger: 'bg-danger/10 text-danger hover:bg-danger/20 shadow-xs',
-  }
   return (
     <button
       ref={local.ref}
       type={local.type ?? 'button'}
-      class={`${base} ${sizes[local.size ?? 'md']} ${variants[local.variant ?? 'secondary']} ${local.class ?? ''}`}
+      class={`${buttonBase} ${sizes[local.size ?? 'md']} ${buttonVariants[local.variant ?? 'secondary']} ${local.class ?? ''}`}
       disabled={local.disabled || local.loading}
       aria-busy={local.loading || undefined}
       {...others}
@@ -427,25 +424,17 @@ export interface IconButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElem
 
 export const IconButton: Component<IconButtonProps> = props => {
   const [local, others] = splitProps(props, ['variant', 'size', 'disabled', 'loading', 'children', 'class', 'ref', 'type'])
-  const base =
-    'inline-flex items-center justify-center font-medium leading-none [&>svg]:block [&>svg]:shrink-0 transition-all duration-150 select-none shrink-0 active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
   const iconSizes: Record<'xs' | 'sm' | 'md' | 'lg', string> = {
     xs: 'w-6 h-6 text-xs',
-    sm: 'w-7 h-7 text-xs',
-    md: 'w-8 h-8 text-sm',
-    lg: 'w-9 h-9 text-base',
-  }
-  const variants = {
-    primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
-    secondary: 'bg-black/4 dark:bg-white/6 text-muted hover:text-foreground hover:bg-black/8 dark:hover:bg-white/10 shadow-xs',
-    ghost: 'text-muted hover:text-foreground hover:bg-black/4 dark:hover:bg-white/6',
-    danger: 'bg-danger/10 text-danger hover:bg-danger/20 shadow-xs',
+    sm: `w-8 ${controlSizes.sm}`,
+    md: `w-9 ${controlSizes.md}`,
+    lg: `w-11 ${controlSizes.lg}`,
   }
   return (
     <button
       ref={local.ref}
       type={local.type ?? 'button'}
-      class={`${base} ${iconSizes[local.size ?? 'md']} ${variants[local.variant ?? 'ghost']} ${local.class ?? ''}`}
+      class={`${buttonBase} ${iconSizes[local.size ?? 'md']} ${buttonVariants[local.variant ?? 'ghost']} ${local.class ?? ''}`}
       disabled={local.disabled || local.loading}
       aria-busy={local.loading || undefined}
       {...others}
@@ -471,9 +460,9 @@ export const Input: Component<{
   ariaLabel?: string
 }> = props => {
   const sizes: Record<ControlSize, string> = {
-    sm: `${controlSizes.sm} px-2.5`,
-    md: `${controlSizes.md} px-3`,
-    lg: `${controlSizes.lg} px-4`,
+    sm: `${controlSizes.sm} min-h-8 px-2.5`,
+    md: `${controlSizes.md} min-h-9 px-3`,
+    lg: `${controlSizes.lg} min-h-11 px-4`,
   }
   return (
     <input
@@ -487,7 +476,7 @@ export const Input: Component<{
       aria-label={props.ariaLabel}
       onInput={e => props.onInput?.(e.currentTarget.value)}
       onKeyDown={props.onKeyDown}
-      class={`w-full ${sizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/8 text-text placeholder:text-muted/70 focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+      class={`w-full min-w-0 ${sizes[props.size ?? 'md']} ui-field rounded-control disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
     />
   )
 }
@@ -512,7 +501,7 @@ export const Textarea: Component<TextareaProps> = props => {
       aria-label={props.ariaLabel}
       onInput={e => props.onInput?.(e.currentTarget.value)}
       onKeyDown={props.onKeyDown}
-      class={`w-full rounded-control bg-black/4 dark:bg-white/8 text-text placeholder:text-muted/70 focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+      class={`w-full ui-field rounded-control disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
     />
   )
 }
@@ -537,44 +526,56 @@ export const Select: Component<{
   const [open, setOpen] = createSignal(false)
   const [search, setSearch] = createSignal('')
   const [popoverStyle, setPopoverStyle] = createSignal<Record<string, string>>({})
+  const listboxId = createUniqueId()
   let rootRef: HTMLDivElement | undefined
+  let triggerRef: HTMLButtonElement | undefined
   let popoverRef: HTMLDivElement | undefined
   let searchInputRef: HTMLInputElement | undefined
 
   function updatePosition() {
     if (!rootRef) return
     const rect = rootRef.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    const placeUp = spaceBelow < 280 && rect.top > spaceBelow
+    const margin = 8
+    const maxWidth = Math.max(0, Math.min(520, window.innerWidth - margin * 2))
+    const width = Math.min(Math.max(rect.width, 240), maxWidth)
+    const desiredLeft = props.align === 'right' ? rect.right - width : rect.left
+    const left = Math.max(margin, Math.min(desiredLeft, window.innerWidth - width - margin))
+    const bottomAnchor = Math.max(margin, Math.min(rect.bottom + 6, window.innerHeight - margin))
+    const topAnchor = Math.max(margin, Math.min(rect.top - 6, window.innerHeight - margin))
+    const spaceBelow = Math.max(0, window.innerHeight - margin - bottomAnchor)
+    const spaceAbove = Math.max(0, topAnchor - margin)
+    const placeUp = spaceBelow < 280 && spaceAbove > spaceBelow
 
-    const style: Record<string, string> = {
+    setPopoverStyle({
       position: 'fixed',
       'z-index': '110',
-      'min-width': `${Math.max(rect.width, 240)}px`,
-      'max-width': 'min(92vw, 520px)',
-    }
+      width: `${width}px`,
+      'min-width': `${width}px`,
+      'max-width': `${maxWidth}px`,
+      'max-height': `${placeUp ? spaceAbove : spaceBelow}px`,
+      left: `${left}px`,
+      ...(placeUp
+        ? { bottom: `${window.innerHeight - topAnchor}px` }
+        : { top: `${bottomAnchor}px` }),
+    })
+  }
 
-    if (props.align === 'right') {
-      style.right = `${window.innerWidth - rect.right}px`
-    } else {
-      style.left = `${Math.max(8, rect.left)}px`
-    }
-
-    if (placeUp) {
-      style.bottom = `${window.innerHeight - rect.top + 6}px`
-    } else {
-      style.top = `${rect.bottom + 6}px`
-    }
-
-    setPopoverStyle(style)
+  function closeAndFocus() {
+    setOpen(false)
+    triggerRef?.focus()
   }
 
   function toggleOpen() {
     if (props.disabled) return
     if (!open()) {
       updatePosition()
+      setOpen(true)
+      queueMicrotask(() => {
+        if (open()) searchInputRef?.focus()
+      })
+    } else {
+      closeAndFocus()
     }
-    setOpen(o => !o)
   }
 
   const selectedOption = () => (props.options as SelectOption[]).find(o => o.value === (props.value ?? ''))
@@ -640,9 +641,14 @@ export const Select: Component<{
         return
       }
 
-      if (e.key === 'Escape') {
+      if (props.disabled || (!rootRef?.contains(document.activeElement) && !popoverRef?.contains(document.activeElement))) return
+
+      if (e.key === 'Tab') {
+        closeAndFocus()
+      } else if (e.key === 'Escape') {
         e.preventDefault()
-        setOpen(false)
+        e.stopPropagation()
+        closeAndFocus()
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
         const opts = visibleOptions()
@@ -655,27 +661,28 @@ export const Select: Component<{
         const idx = opts.findIndex(o => o.value === (props.value ?? ''))
         const prev = idx > 0 ? idx - 1 : opts.length - 1
         if (opts[prev]) props.onChange?.(opts[prev].value)
-      } else if (e.key === 'Enter' || e.key === ' ') {
+      } else if (e.key === 'Enter' || (e.key === ' ' && e.target !== searchInputRef)) {
+        if (e.target instanceof HTMLElement && e.target.closest('[role="option"]')) return
         e.preventDefault()
-        setOpen(false)
+        closeAndFocus()
       }
     }
 
     window.addEventListener('pointerdown', handleOutsideClick)
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('scroll', handleScrollOrResize, true)
     window.addEventListener('resize', handleScrollOrResize)
     onCleanup(() => {
       window.removeEventListener('pointerdown', handleOutsideClick)
-      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('scroll', handleScrollOrResize, true)
       window.removeEventListener('resize', handleScrollOrResize)
     })
   })
   const triggerSizes: Record<ControlSize, string> = {
-    sm: `${controlSizes.sm} pl-3 pr-2.5 gap-2`,
-    md: `${controlSizes.md} pl-3.5 pr-3 gap-2.5`,
-    lg: `${controlSizes.lg} pl-4 pr-3.5 gap-3`,
+    sm: `${controlSizes.sm} min-h-8 pl-3 pr-2.5 gap-2`,
+    md: `${controlSizes.md} min-h-9 pl-3.5 pr-3 gap-2.5`,
+    lg: `${controlSizes.lg} min-h-11 pl-4 pr-3.5 gap-3`,
   }
 
   const chevronSizes = {
@@ -693,24 +700,26 @@ export const Select: Component<{
   return (
     <div
       ref={rootRef}
-      class={`relative min-w-0 ${props.class?.includes('flex-1') ? 'flex-1 w-full' : props.class?.includes('w-full') ? 'w-full' : props.class?.includes('w-') ? '' : 'w-full'} ${props.class ?? ''}`}
+      class={`ui-select ${props.class ?? ''}`}
     >
       <button
+        ref={triggerRef}
         type="button"
         role="combobox"
         aria-expanded={open()}
         aria-haspopup="listbox"
+        aria-controls={open() ? listboxId : undefined}
         aria-label={props.ariaLabel || displayLabel()}
         title={selectedOption()?.description || displayLabel()}
         disabled={props.disabled}
         onClick={toggleOpen}
-        class={`w-full min-w-0 flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control bg-black/4 dark:bg-white/6 text-text hover:bg-black/7 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 ${
-          open() ? 'ring-2 ring-accent/30 bg-card' : ''
-        } ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        class={`ui-field w-full min-w-0 flex items-center justify-between ${triggerSizes[props.size ?? 'md']} rounded-control hover:border-glass-border-hover ${
+          open() ? 'ring-2 ring-accent/30' : ''
+        } disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
       >
         <div class="flex items-center gap-1.5 min-w-0 flex-1 truncate text-left">
           <Show when={selectedOption()?.badge}>
-            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-muted shrink-0 border border-subtle/50">
+            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface-inset text-muted shrink-0 border border-subtle/50">
               {selectedOption()!.badge}
             </span>
           </Show>
@@ -719,53 +728,40 @@ export const Select: Component<{
           </span>
         </div>
         <div class="flex items-center justify-center shrink-0 text-faint ml-1">
-          <svg
+          <IconChevronDown
             class={`${chevronSizes[props.size ?? 'md']} transition-transform duration-200 ${
               open() ? 'rotate-180 text-accent' : ''
             }`}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          />
         </div>
       </button>
 
-      {/* 现代液态玻璃拟态下拉浮层（彻底淘汰浏览器原生黑灰选项框） */}
-      {/* 现代液态玻璃拟态下拉浮层（带搜索过滤与超长自适应） */}
       <Show when={open()}>
         <Portal>
           <div
             ref={popoverRef}
-            role="listbox"
             style={popoverStyle()}
-            class="rounded-control glass-float p-1.5 flex flex-col gap-1 animate-fade-in"
+            class="rounded-control glass-float p-1.5 flex flex-col gap-1 overflow-hidden animate-fade-in"
           >
             <Show when={props.options.length > 8}>
-              <div class="px-1 pt-0.5 pb-1 border-b border-subtle/60">
+              <div class="shrink-0 px-1 pt-0.5 pb-1 border-b border-subtle/60">
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={search()}
                   onInput={e => setSearch(e.currentTarget.value)}
                   placeholder={useI18n().t('ui.searchOptions')}
-                  class="w-full px-2.5 py-1.5 text-xs rounded-md bg-hover/80 text-foreground placeholder:text-faint border border-subtle/60 outline-hidden focus:border-accent"
+                  aria-label={useI18n().t('ui.searchOptions')}
+                  class="ui-field w-full px-2.5 py-1.5 text-xs rounded-md"
                   onClick={e => e.stopPropagation()}
-                  onKeyDown={e => {
-                    if (e.key === 'Escape') {
-                      setOpen(false)
-                    }
-                  }}
                 />
               </div>
             </Show>
             <div
-              class="max-h-60 overflow-y-auto space-y-0.5 px-0.5"
+              id={listboxId}
+              role="listbox"
+              aria-label={props.ariaLabel || displayLabel()}
+              class="min-h-0 max-h-60 overflow-y-auto space-y-0.5 px-1"
               onScroll={handleListScroll}
             >
               <For each={visibleOptions()}>
@@ -776,21 +772,23 @@ export const Select: Component<{
                       type="button"
                       role="option"
                       aria-selected={active()}
-                      class={`w-full flex items-center justify-between gap-2.5 ${optionSizes[props.size ?? 'md']} rounded-lg text-left transition-all duration-150 cursor-pointer ${
+                      disabled={props.disabled}
+                      class={`ui-control border border-transparent w-full flex items-center justify-between gap-2.5 ${optionSizes[props.size ?? 'md']} rounded-lg text-left font-medium cursor-pointer ${
                         active()
-                          ? 'bg-accent/15 text-accent font-medium'
+                          ? 'bg-accent/15 text-accent'
                           : 'text-text hover:bg-hover hover:text-text'
                       }`}
                       onClick={() => {
+                        if (props.disabled) return
                         props.onChange?.(o.value)
-                        setOpen(false)
+                        closeAndFocus()
                         setSearch('')
                       }}
                     >
                       <div class="min-w-0 flex-1 flex flex-col py-0.5">
                         <div class="flex items-center gap-1.5 min-w-0">
                           <Show when={o.badge}>
-                            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-muted shrink-0 border border-subtle/40">
+                            <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-surface-inset text-muted shrink-0 border border-subtle/40">
                               {o.badge}
                             </span>
                           </Show>
@@ -801,18 +799,7 @@ export const Select: Component<{
                         </Show>
                       </div>
                       <Show when={active()}>
-                        <svg
-                          class="w-4 h-4 text-accent shrink-0 animate-scale-in"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2.5"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          aria-hidden="true"
-                        >
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
+                        <IconCheck class="w-4 h-4 text-accent shrink-0 animate-scale-in" stroke-width="2.5" />
                       </Show>
                     </button>
                   )
@@ -834,24 +821,25 @@ export const Select: Component<{
   )
 }
 
-export const Toggle: Component<{ checked?: boolean; disabled?: boolean; onChange?: (v: boolean) => void }> = props => (
+export const Toggle: Component<{ ariaLabel: string; checked?: boolean; disabled?: boolean; onChange?: (v: boolean) => void }> = props => (
   <button
     type="button"
     role="switch"
+    aria-label={props.ariaLabel}
     aria-checked={props.checked ?? false}
     disabled={props.disabled}
     onClick={e => {
       e.stopPropagation()
       props.onChange?.(!props.checked)
     }}
-    class={`relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-inner ${
+    class={`ui-control relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-inner ${
       props.checked
-        ? 'bg-accent shadow-accent/20'
-        : 'bg-black/15 dark:bg-white/15'
+        ? 'bg-accent'
+        : 'bg-control-border'
     }`}
   >
     <span
-      class={`pointer-events-none block w-4 h-4 rounded-full bg-white shadow-md transition-transform duration-200 ${
+      class={`pointer-events-none block w-4 h-4 rounded-full bg-switch-thumb shadow-sm transition-transform duration-200 ${
         props.checked ? 'translate-x-4' : 'translate-x-0'
       }`}
     />
@@ -882,16 +870,14 @@ export const Checkbox: Component<CheckboxProps> = props => (
         onChange={e => props.onChange?.(e.currentTarget.checked)}
       />
       <div
-        class={`w-4 h-4 rounded-[5px] border transition-all duration-200 flex items-center justify-center shadow-xs peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 ${
+        class={`w-4 h-4 rounded-[5px] border transition-[background-color,border-color,box-shadow] duration-200 flex items-center justify-center shadow-xs peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 ${
           props.checked
-            ? 'bg-accent border-accent text-on-accent shadow-accent/25'
-            : 'border-subtle bg-black/5 dark:bg-white/5 group-hover:border-accent/60 group-hover:bg-hover'
+            ? 'bg-accent border-accent text-on-accent'
+            : 'border-control-border bg-control group-hover:border-glass-border-hover group-hover:bg-hover'
         }`}
       >
         <Show when={props.checked}>
-          <svg class="w-3 h-3 stroke-current stroke-[3] transition-transform scale-100" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
+          <IconCheck class="w-3 h-3" stroke-width="3" />
         </Show>
       </div>
     </div>
@@ -928,7 +914,7 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
   return (
     <div
       role="tablist"
-      class={`inline-flex flex-nowrap shrink-0 max-w-full overflow-x-auto no-scrollbar items-center gap-1 p-1 rounded-xl bg-black/5 dark:bg-white/8 border border-black/3 dark:border-white/4 select-none ${props.class ?? ''}`}
+      class={`inline-flex flex-nowrap shrink-0 max-w-full overflow-x-auto no-scrollbar items-center gap-1 p-1 rounded-xl bg-surface-inset border border-subtle select-none ${props.class ?? ''}`}
     >
       <For each={props.options}>
         {opt => {
@@ -944,12 +930,12 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
                   props.onChange(opt.value)
                 }
               }}
-              class={`transition-all font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              class={`ui-control border font-medium rounded-lg flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 size() === 'md' ? 'px-4 py-2 text-sm' : 'px-3.5 py-1.5 text-xs'
               } ${
                 isActive()
-                  ? 'glass-segment text-foreground ring-1 ring-accent/40'
-                  : 'text-muted hover:text-foreground hover:bg-black/2 dark:hover:bg-white/6 border border-transparent'
+                  ? 'glass-segment text-foreground'
+                  : 'text-muted hover:text-foreground hover:bg-hover border-transparent'
               }`}
             >
               <Show when={opt.icon}>
@@ -968,25 +954,52 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
   const [panel, setPanel] = createSignal<HTMLDivElement>()
   const { t } = useI18n()
 
-  // 打开时锁定页面滚动 + Esc 关闭（避免未打开时误锁页面滚动）
   createEffect(() => {
-    if (props.open) {
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') props.onClose()
+    if (!props.open) return
+    const previousFocus = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    let active = true
+    const focusable = () => Array.from(panel()?.querySelectorAll<HTMLElement>(
+      'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]',
+    ) ?? []).filter(el => el.tabIndex >= 0 && !el.matches(':disabled') &&
+      !el.closest('[hidden], [inert], [aria-hidden="true"]') &&
+      getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden')
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        props.onClose()
+      } else if (e.key === 'Tab') {
+        const elements = focusable()
+        const first = elements[0]
+        const last = elements[elements.length - 1]
+        if (!first || !panel()?.contains(document.activeElement)) {
+          e.preventDefault()
+          const target = (e.shiftKey ? last : first) ?? panel()
+          target?.focus()
+        } else if (e.shiftKey && (document.activeElement === first || document.activeElement === panel())) {
+          e.preventDefault()
+          last?.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
       }
-      document.addEventListener('keydown', onKey)
-      document.body.style.overflow = 'hidden'
-
-      queueMicrotask(() => {
-        const first = panel()?.querySelector<HTMLElement>('input, select, textarea, button')
-        first?.focus()
-      })
-
-      onCleanup(() => {
-        document.removeEventListener('keydown', onKey)
-        document.body.style.overflow = ''
-      })
     }
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+
+    queueMicrotask(() => {
+      if (active) (focusable()[0] ?? panel())?.focus()
+    })
+
+    onCleanup(() => {
+      active = false
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
+    })
   })
 
   return (
@@ -995,29 +1008,30 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
         <div class="fixed inset-0 z-100 flex items-center justify-center p-4">
           <button
             type="button"
+            tabIndex={-1}
             aria-label={t('common.close')}
-            class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
+            class="absolute inset-0 w-full h-full bg-overlay backdrop-blur-md animate-fade-in border-none cursor-default"
             onClick={props.onClose}
           />
           <div
             ref={setPanel}
             role="dialog"
+            tabIndex={-1}
             aria-modal="true"
             aria-label={props.title}
-            class="relative w-full max-w-lg rounded-2xl glass-float animate-scale-in"
+            class="relative flex flex-col max-h-[calc(100dvh-2rem)] w-full max-w-lg rounded-2xl glass-float animate-scale-in"
           >
-            <div class="flex items-center justify-between px-5 py-3.5 border-b border-subtle/50 bg-black/2 dark:bg-white/2 rounded-t-2xl">
-              <h3 class="text-sm font-semibold">{props.title}</h3>
-              <button
-                type="button"
-                class="flex h-7 w-7 items-center justify-center rounded-control text-faint hover:text-text hover:bg-hover transition-colors"
+            <div class="shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-b border-subtle/50 bg-surface-inset rounded-t-2xl">
+              <h3 class="min-w-0 text-sm font-semibold wrap-break-word">{props.title}</h3>
+              <IconButton
+                size="sm"
                 onClick={props.onClose}
-                aria-label={useI18n().t('common.close')}
+                aria-label={t('common.close')}
               >
                 <IconClose size={14} />
-              </button>
+              </IconButton>
             </div>
-            <div class="p-5 max-h-[calc(85vh-100px)] overflow-y-auto">{props.children}</div>
+            <div class="min-h-0 overflow-y-auto px-5 py-5">{props.children}</div>
           </div>
         </div>
       </Portal>
@@ -1106,7 +1120,7 @@ export const Slider: Component<SliderProps> = props => {
         </div>
       </Show>
       <div class="relative flex items-center h-6 w-full">
-        <div class="absolute inset-x-0 h-1.5 rounded-full bg-black/8 dark:bg-white/12 pointer-events-none overflow-hidden">
+        <div class="absolute inset-x-0 h-1.5 rounded-full bg-control-border pointer-events-none overflow-hidden">
           <div
             class="h-full bg-gradient-to-r from-accent to-accent/90 rounded-full transition-[width] duration-75"
             style={{ width: `${pct()}%` }}
@@ -1114,6 +1128,7 @@ export const Slider: Component<SliderProps> = props => {
         </div>
         <input
           type="range"
+          aria-label={props.label}
           min={min()}
           max={max()}
           step={step()}
@@ -1127,7 +1142,7 @@ export const Slider: Component<SliderProps> = props => {
           onChange={e => {
             props.onChange?.(Number(e.currentTarget.value))
           }}
-          class="relative w-full z-10 appearance-none bg-transparent cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+          class="relative w-full z-10 appearance-none bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:bg-transparent focus-visible:ring-2 focus-visible:ring-accent/30 rounded-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
         />
       </div>
       <Show when={props.hint}>
@@ -1155,10 +1170,13 @@ export const FileUpload: Component<FileUploadProps> = props => {
   const { t } = useI18n()
 
   function handleFile(f?: File) {
-    if (!f) return
+    if (props.disabled || !f) return
     props.onChange?.(f)
   }
 
+  function openPicker() {
+    if (!props.disabled) fileInputRef?.click()
+  }
 
   return (
     <div class={`w-full ${props.class ?? ''}`}>
@@ -1176,27 +1194,36 @@ export const FileUpload: Component<FileUploadProps> = props => {
       <Show
         when={!props.compact}
         fallback={
-          <button
-            type="button"
+          <Button
             disabled={props.disabled}
-            onClick={() => fileInputRef?.click()}
-            class="w-full cursor-pointer flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-black/4 dark:bg-white/6 hover:bg-black/8 dark:hover:bg-white/10 border border-subtle text-xs text-muted hover:text-foreground transition-all min-h-[36px] shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed group"
+            onClick={openPicker}
+            class="w-full min-w-0 group"
           >
             <IconImage size={15} class="text-muted group-hover:text-foreground transition-colors shrink-0" />
             <span class="truncate font-medium">
               {props.value ? props.value.name : (props.placeholder ?? t('common.chooseFile'))}
             </span>
-          </button>
+          </Button>
         }
       >
         <Show
           when={props.value}
           fallback={
             <div
-              onClick={() => fileInputRef?.click()}
+              role="button"
+              tabIndex={props.disabled ? -1 : 0}
+              aria-disabled={props.disabled ?? false}
+              aria-label={props.label ?? props.placeholder ?? t('common.chooseFile')}
+              onClick={openPicker}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  openPicker()
+                }
+              }}
               onDragOver={e => {
                 e.preventDefault()
-                setDragOver(true)
+                if (!props.disabled) setDragOver(true)
               }}
               onDragLeave={() => setDragOver(false)}
               onDrop={e => {
@@ -1205,10 +1232,12 @@ export const FileUpload: Component<FileUploadProps> = props => {
                 const f = e.dataTransfer?.files?.[0]
                 handleFile(f)
               }}
-              class={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all ${
-                dragOver()
-                  ? 'border-accent bg-accent/10 scale-[1.01]'
-                  : 'border-subtle/80 hover:border-accent/60 bg-black/2 dark:bg-white/2 hover:bg-hover'
+              class={`ui-control rounded-2xl border-2 border-dashed p-5 text-center ${
+                props.disabled
+                  ? 'opacity-50 cursor-not-allowed border-control-border bg-surface-inset'
+                  : dragOver()
+                    ? 'cursor-pointer border-accent bg-accent/10'
+                    : 'cursor-pointer border-control-border hover:border-glass-border-hover bg-surface-inset hover:bg-hover'
               }`}
             >
               <div class="flex flex-col items-center gap-2">
@@ -1239,21 +1268,25 @@ export const FileUpload: Component<FileUploadProps> = props => {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => fileInputRef?.click()}
+                disabled={props.disabled}
+                onClick={openPicker}
               >
                 {t('common.change')}
               </Button>
-              <button
-                type="button"
+              <IconButton
+                size="sm"
+                variant="danger"
+                disabled={props.disabled}
                 onClick={() => {
+                  if (props.disabled) return
                   if (fileInputRef) fileInputRef.value = ''
                   props.onChange?.(null)
                 }}
-                class="w-7 h-7 rounded-lg hover:bg-danger/10 text-muted hover:text-danger flex items-center justify-center transition-colors cursor-pointer"
                 title={t('common.clear')}
+                aria-label={t('common.clear')}
               >
                 <IconClose size={14} />
-              </button>
+              </IconButton>
             </div>
           </div>
         </Show>
@@ -1274,11 +1307,9 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
   const [current, setCurrent] = createSignal<T>(props.value)
   const [direction, setDirection] = createSignal<'forward' | 'backward'>('forward')
   const [isTransitioning, setIsTransitioning] = createSignal(false)
-  const [incomingKey, setIncomingKey] = createSignal(0)
-  const [outgoingSnapshot, setOutgoingSnapshot] = createSignal<{ id: number; dir: 'forward' | 'backward'; el: HTMLElement } | null>(null)
+  const [outgoingSnapshot, setOutgoingSnapshot] = createSignal<{ dir: 'forward' | 'backward'; el: HTMLElement } | null>(null)
   let incomingRef: HTMLDivElement | undefined
   let timer: number | undefined
-  let transitionCount = 0
   let prevVal = props.value
 
   createEffect(() => {
@@ -1288,14 +1319,20 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
     prevVal = newVal
 
     if (timer) clearTimeout(timer)
+    timer = undefined
 
-    // 1. Snapshot outgoing DOM to freeze current state before reactivity shifts
-    let clone: HTMLElement | null = null
-    if (incomingRef) {
-      clone = incomingRef.cloneNode(true) as HTMLElement
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setOutgoingSnapshot(null)
+      setIsTransitioning(false)
+      setCurrent(() => newVal)
+      return
     }
 
-    // 2. Determine direction
+    // Freeze outgoing DOM before the live tab changes.
+    const clone = incomingRef?.cloneNode(true) as HTMLElement | undefined
+    clone?.classList.remove('animate-tab-slide-in-right', 'animate-tab-slide-in-left')
+
+    // Determine direction.
     let dir: 'forward' | 'backward' = 'forward'
     if (props.order && props.order.length > 0) {
       const oldIdx = props.order.indexOf(oldVal)
@@ -1303,16 +1340,8 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
       dir = newIdx >= oldIdx ? 'forward' : 'backward'
     }
     setDirection(dir)
-
-    // 3. Increment keys and mount frozen snapshot
-    transitionCount++
-    const id = transitionCount
-    if (clone) {
-      setOutgoingSnapshot({ id, dir, el: clone })
-    }
-
+    setOutgoingSnapshot(clone ? { dir, el: clone } : null)
     setCurrent(() => newVal)
-    setIncomingKey(k => k + 1)
     setIsTransitioning(true)
 
     timer = window.setTimeout(() => {
@@ -1341,6 +1370,8 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
       <Show when={outgoingSnapshot()} keyed>
         {snap => (
           <div
+            aria-hidden="true"
+            inert
             class={`col-start-1 row-start-1 w-full pointer-events-none ${
               snap.dir === 'forward' ? 'animate-tab-slide-out-left' : 'animate-tab-slide-out-right'
             }`}
@@ -1350,14 +1381,14 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
           />
         )}
       </Show>
-      {/* Incoming live slot (keyed to guarantee fresh animation on rapid clicks) */}
-      <Show when={{ tab: current(), key: incomingKey(), dir: direction(), anim: isTransitioning() }} keyed>
+      {/* Only a tab change remounts the live view; animation cleanup preserves its state. */}
+      <Show when={{ tab: current() }} keyed>
         {item => (
           <div
             ref={incomingRef}
             class={`col-start-1 row-start-1 w-full ${
-              item.anim
-                ? (item.dir === 'forward' ? 'animate-tab-slide-in-right' : 'animate-tab-slide-in-left')
+              isTransitioning()
+                ? (direction() === 'forward' ? 'animate-tab-slide-in-right' : 'animate-tab-slide-in-left')
                 : ''
             }`}
           >

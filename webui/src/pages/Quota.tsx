@@ -188,13 +188,13 @@ const Quota: Component = () => {
     }
 
     return (
-      <div class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-hover/60 transition-colors text-xs">
+      <div class="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] @lg:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 gap-y-1.5 py-2 px-2 rounded-lg hover:bg-hover/60 transition-colors text-xs">
         <span class={`w-2 h-2 rounded-full shrink-0 ${colorClass().dot}`} />
-        <span class="w-32 sm:w-44 font-medium text-foreground truncate shrink-0" title={props.name}>
+        <span class="min-w-0 font-medium text-foreground wrap-anywhere" title={props.name}>
           {props.name}
         </span>
         <span
-          class="w-20 text-right tabular-nums text-faint text-[11px] shrink-0 font-mono"
+          class="text-right tabular-nums text-muted font-mono whitespace-nowrap"
           title={t('quota.remainingTotalTitle', {
             remaining: formatNumber(props.quota.remaining),
             total: formatNumber(props.quota.total),
@@ -203,16 +203,16 @@ const Quota: Component = () => {
         >
           {formatNumber(props.quota.remaining)} / {formatNumber(props.quota.total)}
         </span>
-        <div class="flex-1 min-w-[70px] h-1.5 rounded-full bg-hover overflow-hidden mx-1.5">
+        <div class="col-span-2 @lg:col-span-1 min-w-0 h-1.5 rounded-full bg-control overflow-hidden">
           <div
             class={`h-full rounded-full transition-all duration-300 ${colorClass().bar}`}
             style={{ width: `${Math.min(100, Math.max(0, pct()))}%` }}
           />
         </div>
-        <span class={`w-11 text-right font-mono text-[11px] font-medium shrink-0 tabular-nums ${colorClass().text}`}>
+        <span class={`text-right font-mono font-medium tabular-nums ${colorClass().text}`}>
           {pct()}%
         </span>
-        <span class="w-20 text-right text-[11px] text-faint truncate shrink-0 font-mono">
+        <span class="col-span-3 @lg:col-span-1 min-w-0 text-right text-faint font-mono wrap-anywhere">
           {resetHint()}
         </span>
       </div>
@@ -243,21 +243,20 @@ const Quota: Component = () => {
     return (
       <div class="space-y-1.5">
         <Show when={allKeys().length > 8}>
-          <div class="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5 text-xs text-faint">
+          <div class="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 pb-0.5 text-xs text-faint">
             <Input
               size="sm"
               placeholder={t('quota.searchPlaceholder')}
               value={search()}
               onInput={v => { setSearch(v); setPage(1); }}
-              class="w-40 sm:w-48 text-[11px]! py-0.5! h-7!"
+              class="min-w-0 flex-1 basis-40"
             />
-            <div class="flex items-center gap-1.5 text-[11px] shrink-0 font-mono">
+            <div class="flex items-center gap-1.5 text-xs shrink-0 font-mono">
               <Button
                 size="sm"
                 variant="secondary"
                 disabled={effectivePage() <= 1}
                 onClick={() => setPage(p => Math.max(1, Math.min(p, totalPages()) - 1))}
-                class="h-6! px-1.5! min-w-0!"
                 title={t('quota.prevPage')}
               >
                 <IconChevronLeft size={12} />
@@ -268,7 +267,6 @@ const Quota: Component = () => {
                 variant="secondary"
                 disabled={effectivePage() >= totalPages()}
                 onClick={() => setPage(p => Math.min(totalPages(), Math.max(p, 1) + 1))}
-                class="h-6! px-1.5! min-w-0!"
                 title={t('quota.nextPage')}
               >
                 <IconChevronRight size={12} />
@@ -277,7 +275,7 @@ const Quota: Component = () => {
           </div>
         </Show>
 
-        <div class="space-y-0.5 max-h-[360px] overflow-y-auto px-0.5">
+        <div class="space-y-0.5 max-h-[360px] overflow-y-auto px-1">
           <For each={currentKeys()}>
             {k => {
               const b = () => props.quotasObj[k]
@@ -286,7 +284,7 @@ const Quota: Component = () => {
             }}
           </For>
           <Show when={currentKeys().length === 0}>
-            <div class="p-3 text-center text-xs text-faint">{t('quota.noMatchingMetrics')}</div>
+            <Empty message={t('quota.noMatchingMetrics')} class="py-3!" />
           </Show>
         </div>
       </div>
@@ -408,7 +406,7 @@ const Quota: Component = () => {
                 const providerName = () => reg()?.name || conn.provider
                 const aggRow = () => rows().find(r => r.provider === conn.provider)
                 return (
-                  <Card hover class="p-4 flex flex-col justify-between shadow-sm transition-all">
+                  <Card hover class="@container min-w-0 p-4 flex flex-col justify-between shadow-sm transition-all">
                     <div>
                       <div class="flex items-start justify-between gap-2.5 pb-2.5 border-b border-subtle/50">
                         <div class="flex items-center gap-3 min-w-0">
@@ -448,6 +446,7 @@ const Quota: Component = () => {
                             </Button>
                           </A>
                           <Toggle
+                            ariaLabel={`${t('common.enabled')}: ${providerName()} · ${conn.name || conn.email || conn.id}`}
                             checked={conn.isActive}
                             onChange={async () => {
                               await store.toggleProvider(conn)
@@ -456,7 +455,7 @@ const Quota: Component = () => {
                         </div>
                       </div>
 
-                      <div class="text-[11px] text-faint font-medium mt-2 px-1 flex items-center justify-between">
+                      <div class="text-xs text-faint font-medium mt-2 px-1 flex flex-wrap items-center justify-between gap-1">
                         <span>
                           {hasRealQuotas() ? t('quota.metricsCountSuffix', { count: quotaKeys().length }) : t('quota.inNetworkUsage')}
                         </span>
@@ -485,13 +484,13 @@ const Quota: Component = () => {
                                   <Show
                                     when={qData()?.message}
                                     fallback={
-                                      <div class="p-3 text-center text-xs text-faint bg-bg/50 rounded-lg border border-subtle">
+                                      <div class="p-3 text-center text-xs text-faint bg-surface-inset rounded-lg">
                                         {t('quota.noOnlineApiShort')}
                                       </div>
                                     }
                                   >
-                                    <div class="p-2.5 text-xs text-faint bg-bg/50 rounded-lg border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                                      <span class="min-w-0 flex-1 leading-relaxed">
+                                    <div class="p-2.5 text-xs text-faint bg-surface-inset rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                      <span class="min-w-0 flex-1 leading-relaxed wrap-anywhere">
                                         {qData()!.message?.startsWith('Usage API not implemented')
                                           ? t('quota.usageApiUnavailable')
                                           : conn.provider === 'opencode' && (qData()!.plan === 'OpenCode Zen' || qData()!.message?.includes('OpenCode Zen'))

@@ -206,6 +206,11 @@ describe('Settings 页', () => {
     expect(text).toContain('排除提供商名单')
     expect(text).toContain('deepseek')
     expect(text).toContain('全部已保存')
+    for (const input of document.querySelectorAll('input[type="password"], input[placeholder*="deepseek"]')) {
+      expect(input.parentElement?.classList.contains('grid')).toBe(true)
+      expect(input.classList.contains('flex-1')).toBe(false)
+      expect(input.classList.contains('min-h-9')).toBe(true)
+    }
   })
 
   it('支持在设置页中交互式添加与移除排除提供商并触发保存状态变更', async () => {

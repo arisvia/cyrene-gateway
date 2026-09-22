@@ -663,16 +663,17 @@ const Providers: Component = () => {
         }
       >
         {/* 搜索与过滤工具栏：保持半透明轻量容器，避免在 glass-sticky 上再叠一层实心面板 */}
-        <div class="p-3 rounded-xl bg-black/4 dark:bg-white/6 border border-black/8 dark:border-white/10 flex flex-wrap items-center justify-between gap-3">
-          <div class="flex flex-wrap items-center gap-3 flex-1">
+        <div class="p-3 rounded-xl bg-surface-inset flex flex-wrap items-center justify-between gap-3 min-w-0">
+          <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0 basis-full xl:basis-0">
             <Input
-              class="w-64!"
+              class="min-w-0 w-full! sm:w-auto! sm:flex-1 sm:basis-56"
               placeholder={activeTab() === 'connections' ? t('providers.searchConnPlaceholder') : t('providers.searchCatalogPlaceholder')}
               value={query()}
               onInput={setQuery}
             />
 
             <Select
+              class="min-w-0 w-full sm:w-auto sm:flex-1 sm:basis-44"
               value={capFilter()}
               onChange={setCapFilter}
               options={[
@@ -690,6 +691,7 @@ const Providers: Component = () => {
 
             <Show when={activeTab() === 'connections'}>
               <Select
+                class="min-w-0 w-full sm:w-auto sm:flex-1 sm:basis-40"
                 value={catFilter()}
                 options={[
                   { value: '', label: t('providers.authTypes.all') },
@@ -702,6 +704,7 @@ const Providers: Component = () => {
 
             <Show when={activeTab() === 'catalog'}>
               <Select
+                class="min-w-0 w-full sm:w-auto sm:flex-1 sm:basis-40"
                 value={catFilter()}
                 options={[
                   { value: '', label: t('providers.categories.all') },
@@ -716,7 +719,7 @@ const Providers: Component = () => {
               <Button
                 size="sm"
                 variant={hideAdded() ? 'secondary' : 'ghost'}
-                class={`text-xs gap-1.5 ${hideAdded() ? 'border-accent/40 text-accent font-medium' : ''}`}
+                class={`text-xs gap-1.5 max-w-full min-w-0! h-auto! min-h-8 flex-wrap py-2! whitespace-normal! ${hideAdded() ? 'border-accent/40 text-accent font-medium' : ''}`}
                 onClick={() => setHideAdded(!hideAdded())}
                 title={hideAdded() ? t('providers.catalogFilterAll') : t('providers.catalogFilterUnadded')}
               >
@@ -733,7 +736,7 @@ const Providers: Component = () => {
             </Show>
           </div>
 
-          <div class="flex items-center gap-3 text-xs text-faint">
+          <div class="flex flex-wrap items-center gap-3 text-xs text-faint min-w-0">
             <span class="hidden sm:inline">
               {t('providers.matchedCount', { count: activeTab() === 'connections' ? groupedConnections().length : brandGroups().length })}
             </span>
@@ -872,8 +875,8 @@ const Providers: Component = () => {
           {/* 自定义通用兼容协议 (OpenAI Compatible & Anthropic Compatible) */}
           <Show when={customBrandGroups().length > 0}>
             <div class="space-y-3">
-              <div class="flex items-center justify-between px-1">
-                <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center justify-between gap-2 px-1">
+                <div class="flex flex-wrap items-center gap-2 min-w-0">
                   <span class="text-sm font-semibold text-foreground">{t('providers.customApiTitle')}</span>
                   <Badge tone="blue" class="text-[10px]">{t('providers.customBaseUrlBadge')}</Badge>
                 </div>
@@ -886,7 +889,7 @@ const Providers: Component = () => {
                     const connected = () => store.providers().some(p => p.provider === reg().id)
                     return (
                       <Card hover class="p-4 flex flex-col justify-between group border-accent/20 bg-accent/5">
-                        <div class="flex items-start justify-between gap-3">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
                           <div class="flex items-center gap-3 min-w-0">
                             <ProviderAvatar
                               provider={reg().id}
@@ -895,9 +898,9 @@ const Providers: Component = () => {
                               size="md"
                             />
                             <div class="min-w-0">
-                              <div class="font-semibold text-sm text-foreground flex items-center gap-2">
+                              <div class="font-semibold text-sm text-foreground flex flex-wrap items-center gap-2 wrap-anywhere">
                                 <span>{group.name}</span>
-                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded text-muted bg-black/6 dark:bg-white/10 border border-black/10 dark:border-white/15">
+                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded text-muted bg-surface-inset border border-subtle min-w-0 max-w-full wrap-anywhere">
                                   {reg().id}
                                 </span>
                               </div>
@@ -910,7 +913,7 @@ const Providers: Component = () => {
                             {reg().apiType === 'anthropic' ? 'Anthropic' : 'OpenAI'}
                           </Badge>
                         </div>
-                        <div class="mt-4 pt-3 border-t border-subtle/60 flex items-center justify-between">
+                        <div class="mt-4 pt-3 border-t border-subtle/60 flex flex-wrap items-center justify-between gap-3">
                           <span class="text-xs text-faint font-mono">
                             {reg().id === 'custom-openai' ? t('providers.chatResponsesCompat') : t('providers.messagesCompat')}
                           </span>
@@ -932,7 +935,7 @@ const Providers: Component = () => {
 
           {/* 官方认证主流供应商列表 */}
           <div class="space-y-3">
-            <div class="flex items-center justify-between px-1">
+            <div class="flex flex-wrap items-center justify-between gap-2 px-1">
               <span class="text-sm font-semibold text-foreground">{t('providers.officialProvidersTitle')}</span>
               <span class="text-xs text-faint">{t('providers.officialProvidersDesc')}</span>
             </div>
@@ -955,7 +958,7 @@ const Providers: Component = () => {
                 <Card hover class="p-4 flex flex-col h-full justify-between group">
                   {/* 上半部分：品牌基础信息 + 变体切换 + 说明 */}
                   <div class="flex-1 flex flex-col">
-                    <div class="flex items-start justify-between gap-2">
+                    <div class="flex flex-wrap items-start justify-between gap-2">
                       <div class="flex items-center gap-3 min-w-0">
                         <ProviderAvatar
                           provider={reg().id}
@@ -964,7 +967,7 @@ const Providers: Component = () => {
                           size="md"
                         />
                         <div class="min-w-0">
-                          <div class="font-semibold text-sm text-foreground truncate">
+                          <div class="font-semibold text-sm text-foreground wrap-anywhere">
                             {group.name}
                           </div>
                           <div class="text-xs text-faint font-mono truncate">{reg().id}</div>
@@ -979,7 +982,7 @@ const Providers: Component = () => {
                     {/* 区域 / 渠道小标签切换器 (如 cn / intl) 或等高占位 */}
                     <div class="mt-3 min-h-8 flex items-center">
                       <Show when={hasVariants()} fallback={<div class="h-8" />}>
-                        <div class="w-full flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/8 border border-black/10 dark:border-white/12">
+                        <div class="w-full min-w-0 flex flex-wrap items-center gap-1 p-1 rounded-lg bg-surface-inset">
                           <For each={group.items}>
                             {variant => {
                               const isSelected = () => reg().id === variant.id
@@ -991,9 +994,11 @@ const Providers: Component = () => {
                                 return variant.name.replace(group.name, '').trim() || variant.id
                               }
                               return (
-                                <button
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
                                   type="button"
-                                  class={`flex-1 text-[11px] py-1 px-2 rounded-md font-medium transition-all ${
+                                  class={`flex-1 min-w-0! h-auto! min-h-8 whitespace-normal! wrap-anywhere text-xs py-2 px-2 rounded-md font-medium transition-all ${
                                     isSelected()
                                       ? 'bg-card text-foreground shadow-xs font-semibold'
                                       : 'text-faint hover:text-foreground'
@@ -1006,7 +1011,7 @@ const Providers: Component = () => {
                                   }}
                                 >
                                   {label()}
-                                </button>
+                                </Button>
                               )
                             }}
                           </For>
@@ -1039,12 +1044,12 @@ const Providers: Component = () => {
 
                   {/* 下半部分：横向完全对齐的协议与优先级 */}
                   <div class="mt-3 pt-3 border-t border-subtle space-y-3">
-                    <div class="flex items-center justify-between text-xs text-faint">
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-faint">
                       <span>{t('providers.protocol')}: <code class="font-mono text-foreground font-semibold">{reg().apiType || 'openai'}</code></span>
                       <span>{t('providers.defaultPriority')}: <span class="font-mono text-foreground font-medium">{reg().priority ?? 50}</span></span>
                     </div>
 
-                    <div class="flex items-center justify-between gap-2 pt-0.5">
+                    <div class="flex flex-wrap items-center justify-between gap-3 pt-0.5">
                       <Show
                         when={reg().apiKeyUrl || reg().website}
                         fallback={<span class="text-[11px] text-faint">{t('providers.nativeBuiltin')}</span>}
@@ -1059,7 +1064,7 @@ const Providers: Component = () => {
                         </a>
                       </Show>
 
-                      <div class="flex items-center gap-2">
+                      <div class="flex flex-wrap items-center gap-2 min-w-0">
                         <Show when={connected()}>
                           <span class="text-xs text-success font-semibold px-2 py-0.5 rounded-md bg-success/12 border border-success/30">{t('providers.alreadyConnected')}</span>
                         </Show>
@@ -1110,7 +1115,7 @@ const Providers: Component = () => {
                   <Show when={reg().apiKeyUrl}>
                     <div>
                       {t('providers.getKeyLink')}
-                      <a href={reg().apiKeyUrl} target="_blank" rel="noreferrer" class="text-accent underline font-mono ml-1">
+                      <a href={reg().apiKeyUrl} target="_blank" rel="noreferrer" class="text-accent underline font-mono ml-1 wrap-anywhere">
                         {reg().apiKeyUrl}
                       </a>
                     </div>
@@ -1144,7 +1149,7 @@ const Providers: Component = () => {
                 <Show when={form().authType === 'api-key' || form().authType === 'apikey'}>
                   <div class="space-y-2">
                     <Field label={t('providers.authCredential')} hint={reg().authHint || t('providers.credentialHint')}>
-                      <div class="flex items-center gap-2">
+                      <div class="flex flex-wrap items-center gap-2 min-w-0">
                         <div class="flex-1">
                           <Input
                             type="password"

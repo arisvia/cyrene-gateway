@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, onMount, onCleanup, createMemo } from 'solid-js'
 import { api, getStoredSessionToken } from '@/lib/api'
-import { Card, Button, Input, Select, PageHeader, StatusPulse } from '@/components/ui'
+import { Card, Button, Input, Select, PageHeader, StatusPulse, Empty } from '@/components/ui'
 import { useI18n } from '@/i18n'
 
 interface LogItem {
@@ -157,7 +157,7 @@ const LogsPage: Component = () => {
   }
 
   return (
-    <div class="space-y-4 flex flex-col h-[calc(100vh-140px)] stagger">
+    <div class="space-y-4 flex flex-col min-h-[calc(100dvh-140px)] lg:h-[calc(100dvh-140px)] stagger">
       <PageHeader
         title={t('logs.title')}
         badge={<StatusPulse status={connected() ? 'active' : 'idle'} tone={connected() ? 'green' : 'gray'} />}
@@ -180,9 +180,9 @@ const LogsPage: Component = () => {
 
       {/* 过滤工具栏 */}
       <Card class="p-3 flex flex-wrap items-center justify-between gap-3 shadow-sm shrink-0">
-        <div class="flex flex-wrap items-center gap-3 flex-1">
+        <div class="flex flex-wrap items-center gap-3 flex-1 min-w-0">
           <Input
-            class="w-full! sm:w-64!"
+            class="min-w-0 w-full! sm:w-64!"
             placeholder={t('logs.filterPlaceholder')}
             value={query()}
             onInput={setQuery}
@@ -207,29 +207,27 @@ const LogsPage: Component = () => {
       {/* 实时终端日志视窗 */}
       <div
         ref={scrollContainer}
-        class="flex-1 min-h-0 bg-code-bg border border-subtle rounded-2xl p-4 font-mono text-xs overflow-y-auto space-y-1.5 selection:bg-accent/30 shadow-inner"
+        class="flex-1 min-h-48 max-h-[70dvh] lg:min-h-0 lg:max-h-none bg-surface-inset border border-subtle rounded-2xl p-3 sm:p-4 font-mono text-xs overflow-y-auto space-y-1.5 selection:bg-accent/30"
       >
         <Show
           when={displayedLogs().length > 0}
           fallback={
-            <div class="h-full flex items-center justify-center text-faint text-sm">
-              {t('logs.noLogs')}
-            </div>
+            <Empty message={t('logs.noLogs')} class="h-full flex items-center justify-center" />
           }
         >
           <Show when={filteredLogs().length > RENDER_LIMIT}>
-            <div class="text-center py-1 text-[11px] text-faint border-b border-subtle/30 select-none">
+            <div class="text-center py-2 text-xs text-faint border-b border-subtle/30 select-none">
               {t('logs.renderedLimit', { limit: RENDER_LIMIT, total: filteredLogs().length })}
             </div>
           </Show>
           <For each={displayedLogs()}>
             {log => (
-              <div class="flex items-start gap-2.5 leading-relaxed hover:bg-hover/50 px-1.5 py-0.5 rounded transition-colors break-all">
+              <div class="grid grid-cols-[auto_1fr] sm:grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 leading-relaxed hover:bg-hover/50 px-1.5 py-1 rounded transition-colors wrap-anywhere">
                 <span class="text-faint shrink-0 select-none">{formatTime(log.time)}</span>
-                <span class={`px-1.5 py-0.5 rounded text-[10px] shrink-0 uppercase select-none ${levelColor(log.level)}`}>
+                <span class={`px-1.5 py-0.5 rounded text-xs shrink-0 uppercase select-none ${levelColor(log.level)}`}>
                   [{log.level}]
                 </span>
-                <div class="flex-1 min-w-0">
+                <div class="min-w-0 col-span-2 sm:col-span-1">
                   <span class="text-foreground">{log.msg}</span>
                   <Show when={log.attrs && Object.keys(log.attrs).length > 0}>
                     <span class="text-muted ml-2">

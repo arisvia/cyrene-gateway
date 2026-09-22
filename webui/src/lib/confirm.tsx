@@ -53,6 +53,7 @@ export function alert(message: string, title?: string): Promise<boolean> {
 export const ConfirmDialogHost: Component = () => {
   const s = () => state()
   const { t } = useI18n()
+  const title = () => s().title || (s().variant === 'danger' ? t('confirm.titleDanger') : s().variant === 'warning' ? t('confirm.titleWarning') : t('confirm.titleInfo'))
   let prevFocus: HTMLElement | null = null
   let confirmBtnRef: HTMLButtonElement | undefined
   let cancelBtnRef: HTMLButtonElement | undefined
@@ -70,6 +71,9 @@ export const ConfirmDialogHost: Component = () => {
   createEffect(() => {
     if (s().isOpen) {
       prevFocus = document.activeElement as HTMLElement | null
+      const previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      onCleanup(() => { document.body.style.overflow = previousOverflow })
       queueMicrotask(() => {
         if (!s().isAlert && (s().variant === 'danger' || s().variant === 'warning')) {
           cancelBtnRef?.focus()
@@ -117,8 +121,9 @@ export const ConfirmDialogHost: Component = () => {
         <div class="fixed inset-0 z-120 flex items-center justify-center p-4">
         <button
           type="button"
+          tabIndex={-1}
           aria-label={t('confirm.closeOverlay')}
-          class="absolute inset-0 w-full h-full bg-black/60 backdrop-blur-md animate-fade-in border-none cursor-default"
+          class="absolute inset-0 w-full h-full bg-overlay backdrop-blur-sm animate-fade-in border-none cursor-default"
           onClick={() => handleClose(false)}
         />
 
@@ -126,9 +131,10 @@ export const ConfirmDialogHost: Component = () => {
         <div
           role="alertdialog"
           aria-modal="true"
-          class="relative w-full max-w-md rounded-2xl glass-float p-6 animate-scale-in select-none"
+          aria-label={title()}
+          class="relative w-full max-w-md max-h-[calc(100dvh-2rem)] rounded-card glass-float p-5 sm:p-6 flex flex-col animate-scale-in select-none"
         >
-          <div class="flex items-start gap-4">
+          <div class="flex items-start gap-3 sm:gap-4 min-h-0 overflow-y-auto px-1 -mx-1">
             <div
               class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                 s().variant === 'danger'
@@ -150,16 +156,16 @@ export const ConfirmDialogHost: Component = () => {
             </div>
 
             <div class="flex-1 min-w-0">
-              <h3 class="text-base font-semibold text-foreground leading-snug">
-                {s().title || (s().variant === 'danger' ? t('confirm.titleDanger') : s().variant === 'warning' ? t('confirm.titleWarning') : t('confirm.titleInfo'))}
+              <h3 class="text-base font-semibold text-text leading-snug break-words [overflow-wrap:anywhere]">
+                {title()}
               </h3>
-              <p class="text-sm text-muted mt-1.5 leading-relaxed whitespace-pre-wrap wrap-break-word">
+              <p class="text-sm text-muted mt-1.5 leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                 {s().message}
               </p>
             </div>
           </div>
 
-          <div class="mt-6 flex items-center justify-end gap-2.5">
+          <div class="mt-6 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
             <Show when={!s().isAlert}>
               <Button
                 ref={cancelBtnRef}

@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Empty, Button, Input, Textarea, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, Skeleton, LoadState, confirm } from '@/components/ui'
+import { Card, Badge, Empty, PageHeader, Button, Input, Textarea, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, Skeleton, LoadState, confirm } from '@/components/ui'
 import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -95,53 +95,30 @@ const Home: Component = () => {
 
   return (
     <div class="space-y-6 stagger">
-      {/* 2026 现代沉浸式网关英雄卡片 (Hero Gateway Status Banner) */}
-      <Card class="p-6 relative overflow-hidden group">
-        <div class="absolute -right-12 -bottom-12 w-64 h-64 bg-accent/10 rounded-full blur-3xl pointer-events-none group-hover:bg-accent/15 transition-all duration-700" />
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div class="flex items-center gap-4">
-            <div class="relative flex items-center justify-center">
-              <span class="absolute inline-flex h-8 w-8 rounded-full bg-success/25 animate-ping duration-1000" />
-              <div class="relative h-10 w-10 rounded-2xl bg-success/15 border border-success/30 flex items-center justify-center text-success shadow-sm shadow-success/20">
-                <span class="w-3.5 h-3.5 rounded-full bg-success animate-pulse" />
-              </div>
+      <PageHeader
+        title={t('nav.home')}
+        subtitle={t('home.heroSubtitle')}
+        badge={<Badge tone="green">{t('nav.running')}</Badge>}
+        actions={
+          <div class="flex items-center gap-6">
+            <div class="flex items-baseline gap-2">
+              <span class="text-xl font-semibold tabular-nums">{store.activeConnections()}</span>
+              <span class="text-xs text-muted">{t('home.activeChannels')}</span>
             </div>
-            <div>
-              <div class="flex items-center gap-2.5">
-                <h1 class="text-xl font-bold tracking-tight text-foreground">Cyrene Gateway</h1>
-                <Badge tone="green" class="font-medium">{t('nav.running')}</Badge>
-              </div>
-              <p class="text-xs text-faint mt-1 flex items-center gap-3">
-                <span>{t('home.heroSubtitle')}</span>
-              </p>
+            <div class="flex items-baseline gap-2">
+              <span class="text-xl font-semibold tabular-nums">{store.combos().length}</span>
+              <span class="text-xs text-muted">{t('home.fallbackCombos')}</span>
             </div>
           </div>
-
-          <div class="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-            <div class="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card/60 border border-subtle backdrop-blur-md">
-              <div class="text-right">
-                <div class="text-base font-bold text-foreground leading-none">{store.activeConnections()}</div>
-                <div class="text-[11px] text-faint mt-0.5">{t('home.activeChannels')}</div>
-              </div>
-              <div class="w-2 h-2 rounded-full bg-accent animate-pulse" />
-            </div>
-            <div class="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-card/60 border border-subtle backdrop-blur-md">
-              <div class="text-right">
-                <div class="text-base font-bold text-foreground leading-none">{store.combos().length}</div>
-                <div class="text-[11px] text-faint mt-0.5">{t('home.fallbackCombos')}</div>
-              </div>
-              <div class="w-2 h-2 rounded-full bg-accent-2 animate-pulse" />
-            </div>
-          </div>
-        </div>
-      </Card>
+        }
+      />
 
       {/* 核心功能区：API 密钥管理 + 端点与快速接入 */}
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* 网关统一端点与快捷客户端配置 (占据 5 列) */}
         <div class="lg:col-span-5 space-y-6">
           {/* 端点卡片 */}
-          <Card class="p-6 space-y-4">
+          <Card class="p-4 sm:p-6 space-y-4">
             <div class="flex items-center justify-between">
               <h2 class="text-base font-semibold text-foreground flex items-center gap-2">
                 <IconLink size={16} class="text-accent" />
@@ -204,7 +181,7 @@ const Home: Component = () => {
 
         {/* API 密钥一等公民控制区 (占据 7 列) */}
         <div class="lg:col-span-7 space-y-6">
-          <Card class="p-6 space-y-5">
+          <Card class="p-4 sm:p-6 space-y-5">
             <div class="flex items-center justify-between">
               <div>
                 <h2 class="text-base font-semibold text-foreground flex items-center gap-2">
@@ -219,7 +196,7 @@ const Home: Component = () => {
             </div>
 
             {/* 创建新 Key 输入框 */}
-            <div class="flex gap-2 p-1.5 rounded-2xl bg-card/50 border border-subtle transition-colors">
+            <div class="flex flex-col sm:flex-row gap-2">
               <Input
                   value={keyName()}
                   placeholder={t('home.createKeyPlaceholder')}
@@ -239,7 +216,8 @@ const Home: Component = () => {
                     }
                   }}
                   disabled={creatingKey()}
-                  class="border-0! bg-transparent! shadow-none! focus:ring-0! text-sm"
+                  class="min-w-0 sm:flex-1"
+                  ariaLabel={t('home.keyName')}
               />
               <Button
                   variant="primary"
@@ -284,9 +262,7 @@ const Home: Component = () => {
               <Show
                   when={store.apiKeys().length > 0}
                   fallback={
-                    <div class="py-8 text-center border border-dashed border-subtle rounded-2xl">
-                      <p class="text-xs text-faint">{t('home.noKeys')}</p>
-                    </div>
+                    <Empty message={t('home.noKeys')} class="py-10" />
                   }
               >
                 <For each={store.apiKeys()}>
@@ -297,21 +273,21 @@ const Home: Component = () => {
                           <div class="min-w-0 flex-1 space-y-1">
                             <div class="flex items-center gap-2 flex-wrap">
                               <span class="text-sm font-medium text-foreground truncate">{k.name || t('home.unnamedKey')}</span>
-                              <Badge tone="gray" class="text-[10px] scale-95">Bearer</Badge>
+                              <Badge tone="gray" class="text-xs">Bearer</Badge>
                               <Show
                                 when={k.allowedModels && k.allowedModels.length > 0}
-                                fallback={<Badge tone="gray" class="text-[10px]">{t('home.allModels')}</Badge>}
+                                fallback={<Badge tone="gray" class="text-xs">{t('home.allModels')}</Badge>}
                               >
-                                <Badge tone="blue" class="text-[10px]">
+                                <Badge tone="blue" class="text-xs">
                                   {t('home.modelsCount', { count: k.allowedModels?.length ?? 0 })}
                                 </Badge>
                               </Show>
                               <Show when={k.rpm && k.rpm > 0}>
-                                <Badge tone="amber" class="text-[10px]">{k.rpm} RPM</Badge>
+                                <Badge tone="amber" class="text-xs">{k.rpm} RPM</Badge>
                               </Show>
                               <Show when={k.systemPrompt}>
                                 <span title={k.systemPrompt}>
-                                  <Badge tone="blue" class="text-[10px]">{t('home.injectedContext')}</Badge>
+                                  <Badge tone="blue" class="text-xs">{t('home.injectedContext')}</Badge>
                                 </span>
                               </Show>
                             </div>

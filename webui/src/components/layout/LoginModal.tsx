@@ -9,7 +9,11 @@ export const LoginModal: Component = () => {
   const { t } = useI18n()
   const [password, setPassword] = createSignal('')
   const [loading, setLoading] = createSignal(false)
-  const [error, setError] = createSignal('')
+  const [error, setError] = createSignal<'' | 'login.passwordMinLength' | 'login.tooManyAttempts' | 'login.invalidPassword'>('')
+  const errorMessage = () => {
+    const key = error()
+    return key ? t(key) : ''
+  }
 
   const isSetup = () => !store.hasPassword()
 
@@ -19,7 +23,7 @@ export const LoginModal: Component = () => {
     if (!val || loading()) return
 
     if (isSetup() && val.length < 8) {
-      setError(t('login.passwordMinLength'))
+      setError('login.passwordMinLength')
       return
     }
 
@@ -35,15 +39,15 @@ export const LoginModal: Component = () => {
     } catch (err: unknown) {
       if (err instanceof Error) {
         if (err.message.includes('429') || err.message.includes('too many failed attempts')) {
-          setError(t('login.tooManyAttempts'))
+          setError('login.tooManyAttempts')
         } else if (err.message.includes('password not initialized')) {
           // 密码未初始化，自动切换为初始化引导
           setError('')
         } else {
-          setError(t('login.invalidPassword'))
+          setError('login.invalidPassword')
         }
       } else {
-        setError(t('login.invalidPassword'))
+        setError('login.invalidPassword')
       }
     } finally {
       setLoading(false)
@@ -51,7 +55,7 @@ export const LoginModal: Component = () => {
   }
 
   return (
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg/80 backdrop-blur-md animate-fade-in">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm animate-fade-in">
       {/* 顶部工具栏：主题与语言切换 */}
       <div class="absolute top-4 right-4 flex items-center gap-2 z-10">
         <LanguageToggle />
@@ -59,23 +63,23 @@ export const LoginModal: Component = () => {
       </div>
 
       {/* 登录卡片 */}
-      <div class="relative w-full max-w-md rounded-card border border-glass-border glass-panel shadow-glass-hover p-8 sm:p-10 flex flex-col items-center text-center animate-slide-up">
+      <div class="relative w-full max-w-md max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-card glass-float p-6 sm:p-8 flex flex-col items-center text-center animate-slide-up">
         {/* 品牌标识 */}
-        <div class="w-14 h-14 rounded-2xl border border-glass-border glass-sticky shadow-glass flex items-center justify-center mb-5 shrink-0">
+        <div class="w-14 h-14 flex items-center justify-center mb-5 shrink-0">
           <CyreneLogo class="w-8 h-8 text-accent" />
         </div>
 
-        <h1 class="text-xl font-bold text-foreground tracking-tight mb-2">
+        <h1 class="text-xl font-bold text-text tracking-tight mb-2">
           {isSetup() ? t('login.setupTitle') : t('login.title')}
         </h1>
-        <p class="text-xs text-muted leading-relaxed mb-6 max-w-xs">
+        <p class="text-sm text-muted leading-relaxed mb-6 max-w-xs">
           {isSetup() ? t('login.setupSubtitle') : t('login.subtitle')}
         </p>
 
         {/* 错误提示 */}
         <Show when={error()}>
           <Alert variant="danger" class="w-full mb-4 animate-shake text-left">
-            {error()}
+            {errorMessage()}
           </Alert>
         </Show>
 
@@ -85,6 +89,7 @@ export const LoginModal: Component = () => {
             <Input
               type="password"
               class="w-full h-11 pr-10"
+              ariaLabel={isSetup() ? t('login.setupPlaceholder') : t('login.passwordPlaceholder')}
               placeholder={isSetup() ? t('login.setupPlaceholder') : t('login.passwordPlaceholder')}
               value={password()}
               onInput={setPassword}
@@ -100,7 +105,7 @@ export const LoginModal: Component = () => {
             variant="primary"
             loading={loading()}
             disabled={!password().trim()}
-            class="w-full h-11 justify-center text-sm shadow-lg shadow-accent/20"
+            class="w-full h-11 justify-center text-sm"
           >
             {loading() ? t('login.loggingIn') : isSetup() ? t('login.setupSubmit') : t('login.submit')}
           </Button>

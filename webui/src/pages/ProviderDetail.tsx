@@ -6,7 +6,7 @@ import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
+import { Card, Badge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -910,7 +910,7 @@ const ProviderDetail: Component = () => {
         {c => (
           <PageHeader
             title={
-              <div class="flex items-center gap-2.5">
+              <div class="flex flex-wrap items-center gap-2.5 min-w-0 wrap-anywhere">
                 <A href="/providers" class="text-xs text-faint hover:text-accent inline-flex items-center gap-1 font-normal mr-1">
                   ← {t('providerDetail.back')}
                 </A>
@@ -928,16 +928,16 @@ const ProviderDetail: Component = () => {
               <div class="flex items-center gap-2 flex-wrap">
                 <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? t('common.enabled') : t('common.disabled')}</Badge>
                 <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
-                <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10">
+                <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-surface-inset border border-subtle max-w-full wrap-anywhere">
                   {c().provider}
                 </span>
                 <span class="text-xs text-faint">{t('providerDetail.accountCount', { count: accounts().length })}</span>
               </div>
             }
             actions={
-              <div class="flex items-center gap-3">
+              <div class="flex flex-wrap items-center gap-3 min-w-0">
                 <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>{t('providerDetail.testConnection')}</Button>
-                <Toggle checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
+                <Toggle ariaLabel={`${t('common.enabled')}: ${providerDisplayName()}`} checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
               </div>
             }
           >
@@ -956,7 +956,7 @@ const ProviderDetail: Component = () => {
               {/* 仅在 models 视图下激活的快捷操作工具组 */}
               <Show when={tab() === 'models'}>
                 <div class="animate-slide-up flex flex-wrap items-center gap-2 text-xs">
-                  <div class="flex items-center gap-2">
+                  <div class="flex flex-wrap items-center gap-2 min-w-0">
                     <Input
                       class="w-40 sm:w-52!"
                       size="sm"
@@ -982,7 +982,7 @@ const ProviderDetail: Component = () => {
                         enabledModelsCount() === allDisplayModels().length
                           ? 'bg-success/10 text-success border-success/30'
                           : (enabledModelsCount() === 0
-                              ? 'bg-black/5 dark:bg-white/5 text-faint border-subtle'
+                              ? 'bg-surface-inset text-faint border-subtle'
                               : 'bg-accent/10 text-accent border-accent/30')
                       }`}
                       title={t('providerDetail.modelsCountSummary', { total: allDisplayModels().length, enabled: enabledModelsCount() })}
@@ -996,8 +996,8 @@ const ProviderDetail: Component = () => {
                     </span>
 
                     {/* 状态联动批量启停控制器（带实时数字反馈与状态色） */}
-                    <div class="inline-flex rounded-lg p-0.5 bg-black/5 dark:bg-white/8 border border-subtle text-xs select-none">
-                      <button
+                    <div class="inline-flex flex-wrap rounded-lg p-0.5 bg-surface-inset border border-subtle text-xs select-none">
+                      <Button size="sm" variant="ghost"
                         type="button"
                         class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
                           disabledModelsCount() === 0 || batchBusy()
@@ -1013,8 +1013,8 @@ const ProviderDetail: Component = () => {
                         <Show when={disabledModelsCount() > 0}>
                           <span class="font-mono text-[10px] opacity-75">({disabledModelsCount()})</span>
                         </Show>
-                      </button>
-                      <button
+                      </Button>
+                      <Button size="sm" variant="ghost"
                         type="button"
                         class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
                           enabledModelsCount() === 0 || batchBusy()
@@ -1030,7 +1030,7 @@ const ProviderDetail: Component = () => {
                         <Show when={enabledModelsCount() > 0 && disabledModelsCount() > 0}>
                           <span class="font-mono text-[10px] opacity-75">({enabledModelsCount()})</span>
                         </Show>
-                      </button>
+                      </Button>
                     </div>
                     <Button
                       size="sm"
@@ -1105,15 +1105,15 @@ const ProviderDetail: Component = () => {
                   <Match when={currentTab === 'overview'}>
                     <div class="grid lg:grid-cols-12 gap-5 items-start">
                 {/* 左侧 (5 cols)：多账号与调度看板 (带独立滚动区，不会被挤出视野) */}
-                <div class="lg:col-span-5 space-y-3">
+                <div class="lg:col-span-5 min-w-0 space-y-3">
                   <Card class="p-4 space-y-3">
-                    <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-subtle">
+                    <div class="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-subtle">
                       <div>
-                        <h3 class="text-sm font-semibold flex items-center gap-2">
+                        <h3 class="text-sm font-semibold flex flex-wrap items-center gap-2">
                           <span>{t('providerDetail.accountsAndPool')}</span>
                           <Badge tone="blue">{t('providerDetail.accountCount', { count: accounts().length })}</Badge>
                         </h3>
-                        <p class="text-[11px] text-faint mt-0.5">
+                        <p class="text-xs text-faint mt-0.5 leading-relaxed">
                           {t('providerDetail.schedulingHint')}
                         </p>
                       </div>
@@ -1136,7 +1136,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 账号列表滚动容器 */}
-                    <div class="max-h-[360px] lg:max-h-[calc(100vh-340px)] overflow-y-auto px-1 space-y-2">
+                    <div class="max-h-[360px] lg:max-h-[max(12rem,calc(100dvh-340px))] overflow-y-auto px-1 space-y-2">
                       <For each={accounts()}>
                         {(acc, idx) => {
                           const isCurrent = () => acc.id === c().id
@@ -1166,18 +1166,18 @@ const ProviderDetail: Component = () => {
                                   : 'border-subtle/40 bg-bg-elevated/20 opacity-60 hover:opacity-100'
                               }`}
                             >
-                              <div class="flex items-center justify-between gap-2">
-                                <div class="flex items-center gap-2 min-w-0">
+                              <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex flex-wrap items-center gap-2 min-w-0">
                                   <span class={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
-                                    isCurrent() ? 'bg-accent text-white border-accent' : 'bg-bg text-faint border-subtle'
+                                    isCurrent() ? 'bg-accent text-on-accent border-accent' : 'bg-bg text-faint border-subtle'
                                   }`}>
                                     #{idx() + 1}
                                   </span>
-                                  <span class="text-xs font-semibold text-foreground truncate">
+                                  <span class="text-xs font-semibold text-foreground min-w-0 wrap-anywhere">
                                     {getAccountDisplayName(acc, idx())}
                                   </span>
                                   <Show when={acc.email && acc.email !== getAccountDisplayName(acc, idx())}>
-                                    <span class="text-[10px] text-faint truncate font-mono">
+                                    <span class="text-xs text-faint min-w-0 wrap-anywhere font-mono">
                                       ({acc.email})
                                     </span>
                                   </Show>
@@ -1190,6 +1190,7 @@ const ProviderDetail: Component = () => {
 
                                 <div class="flex items-center gap-1.5 shrink-0">
                                   <Toggle
+                                    ariaLabel={`${t('common.enabled')}: ${getAccountDisplayName(acc, idx())}`}
                                     checked={acc.isActive}
                                     onChange={async () => {
                                       await store.toggleProvider(acc)
@@ -1198,9 +1199,9 @@ const ProviderDetail: Component = () => {
                                     }}
                                   />
                                   <Show when={accounts().length > 1}>
-                                    <button
+                                    <IconButton size="sm" variant="ghost"
                                       type="button"
-                                      class="text-muted hover:text-danger text-xs p-1 rounded hover:bg-hover transition-colors"
+                                      class="text-muted hover:text-danger"
                                       title={t('providerDetail.deleteAccountTitle2')}
                                       onClick={async (e) => {
                                         e.stopPropagation()
@@ -1224,7 +1225,7 @@ const ProviderDetail: Component = () => {
                                       }}
                                     >
                                       <IconClose size={12} />
-                                    </button>
+                                    </IconButton>
                                   </Show>
                                 </div>
                               </div>
@@ -1236,7 +1237,7 @@ const ProviderDetail: Component = () => {
                                 <span class={`inline-flex items-center h-5 gap-1.5 text-[10px] px-2 rounded-full border font-mono ${
                                   idx() === 0
                                     ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
-                                    : 'bg-black/6 dark:bg-white/8 border-black/12 dark:border-white/15 text-muted'
+                                    : 'bg-control border-subtle text-muted'
                                 }`}>
                                   <span class={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
                                   <span class="leading-none">{t('providerDetail.priorityValue', { value: acc.priority })}</span>
@@ -1258,7 +1259,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 容灾与 Fallback 调度说明 */}
-                    <div class="p-2.5 rounded-lg bg-black/4 dark:bg-white/6 border border-black/10 dark:border-white/12 text-[11px] text-faint leading-relaxed flex items-start gap-1.5">
+                    <div class="p-2.5 rounded-lg bg-surface-inset text-xs text-faint leading-relaxed flex items-start gap-1.5">
                       <IconBulb size={14} class="text-accent shrink-0 mt-0.5" />
                       <div><span class="text-foreground font-medium">{t('providerDetail.dispatchMechanismTitle')}</span>{t('providerDetail.dispatchMechanismDesc')}</div>
                     </div>
@@ -1266,15 +1267,15 @@ const ProviderDetail: Component = () => {
                 </div>
 
                 {/* 右侧 (7 cols)：当前正在编辑的账号详情与端点配置 (高度受控，内部滚动，底部按钮绝对吸底可见) */}
-                <div class="lg:col-span-7">
-                  <Card class="p-5 flex flex-col max-h-[calc(100vh-220px)] min-h-[480px]">
-                    <div class="flex items-center justify-between pb-3 border-b border-subtle shrink-0">
-                      <div>
-                        <div class="text-sm font-semibold flex items-center gap-2">
-                          <span>{t('providerDetail.editAccountWith', { name: getAccountDisplayName(c()) })}</span>
+                <div class="lg:col-span-7 min-w-0">
+                  <Card class="p-4 sm:p-5 flex flex-col min-w-0 lg:max-h-[max(30rem,calc(100dvh-220px))]">
+                    <div class="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-subtle shrink-0">
+                      <div class="min-w-0 flex-1 basis-full sm:basis-64">
+                        <div class="text-sm font-semibold flex flex-wrap items-center gap-2 wrap-anywhere">
+                          <span class="min-w-0">{t('providerDetail.editAccountWith', { name: getAccountDisplayName(c()) })}</span>
                           <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
                         </div>
-                        <div class="text-xs text-faint mt-0.5 font-mono flex items-center gap-2">
+                        <div class="text-xs text-faint mt-1 font-mono flex flex-wrap items-center gap-x-2 gap-y-1 wrap-anywhere">
                           <span>{t('providerDetail.nodeId', { id: c().id })}</span>
                           <Show when={c().email && c().email !== getAccountDisplayName(c())}>
                             <span>{t('providerDetail.authEmail', { email: c().email || '' })}</span>
@@ -1286,7 +1287,7 @@ const ProviderDetail: Component = () => {
                           href={regInfo()!.apiKeyUrl!}
                           target="_blank"
                           rel="noreferrer"
-                          class="text-xs text-accent hover:underline inline-flex items-center gap-1"
+                          class="text-xs text-accent hover:underline inline-flex items-center gap-1 max-w-full wrap-anywhere"
                         >
                           {t('providerDetail.getOfficialKey')}
                         </a>
@@ -1294,7 +1295,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 表单内容滚动区 */}
-                    <div class="flex-1 overflow-y-auto px-1 py-3 space-y-4">
+                    <div class="min-w-0 lg:flex-1 lg:min-h-0 lg:overflow-y-auto px-1 py-3 space-y-4">
                       <Field label={t('providerDetail.accountNameLabel2')} hint={t('providerDetail.accountNameHint2')}>
                         <Input
                           value={name()}
@@ -1379,14 +1380,14 @@ const ProviderDetail: Component = () => {
 
                       {/* 高级协议与客户端指纹覆盖 */}
                       <div class="pt-2 border-t border-subtle">
-                        <button
+                        <Button size="sm" variant="ghost"
                           type="button"
-                          class="text-xs text-muted hover:text-foreground flex items-center gap-1.5 py-1 font-medium transition-colors"
+                          class="text-xs text-muted hover:text-foreground gap-1.5 py-2 font-medium max-w-full min-w-0! h-auto! min-h-8 whitespace-normal! text-left"
                           onClick={() => setShowAdvanced(!showAdvanced())}
                         >
                           <span>{showAdvanced() ? '▼' : '▶'}</span>
                           <span>{t('providerDetail.customHeadersOverride')}</span>
-                        </button>
+                        </Button>
 
                         <Show when={showAdvanced()}>
                           <div class="mt-3 p-3.5 rounded-control bg-bg-elevated/50 border border-subtle/70 space-y-3 text-xs">
@@ -1432,7 +1433,7 @@ const ProviderDetail: Component = () => {
                     </div>
 
                     {/* 固定吸底的操作栏 */}
-                    <div class="flex items-center justify-between pt-3 border-t border-subtle shrink-0">
+                    <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-subtle shrink-0">
                       <Button
                         variant="danger"
                         size="sm"
@@ -1518,23 +1519,24 @@ const ProviderDetail: Component = () => {
                         }>
                           <For each={modelsData().customModels ?? models()?.customModels ?? []}>
                             {m => (
-                              <span class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-control border text-xs transition-colors ${
-                                m.enabled !== false ? 'bg-black/6 dark:bg-white/10 border-black/12 dark:border-white/15 text-text' : 'bg-bg-elevated/40 border-black/6 dark:border-white/8 text-faint opacity-60'
+                              <span class={`inline-flex flex-wrap max-w-full min-w-0 items-center gap-2 px-2.5 py-1 rounded-control border text-xs wrap-anywhere transition-colors ${
+                                m.enabled !== false ? 'bg-control border-subtle text-foreground' : 'bg-surface-inset border-subtle/50 text-faint opacity-60'
                               }`}>
                                 <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.name || m.id}</span>
-                                <button
+                                <IconButton size="sm" variant="ghost"
                                   type="button"
-                                  class="text-faint hover:text-accent text-xs"
+                                  class="text-faint hover:text-accent"
                                   title={t('providerDetail.editModelMetaTitle')}
                                   onClick={() => startEditModel(m)}
                                 >
                                   <IconEdit size={12} />
-                                </button>
+                                </IconButton>
                                 <Toggle
+                                  ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
                                   checked={m.enabled !== false}
                                   onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
                                 />
-                                <button class="text-faint hover:text-danger ml-0.5 cursor-pointer" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></button>
+                                <IconButton size="sm" variant="ghost" class="text-faint hover:text-danger ml-0.5" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></IconButton>
                               </span>
                             )}
                           </For>
@@ -1546,7 +1548,7 @@ const ProviderDetail: Component = () => {
 
                 <Card class="p-4 sm:p-4.5 space-y-3">
                   <div class="flex items-center justify-between gap-2 flex-wrap text-xs text-faint">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
                       <h3 class="text-sm font-semibold text-foreground">{t('providerDetail.availableModels')}</h3>
                       <span>
                         {t('providerDetail.modelsCountSummary', {
@@ -1585,7 +1587,7 @@ const ProviderDetail: Component = () => {
                                   : 'border-subtle/30 bg-bg-elevated/25 opacity-55 hover:opacity-80'
                               }`}
                             >
-                              <div class="flex items-start justify-between gap-2">
+                              <div class="flex flex-wrap items-start justify-between gap-2">
                                 <div class="min-w-0 flex-1 pr-1">
                                   <div class="flex items-center gap-1.5 flex-wrap">
                                     <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
@@ -1597,7 +1599,7 @@ const ProviderDetail: Component = () => {
                                       </span>
                                     </Show>
                                     <Show when={m.enabled === false}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/8 dark:bg-white/10 text-muted border border-black/12 dark:border-white/15 shrink-0">
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-control text-muted border border-subtle shrink-0">
                                         {t('providerDetail.chipDisabled')}
                                       </span>
                                     </Show>
@@ -1610,15 +1612,15 @@ const ProviderDetail: Component = () => {
                                   <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
                                 </div>
                                 <div class="shrink-0 flex items-center gap-1">
-                                  <button
+                                  <IconButton size="sm" variant="ghost"
                                     type="button"
-                                    class={`p-1 text-xs rounded transition-colors ${testingModels()[m.id || m.name || ''] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
+                                    class={`transition-colors ${testingModels()[m.id || m.name || ''] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
                                     title={t('providerDetail.testSingleTitle')}
                                     disabled={testingModels()[m.id || m.name || '']}
                                     onClick={() => testSingleModel(m.id || m.name || '')}
                                   >
                                     <IconZap size={12} />
-                                  </button>
+                                  </IconButton>
                                   <Show
                                     when={m.canEdit !== false}
                                     fallback={
@@ -1630,17 +1632,18 @@ const ProviderDetail: Component = () => {
                                       </span>
                                     }
                                   >
-                                    <button
+                                    <IconButton size="sm" variant="ghost"
                                       type="button"
-                                      class="text-faint hover:text-accent p-1 text-xs rounded transition-colors"
+                                      class="text-faint hover:text-accent"
                                       title={t('providerDetail.editModelMetaLongTitle')}
                                       onClick={() => startEditModel(m)}
                                     >
                                       <IconEdit size={12} />
-                                    </button>
+                                    </IconButton>
                                   </Show>
                                   <div title={m.enabled !== false ? t('providerDetail.toggleOffHint') : t('providerDetail.toggleOnHint')}>
                                     <Toggle
+                                      ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
                                       checked={m.enabled !== false}
                                       onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
                                     />
@@ -1699,10 +1702,10 @@ const ProviderDetail: Component = () => {
             <Match when={currentTab === 'chat'}>
               <div class="space-y-4">
                 <Card class="p-4 flex flex-wrap items-center justify-between gap-3">
-                  <div class="flex items-center gap-3 flex-1 min-w-[240px]">
+                  <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 basis-full lg:basis-64">
                     <span class="text-xs text-faint shrink-0">{t('providerDetail.chatModel')}</span>
                     <Select
-                      class="flex-1 min-w-[200px]"
+                      class="flex-1 min-w-0 w-full"
                       value={selectedModel()}
                       onChange={setSelectedModel}
                       options={[
@@ -1714,9 +1717,9 @@ const ProviderDetail: Component = () => {
                       ]}
                     />
                   </div>
-                  <div class="flex items-center gap-3">
+                  <div class="flex flex-wrap items-center gap-3 min-w-0">
                     <Show when={selectedModel()}>
-                      <Badge tone="blue">{selectedModel()}</Badge>
+                      <Badge tone="blue" class="max-w-full min-w-0 whitespace-normal! wrap-anywhere">{selectedModel()}</Badge>
                     </Show>
                     <A
                       href="/playground"
@@ -1733,7 +1736,7 @@ const ProviderDetail: Component = () => {
                 <Card class="p-0 overflow-hidden">
                   <div
                     ref={chatBoxRef}
-                    class="p-5 h-[420px] max-h-[calc(100vh-360px)] overflow-y-auto space-y-3 scroll-smooth"
+                    class="p-5 h-[420px] max-h-[max(16rem,calc(100dvh-360px))] overflow-y-auto space-y-3 scroll-smooth"
                   >
                   <Show
                     when={chatHistory().length > 0}
@@ -1742,7 +1745,7 @@ const ProviderDetail: Component = () => {
                     <For each={chatHistory()}>
                       {msg => (
                         <div class={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                          <div class={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed shadow-xs ${
+                          <div class={`min-w-0 max-w-full sm:max-w-[80%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap wrap-anywhere leading-relaxed shadow-xs ${
                             msg.role === 'user'
                               ? 'bg-accent text-on-accent'
                               : 'bg-hover text-foreground border border-subtle'
@@ -1750,7 +1753,7 @@ const ProviderDetail: Component = () => {
                             {msg.content}
                           </div>
                           <Show when={msg.role === 'assistant' && msg.servedModel}>
-                            <span class="mt-1 px-1.5 py-0.5 text-[10px] text-faint font-mono">
+                            <span class="mt-1 max-w-full px-1.5 py-0.5 text-xs text-faint font-mono wrap-anywhere">
                               {t('providerDetail.chatServedBy', { model: msg.servedModel! })}
                             </span>
                           </Show>
@@ -1832,7 +1835,7 @@ const ProviderDetail: Component = () => {
               />
             </Field>
           </div>
-          <div class="flex items-center justify-between pt-3 border-t border-subtle">
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-subtle">
             <div>
               <Show when={editingModel()?.hasOverride}>
                 <Button
@@ -1845,7 +1848,7 @@ const ProviderDetail: Component = () => {
                 </Button>
               </Show>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <Button size="sm" variant="secondary" onClick={() => setEditingModel(null)}>
                 {t('common.cancel')}
               </Button>
@@ -1909,7 +1912,7 @@ const ProviderDetail: Component = () => {
                       href={regInfo()!.apiKeyUrl!}
                       target="_blank"
                       rel="noreferrer"
-                      class="text-xs text-accent hover:underline inline-flex items-center gap-1"
+                      class="text-xs text-accent hover:underline inline-flex items-center gap-1 max-w-full wrap-anywhere"
                     >
                       {t('providerDetail.getKeyConsole')}
                     </a>
@@ -2088,9 +2091,9 @@ const ProviderDetail: Component = () => {
                           <span class="font-mono text-2xl sm:text-3xl font-bold text-accent tracking-widest select-all">
                             {flow().userCode}
                           </span>
-                          <button
+                          <IconButton size="sm" variant="ghost"
                             type="button"
-                            class="p-1.5 rounded hover:bg-accent/20 text-accent transition-colors cursor-pointer"
+                            class="hover:bg-accent/20 text-accent"
                             title={t('providerDetail.copyCodeTitle')}
                             onClick={async () => {
                               if (flow().userCode) {
@@ -2106,7 +2109,7 @@ const ProviderDetail: Component = () => {
                             }}
                           >
                             {copiedCode() ? <IconCheck size={14} class="text-success" /> : <IconClipboard size={14} />}
-                          </button>
+                          </IconButton>
                         </div>
                       </div>
                     </Show>

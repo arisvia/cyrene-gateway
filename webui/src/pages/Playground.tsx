@@ -5,6 +5,8 @@ import {
   Input,
   Textarea,
   Button,
+  IconButton,
+  Empty,
   Select,
   Toggle,
   Slider,
@@ -23,7 +25,6 @@ import {
   IconSquare,
   IconPlay,
   IconAlertCircle,
-  IconSparkles,
   IconClose,
   TabTransition,
 } from '@/components/ui'
@@ -1147,18 +1148,12 @@ main();
   }
 
   return (
-    <div class="flex flex-col h-[calc(100vh-140px)] min-h-[580px] max-w-7xl mx-auto gap-3 stagger">
+    <div class="flex flex-col h-auto min-h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-9rem)] lg:min-h-[36rem] min-w-0 max-w-7xl mx-auto gap-3 stagger">
       <PageHeader
         sticky={false}
-        class="shrink-0 py-2.5 px-4"
+        class="shrink-0 py-2.5"
         title={t('playground.title')}
         subtitle={t('playground.subtitle')}
-        badge={
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-accent/10 text-accent">
-            <IconSparkles size={13} />
-            {t('playground.realtimeArena')}
-          </span>
-        }
         actions={
           <div class="flex items-center gap-2 flex-wrap">
             <SegmentedControl
@@ -1215,21 +1210,21 @@ main();
       />
 
       {/* 主工作区布局：铺满视口剩余高度，左右列独立滚动与自适应 */}
-      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+      <div class="flex-1 min-h-0 min-w-0 grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
         {/* 对话互动主体区：纵向弹性布局，顶部选择器、中间可滚动对话流、底部固定输入框 */}
-        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} flex flex-col min-h-0 h-full gap-3 transition-all duration-300`}>
+        <div class={`${showParams() ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12'} flex flex-col min-h-0 min-w-0 h-full gap-3`}>
           {/* 顶部模型选择栏 */}
-          <Card class="p-2.5 shrink-0 shadow-xs">
+          <Card class="p-2.5 min-w-0 shrink-0">
             <TabTransition
               value={mode()}
               order={['single', 'compare']}
               views={{
                 single: () => (
-                  <div class="flex items-center gap-3 min-w-0 py-0.5">
-                    <span class="text-xs font-medium text-foreground shrink-0">
+                  <div class="flex flex-wrap items-center gap-2 sm:gap-3 min-w-0 py-0.5">
+                    <span class="text-xs font-medium text-text shrink-0">
                       {t('playground.selectEvalModel')}
                     </span>
-                    <div class="flex-1 min-w-0">
+                    <div class="flex-1 basis-48 min-w-0">
                       <Select
                         class="w-full"
                         value={modelA()}
@@ -1243,12 +1238,12 @@ main();
                   </div>
                 ),
                 compare: () => (
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 py-0.5">
-                    <div class="flex items-center gap-2 min-w-0">
-                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30 shrink-0">
+                  <div class="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-3 py-0.5">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
+                      <span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-info/10 text-info border border-info/25 shrink-0">
                         {t('playground.modelA')}
                       </span>
-                      <div class="flex-1 min-w-0">
+                      <div class="flex-1 basis-40 min-w-0">
                         <Select
                           class="w-full"
                           value={modelA()}
@@ -1257,11 +1252,11 @@ main();
                         />
                       </div>
                     </div>
-                    <div class="flex items-center gap-2 min-w-0">
-                      <span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30 shrink-0">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
+                      <span class="px-1.5 py-0.5 rounded text-xs font-semibold bg-accent-2/10 text-accent-2 border border-accent-2/25 shrink-0">
                         {t('playground.modelB')}
                       </span>
-                      <div class="flex-1 min-w-0">
+                      <div class="flex-1 basis-40 min-w-0">
                         <Select
                           class="w-full"
                           value={modelB()}
@@ -1280,43 +1275,41 @@ main();
           <div
             ref={chatContainerRef}
             onScroll={handleScroll}
-            class="flex-1 min-h-0 overflow-y-auto space-y-3.5 px-0.5 scroll-smooth flex flex-col"
+            class="flex-none h-[45dvh] min-h-64 max-h-128 lg:flex-1 lg:h-auto lg:min-h-0 lg:max-h-none min-w-0 overflow-y-auto space-y-3.5 px-1 scroll-smooth flex flex-col"
           >
             <Show
               when={turns().length > 0}
               fallback={
-                <div class="flex-1 w-full flex flex-col items-center justify-center p-6 text-center space-y-4 my-auto">
-                  <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto shadow-glass">
-                    <IconChat size={24} />
-                  </div>
-                  <div class="space-y-1">
-                    <h3 class="text-base font-semibold text-foreground">{t('playground.startInteraction')}</h3>
-                    <p class="text-xs text-faint max-w-md mx-auto">
-                      {mode() === 'compare' ? t('playground.arenaHint') : t('playground.startInteractionHint')}
-                    </p>
-                  </div>
-                  <div class="flex flex-wrap items-center justify-center gap-2 max-w-xl mx-auto">
-                    <For each={quickPrompts()}>
-                      {q => (
-                        <button
-                          type="button"
-                          class="px-3 py-1.5 text-xs text-muted hover:text-foreground bg-card hover:bg-hover border border-subtle rounded-lg transition-all text-left cursor-pointer"
-                          onClick={() => handleSend(q)}
-                        >
-                          {q}
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
+                <Empty
+                  class="flex-1 flex justify-center flex-col"
+                  icon={<IconChat size={24} />}
+                  title={t('playground.startInteraction')}
+                  description={mode() === 'compare' ? t('playground.arenaHint') : t('playground.startInteractionHint')}
+                  action={
+                    <div class="flex flex-wrap items-center justify-center gap-2 max-w-xl mx-auto">
+                      <For each={quickPrompts()}>
+                        {q => (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            class="h-auto min-h-8 min-w-0 max-w-full py-1.5 whitespace-normal break-words [overflow-wrap:anywhere] text-left"
+                            onClick={() => handleSend(q)}
+                          >
+                            {q}
+                          </Button>
+                        )}
+                      </For>
+                    </div>
+                  }
+                />
               }
             >
               <For each={turns()}>
                 {turn => (
-                  <div class="space-y-3">
+                  <div class="min-w-0 space-y-3">
                     {/* 用户提问气泡 */}
-                    <div class="flex justify-end">
-                      <div class="max-w-[85%] rounded-2xl bg-accent text-on-accent px-4 py-2.5 text-sm shadow-sm whitespace-pre-wrap leading-relaxed">
+                    <div class="flex min-w-0 justify-end">
+                      <div class="min-w-0 max-w-[85%] rounded-2xl bg-accent text-on-accent px-4 py-2.5 text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed">
                         {turn.user}
                       </div>
                     </div>
@@ -1326,52 +1319,52 @@ main();
                       when={Boolean(turn.b && turn.mode === 'compare')}
                       fallback={
                         /* 单模型回答卡片 */
-                        <Card class="p-4 space-y-3 border-t-2 border-t-accent/60 bg-card/60 backdrop-blur-md">
+                        <Card class="min-w-0 p-4 space-y-3 border-t-2 border-t-accent/60">
                           <div class="flex items-center justify-between border-b border-subtle/50 pb-2 flex-wrap gap-2 shrink-0">
-                            <div class="flex items-center gap-2 min-w-0">
+                            <div class="flex flex-wrap items-center gap-2 min-w-0">
                               <ProviderAvatar provider={getTurnProvider(turn.a)} size="sm" />
                               <div class="flex flex-col min-w-0 leading-tight">
-                                <span class="text-xs font-semibold text-foreground truncate max-w-[260px] sm:max-w-[340px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
+                                <span class="text-xs font-semibold text-text truncate max-w-[260px] sm:max-w-[340px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
                                   {getResponseModelLabel(turn.a)}
                                 </span>
                                 <div class="flex items-center gap-1.5 mt-0.5">
-                                  <span class="text-[10px] text-faint truncate max-w-[180px]">
+                                  <span class="text-xs text-faint truncate max-w-[180px]">
                                     {getResponseProvider(turn.a)}
                                   </span>
-                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-[9px] font-mono px-1 py-0 uppercase">
+                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
                                     {getProtocolLabel(turn.a.protocol)}
                                   </Badge>
                                 </div>
                               </div>
                               <Show when={turn.a.busy}>
-                                <span class="text-[11px] text-accent animate-pulse flex items-center gap-1 ml-1 shrink-0">
+                                <span class="text-xs text-info animate-pulse flex items-center gap-1 ml-1 shrink-0">
                                   <IconZap size={11} /> {t('playground.generating')}
                                 </span>
                               </Show>
                             </div>
 
                             {/* 性能指标栏 */}
-                            <div class="flex items-center gap-2 text-[11px] text-faint font-mono">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted font-mono min-w-0">
                               <Show when={turn.a.metrics?.ttftMs !== undefined}>
                                 <span title={t('playground.ttftTitle')}>
-                                  TTFT: <strong class="text-foreground">{turn.a.metrics!.ttftMs}ms</strong>
+                                  TTFT: <strong class="text-text">{turn.a.metrics!.ttftMs}ms</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.metrics?.totalMs !== undefined}>
                                 <span title={t('playground.totalMsTitle')}>
-                                  {t('playground.totalTime')}: <strong class="text-foreground">{(turn.a.metrics!.totalMs! / 1000).toFixed(2)}s</strong>
+                                  {t('playground.totalTime')}: <strong class="text-text">{(turn.a.metrics!.totalMs! / 1000).toFixed(2)}s</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.metrics?.speed && turn.a.metrics!.speed > 0}>
                                 <span title={t('playground.speedTitle')}>
-                                  {t('playground.speed')}: <strong class="text-foreground">{turn.a.metrics!.speed} t/s</strong>
+                                  {t('playground.speed')}: <strong class="text-text">{turn.a.metrics!.speed} t/s</strong>
                                 </span>
                               </Show>
                               <Show when={turn.a.rawRequest}>
-                                <button
-                                  type="button"
-                                  class="hover:text-accent p-1 transition-colors cursor-pointer"
+                                <IconButton
+                                  size="sm"
                                   title={t('playground.viewRawJson')}
+                                  aria-label={t('playground.viewRawJson')}
                                   onClick={() =>
                                     setRawJsonModal({
                                       title: `${getResponseModelLabel(turn.a)} (${turn.a.targetModel})`,
@@ -1380,17 +1373,17 @@ main();
                                     })
                                   }
                                 >
-                                  <IconCode size={13} />
-                                </button>
+                                  <IconCode size={14} />
+                                </IconButton>
                               </Show>
-                              <button
-                                type="button"
-                                class="hover:text-accent p-1 transition-colors cursor-pointer"
+                              <IconButton
+                                size="sm"
                                 title={t('playground.copyContent')}
+                                aria-label={t('playground.copyContent')}
                                 onClick={() => copyText(turn.a.content, t('playground.copyAssistant'))}
                               >
-                                <IconClipboard size={13} />
-                              </button>
+                                <IconClipboard size={14} />
+                              </IconButton>
                             </div>
                           </div>
 
@@ -1399,14 +1392,14 @@ main();
                             fallback={
                               <div class="p-3 bg-danger/10 border border-danger/25 rounded-xl text-danger text-xs flex items-start gap-2">
                                 <IconAlertCircle size={15} class="shrink-0 mt-0.5" />
-                                <div>
+                                <div class="min-w-0">
                                   <div class="font-semibold">{t('playground.callFailed')}</div>
-                                  <div class="font-mono mt-0.5">{turn.a.error}</div>
+                                  <div class="font-mono mt-0.5 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{turn.a.error}</div>
                                 </div>
                               </div>
                             }
                           >
-                            <div class="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed select-text font-sans">
+                            <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text font-sans">
                               {turn.a.content || (turn.a.busy ? '...' : t('playground.emptyResponse'))}
                             </div>
                           </Show>
@@ -1414,33 +1407,33 @@ main();
                       }
                     >
                       {/* 双模型并排横评展示 (Side-by-Side) */}
-                      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div class="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
                         {/* 左侧：模型 A */}
-                        <Card class="p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-blue-500/60 bg-card/60 backdrop-blur-md">
+                        <Card class="min-w-0 p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-info/60">
                           <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5 shrink-0">
-                            <div class="flex items-center gap-2 min-w-0">
-                              <span class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30">
+                            <div class="flex flex-wrap items-center gap-2 min-w-0">
+                              <span class="w-5 h-5 rounded-md text-xs font-bold flex items-center justify-center shrink-0 bg-info/10 text-info border border-info/25">
                                 A
                               </span>
                               <ProviderAvatar provider={getTurnProvider(turn.a)} size="sm" />
                               <div class="flex flex-col min-w-0 leading-tight">
-                                <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
+                                <span class="text-xs font-semibold text-text truncate max-w-[150px] sm:max-w-[180px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
                                   {getResponseModelLabel(turn.a)}
                                 </span>
                                 <div class="flex items-center gap-1 mt-0.5">
-                                  <span class="text-[10px] text-faint truncate max-w-[100px]">
+                                  <span class="text-xs text-faint truncate max-w-[100px]">
                                     {getResponseProvider(turn.a)}
                                   </span>
-                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-[8px] font-mono px-1 py-0 uppercase">
+                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
                                     {getProtocolLabel(turn.a.protocol)}
                                   </Badge>
                                 </div>
                               </div>
                               <Show when={turn.a.busy}>
-                                <span class="text-[10px] text-accent animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
+                                <span class="text-xs text-info animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
                               </Show>
                             </div>
-                            <div class="flex items-center gap-1 text-[10px] font-mono text-faint">
+                            <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted min-w-0">
                               <Show when={turn.a.metrics?.ttftMs !== undefined}>
                                 <span>{turn.a.metrics!.ttftMs}ms</span>
                               </Show>
@@ -1448,9 +1441,10 @@ main();
                                 <span class="text-accent">{turn.a.metrics!.speed} t/s</span>
                               </Show>
                               <Show when={turn.a.rawRequest}>
-                                <button
-                                  type="button"
-                                  class="hover:text-accent p-1 cursor-pointer"
+                                <IconButton
+                                  size="sm"
+                                  title={t('playground.viewRawJson')}
+                                  aria-label={t('playground.viewRawJson')}
                                   onClick={() =>
                                     setRawJsonModal({
                                       title: `${t('playground.modelA')} · ${getResponseModelLabel(turn.a)} (${turn.a.targetModel})`,
@@ -1459,59 +1453,60 @@ main();
                                     })
                                   }
                                 >
-                                  <IconCode size={12} />
-                                </button>
+                                  <IconCode size={14} />
+                                </IconButton>
                               </Show>
-                              <button
-                                type="button"
-                                class="hover:text-accent p-1 cursor-pointer"
+                              <IconButton
+                                size="sm"
+                                title={t('playground.copyModelA')}
+                                aria-label={t('playground.copyModelA')}
                                 onClick={() => copyText(turn.a.content, t('playground.copyModelA'))}
                               >
-                                <IconClipboard size={12} />
-                              </button>
+                                <IconClipboard size={14} />
+                              </IconButton>
                             </div>
                           </div>
 
                           <Show
                             when={!turn.a.error}
                             fallback={
-                              <div class="p-2 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono">
+                              <div class="min-w-0 p-3 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {turn.a.error}
                               </div>
                             }
                           >
-                            <div class="text-xs sm:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed select-text min-h-[60px]">
+                            <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text min-h-[60px]">
                               {turn.a.content || (turn.a.busy ? '...' : t('playground.emptyResponse'))}
                             </div>
                           </Show>
                         </Card>
 
                         {/* 右侧：模型 B */}
-                        <Card class="p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-purple-500/60 bg-card/60 backdrop-blur-md">
+                        <Card class="min-w-0 p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-accent-2/60">
                           <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5 shrink-0">
-                            <div class="flex items-center gap-2 min-w-0">
-                              <span class="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center shrink-0 bg-purple-500/15 text-purple-700 dark:text-purple-400 border border-purple-500/30">
+                            <div class="flex flex-wrap items-center gap-2 min-w-0">
+                              <span class="w-5 h-5 rounded-md text-xs font-bold flex items-center justify-center shrink-0 bg-accent-2/10 text-accent-2 border border-accent-2/25">
                                 B
                               </span>
                               <ProviderAvatar provider={getTurnProvider(turn.b)} size="sm" />
                               <div class="flex flex-col min-w-0 leading-tight">
-                                <span class="text-xs font-semibold text-foreground truncate max-w-[150px] sm:max-w-[180px]" title={turn.b?.servedModel ? `${turn.b?.targetModel} (served: ${turn.b?.servedModel})` : turn.b?.targetModel}>
+                                <span class="text-xs font-semibold text-text truncate max-w-[150px] sm:max-w-[180px]" title={turn.b?.servedModel ? `${turn.b?.targetModel} (served: ${turn.b?.servedModel})` : turn.b?.targetModel}>
                                   {getResponseModelLabel(turn.b)}
                                 </span>
                                 <div class="flex items-center gap-1 mt-0.5">
-                                  <span class="text-[10px] text-faint truncate max-w-[100px]">
+                                  <span class="text-xs text-faint truncate max-w-[100px]">
                                     {getResponseProvider(turn.b)}
                                   </span>
-                                  <Badge tone={getProtocolBadgeTone(turn.b?.protocol)} class="text-[8px] font-mono px-1 py-0 uppercase">
+                                  <Badge tone={getProtocolBadgeTone(turn.b?.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
                                     {getProtocolLabel(turn.b?.protocol)}
                                   </Badge>
                                 </div>
                               </div>
                               <Show when={turn.b?.busy}>
-                                <span class="text-[10px] text-accent animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
+                                <span class="text-xs text-info animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
                               </Show>
                             </div>
-                            <div class="flex items-center gap-1 text-[10px] font-mono text-faint">
+                            <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted min-w-0">
                               <Show when={turn.b?.metrics?.ttftMs !== undefined}>
                                 <span>{turn.b!.metrics!.ttftMs}ms</span>
                               </Show>
@@ -1519,9 +1514,10 @@ main();
                                 <span class="text-accent">{turn.b!.metrics!.speed} t/s</span>
                               </Show>
                               <Show when={turn.b?.rawRequest}>
-                                <button
-                                  type="button"
-                                  class="hover:text-accent p-1 cursor-pointer"
+                                <IconButton
+                                  size="sm"
+                                  title={t('playground.viewRawJson')}
+                                  aria-label={t('playground.viewRawJson')}
                                   onClick={() =>
                                     setRawJsonModal({
                                       title: `${t('playground.modelB')} · ${getResponseModelLabel(turn.b)} (${turn.b?.targetModel})`,
@@ -1530,28 +1526,29 @@ main();
                                     })
                                   }
                                 >
-                                  <IconCode size={12} />
-                                </button>
+                                  <IconCode size={14} />
+                                </IconButton>
                               </Show>
-                              <button
-                                type="button"
-                                class="hover:text-accent p-1 cursor-pointer"
+                              <IconButton
+                                size="sm"
+                                title={t('playground.copyModelB')}
+                                aria-label={t('playground.copyModelB')}
                                 onClick={() => copyText(turn.b?.content || '', t('playground.copyModelB'))}
                               >
-                                <IconClipboard size={12} />
-                              </button>
+                                <IconClipboard size={14} />
+                              </IconButton>
                             </div>
                           </div>
 
                           <Show
                             when={!turn.b?.error}
                             fallback={
-                              <div class="p-2 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono">
+                              <div class="min-w-0 p-3 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                                 {turn.b?.error}
                               </div>
                             }
                           >
-                            <div class="text-xs sm:text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed select-text min-h-[60px]">
+                            <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text min-h-[60px]">
                               {turn.b?.content || (turn.b?.busy ? '...' : t('playground.emptyResponse'))}
                             </div>
                           </Show>
@@ -1565,15 +1562,16 @@ main();
           </div>
 
           {/* 底部输入框区（作为弹性容器底部固定子节点，彻底杜绝悬浮遮挡内容） */}
-          <Card class="p-3 shrink-0 shadow-glass border border-subtle/50 transition-all duration-200 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-ring-soft">
+          <Card class="min-w-0 p-3 shrink-0 transition-colors duration-200 focus-within:border-accent/50 focus-within:ring-1 focus-within:ring-ring-soft">
             <div class="space-y-2">
-              <textarea
-                class="w-full bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-faint focus:outline-none min-h-[48px] max-h-[120px]"
+              <Textarea
+                class="w-full bg-transparent border-0 resize-none px-1 py-1 text-sm text-text placeholder:text-faint min-h-12 max-h-30"
+                ariaLabel={mode() === 'compare' ? t('playground.sendComparePlaceholder') : t('playground.sendPlaceholder')}
                 placeholder={
                   mode() === 'compare' ? t('playground.sendComparePlaceholder') : t('playground.sendPlaceholder')
                 }
                 value={inputPrompt()}
-                onInput={e => setInputPrompt(e.currentTarget.value)}
+                onInput={setInputPrompt}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
@@ -1581,17 +1579,17 @@ main();
                   }
                 }}
               />
-              <div class="flex items-center justify-between pt-1 border-t border-subtle/40">
-                <div class="text-[11px] text-faint flex items-center gap-2">
+              <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-subtle/40">
+                <div class="text-xs text-muted flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                   <span>{t('playground.enterHint')}</span>
                   <Show when={stream()}>
-                    <span class="text-accent flex items-center gap-0.5">
-                      <span class="w-1.5 h-1.5 rounded-full bg-accent animate-ping" />
+                    <span class="text-success flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 shrink-0 rounded-full bg-success" />
                       {t('playground.streamingActive')}
                     </span>
                   </Show>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2 ml-auto">
                   <Show when={isBusy()}>
                     <Button
                       variant="danger"
@@ -1622,37 +1620,38 @@ main();
         {/* 右侧高级参数面板 (Inspector)：大屏并列内滚动，小屏侧滑抽屉 */}
         <Show when={showParams()}>
           <div
-            class="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-xs animate-fade-in"
+            class="lg:hidden fixed inset-0 z-40 bg-overlay backdrop-blur-sm animate-fade-in"
             onClick={() => setShowParams(false)}
           />
-          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col h-full min-h-0 shadow-glass-hover lg:shadow-none animate-slide-up lg:animate-none">
-            <Card class="flex flex-col h-full min-h-0 p-4 shadow-glass rounded-none lg:rounded-card border-l lg:border border-subtle/50">
+          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col h-dvh lg:h-full min-h-0 min-w-0 animate-slide-up lg:animate-none">
+            <Card class="flex flex-col h-full min-h-0 min-w-0 p-4 rounded-none lg:rounded-card border-l lg:border border-subtle/50">
               <div class="flex items-center justify-between border-b border-subtle/50 pb-2 shrink-0">
-                <span class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <span class="text-xs font-semibold text-text flex items-center gap-1.5">
                   <IconSliders size={14} />
                   {t('playground.paramsConfig')}
                 </span>
                 <div class="flex items-center gap-2">
-                  <span class="text-[11px] text-faint">{t('playground.autoSaved')}</span>
-                  <button
-                    type="button"
-                    class="lg:hidden p-1 rounded-md text-faint hover:text-foreground hover:bg-hover cursor-pointer"
+                  <span class="text-xs text-faint">{t('playground.autoSaved')}</span>
+                  <IconButton
+                    size="sm"
+                    class="lg:hidden"
+                    aria-label={t('common.close')}
                     onClick={() => setShowParams(false)}
                   >
                     <IconClose size="xs" />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
               {/* 参数项独立滚动容器 */}
               <div class="flex-1 min-h-0 overflow-y-auto space-y-4 px-1 pt-2">
               {/* API 协议端点选择卡片 */}
-              <div class="p-2.5 rounded-control bg-black/4 dark:bg-white/4 border border-subtle/60 space-y-2">
+              <div class="p-2.5 rounded-control bg-surface-inset border border-subtle/60 space-y-2">
                 <div class="flex items-center justify-between text-xs">
-                  <span class="font-medium text-foreground flex items-center gap-1.5">
+                  <span class="font-medium text-text flex items-center gap-1.5">
                     <IconZap size={13} class="text-accent" />
                     {t('playground.protocol')}
                   </span>
-                  <Badge tone={activeProtocolMeta().badgeTone} class="text-[9px] font-mono px-1.5 py-0 uppercase">
+                  <Badge tone={activeProtocolMeta().badgeTone} class="text-xs font-mono px-1.5 py-0 uppercase">
                     POST
                   </Badge>
                 </div>
@@ -1663,9 +1662,9 @@ main();
                   options={protocolOptions()}
                   onChange={v => setProtocol(v as ProtocolType)}
                 />
-                <div class="flex items-center justify-between text-[11px] text-faint font-mono pt-0.5">
+                <div class="flex flex-wrap items-center justify-between gap-1 text-xs text-muted font-mono pt-0.5 min-w-0">
                   <span>{t('playground.activeEndpoint')}:</span>
-                  <span class="text-accent truncate max-w-[150px]" title={activeProtocolMeta().endpoint}>
+                  <span class="text-accent min-w-0 break-words [overflow-wrap:anywhere]" title={activeProtocolMeta().endpoint}>
                     {activeProtocolMeta().endpoint}
                   </span>
                 </div>
@@ -1673,19 +1672,21 @@ main();
 
               {/* 系统提示词 (System Prompt) */}
               <div class="space-y-1.5">
-                <div class="flex items-center justify-between h-5">
+                <div class="flex items-center justify-between h-8 gap-2">
                   <label class="text-xs font-medium text-muted leading-none">{t('playground.systemPrompt')}</label>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={!systemPrompt()}
-                    class={`text-[11px] leading-none text-faint hover:text-danger transition-opacity cursor-pointer ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    class={`text-xs hover:text-danger transition-opacity ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                     onClick={() => setSystemPrompt('')}
                   >
                     {t('playground.systemPromptReset')}
-                  </button>
+                  </Button>
                 </div>
                 <Textarea
-                  class="p-2 text-xs min-h-[90px] resize-y"
+                  class="p-2 text-sm min-h-[90px] resize-y"
+                  ariaLabel={t('playground.systemPrompt')}
                   placeholder={t('playground.systemPromptPlaceholder')}
                   value={systemPrompt()}
                   onInput={setSystemPrompt}
@@ -1693,13 +1694,14 @@ main();
                 <div class="flex flex-wrap gap-1 pt-1">
                   <For each={systemPresets()}>
                     {preset => (
-                      <button
-                        type="button"
-                        class="px-2 py-0.5 text-[10px] rounded bg-hover text-muted hover:text-foreground hover:bg-accent/10 transition-colors cursor-pointer"
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        class="h-auto min-h-8 min-w-0 max-w-full px-2 py-1 text-xs whitespace-normal break-words [overflow-wrap:anywhere]"
                         onClick={() => setSystemPrompt(preset.text)}
                       >
                         {preset.label}
-                      </button>
+                      </Button>
                     )}
                   </For>
                 </div>
@@ -1716,7 +1718,7 @@ main();
                   valueDisplay={temperature().toFixed(2)}
                   onChange={setTemperature}
                 />
-                <div class="flex justify-between text-[10px] text-faint">
+                <div class="flex justify-between text-xs text-faint">
                   <span>{t('playground.tempPrecise')}</span>
                   <span>{t('playground.tempCreative')}</span>
                 </div>
@@ -1751,12 +1753,13 @@ main();
               </div>
 
               {/* 流式传输开关 */}
-              <div class="flex items-center justify-between pt-2 border-t border-subtle/40">
-                <div>
-                  <div class="text-xs font-medium text-foreground">{t('playground.streamLabel')}</div>
-                  <div class="text-[10px] text-faint">{t('playground.streamDesc')}</div>
+              <div class="flex items-center justify-between gap-3 pt-2 border-t border-subtle/40">
+                <div class="min-w-0">
+                  <div class="text-xs font-medium text-text">{t('playground.streamLabel')}</div>
+                  <div class="text-xs text-faint">{t('playground.streamDesc')}</div>
                 </div>
                 <Toggle
+                  ariaLabel={t('playground.streamLabel')}
                   checked={stream()}
                   onChange={setStream}
                 />
@@ -1775,7 +1778,7 @@ main();
       >
         <div class="space-y-4">
           <div class="flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
               <SegmentedControl
                 value={codeLang()}
                 onChange={l => setCodeLang(l as 'curl' | 'python' | 'node')}
@@ -1786,7 +1789,7 @@ main();
                 ]}
                 size="sm"
               />
-              <Badge tone={activeProtocolMeta().badgeTone} class="text-[10px] font-mono px-2 py-0.5 uppercase">
+              <Badge tone={activeProtocolMeta().badgeTone} class="text-xs font-mono px-2 py-0.5 uppercase">
                 {activeProtocolMeta().shortLabel}
               </Badge>
             </div>
@@ -1807,7 +1810,7 @@ main();
           </div>
 
           <div class="relative">
-            <pre class="p-4 bg-slate-950 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto max-h-[360px] border border-slate-800">
+            <pre class="min-w-0 p-4 bg-code-bg text-text rounded-xl text-xs leading-relaxed font-mono overflow-auto max-h-[min(24rem,60dvh)] border border-subtle">
               <code>{generateCode(codeLang())}</code>
             </pre>
           </div>
@@ -1824,33 +1827,35 @@ main();
           >
             <div class="space-y-4">
               <div class="space-y-1.5">
-                <div class="flex items-center justify-between text-xs font-medium text-muted">
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted">
                   <span>{t('playground.requestPayload')}</span>
-                  <button
-                    type="button"
-                    class="text-accent hover:underline cursor-pointer"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="text-accent"
                     onClick={() => copyText(JSON.stringify(data().request, null, 2), t('playground.copyRequestJson'))}
                   >
                     {t('playground.copyRequestJson')}
-                  </button>
+                  </Button>
                 </div>
-                <pre class="p-3 bg-slate-950 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto max-h-[160px] border border-slate-800">
+                <pre class="min-w-0 p-3 bg-code-bg text-text rounded-lg text-xs leading-relaxed font-mono overflow-auto max-h-40 whitespace-pre-wrap break-words [overflow-wrap:anywhere] border border-subtle">
                   {JSON.stringify(data().request, null, 2)}
                 </pre>
               </div>
 
               <div class="space-y-1.5">
-                <div class="flex items-center justify-between text-xs font-medium text-muted">
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted">
                   <span>{t('playground.responsePayload')}</span>
-                  <button
-                    type="button"
-                    class="text-accent hover:underline cursor-pointer"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="text-accent"
                     onClick={() => copyText(JSON.stringify(data().response, null, 2), t('playground.copyResponseJson'))}
                   >
                     {t('playground.copyResponseJson')}
-                  </button>
+                  </Button>
                 </div>
-                <pre class="p-3 bg-slate-950 text-slate-100 rounded-lg text-xs font-mono overflow-x-auto max-h-[220px] border border-slate-800">
+                <pre class="min-w-0 p-3 bg-code-bg text-text rounded-lg text-xs leading-relaxed font-mono overflow-auto max-h-56 whitespace-pre-wrap break-words [overflow-wrap:anywhere] border border-subtle">
                   {JSON.stringify(data().response, null, 2)}
                 </pre>
               </div>

@@ -167,19 +167,20 @@ const Media: Component = () => {
             class="w-fit"
           />
 
-          <div class="flex items-center gap-2.5 text-xs">
+          <div class="flex flex-wrap items-center gap-2.5 text-xs min-w-0 max-w-full">
             <span class="text-faint hidden lg:inline max-w-sm truncate">
               {currentCap()?.hint}
             </span>
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() => copyEndpoint(currentCap()?.endpoint || '')}
-              class="inline-flex items-center gap-1.5 font-mono text-[11px] px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/8 hover:bg-black/10 dark:hover:bg-white/12 border border-subtle text-foreground transition-all cursor-pointer group shrink-0"
+              class="max-w-full min-w-0! font-mono group"
               title={t('media.copyEndpointTitle')}
             >
               <IconClipboard size={12} class="text-accent group-hover:scale-110 transition-transform" />
-              <span>{currentCap()?.endpoint}</span>
-            </button>
+              <span class="min-w-0 wrap-anywhere whitespace-normal text-left">{currentCap()?.endpoint}</span>
+            </Button>
           </div>
         </div>
       </PageHeader>
@@ -217,7 +218,7 @@ const Media: Component = () => {
                   {p => (
                     <Card class="p-4 flex flex-col justify-between space-y-3 hover:border-accent/40 transition">
                       <div class="space-y-2.5">
-                        <div class="flex items-center justify-between">
+                        <div class="flex flex-wrap items-center justify-between gap-2 min-w-0">
                           <div class="flex items-center gap-2.5 min-w-0">
                             <ProviderAvatar provider={p.provider} name={p.name} size="md" />
                             <div class="min-w-0">
@@ -235,18 +236,18 @@ const Media: Component = () => {
 
                         <div class="space-y-1">
                           <div class="text-[11px] text-faint">{t('media.supportedModelsEndpoints')}</div>
-                          <div class="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                          <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto px-1 py-0.5 min-w-0">
                             <Show
                               when={p.models && p.models.length > 0}
                               fallback={
-                                <span class="text-[11px] font-mono text-muted bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
+                                <span class="text-[11px] font-mono text-muted bg-surface-inset px-2 py-0.5 rounded border border-subtle max-w-full min-w-0 wrap-anywhere">
                                   {t('media.defaultEndpoint')}
                                 </span>
                               }
                             >
                               <For each={p.models}>
                                 {m => (
-                                  <span class="text-[11px] font-mono text-foreground bg-black/5 dark:bg-white/8 px-2 py-0.5 rounded border border-black/10 dark:border-white/12">
+                                  <span class="text-xs font-mono text-foreground bg-surface-inset px-2 py-0.5 rounded border border-subtle max-w-full min-w-0 wrap-anywhere">
                                     {m.name || m.id}
                                   </span>
                                 )}
@@ -256,11 +257,11 @@ const Media: Component = () => {
                         </div>
                       </div>
 
-                      <div class="pt-2.5 border-t border-subtle flex items-center justify-between gap-2">
+                      <div class="pt-2.5 border-t border-subtle flex flex-wrap items-center justify-between gap-2">
                         <span class="text-[11px] text-faint">
                           {t('media.readyToCall')}
                         </span>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2 min-w-0">
                           <Show when={p.primaryConnectionId}>
                             <A href={`/providers/${p.primaryConnectionId}`}>
                               <Button size="sm" variant="secondary" title={t('media.manageAccountTitle')}>
@@ -290,7 +291,7 @@ const Media: Component = () => {
         title={`${selectedProvider()?.name || ''} · ${caps().find(c => c.id === active())?.label || ''}`}
         onClose={() => setWorkbenchOpen(false)}
       >
-        <div class="space-y-4 max-h-[80vh] overflow-y-auto px-1">
+        <div class="space-y-4 min-w-0">
           <Show when={selectedProvider()?.models && selectedProvider()!.models!.length > 0}>
             <Field label={t('media.selectModel')}>
               <Select
@@ -328,7 +329,7 @@ const Media: Component = () => {
           {/* 生图结果预览画廊 */}
           <Show when={imageUrls().length > 0}>
             <div class="space-y-2 pt-2 border-t border-subtle">
-              <div class="flex items-center justify-between">
+              <div class="flex flex-wrap items-center justify-between gap-2 min-w-0">
                 <span class="text-xs font-semibold text-foreground">{t('media.resultsPreview')}</span>
                 <span class="text-[11px] text-faint">{t('media.imageCount', { count: imageUrls().length })}</span>
               </div>
@@ -337,8 +338,8 @@ const Media: Component = () => {
                   {(url, idx) => (
                     <div class="relative group rounded-card overflow-hidden border border-subtle bg-bg-elevated aspect-square flex items-center justify-center">
                       <img src={url} alt={`Generated result ${idx() + 1}`} class="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
-                      <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                        <a href={url} target="_blank" rel="noreferrer" class="px-3 py-1.5 rounded-control text-xs bg-bg/90 text-foreground font-medium shadow hover:bg-bg transition">
+                      <div class="absolute inset-0 bg-overlay/40 opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <a href={url} target="_blank" rel="noreferrer" class="inline-flex min-h-11 items-center px-4 py-2 rounded-control text-sm bg-card text-foreground font-medium shadow-sm hover:bg-hover transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">
                           {t('media.viewOriginal')}
                         </a>
                       </div>
@@ -353,7 +354,7 @@ const Media: Component = () => {
           <Show when={searchResults() && searchResults()!.results && searchResults()!.results!.length > 0}>
             <div class="space-y-2.5 pt-2 border-t border-subtle">
               <Show when={searchResults()?.summary}>
-                <div class="p-3 rounded-card bg-accent/5 border border-accent/20 text-xs text-foreground leading-relaxed">
+                <div class="p-3 rounded-card bg-surface-inset text-sm text-foreground leading-relaxed wrap-anywhere">
                   <div class="font-semibold text-accent mb-1 flex items-center gap-1.5">
                     <IconSparkles size={14} />
                     <span>{t('media.aiSummary')}</span>
@@ -367,12 +368,12 @@ const Media: Component = () => {
                 <For each={searchResults()?.results}>
                   {item => (
                     <div class="p-3 rounded-card bg-bg-elevated border border-subtle text-xs space-y-1 hover:border-accent/30 transition">
-                      <div class="flex items-center justify-between">
-                        <a href={item.url} target="_blank" rel="noreferrer" class="font-medium text-accent hover:underline flex items-center gap-1 truncate max-w-[85%]">
+                      <div class="flex flex-wrap items-center justify-between gap-2 min-w-0">
+                        <a href={item.url} target="_blank" rel="noreferrer" class="min-w-0 font-medium text-accent hover:underline wrap-anywhere focus-visible:outline-2 focus-visible:outline-ring">
                           <span>{item.position}. {item.title || item.url}</span>
                         </a>
                       </div>
-                      <p class="text-[11px] text-faint truncate font-mono">{item.url}</p>
+                      <p class="text-xs text-faint wrap-anywhere font-mono">{item.url}</p>
                     </div>
                   )}
                 </For>
@@ -384,7 +385,7 @@ const Media: Component = () => {
           <Show when={result()}>
             <div class="pt-2 border-t border-subtle space-y-1.5">
               <div class="text-[11px] font-semibold text-faint uppercase">{t('media.rawJson')}</div>
-              <pre class="text-[10px] font-mono text-muted whitespace-pre-wrap break-all bg-bg-elevated p-3 rounded-control border border-subtle max-h-60 overflow-y-auto">
+              <pre class="text-xs leading-relaxed font-mono text-foreground whitespace-pre-wrap wrap-anywhere bg-surface-inset p-3 rounded-control max-h-72 overflow-y-auto min-w-0">
                 {JSON.stringify(result(), null, 2)}
               </pre>
             </div>

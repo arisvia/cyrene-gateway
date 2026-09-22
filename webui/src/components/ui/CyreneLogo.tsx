@@ -23,12 +23,11 @@ export const CyreneLogo: Component<CyreneLogoProps> = props => {
       aria-label="Cyrene Gateway"
     >
       <defs>
-        {/* Cyrene Signature Brand Gradient: #2dd4bf -> #06b6d4 -> #6366f1 -> #8b5cf6 */}
         <linearGradient id={liquidId} x1="10%" y1="0%" x2="90%" y2="100%">
-          <stop offset="0%" stop-color="#2dd4bf" />
-          <stop offset="35%" stop-color="#06b6d4" />
-          <stop offset="70%" stop-color="#6366f1" />
-          <stop offset="100%" stop-color="#8b5cf6" />
+          <stop offset="0%" stop-color="var(--brand-mint)" />
+          <stop offset="35%" stop-color="var(--brand-cyan)" />
+          <stop offset="70%" stop-color="var(--brand-indigo)" />
+          <stop offset="100%" stop-color="var(--brand-violet)" />
         </linearGradient>
 
         {/* Specular Bevel Reflection */}
