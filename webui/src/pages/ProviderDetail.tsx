@@ -6,7 +6,7 @@ import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, Input, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
+import { Card, Badge, Button, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -1410,12 +1410,12 @@ const ProviderDetail: Component = () => {
                               label={t('providerDetail.customHeadersLabel')}
                               hint={t('providerDetail.customHeadersHint')}
                             >
-                              <textarea
+                              <Textarea
                                 rows={4}
                                 value={customHeadersText()}
-                                onInput={e => setCustomHeadersText(e.currentTarget.value)}
+                                onInput={setCustomHeadersText}
                                 placeholder={'{\n  "User-Agent": "MyClient/2.0",\n  "anthropic-version": "2023-06-01"\n}'}
-                                class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
+                                class="px-3 py-2 text-xs font-mono"
                               />
                             </Field>
                           </div>
@@ -1975,12 +1975,12 @@ const ProviderDetail: Component = () => {
                 {t('providerDetail.tokenImportHint')}
               </p>
               <div class="space-y-1.5">
-                <textarea
+                <Textarea
                   rows={4}
                   value={importTokenText()}
-                  onInput={e => setImportTokenText(e.currentTarget.value)}
+                  onInput={setImportTokenText}
                   placeholder={t('providerDetail.tokenPastePlaceholder')}
-                  class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
+                  class="px-3 py-2 text-xs font-mono"
                 />
               </div>
               <Show when={deviceError()}>
@@ -2113,7 +2113,7 @@ const ProviderDetail: Component = () => {
 
                     {/* 登录 URL 卡片 */}
                     <div class="p-3.5 rounded-card bg-hover/80 border border-subtle text-left space-y-2">
-                      <div class="text-[11px] text-faint font-medium text-center">Login URL</div>
+                      <div class="text-[11px] text-faint font-medium text-center">{t('providerDetail.loginUrl')}</div>
                       <div class="font-mono text-xs break-all text-foreground select-all bg-bg/70 p-2.5 rounded border border-subtle leading-relaxed">
                         {flow().verificationUriComplete || flow().verificationUri}
                       </div>

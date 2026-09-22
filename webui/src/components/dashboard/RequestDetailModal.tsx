@@ -135,13 +135,13 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
             <Show when={activeTab() === 'overview'}>
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">Prompt Tokens</div>
+                  <div class="text-[11px] text-faint">{t('requestDetail.promptTokens')}</div>
                   <div class="text-base font-semibold mt-1 tabular-nums text-foreground">
                     {fmtNum(props.item?.promptTokens ?? 0)}
                   </div>
                 </div>
                 <div class="p-3.5 rounded-xl bg-card/60 border border-subtle">
-                  <div class="text-[11px] text-faint">Completion Tokens</div>
+                  <div class="text-[11px] text-faint">{t('requestDetail.completionTokens')}</div>
                   <div class="text-base font-semibold mt-1 tabular-nums text-foreground">
                     {fmtNum(props.item?.completionTokens ?? 0)}
                   </div>

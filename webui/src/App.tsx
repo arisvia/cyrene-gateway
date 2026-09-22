@@ -182,7 +182,7 @@ const App: Component = () => {
               <span class="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
               <span class="text-foreground font-semibold">Cyrene Gateway</span>
               <span class="text-faint hidden sm:inline">/</span>
-              <span class="text-faint hidden sm:inline">Unified LLM Gateway</span>
+              <span class="text-faint hidden sm:inline">{t('nav.tagline')}</span>
             </div>
             <div class="ml-auto flex items-center gap-3">
               <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/60 border border-glass-border shadow-sm text-xs backdrop-blur-md">

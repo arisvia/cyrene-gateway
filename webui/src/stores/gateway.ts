@@ -2,6 +2,7 @@ import { batch, createSignal, createRoot } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized, setStoredSessionToken } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import { t } from '@/i18n'
 import type {
   Provider, RegistryCategory, Combo, ApiKey, ApiKeyInput, ProxyPool, Endpoint,
   UsageStats, RequestDetail, Pagination, ProviderUsage,
@@ -310,7 +311,7 @@ function createGatewayStore() {
   // ── provider actions ──
   async function addProvider(payload: Record<string, unknown>) {
     const res = await apiPost<Provider>('/api/providers', payload)
-    toast.success(`已添加提供商 "${payload.name || payload.provider}"`)
+    toast.success(t('toast.addProviderSuccess', { name: String(payload.name || payload.provider || '') }))
     // 以服务端返回的 DTO（含后端生成的 ID/默认值）为准刷新列表，而非本地拼接
     await loadProvidersOnly()
     return res
@@ -328,14 +329,14 @@ function createGatewayStore() {
 
   async function resetCooldown(p: Provider) {
     await apiPost(`/api/providers/${p.id}/reset`)
-    toast.success(`已重置冷却状态 — ${p.name || p.provider}`)
+    toast.success(t('toast.resetCooldownSuccess', { name: p.name || p.provider }))
     setProviders(list => list.map(x => x.id === p.id
       ? { ...x, data: { ...x.data, rateLimitedUntil: '', testStatus: 'active' } } : x))
   }
 
   async function deleteProvider(p: Provider) {
     await apiDelete(`/api/providers/${p.id}`)
-    toast.success(`已删除提供商 "${p.name || p.provider}"`)
+    toast.success(t('toast.deleteProviderSuccess', { name: p.name || p.provider }))
     setProviders(list => list.filter(item => item.id !== p.id))
   }
 
@@ -347,7 +348,7 @@ function createGatewayStore() {
   async function createKey(input: string | ApiKeyInput) {
     const payload = typeof input === 'string' ? { name: input } : input
     const k = await apiPost<ApiKey>('/api/keys', payload)
-    toast.success(`API Key「${payload.name || k?.id?.slice(0, 8)}」创建成功`)
+    toast.success(t('toast.createKeySuccess', { name: payload.name || k?.id?.slice(0, 8) || '' }))
     await pendingLoads.keys
     await loadKeys()
     return k
@@ -355,14 +356,14 @@ function createGatewayStore() {
 
   async function updateKey(id: string, payload: Partial<ApiKeyInput> & { isActive?: boolean }) {
     const k = await apiPut<ApiKey>(`/api/keys/${id}`, payload)
-    toast.success(`API Key「${k.name || id.slice(0, 8)}」已更新`)
+    toast.success(t('toast.updateKeySuccess', { name: k.name || id.slice(0, 8) }))
     await pendingLoads.keys
     await loadKeys()
     return k
   }
   async function deleteKey(id: string) {
     await apiDelete(`/api/keys/${id}`)
-    toast.success('API Key 已删除')
+    toast.success(t('toast.deleteKeySuccess'))
     await pendingLoads.keys
     await loadKeys()
   }
@@ -373,14 +374,14 @@ function createGatewayStore() {
     } else {
       await apiPost('/api/combos', payload)
     }
-    toast.success(`模型组合「${payload.name}」已保存`)
+    toast.success(t('toast.saveComboSuccess', { name: payload.name }))
     await pendingLoads.combos
     await loadCombos()
   }
 
   async function deleteCombo(id: string) {
     await apiDelete(`/api/combos/${id}`)
-    toast.success('模型组合已删除')
+    toast.success(t('toast.deleteComboSuccess'))
     await pendingLoads.combos
     await loadCombos()
   }
@@ -392,7 +393,7 @@ function createGatewayStore() {
     } else {
       await apiPost('/api/proxy-pools', payload)
     }
-    toast.success(`代理池「${payload.name}」已保存`)
+    toast.success(t('toast.saveProxyPoolSuccess', { name: payload.name }))
     await pendingLoads.pools
     await loadProxyPools()
   }
@@ -405,20 +406,20 @@ function createGatewayStore() {
 
   async function deleteProxyPool(id: string) {
     await apiDelete(`/api/proxy-pools/${id}`)
-    toast.success('代理池已删除')
+    toast.success(t('toast.deleteProxyPoolSuccess'))
     await pendingLoads.pools
     await loadProxyPools()
   }
   // ── aliases ──
   async function addAlias(alias: string, target: string) {
     await apiPost('/api/models/alias', { alias, target })
-    toast.success(`已设置别名 "${alias}" → ${target}`)
+    toast.success(t('toast.addAliasSuccess', { alias, target }))
     setAliases(a => ({ ...a, [alias]: target }))
   }
 
   async function deleteAlias(alias: string) {
     await apiDelete('/api/models/alias', { alias })
-    toast.success(`已移除别名 "${alias}"`)
+    toast.success(t('toast.deleteAliasSuccess', { alias }))
     setAliases(a => {
       const next = { ...a }
       delete next[alias]
@@ -429,7 +430,7 @@ function createGatewayStore() {
   // ── settings ──
   async function saveSettings(patch: Record<string, unknown>) {
     await apiPatch('/api/settings', patch)
-    toast.success('系统设置已保存')
+    toast.success(t('toast.saveSettingsSuccess'))
     await pendingLoads.settings
     await loadSettings()
   }
