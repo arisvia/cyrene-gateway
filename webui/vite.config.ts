@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite'
 import solid from 'vite-plugin-solid'
 import tailwindcss from '@tailwindcss/vite'
+import { compression } from 'vite-plugin-compression2'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig(({ mode }) => ({
@@ -11,6 +12,7 @@ export default defineConfig(({ mode }) => ({
       ssr: false,
     }),
     tailwindcss(),
+    compression(),
   ],
   resolve: {
     alias: {
@@ -37,7 +39,7 @@ export default defineConfig(({ mode }) => ({
     include: ['src/**/*.test.{ts,tsx}'],
     server: {
       deps: {
-        inline: [/solid-js/],
+        inline: [/solid-js/, /@solidjs\/(router|testing-library)/],
       },
     },
   },
