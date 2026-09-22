@@ -324,3 +324,91 @@ func TestOpenAIToClaudeSSEAuthoritativeUsageWithContent(t *testing.T) {
 		t.Fatalf("estimated tokens must not inflate authoritative usage: %s done=%v err=%v", out, done, err)
 	}
 }
+
+func TestOpenAIToClaudeSSEThinkingBlockSeparation(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("claude-3-7-sonnet")
+
+	// 1. Chunk with reasoning_content
+	chunk1 := []byte(`{"choices":[{"delta":{"reasoning_content":"Thinking deeply..."}}]}`)
+	out1, done, err := trans.TranslateChunk(chunk1)
+	if err != nil || done {
+		t.Fatalf("chunk1 failed: %v, done=%v", err, done)
+	}
+	s1 := string(out1)
+	if !strings.Contains(s1, `"type":"thinking"`) {
+		t.Errorf("expected block type thinking, got %s", s1)
+	}
+	if !strings.Contains(s1, `"type":"thinking_delta"`) {
+		t.Errorf("expected thinking_delta, got %s", s1)
+	}
+
+	// 2. Chunk with content (text)
+	chunk2 := []byte(`{"choices":[{"delta":{"content":"Final answer."}}]}`)
+	out2, done, err := trans.TranslateChunk(chunk2)
+	if err != nil || done {
+		t.Fatalf("chunk2 failed: %v, done=%v", err, done)
+	}
+	s2 := string(out2)
+	if !strings.Contains(s2, "content_block_stop") {
+		t.Errorf("expected content_block_stop before text block, got %s", s2)
+	}
+	if !strings.Contains(s2, `"type":"text"`) {
+		t.Errorf("expected block type text, got %s", s2)
+	}
+	if !strings.Contains(s2, `"type":"text_delta"`) {
+		t.Errorf("expected text_delta, got %s", s2)
+	}
+
+	// 3. DONE
+	out3, done, err := trans.TranslateChunk([]byte("[DONE]"))
+	if err != nil || !done {
+		t.Fatalf("chunk3 failed: %v, done=%v", err, done)
+	}
+	s3 := string(out3)
+	if !strings.Contains(s3, "content_block_stop") {
+		t.Errorf("expected content_block_stop on DONE, got %s", s3)
+	}
+	if !strings.Contains(s3, "message_stop") {
+		t.Errorf("expected message_stop on DONE, got %s", s3)
+	}
+}
+
+func TestOpenAIToClaudeResponse_Reasoning(t *testing.T) {
+	openAIJSON := []byte(`{
+		"id": "chatcmpl-think123",
+		"choices": [
+			{
+				"index": 0,
+				"message": {
+					"role": "assistant",
+					"reasoning_content": "Plan step 1",
+					"content": "Result step 1"
+				},
+				"finish_reason": "stop"
+			}
+		]
+	}`)
+
+	claudeBytes, err := OpenAIToClaudeResponse(openAIJSON, "claude-3-7-sonnet")
+	if err != nil {
+		t.Fatalf("OpenAIToClaudeResponse failed: %v", err)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(claudeBytes, &resp); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	content := resp["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("expected 2 content blocks (thinking + text), got %d: %v", len(content), content)
+	}
+	b0 := content[0].(map[string]any)
+	if b0["type"] != "thinking" || b0["thinking"] != "Plan step 1" {
+		t.Errorf("unexpected block 0: %v", b0)
+	}
+	b1 := content[1].(map[string]any)
+	if b1["type"] != "text" || b1["text"] != "Result step 1" {
+		t.Errorf("unexpected block 1: %v", b1)
+	}
+}

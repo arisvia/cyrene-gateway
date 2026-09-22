@@ -80,6 +80,37 @@ func (s *Server) handleAntigravityChat(
 			"parts": systemInstruction,
 		}
 	}
+	// Forward tool definitions if present
+	if len(req.Tools) > 0 {
+		var toolsList []struct {
+			Type     string `json:"type"`
+			Function struct {
+				Name        string         `json:"name"`
+				Description string         `json:"description,omitempty"`
+				Parameters  map[string]any `json:"parameters,omitempty"`
+			} `json:"function"`
+		}
+		if err := json.Unmarshal(req.Tools, &toolsList); err == nil && len(toolsList) > 0 {
+			var declarations []any
+			for _, t := range toolsList {
+				if t.Function.Name != "" {
+					params := t.Function.Parameters
+					if params != nil {
+						delete(params, "$schema")
+					}
+					declarations = append(declarations, map[string]any{
+						"name":        t.Function.Name,
+						"description": t.Function.Description,
+						"parameters":  params,
+					})
+				}
+			}
+			if len(declarations) > 0 {
+				innerRequest["tools"] = []any{map[string]any{"functionDeclarations": declarations}}
+			}
+		}
+	}
+
 	availableModels := s.getAntigravityAvailableModels()
 	targetModel, tier, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
 
@@ -297,6 +328,25 @@ func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[
 	var contents []map[string]any
 	var systemParts []map[string]any
 
+	toolCallNames := make(map[string]string)
+	for _, msg := range messages {
+		if len(msg.ToolCalls) > 0 {
+			var tcs []struct {
+				ID       string `json:"id"`
+				Function struct {
+					Name string `json:"name"`
+				} `json:"function"`
+			}
+			if err := json.Unmarshal(msg.ToolCalls, &tcs); err == nil {
+				for _, tc := range tcs {
+					if tc.ID != "" && tc.Function.Name != "" {
+						toolCallNames[tc.ID] = tc.Function.Name
+					}
+				}
+			}
+		}
+	}
+
 	for _, msg := range messages {
 		role := strings.ToLower(msg.Role)
 		text := parseMessageContent(msg.Content)
@@ -305,10 +355,34 @@ func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[
 			systemParts = append(systemParts, map[string]any{"text": text})
 			continue
 		}
+		if role == "tool" {
+			fnName := toolCallNames[msg.ToolCallID]
+			if fnName == "" {
+				fnName = msg.ToolCallID
+			}
+			var resp any
+			if err := json.Unmarshal([]byte(text), &resp); err != nil || resp == nil {
+				resp = map[string]any{"result": text}
+			}
+			respMap, ok := resp.(map[string]any)
+			if !ok {
+				respMap = map[string]any{"result": resp}
+			}
+			contents = append(contents, map[string]any{
+				"role": "user",
+				"parts": []map[string]any{
+					{
+						"functionResponse": map[string]any{
+							"name":     fnName,
+							"response": respMap,
+						},
+					},
+				},
+			})
+			continue
+		}
 		if role == "assistant" {
 			role = "model"
-		} else if role == "tool" {
-			role = "user"
 		}
 
 		parts := []map[string]any{
@@ -356,8 +430,12 @@ func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[
 }
 
 type antigravityCandidatePart struct {
-	Text    string `json:"text"`
-	Thought bool   `json:"thought"`
+	Text         string `json:"text"`
+	Thought      bool   `json:"thought"`
+	FunctionCall *struct {
+		Name string         `json:"name"`
+		Args map[string]any `json:"args"`
+	} `json:"functionCall,omitempty"`
 }
 
 type antigravityCandidateItem struct {
@@ -417,20 +495,32 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		textChunk := ""
 		reasoningChunk := ""
 		finishReason := ""
+		var toolCallsDelta []any
 		for _, cand := range payload.getCandidates() {
 			if cand.FinishReason != "" {
 				finishReason = strings.ToLower(cand.FinishReason)
 			}
-			for _, part := range cand.Content.Parts {
+			for i, part := range cand.Content.Parts {
 				if part.Thought {
 					reasoningChunk += part.Text
+				} else if part.FunctionCall != nil {
+					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					toolCallsDelta = append(toolCallsDelta, map[string]any{
+						"index": i,
+						"id":    fmt.Sprintf("call_%s_%d", randomHex(8), i),
+						"type":  "function",
+						"function": map[string]any{
+							"name":      part.FunctionCall.Name,
+							"arguments": string(argsBytes),
+						},
+					})
 				} else {
 					textChunk += part.Text
 				}
 			}
 		}
 
-		if textChunk == "" && reasoningChunk == "" && finishReason == "" {
+		if textChunk == "" && reasoningChunk == "" && len(toolCallsDelta) == 0 && finishReason == "" {
 			continue
 		}
 
@@ -447,16 +537,22 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 				reasoningBuilder.WriteString(reasoningChunk)
 			}
 		}
+		if len(toolCallsDelta) > 0 {
+			delta["tool_calls"] = toolCallsDelta
+		}
 
 		var fr any = nil
 		if finishReason != "" {
-			if finishReason == "stop" || finishReason == "max_tokens" {
+			if len(toolCallsDelta) > 0 || finishReason == "tool_calls" {
+				fr = "tool_calls"
+			} else if finishReason == "stop" || finishReason == "max_tokens" {
 				fr = finishReason
 			} else {
 				fr = "stop"
 			}
+		} else if len(toolCallsDelta) > 0 {
+			fr = "tool_calls"
 		}
-
 		chunk := map[string]any{
 			"id":      chatCmpleID,
 			"object":  "chat.completion.chunk",
@@ -501,20 +597,35 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 
 	fullText := ""
 	reasoningText := ""
+	var toolCalls []any
+
+	extractParts := func(payload antigravityChunkPayload) {
+		for _, cand := range payload.getCandidates() {
+			for i, part := range cand.Content.Parts {
+				if part.Thought {
+					reasoningText += part.Text
+				} else if part.FunctionCall != nil {
+					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					toolCalls = append(toolCalls, map[string]any{
+						"id":   fmt.Sprintf("call_%s_%d", randomHex(8), i),
+						"type": "function",
+						"function": map[string]any{
+							"name":      part.FunctionCall.Name,
+							"arguments": string(argsBytes),
+						},
+					})
+				} else {
+					fullText += part.Text
+				}
+			}
+		}
+	}
 
 	trimmed := bytes.TrimSpace(respBytes)
 	if bytes.HasPrefix(trimmed, []byte("{")) {
 		var payload antigravityChunkPayload
 		if err := json.Unmarshal(trimmed, &payload); err == nil {
-			for _, cand := range payload.getCandidates() {
-				for _, part := range cand.Content.Parts {
-					if part.Thought {
-						reasoningText += part.Text
-					} else {
-						fullText += part.Text
-					}
-				}
-			}
+			extractParts(payload)
 		}
 	} else {
 		scanner := bufio.NewScanner(bytes.NewReader(respBytes))
@@ -525,19 +636,15 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 				continue
 			}
 			var payload antigravityChunkPayload
-			if err := json.Unmarshal([]byte(data), &payload); err != nil {
-				continue
-			}
-			for _, cand := range payload.getCandidates() {
-				for _, part := range cand.Content.Parts {
-					if part.Thought {
-						reasoningText += part.Text
-					} else {
-						fullText += part.Text
-					}
-				}
+			if err := json.Unmarshal([]byte(data), &payload); err == nil {
+				extractParts(payload)
 			}
 		}
+	}
+
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
 	}
 
 	respObj := map[string]any{
@@ -556,9 +663,12 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 					if reasoningText != "" {
 						m["reasoning_content"] = reasoningText
 					}
+					if len(toolCalls) > 0 {
+						m["tool_calls"] = toolCalls
+					}
 					return m
 				}(),
-				"finish_reason": "stop",
+				"finish_reason": finishReason,
 			},
 		},
 	}

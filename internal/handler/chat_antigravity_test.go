@@ -255,3 +255,74 @@ func TestAntigravityNonStreamingFormats(t *testing.T) {
 		t.Errorf("unexpected message payload: %+v", msg)
 	}
 }
+
+func TestAntigravityToolCallingSupport(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// 1. Verify convertOpenAIToGeminiContents handles tool role with functionResponse
+	messages := []Message{
+		{
+			Role:      "assistant",
+			ToolCalls: json.RawMessage(`[{"id":"call_weather_1","type":"function","function":{"name":"get_weather","arguments":"{\"location\":\"Tokyo\"}"}}]`),
+		},
+		{
+			Role:       "tool",
+			ToolCallID: "call_weather_1",
+			Content:    json.RawMessage(`"{\"temp\": 22}"`),
+		},
+	}
+	contents, _ := convertOpenAIToGeminiContents(messages)
+	if len(contents) != 2 {
+		t.Fatalf("expected 2 contents, got %d", len(contents))
+	}
+	toolMsg := contents[1]
+	if toolMsg["role"] != "user" {
+		t.Errorf("expected toolMsg role 'user', got %v", toolMsg["role"])
+	}
+	parts := toolMsg["parts"].([]map[string]any)
+	if len(parts) != 1 || parts[0]["functionResponse"] == nil {
+		t.Fatalf("expected functionResponse in parts, got %+v", parts)
+	}
+	fr := parts[0]["functionResponse"].(map[string]any)
+	if fr["name"] != "get_weather" {
+		t.Errorf("expected functionResponse name 'get_weather', got %v", fr["name"])
+	}
+
+	// 2. Verify proxyAntigravityStreaming emits tool_calls
+	toolSSE := `data: {"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"name": "get_weather", "args": {"location": "Paris"}}}]}}], "finishReason": "STOP"}` + "\n\n"
+	respStream := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(toolSSE)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+	ucStream := &usageContext{StartedAt: time.Now(), Provider: "antigravity", Model: "gemini-3.8-flash"}
+	wStream := httptest.NewRecorder()
+	srv.proxyAntigravityStreaming(wStream, httptest.NewRequest("POST", "/v1/chat/completions", nil), respStream, "gemini-3.8-flash", ucStream)
+	if !strings.Contains(wStream.Body.String(), `"tool_calls"`) || !strings.Contains(wStream.Body.String(), "get_weather") {
+		t.Errorf("expected tool_calls in stream, got: %s", wStream.Body.String())
+	}
+
+	// 3. Verify proxyAntigravityNonStreaming emits tool_calls
+	toolJSON := `{"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"name": "search", "args": {"q": "golang"}}}]}}]}`
+	respNonStream := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(toolJSON)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+	ucNonStream := &usageContext{StartedAt: time.Now(), Provider: "antigravity", Model: "gemini-3.8-flash"}
+	wNonStream := httptest.NewRecorder()
+	srv.proxyAntigravityNonStreaming(wNonStream, respNonStream, "gemini-3.8-flash", ucNonStream)
+	var nonStreamObj map[string]any
+	if err := json.Unmarshal(wNonStream.Body.Bytes(), &nonStreamObj); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	choice0 := nonStreamObj["choices"].([]any)[0].(map[string]any)
+	if choice0["finish_reason"] != "tool_calls" {
+		t.Errorf("expected finish_reason 'tool_calls', got %v", choice0["finish_reason"])
+	}
+	msgObj := choice0["message"].(map[string]any)
+	tcList := msgObj["tool_calls"].([]any)
+	if len(tcList) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(tcList))
+	}
+}

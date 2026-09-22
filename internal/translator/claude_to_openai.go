@@ -124,10 +124,10 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 			case []any:
 				// Content blocks
 				var textParts []string
+				var reasoningParts []string
 				var openAIParts []any
 				var toolCalls []any
 				var toolResults []map[string]any
-
 				for _, blockRaw := range content {
 					block, ok := blockRaw.(map[string]any)
 					if !ok {
@@ -184,21 +184,30 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 							"tool_call_id": toolCallID,
 							"content":      resContent,
 						})
+					case "thinking":
+						if th, ok := block["thinking"].(string); ok && th != "" {
+							reasoningParts = append(reasoningParts, th)
+						}
 					}
 				}
 
 				for _, tr := range toolResults {
 					openAIMessages = append(openAIMessages, tr)
 				}
-				if len(toolCalls) > 0 || len(openAIParts) > 0 {
+				if len(toolCalls) > 0 || len(openAIParts) > 0 || len(reasoningParts) > 0 {
 					msgObj := map[string]any{"role": role}
 					if len(toolCalls) > 0 {
 						msgObj["tool_calls"] = toolCalls
+					}
+					if len(reasoningParts) > 0 {
+						msgObj["reasoning_content"] = strings.Join(reasoningParts, "\n\n")
 					}
 					if len(openAIParts) > len(textParts) {
 						msgObj["content"] = openAIParts
 					} else if len(textParts) > 0 {
 						msgObj["content"] = strings.Join(textParts, "\n\n")
+					} else if len(toolCalls) == 0 {
+						msgObj["content"] = ""
 					}
 					openAIMessages = append(openAIMessages, msgObj)
 				}
@@ -298,6 +307,13 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 			}
 
 			if msg, ok := choice["message"].(map[string]any); ok {
+				if rText, ok := msg["reasoning_content"].(string); ok && rText != "" {
+					contentBlocks = append(contentBlocks, map[string]any{
+						"type":     "thinking",
+						"thinking": rText,
+					})
+				}
+
 				if text, ok := msg["content"].(string); ok && text != "" {
 					contentBlocks = append(contentBlocks, map[string]any{
 						"type": "text",
@@ -328,6 +344,12 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 				}
 			}
 		}
+	}
+	if len(contentBlocks) == 0 {
+		contentBlocks = append(contentBlocks, map[string]any{
+			"type": "text",
+			"text": "",
+		})
 	}
 
 	inTokens := 0
@@ -371,6 +393,7 @@ type OpenAIToClaudeSSETranslator struct {
 	started          bool
 	ended            bool
 	blockStarted     bool
+	blockType        string
 	hasToolCalls     bool
 	toolBlockIndices map[int]int
 	toolBlockStarted map[int]bool
@@ -421,6 +444,7 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		if t.blockStarted {
 			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
 			t.blockStarted = false
+			t.blockType = ""
 		}
 
 		// Stop any started tool call content blocks in ascending order of block index
@@ -528,9 +552,47 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	text, _ := delta["content"].(string)
 	reasoning, _ := delta["reasoning_content"].(string)
 
-	if text != "" || reasoning != "" {
+	if reasoning != "" {
+		if t.blockStarted && t.blockType != "thinking" {
+			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
+			t.blockStarted = false
+		}
 		if !t.blockStarted {
 			t.blockStarted = true
+			t.blockType = "thinking"
+			t.blockIndex = t.nextBlockIndex
+			t.nextBlockIndex++
+			startBlock := map[string]any{
+				"type":  "content_block_start",
+				"index": t.blockIndex,
+				"content_block": map[string]any{
+					"type":     "thinking",
+					"thinking": "",
+				},
+			}
+			blockBytes, _ := json.Marshal(startBlock)
+			out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
+		}
+		deltaEvent := map[string]any{
+			"type":  "content_block_delta",
+			"index": t.blockIndex,
+			"delta": map[string]any{
+				"type":     "thinking_delta",
+				"thinking": reasoning,
+			},
+		}
+		deltaBytes, _ := json.Marshal(deltaEvent)
+		out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
+	}
+
+	if text != "" {
+		if t.blockStarted && t.blockType != "text" {
+			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
+			t.blockStarted = false
+		}
+		if !t.blockStarted {
+			t.blockStarted = true
+			t.blockType = "text"
 			t.blockIndex = t.nextBlockIndex
 			t.nextBlockIndex++
 			startBlock := map[string]any{
@@ -544,32 +606,19 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			blockBytes, _ := json.Marshal(startBlock)
 			out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
 		}
-		if text != "" {
-			if !t.outputUsageKnown {
-				t.outputTokens++
-			}
-			deltaEvent := map[string]any{
-				"type":  "content_block_delta",
-				"index": t.blockIndex,
-				"delta": map[string]any{
-					"type": "text_delta",
-					"text": text,
-				},
-			}
-			deltaBytes, _ := json.Marshal(deltaEvent)
-			out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
-		} else if reasoning != "" {
-			deltaEvent := map[string]any{
-				"type":  "content_block_delta",
-				"index": t.blockIndex,
-				"delta": map[string]any{
-					"type":     "thinking_delta",
-					"thinking": reasoning,
-				},
-			}
-			deltaBytes, _ := json.Marshal(deltaEvent)
-			out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
+		if !t.outputUsageKnown {
+			t.outputTokens++
 		}
+		deltaEvent := map[string]any{
+			"type":  "content_block_delta",
+			"index": t.blockIndex,
+			"delta": map[string]any{
+				"type": "text_delta",
+				"text": text,
+			},
+		}
+		deltaBytes, _ := json.Marshal(deltaEvent)
+		out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
 	}
 
 	// 3. Tool calls streaming
@@ -578,6 +627,7 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		if t.blockStarted {
 			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
 			t.blockStarted = false
+			t.blockType = ""
 		}
 
 		for _, tcRaw := range tcList {
