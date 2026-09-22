@@ -412,6 +412,50 @@ export const Button: Component<ButtonProps> = props => {
   )
 }
 
+export interface IconButtonProps extends JSX.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'ghost' | 'danger' | 'secondary'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
+  disabled?: boolean
+  loading?: boolean
+  onClick?: (e: MouseEvent) => void
+  type?: 'button' | 'submit' | 'reset'
+  title?: string
+  children?: JSX.Element
+  class?: string
+  ref?: HTMLButtonElement | ((el: HTMLButtonElement) => void)
+}
+
+export const IconButton: Component<IconButtonProps> = props => {
+  const [local, others] = splitProps(props, ['variant', 'size', 'disabled', 'loading', 'children', 'class', 'ref', 'type'])
+  const base =
+    'inline-flex items-center justify-center font-medium leading-none [&>svg]:block [&>svg]:shrink-0 transition-all duration-150 select-none shrink-0 active:scale-[0.96] disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-ring cursor-pointer rounded-control'
+  const iconSizes: Record<'xs' | 'sm' | 'md' | 'lg', string> = {
+    xs: 'w-6 h-6 text-xs',
+    sm: 'w-7 h-7 text-xs',
+    md: 'w-8 h-8 text-sm',
+    lg: 'w-9 h-9 text-base',
+  }
+  const variants = {
+    primary: 'bg-accent text-on-accent hover:brightness-110 shadow-accent',
+    secondary: 'bg-black/4 dark:bg-white/6 text-muted hover:text-foreground hover:bg-black/8 dark:hover:bg-white/10 shadow-xs',
+    ghost: 'text-muted hover:text-foreground hover:bg-black/4 dark:hover:bg-white/6',
+    danger: 'bg-danger/10 text-danger hover:bg-danger/20 shadow-xs',
+  }
+  return (
+    <button
+      ref={local.ref}
+      type={local.type ?? 'button'}
+      class={`${base} ${iconSizes[local.size ?? 'md']} ${variants[local.variant ?? 'ghost']} ${local.class ?? ''}`}
+      disabled={local.disabled || local.loading}
+      aria-busy={local.loading || undefined}
+      {...others}
+    >
+      <Show when={local.loading} fallback={local.children}>
+        <Spinner size={local.size === 'xs' || local.size === 'sm' ? 'sm' : 'md'} />
+      </Show>
+    </button>
+  )
+}
 export const Input: Component<{
   value?: string | number
   placeholder?: string
@@ -447,7 +491,31 @@ export const Input: Component<{
     />
   )
 }
+export interface TextareaProps {
+  value?: string | number
+  placeholder?: string
+  rows?: number
+  disabled?: boolean
+  onInput?: (v: string) => void
+  onKeyDown?: (e: KeyboardEvent) => void
+  class?: string
+  ariaLabel?: string
+}
 
+export const Textarea: Component<TextareaProps> = props => {
+  return (
+    <textarea
+      value={props.value ?? ''}
+      placeholder={props.placeholder}
+      rows={props.rows}
+      disabled={props.disabled}
+      aria-label={props.ariaLabel}
+      onInput={e => props.onInput?.(e.currentTarget.value)}
+      onKeyDown={props.onKeyDown}
+      class={`w-full rounded-control bg-black/4 dark:bg-white/8 text-text placeholder:text-muted/70 focus:outline-none focus:bg-card focus:ring-2 focus:ring-accent/30 shadow-inner transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${props.class ?? ''}`}
+    />
+  )
+}
 export interface SelectOption {
   value: string
   label: string

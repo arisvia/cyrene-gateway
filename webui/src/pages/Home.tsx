@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Empty, Button, Input, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, Skeleton, LoadState, confirm } from '@/components/ui'
+import { Card, Badge, Empty, Button, Input, Textarea, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, Skeleton, LoadState, confirm } from '@/components/ui'
 import type { ApiKey } from '@/types/domain'
 import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -417,10 +417,10 @@ const Home: Component = () => {
             label={t('home.systemContext')}
             hint={t('home.systemContextHint')}
           >
-            <textarea
-              class="w-full h-24 p-2.5 text-xs rounded-control bg-bg-elevated border border-subtle focus:border-accent font-mono resize-y mt-1 text-foreground"
+            <Textarea
+              class="h-24 p-2.5 text-xs font-mono resize-y mt-1"
               value={editSystemPrompt()}
-              onInput={e => setEditSystemPrompt(e.currentTarget.value)}
+              onInput={setEditSystemPrompt}
               placeholder={t('home.systemContextPlaceholder')}
             />
           </Field>

@@ -3,6 +3,7 @@ import { api } from '@/lib/api'
 import {
   Card,
   Input,
+  Textarea,
   Button,
   Select,
   Toggle,
@@ -1683,11 +1684,11 @@ main();
                     {t('playground.systemPromptReset')}
                   </button>
                 </div>
-                <textarea
-                  class="w-full bg-black/4 dark:bg-white/6 border border-subtle rounded-control p-2 text-xs text-foreground placeholder:text-faint focus:outline-none focus:ring-1 focus:ring-accent/40 min-h-[90px] resize-y"
+                <Textarea
+                  class="p-2 text-xs min-h-[90px] resize-y"
                   placeholder={t('playground.systemPromptPlaceholder')}
                   value={systemPrompt()}
-                  onInput={e => setSystemPrompt(e.currentTarget.value)}
+                  onInput={setSystemPrompt}
                 />
                 <div class="flex flex-wrap gap-1 pt-1">
                   <For each={systemPresets()}>

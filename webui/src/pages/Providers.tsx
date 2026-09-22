@@ -9,6 +9,7 @@ import {
   Empty,
   Field,
   Input,
+  Textarea,
   Modal,
   PageHeader,
   ProviderAvatar,
@@ -1204,12 +1205,12 @@ const Providers: Component = () => {
                           {t('providers.tokenImportHint')}
                         </p>
                         <div class="space-y-1.5">
-                          <textarea
+                          <Textarea
                             rows={3}
                             value={wizardImportToken()}
-                            onInput={e => setWizardImportToken(e.currentTarget.value)}
+                            onInput={setWizardImportToken}
                             placeholder={t('providers.tokenPastePlaceholder')}
-                            class="w-full rounded-control border border-subtle bg-bg/80 px-3 py-2 text-xs font-mono focus-visible:outline-2 focus-visible:outline-ring"
+                            class="px-3 py-2 text-xs font-mono"
                           />
                         </div>
                         <div class="flex items-center justify-end gap-2 pt-1">
