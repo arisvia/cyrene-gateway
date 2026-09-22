@@ -2,13 +2,16 @@ package handler
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -44,6 +47,7 @@ func NewDashboardHandler(cfg *config.Config) *DashboardHandler {
 }
 
 func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	addDashboardVary(w.Header())
 	path := strings.TrimPrefix(r.URL.Path, "/")
 
 	// Tier 1: Local dashboard directory (dev mode)
@@ -63,9 +67,13 @@ func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Tier 2b: Legacy single-HTML cache
 	if path == "" || path == "index.html" {
 		if cached := d.readCache(); cached != nil {
+			if !slices.Contains(dashboardEncodings(r.Header), "identity") {
+				http.Error(w, "no acceptable content encoding", http.StatusNotAcceptable)
+				return
+			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Write(cached)
+			http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(cached))
 			return
 		}
 	}
@@ -81,66 +89,183 @@ func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveFromDir serves a static file from dir, falling back to dir/index.html (SPA).
 // Returns false if the directory is unusable.
 func (d *DashboardHandler) serveFromDir(w http.ResponseWriter, r *http.Request, dir, path string) bool {
-	if path != "" {
-		full := filepath.Join(dir, filepath.FromSlash(path))
-		// Prevent path traversal outside the panel directory
-		if !strings.HasPrefix(full, filepath.Clean(dir)+string(os.PathSeparator)) {
-			return false
-		}
-		if info, err := os.Stat(full); err == nil && !info.IsDir() {
-			if strings.HasPrefix(path, "assets/") {
-				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			}
-			http.ServeFile(w, r, full)
-			return true
-		}
-		// Hashed build assets must 404 when missing — serving index.html
-		// here masked broken panel builds as blank pages (200 + text/html).
-		if strings.HasPrefix(path, "assets/") {
-			http.NotFound(w, r)
-			return true
-		}
-	}
-	indexPath := filepath.Join(dir, "index.html")
-	if data, err := os.ReadFile(indexPath); err == nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		w.Write(data)
-		return true
-	}
-	return false
+	return serveDashboardFS(w, r, os.DirFS(dir), path)
 }
 
 func (d *DashboardHandler) serveEmbedded(w http.ResponseWriter, r *http.Request, path string) {
-	// Try exact file match (static assets)
-	if path != "" {
-		if f, err := d.embedded.Open(path); err == nil {
-			defer f.Close()
-			if stat, err := f.Stat(); err == nil && !stat.IsDir() {
-				if strings.HasPrefix(path, "assets/") {
-					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-				}
-				http.ServeFileFS(w, r, d.embedded, path)
+	if !serveDashboardFS(w, r, d.embedded, path) {
+		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
+	}
+}
+
+func serveDashboardFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, path string) bool {
+	if path != "" && serveDashboardFile(w, r, fsys, path) {
+		return true
+	}
+	// Missing hashed assets must never be masked by the SPA fallback.
+	if strings.HasPrefix(path, "assets/") {
+		http.NotFound(w, r)
+		return true
+	}
+	return serveDashboardFile(w, r, fsys, "index.html")
+}
+
+func serveDashboardFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string) bool {
+	// Validate before using os.DirFS, including Windows path separators.
+	if !fs.ValidPath(name) || strings.Contains(name, `\`) {
+		return false
+	}
+	info, err := fs.Stat(fsys, name)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+
+	var file http.File
+	selected, encoding := false, ""
+	for _, coding := range dashboardEncodings(r.Header) {
+		if coding == "identity" {
+			selected = true
+			break
+		}
+		suffix := ".br"
+		if coding == "gzip" {
+			suffix = ".gz"
+		}
+		f, err := http.FS(fsys).Open(name + suffix)
+		if err != nil {
+			continue
+		}
+		stat, err := f.Stat()
+		if err != nil || !stat.Mode().IsRegular() {
+			f.Close()
+			continue
+		}
+		file, info, selected, encoding = f, stat, true, coding
+		break
+	}
+	if !selected {
+		http.Error(w, "no acceptable content encoding", http.StatusNotAcceptable)
+		return true
+	}
+
+	// Open index entries directly to avoid redirects and allow tier fallback.
+	isIndex := filepath.Base(name) == "index.html"
+	if file == nil && (isIndex || strings.HasSuffix(r.URL.Path, "/index.html")) {
+		file, err = http.FS(fsys).Open(name)
+		if err != nil {
+			return false
+		}
+	}
+	if file != nil {
+		defer file.Close()
+	}
+	if encoding != "" {
+		// Sniff the original, never the compressed bytes, for unknown extensions.
+		contentType := mime.TypeByExtension(filepath.Ext(name))
+		if contentType == "" {
+			f, err := fsys.Open(name)
+			if err != nil {
+				return false
+			}
+			var buf [512]byte
+			n, _ := io.ReadFull(f, buf[:])
+			f.Close()
+			contentType = http.DetectContentType(buf[:n])
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Encoding", encoding)
+	}
+	if isIndex {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	} else if strings.HasPrefix(name, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
+
+	// Reuse the open sidecar/entry without reopening or buffering its contents.
+	if file != nil {
+		http.ServeContent(w, r, name, info.ModTime(), file)
+	} else {
+		http.ServeFileFS(w, r, fsys, name)
+	}
+	return true
+}
+
+func addDashboardVary(h http.Header) {
+	for _, line := range h.Values("Vary") {
+		for token := range strings.SplitSeq(line, ",") {
+			token = strings.TrimSpace(token)
+			if token == "*" || strings.EqualFold(token, "Accept-Encoding") {
 				return
 			}
 		}
 	}
-	// Hashed build assets must 404 when missing — serving index.html
-	// here masked broken panel builds as blank pages (200 + text/html).
-	if strings.HasPrefix(path, "assets/") {
-		http.NotFound(w, r)
-		return
-	}
+	h.Add("Vary", "Accept-Encoding")
+}
 
-	// SPA fallback: serve index.html for all unmatched routes
-	data, err := fs.ReadFile(d.embedded, "index.html")
-	if err != nil {
-		http.Error(w, "dashboard unavailable", http.StatusInternalServerError)
-		return
+// Unspecified identity is a last resort unless *;q=0 excludes it.
+func dashboardEncodings(h http.Header) []string {
+	weights := make(map[string]int, 4)
+	for _, line := range h.Values("Accept-Encoding") {
+		for item := range strings.SplitSeq(line, ",") {
+			token, params, hasParams := strings.Cut(item, ";")
+			token = strings.ToLower(strings.TrimSpace(token))
+			switch token {
+			case "br", "gzip", "identity", "*":
+			default:
+				continue
+			}
+			q := 1000
+			if hasParams {
+				key, value, ok := strings.Cut(params, "=")
+				q = 0
+				if ok && strings.EqualFold(strings.TrimSpace(key), "q") {
+					q = dashboardEncodingQuality(strings.TrimSpace(value))
+				}
+			}
+			// Conflicting duplicates must not resurrect an explicit prohibition.
+			if previous, ok := weights[token]; ok {
+				q = min(q, previous)
+			}
+			weights[token] = q
+		}
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Write(data)
+	var accepted []string
+	for _, coding := range []string{"br", "gzip", "identity"} {
+		q, explicit := weights[coding]
+		if !explicit {
+			wildcard, present := weights["*"]
+			q = wildcard
+			if coding == "identity" && (!present || wildcard != 0) {
+				q = -1 // Allowed, but no explicit preference over compression.
+			}
+		}
+		weights[coding] = q
+		if q != 0 {
+			accepted = append(accepted, coding)
+		}
+	}
+	slices.SortStableFunc(accepted, func(a, b string) int { return weights[b] - weights[a] })
+	return accepted
+}
+
+// Parse RFC 9110 qvalues; invalid weights disable the coding.
+func dashboardEncodingQuality(value string) int {
+	whole, fraction, _ := strings.Cut(value, ".")
+	if (whole != "0" && whole != "1") || len(fraction) > 3 {
+		return 0
+	}
+	q, place := 0, 100
+	for _, digit := range fraction {
+		if digit < '0' || digit > '9' || (whole == "1" && digit != '0') {
+			return 0
+		}
+		q += int(digit-'0') * place
+		place /= 10
+	}
+	if whole == "1" {
+		return 1000
+	}
+	return q
 }
 
 // TryDownload fetches the panel from PanelURL and caches it locally.
