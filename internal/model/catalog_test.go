@@ -19,27 +19,27 @@ func TestLookupCatalog(t *testing.T) {
 		{"o3", "O3", 200000, "o-series"},
 		{"text-embedding-3-large", "Text Embedding 3 Large", 8191, "embedding"},
 		{"deepseek-v4.1-flash", "DeepSeek V4.1 Flash", 1000000, "deepseek"},
-		{"claude-opus-4.8", "Claude Opus 4.8", 1000000, "claude"},
+		{"claude-opus-4", "Claude Opus 4", 200000, "claude"},
 		{"kimi-k2.7-code", "Kimi K2.7 Code", 262144, "kimi"},
 		{"gpt-oss-120b", "GPT-OSS 120B", 131072, "openai"},
 		{"qwen3.8-max", "Qwen 3.8 Max", 1048576, "qwen"},
 		{"hy4-preview", "Hy4 Preview", 1048576, "hunyuan"},
 		{"hy3", "Hy3", 262144, "hunyuan"},
-		{"grok-4.2-fast", "Grok 4.2 Fast", 2000000, "grok"},
+		{"grok-4-fast", "Grok 4 Fast", 2000000, "grok"},
 		{"mistral-large-3", "Mistral Large 3", 262144, "mistral"},
 		{"llama-4-scout", "Llama 4 Scout", 328000, "llama"},
-		{"command-a-plus", "Command A+", 256000, "command"},
-		{"nemotron-3-ultra", "Nemotron 3 Ultra", 1000000, "nemotron"},
+		{"command-r-plus", "Command R+", 128000, "command"},
+		{"hunyuan-pro", "Hunyuan Pro", 256000, "hunyuan"},
 		{"seed-2.0-pro", "Doubao Seed 2.0 Pro", 256000, "seed"},
-		{"mimo-v2.5-pro", "MiMo V2.5 Pro", 1048576, "mimo"},
-		{"laguna-s-2.1", "Laguna S 2.1", 1048576, "poolside"},
-		{"gpt-6-astra", "GPT-6 Astra", 1048576, "gpt-6"},
+		{"qwen2.5-coder-32b", "Qwen 2.5 Coder 32B", 131072, "qwen"},
+		{"claude-3-7-sonnet", "Claude 3.7 Sonnet", 200000, "claude"},
+		{"gpt-4o", "GPT-4o", 128000, "gpt-4o"},
 		{"sonar-reasoning-pro", "Sonar Reasoning Pro", 128000, "perplexity"},
 		{"nova-2-lite", "Nova 2 Lite", 1000000, "nova"},
-		{"ernie-5.1", "ERNIE 5.1", 119000, "ernie"},
-		{"phi-4", "Phi 4", 128000, "phi"},
+		{"doubao-pro-128k", "Doubao Pro 128K", 128000, "seed"},
+		{"gemini-2.0-flash", "Gemini 2.0 Flash", 1048576, "gemini"},
 		{"step-3.7-flash", "Step 3.7 Flash", 262144, "step"},
-		{"gpt-image-2.5", "GPT Image 2.5", 0, "image"},
+		{"dall-e-3", "DALL-E 3", 0, "image"},
 		{"unknown-model-xyz", "", 0, ""},
 	}
 	for _, tt := range tests {
@@ -64,6 +64,62 @@ func TestLookupCatalog(t *testing.T) {
 				t.Errorf("Family = %q, want %q", got.Family, tt.wantFamily)
 			}
 		})
+	}
+}
+
+func TestLookupCatalog_DisplayNameFallback(t *testing.T) {
+	tests := []struct {
+		id          string
+		displayName string
+		wantCtx     int
+		wantOutput  int
+		wantFamily  string
+	}{
+		{"kmodel_latest", "Kimi-K3", 1048576, 131072, "kimi"},
+		{"kmodel", "Kimi-K2.8-Preview", 262144, 262144, "kimi"},
+		{"dmodel", "DeepSeek-V4-Pro", 1000000, 384000, "deepseek"},
+		{"dfmodel", "DeepSeek-V4-Flash", 1000000, 384000, "deepseek"},
+		{"gmodel", "GLM-5.3", 1000000, 131072, "glm"},
+		{"gfmodel", "GLM-5.3-Flash", 1310720, 131072, "glm"},
+		{"mmodel", "MiniMax-M3", 1048576, 512000, "minimax"},
+		{"qfmodel", "Qwen3.8-Flash", 1048576, 131072, "qwen"},
+		{"qmodel_latest", "Qwen3.7-Max", 131072, 16384, "qwen"},
+		{"qmodel", "Qwen3.7-Plus", 131072, 16384, "qwen"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.displayName, func(t *testing.T) {
+			got := LookupCatalog(tt.id, tt.displayName)
+			if got == nil {
+				t.Fatalf("expected match for %s (%s), got nil", tt.id, tt.displayName)
+			}
+			if got.ContextLength != tt.wantCtx {
+				t.Errorf("ContextLength = %d, want %d", got.ContextLength, tt.wantCtx)
+			}
+			if got.MaxOutput != tt.wantOutput {
+				t.Errorf("MaxOutput = %d, want %d", got.MaxOutput, tt.wantOutput)
+			}
+			if got.Family != tt.wantFamily {
+				t.Errorf("Family = %q, want %q", got.Family, tt.wantFamily)
+			}
+		})
+	}
+}
+
+func TestEnrichModelsFromCatalog(t *testing.T) {
+	models := []ModelMetadata{
+		{ID: "kmodel_latest", DisplayName: "Kimi-K3"},
+		{ID: "cmodel", DisplayName: "Cantus"},
+		{ID: "already_set", DisplayName: "Kimi-K3", ContextLength: 50000, MaxOutput: 4000},
+	}
+	EnrichModelsFromCatalog(models)
+	if models[0].ContextLength != 1048576 || models[0].MaxOutput != 131072 || models[0].Family != "kimi" {
+		t.Errorf("failed to enrich models[0]: %+v", models[0])
+	}
+	if models[1].ContextLength != 0 {
+		t.Errorf("unknown model should not be modified: %+v", models[1])
+	}
+	if models[2].ContextLength != 50000 || models[2].MaxOutput != 4000 {
+		t.Errorf("existing values should not be overwritten: %+v", models[2])
 	}
 }
 
@@ -109,6 +165,22 @@ func TestMergeMetadata(t *testing.T) {
 	meta = MergeMetadata("totally-unknown-model", nil, nil)
 	if meta.DisplayName != "totally-unknown-model" {
 		t.Errorf("expected ID fallback, got %q", meta.DisplayName)
+	}
+
+	// Test Layer 2.5: Fallback to Catalog using DisplayName when ID is opaque
+	cachedQoder := &ModelMetadata{
+		ID:          "kmodel_latest",
+		DisplayName: "Kimi-K3",
+	}
+	meta = MergeMetadata("kmodel_latest", nil, cachedQoder)
+	if meta.ContextLength != 1048576 {
+		t.Errorf("expected 1048576 via DisplayName fallback, got %d", meta.ContextLength)
+	}
+	if meta.MaxOutput != 131072 {
+		t.Errorf("expected 131072 via DisplayName fallback, got %d", meta.MaxOutput)
+	}
+	if meta.Family != "kimi" {
+		t.Errorf("expected family kimi, got %q", meta.Family)
 	}
 }
 

@@ -21,17 +21,19 @@ var ModelsDevURL = "https://models.dev/api.json"
 
 const modelsDevCacheTTL = 24 * time.Hour
 
-// modelsDevEntry is the subset of a models.dev model record we need.
-type modelsDevEntry struct {
-	Name    string
-	Family  string
-	Context int
-	Output  int
+// ModelsDevEntry is the subset of a models.dev model record we need.
+type ModelsDevEntry struct {
+	Name    string `json:"name"`
+	Family  string `json:"family"`
+	Context int    `json:"context"`
+	Output  int    `json:"output"`
 }
 
+type modelsDevEntry = ModelsDevEntry
+
 var (
-	modelsDevMu      sync.Mutex
-	modelsDevCache   map[string]modelsDevEntry // key: lowercase model id
+	modelsDevMu      sync.RWMutex
+	modelsDevCache   map[string]ModelsDevEntry // key: lowercase model id
 	modelsDevFetched time.Time
 )
 
@@ -60,13 +62,13 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
 
-	modelsDevMu.Lock()
+	modelsDevMu.RLock()
 	if modelsDevCache != nil && time.Since(modelsDevFetched) < modelsDevCacheTTL {
 		c := modelsDevCache
-		modelsDevMu.Unlock()
+		modelsDevMu.RUnlock()
 		return c, nil
 	}
-	modelsDevMu.Unlock()
+	modelsDevMu.RUnlock()
 
 	req, err := http.NewRequest("GET", ModelsDevURL, nil)
 	if err != nil {
@@ -116,42 +118,92 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error
 }
 
 func modelsDevStale() map[string]modelsDevEntry {
-	modelsDevMu.Lock()
-	defer modelsDevMu.Unlock()
+	modelsDevMu.RLock()
+	defer modelsDevMu.RUnlock()
 	return modelsDevCache
 }
 
 // LookupModelsDev resolves a model id against the catalog: exact lowercase
-// match first, then fuzzy containment (id appears inside the model id or vice
-// versa) to handle prefixed ids like "openai/gpt-4o" vs "gpt-4o".
-func LookupModelsDev(catalog map[string]modelsDevEntry, modelID string) (modelsDevEntry, bool) {
+// match first, then stripped provider prefix (e.g. "openai/gpt-4o" -> "gpt-4o"),
+// then safe fuzzy containment (e.g. modelID contains catalog key).
+func LookupModelsDev(catalog map[string]ModelsDevEntry, modelID string) (ModelsDevEntry, bool) {
 	if len(catalog) == 0 || modelID == "" {
-		return modelsDevEntry{}, false
+		return ModelsDevEntry{}, false
 	}
 	lower := strings.ToLower(modelID)
 	if e, ok := catalog[lower]; ok {
 		return e, true
 	}
-	// Strip provider prefix (e.g. "openai/gpt-4o" → "gpt-4o").
+	// Strip provider prefix (e.g. "openai/gpt-4o" -> "gpt-4o").
 	if idx := strings.Index(lower, "/"); idx > 0 {
 		if e, ok := catalog[lower[idx+1:]]; ok {
 			return e, true
 		}
 	}
-	// Fuzzy: model id contains a catalog id (or vice versa), best = longest.
-	best, bestLen := modelsDevEntry{}, 0
+	// Exact stripped dash/space match
+	lowerDashed := strings.ReplaceAll(lower, " ", "-")
+	if e, ok := catalog[lowerDashed]; ok {
+		return e, true
+	}
+	// Fuzzy: model id contains a catalog id, best = longest match (min length 4 to avoid greedy collisions).
+	best, bestLen := ModelsDevEntry{}, 0
 	for key, e := range catalog {
-		if len(key) <= bestLen {
+		if len(key) <= bestLen || len(key) < 4 {
 			continue
 		}
-		if strings.Contains(lower, key) || strings.Contains(key, lower) {
+		if strings.Contains(lower, key) || strings.Contains(lowerDashed, key) || (len(lower) >= 6 && strings.Contains(key, lower)) {
 			best, bestLen = e, len(key)
 		}
 	}
 	if bestLen > 0 {
 		return best, true
 	}
-	return modelsDevEntry{}, false
+	return ModelsDevEntry{}, false
+}
+
+// LookupModelsDevGlobal resolves a model id or display name against the cached models.dev catalog.
+func LookupModelsDevGlobal(identifiers ...string) *ModelMetadata {
+	modelsDevMu.RLock()
+	defer modelsDevMu.RUnlock()
+	cat := modelsDevCache
+	if len(cat) == 0 {
+		return nil
+	}
+	for _, raw := range identifiers {
+		if raw == "" {
+			continue
+		}
+		if e, ok := LookupModelsDev(cat, raw); ok {
+			primaryID := raw
+			if len(identifiers) > 0 && identifiers[0] != "" {
+				primaryID = identifiers[0]
+			}
+			return &ModelMetadata{
+				ID:            primaryID,
+				DisplayName:   e.Name,
+				ContextLength: e.Context,
+				MaxOutput:     e.Output,
+				Family:        e.Family,
+				FromUpstream:  false,
+			}
+		}
+	}
+	return nil
+}
+
+// SetModelsDevCatalog updates the in-memory models.dev catalog.
+func SetModelsDevCatalog(catalog map[string]ModelsDevEntry) {
+	modelsDevMu.Lock()
+	modelsDevCache = catalog
+	modelsDevFetched = time.Now()
+	modelsDevMu.Unlock()
+}
+
+// GetModelsDevCatalog returns the current in-memory models.dev catalog copy.
+func GetModelsDevCatalog() map[string]ModelsDevEntry {
+	modelsDevMu.RLock()
+	defer modelsDevMu.RUnlock()
+	return modelsDevCache
 }
 
 // BackfillFromModelsDev fills missing ContextLength/MaxOutput/Family/
@@ -161,6 +213,9 @@ func BackfillFromModelsDev(models []ModelMetadata, catalog map[string]modelsDevE
 	for i := range models {
 		m := &models[i]
 		e, ok := LookupModelsDev(catalog, m.ID)
+		if !ok && m.DisplayName != "" && m.DisplayName != m.ID {
+			e, ok = LookupModelsDev(catalog, m.DisplayName)
+		}
 		if !ok {
 			continue
 		}

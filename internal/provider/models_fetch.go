@@ -80,6 +80,7 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 		}
 		out = append(out, m)
 	}
+	model.EnrichModelsFromCatalog(out)
 	return out
 }
 
@@ -93,14 +94,14 @@ var qoderModelDisplayNames = map[string]string{
 	"qmodel_38max":  "Qwen3.8-Max",
 	"qmodel_latest": "Qwen3.7-Max",
 	"qmodel":        "Qwen3.7-Plus",
-	"qfmodel":       "Qwen3.7-Flash",
+	"qfmodel":       "Qwen3.8-Flash",
 	"kmodel_latest": "Kimi-K3",
-	"kmodel":        "Kimi-K2.7-Code",
+	"kmodel":        "Kimi-K2.8-Preview",
 	"gmodel":        "GLM-5.3",
 	"gfmodel":       "GLM-5.3-Flash",
 	"gm51model":     "GLM-5.3",
 	"dmodel":        "DeepSeek-V4-Pro",
-	"dfmodel":       "DeepSeek-V4-Flash",
+	"dfmodel":       "DeepSeek-Flash",
 	"mmodel":        "MiniMax-M3",
 	"cmodel":        "Cantus",
 }

@@ -233,6 +233,23 @@ func TestLoadModelsDevCatalog_Mock(t *testing.T) {
 	}
 }
 
+func TestLookupModelsDevGlobal(t *testing.T) {
+	// Seed cache
+	SetModelsDevCatalog(map[string]ModelsDevEntry{
+		"deepseek-flash":   {Name: "DeepSeek V4.1 Flash", Family: "deepseek", Context: 1000000, Output: 384000},
+		"gemini-2.0-flash": {Name: "Gemini 2.0 Flash", Family: "gemini", Context: 1048576, Output: 8192},
+	})
+	defer SetModelsDevCatalog(nil)
+
+	m := LookupCatalog("dfmodel", "DeepSeek-Flash")
+	if m == nil {
+		t.Fatal("expected match via models.dev dynamic catalog")
+	}
+	if m.ContextLength != 1000000 || m.MaxOutput != 384000 {
+		t.Errorf("unexpected specs from models.dev: %+v", m)
+	}
+}
+
 func TestFetchModels_CustomHeaders(t *testing.T) {
 	var gotHeader string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

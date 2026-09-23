@@ -192,6 +192,9 @@ func normalizeOpenAICompat(body []byte) ([]ModelMetadata, error) {
 		} else if m.Capabilities.Limits.MaxOutputTokens > 0 {
 			meta.MaxOutput = m.Capabilities.Limits.MaxOutputTokens
 		}
+		if meta.ContextLength > 0 {
+			meta.FromUpstream = true
+		}
 
 		if m.Capabilities.Family != "" {
 			meta.Family = m.Capabilities.Family
@@ -342,6 +345,7 @@ func normalizeOpenRouter(body []byte) ([]ModelMetadata, error) {
 			DisplayName:   m.Name,
 			ContextLength: m.ContextLength,
 			MaxOutput:     m.TopProvider.MaxCompletionTokens,
+			FromUpstream:  m.ContextLength > 0,
 		}
 
 		// Parse modality string like "text+image->text"
@@ -420,6 +424,7 @@ func normalizeGoogle(body []byte) ([]ModelMetadata, error) {
 			DisplayName:   m.DisplayName,
 			ContextLength: m.InputTokenLimit,
 			MaxOutput:     m.OutputTokenLimit,
+			FromUpstream:  m.InputTokenLimit > 0,
 		}
 
 		// Map generation methods to capabilities
@@ -534,6 +539,26 @@ func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMet
 			result.Family = cached.Family
 		}
 	}
+	// Layer 2.5: If context length or max output is still missing, try matching catalog by display name
+	if (result.ContextLength == 0 || result.MaxOutput == 0) && result.DisplayName != "" && result.DisplayName != modelID {
+		if cat := LookupCatalog(result.DisplayName); cat != nil {
+			if result.ContextLength == 0 {
+				result.ContextLength = cat.ContextLength
+			}
+			if result.MaxOutput == 0 {
+				result.MaxOutput = cat.MaxOutput
+			}
+			if len(result.Capabilities) == 0 {
+				result.Capabilities = cat.Capabilities
+			}
+			if len(result.Modalities) == 0 {
+				result.Modalities = cat.Modalities
+			}
+			if result.Family == "" {
+				result.Family = cat.Family
+			}
+		}
+	}
 
 	// Layer 3: user override (highest priority)
 	if userOverride != nil {
@@ -563,6 +588,40 @@ func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMet
 	}
 
 	return result
+}
+
+// EnrichModelsFromCatalog fills missing ContextLength, MaxOutput, Capabilities, Modalities,
+// and Family on live-fetched models using the static catalog, matching by ID and DisplayName in order.
+// Existing non-zero / non-empty values are never overwritten.
+func EnrichModelsFromCatalog(models []ModelMetadata) {
+	for i := range models {
+		m := &models[i]
+		if m.ContextLength > 0 && m.MaxOutput > 0 && len(m.Capabilities) > 0 && m.Family != "" {
+			continue
+		}
+		cat := LookupCatalog(m.ID, m.DisplayName)
+		if cat == nil {
+			continue
+		}
+		if m.DisplayName == "" || m.DisplayName == m.ID {
+			m.DisplayName = cat.DisplayName
+		}
+		if m.ContextLength == 0 {
+			m.ContextLength = cat.ContextLength
+		}
+		if m.MaxOutput == 0 {
+			m.MaxOutput = cat.MaxOutput
+		}
+		if len(m.Capabilities) == 0 {
+			m.Capabilities = cat.Capabilities
+		}
+		if len(m.Modalities) == 0 {
+			m.Modalities = cat.Modalities
+		}
+		if m.Family == "" {
+			m.Family = cat.Family
+		}
+	}
 }
 
 func parseModalities(s string) []string {
