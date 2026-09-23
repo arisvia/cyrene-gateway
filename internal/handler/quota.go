@@ -114,5 +114,13 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 		ProjectID:   projectID,
 		BaseURL:     conn.Data.BaseURL,
 	})
+	if res.AccountEmail == "" && conn.Email != "" {
+		res.AccountEmail = conn.Email
+	}
+	if res.AccountID == "" && conn.Data.ProviderSpecificData != nil {
+		if uid, ok := conn.Data.ProviderSpecificData["userId"].(string); ok && uid != "" {
+			res.AccountID = uid
+		}
+	}
 	writeJSON(w, http.StatusOK, res)
 }

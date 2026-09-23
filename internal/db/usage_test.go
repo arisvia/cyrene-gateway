@@ -194,3 +194,48 @@ func TestGetUsageDailyRange(t *testing.T) {
 		t.Error("expected 2026-07-22 in range")
 	}
 }
+
+func TestGetUsageDimensions(t *testing.T) {
+	d := setupTestDB(t)
+
+	d.SaveUsageEntry(&UsageEntry{
+		Timestamp: "2026-07-20T10:00:00Z", Provider: "openai", Model: "gpt-4o",
+		APIKey: "sk-client-a", Endpoint: "/v1/chat/completions",
+		PromptTokens: 10, CompletionTokens: 5, Cost: 0.01,
+	})
+	d.SaveUsageEntry(&UsageEntry{
+		Timestamp: "2026-07-22T10:00:00Z", Provider: "anthropic", Model: "claude-3-5-sonnet",
+		APIKey: "sk-client-b", Endpoint: "/v1/messages",
+		PromptTokens: 30, CompletionTokens: 15, Cost: 0.05,
+	})
+	d.SaveUsageEntry(&UsageEntry{
+		Timestamp: "2026-07-22T11:00:00Z", Provider: "qoder", Model: "efficient",
+		APIKey: "", Endpoint: "/v1/chat/completions",
+		PromptTokens: 20, CompletionTokens: 10, Cost: 0.0,
+	})
+
+	byKey, byEndpoint, err := d.GetUsageDimensions("2026-07-21T00:00:00Z")
+	if err != nil {
+		t.Fatalf("GetUsageDimensions: %v", err)
+	}
+
+	if len(byKey) != 2 {
+		t.Fatalf("expected 2 keys (sk-client-b and default), got %d", len(byKey))
+	}
+	if byKey["sk-client-b"].Requests != 1 || byKey["sk-client-b"].PromptTokens != 30 {
+		t.Errorf("unexpected stats for sk-client-b: %+v", byKey["sk-client-b"])
+	}
+	if byKey["default"].Requests != 1 || byKey["default"].PromptTokens != 20 {
+		t.Errorf("unexpected stats for default key: %+v", byKey["default"])
+	}
+
+	if len(byEndpoint) != 2 {
+		t.Fatalf("expected 2 endpoints, got %d", len(byEndpoint))
+	}
+	if byEndpoint["/v1/messages"].Requests != 1 {
+		t.Errorf("unexpected stats for /v1/messages: %+v", byEndpoint["/v1/messages"])
+	}
+	if byEndpoint["/v1/chat/completions"].Requests != 1 {
+		t.Errorf("unexpected stats for /v1/chat/completions: %+v", byEndpoint["/v1/chat/completions"])
+	}
+}

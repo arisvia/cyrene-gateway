@@ -28,11 +28,12 @@ type Quota struct {
 	DisplayName         string  `json:"displayName,omitempty"`
 }
 
-// QuotaResult is the usage payload for one connection.
 type QuotaResult struct {
-	Plan    string           `json:"plan,omitempty"`
-	Message string           `json:"message,omitempty"`
-	Quotas  map[string]Quota `json:"quotas,omitempty"`
+	Plan         string           `json:"plan,omitempty"`
+	Message      string           `json:"message,omitempty"`
+	Quotas       map[string]Quota `json:"quotas,omitempty"`
+	AccountID    string           `json:"accountId,omitempty"`
+	AccountEmail string           `json:"accountEmail,omitempty"`
 }
 
 // QuotaCredentials is the subset of connection data a quota fetcher needs.

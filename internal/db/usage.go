@@ -420,6 +420,53 @@ func (d *DB) GetConnectionUsageTokens(connectionID string, period string) (promp
 	return prompt, completion
 }
 
+// GetUsageDimensions returns aggregations by apiKey and by endpoint for records on or after cutoffTime.
+func (d *DB) GetUsageDimensions(cutoffTime string) (byKey map[string]DayCounter, byEndpoint map[string]DayCounter, err error) {
+	byKey = make(map[string]DayCounter)
+	byEndpoint = make(map[string]DayCounter)
+
+	var whereClause string
+	var args []any
+	if cutoffTime != "" {
+		whereClause = "WHERE timestamp >= ?"
+		args = append(args, cutoffTime)
+	}
+
+	epQuery := fmt.Sprintf(`
+		SELECT COALESCE(NULLIF(endpoint, ''), 'other') AS ep,
+		       COUNT(*), COALESCE(SUM(promptTokens),0), COALESCE(SUM(completionTokens),0), COALESCE(SUM(cost),0)
+		FROM usageHistory %s GROUP BY ep`, whereClause)
+	epRows, err := d.conn.Query(epQuery, args...)
+	if err == nil {
+		defer epRows.Close()
+		for epRows.Next() {
+			var ep string
+			var c DayCounter
+			if scanErr := epRows.Scan(&ep, &c.Requests, &c.PromptTokens, &c.CompletionTokens, &c.Cost); scanErr == nil {
+				byEndpoint[ep] = c
+			}
+		}
+	}
+
+	keyQuery := fmt.Sprintf(`
+		SELECT CASE WHEN apiKey IS NULL OR apiKey = '' THEN 'default' ELSE apiKey END AS k,
+		       COUNT(*), COALESCE(SUM(promptTokens),0), COALESCE(SUM(completionTokens),0), COALESCE(SUM(cost),0)
+		FROM usageHistory %s GROUP BY k`, whereClause)
+	keyRows, err := d.conn.Query(keyQuery, args...)
+	if err == nil {
+		defer keyRows.Close()
+		for keyRows.Next() {
+			var k string
+			var c DayCounter
+			if scanErr := keyRows.Scan(&k, &c.Requests, &c.PromptTokens, &c.CompletionTokens, &c.Cost); scanErr == nil {
+				byKey[k] = c
+			}
+		}
+	}
+
+	return byKey, byEndpoint, nil
+}
+
 func dateKeyFromTimestamp(ts string) string {
 	t, err := time.Parse(time.RFC3339, ts)
 	if err != nil {

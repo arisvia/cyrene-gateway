@@ -158,14 +158,27 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		if cachedMeta, ok := cacheIndex[fullID]; ok && cachedMeta != nil {
 			item.ContextLength = cachedMeta.ContextLength
 			item.MaxOutput = cachedMeta.MaxOutput
-			// 规则：若上游动态同步抓取已有确切元数据（如 ContextLength > 0），则锁定编辑，仅允许开关
-			if cachedMeta.ContextLength > 0 {
+			// 规则：只有明确上游动态同步下发了确切元数据（FromUpstream），才锁定编辑；
+			// 底层 Catalog 兜底匹配（无论来自缓存同步还是即时兜底），只要上游未明确下发，始终允许用户自由编辑！
+			isExplicitUpstream := (cachedMeta.FromUpstream || conn.Provider == "antigravity") && conn.Provider != "qoder"
+			if isExplicitUpstream && cachedMeta.ContextLength > 0 {
 				item.CanEdit = false
 			} else {
 				item.CanEdit = true
 			}
 		} else {
 			// 未包含确切动态元数据的内置或自定义模型，允许用户自由编辑
+			item.CanEdit = true
+		}
+		// 若动态缓存中未定义上下文长度（ContextLength == 0），尝试使用模型名称及 ID 向底层 Catalog 匹配元数据
+		if item.ContextLength == 0 {
+			if cat := model.LookupCatalog(id, name); cat != nil && cat.ContextLength > 0 {
+				item.ContextLength = cat.ContextLength
+				if item.MaxOutput == 0 {
+					item.MaxOutput = cat.MaxOutput
+				}
+			}
+			// 兜底匹配无论是否命中，始终允许用户自由编辑
 			item.CanEdit = true
 		}
 		return item
@@ -176,11 +189,26 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		registryItems = append(registryItems, buildModelItem(m.ID, m.Name))
 	}
 
+	// 稳定排序：启用的模型优先排在前面，已禁用的模型沉底，同组内按 ID 字母序稳定排列
+	sort.Slice(registryItems, func(i, j int) bool {
+		if registryItems[i].Enabled != registryItems[j].Enabled {
+			return registryItems[i].Enabled
+		}
+		return registryItems[i].ID < registryItems[j].ID
+	})
+
 	customModels := s.loadCustomModels(conn.ID)
 	customItems := []ProviderModelItem{}
 	for _, cm := range customModels {
 		customItems = append(customItems, buildModelItem(cm.ID, cm.Name))
 	}
+
+	sort.Slice(customItems, func(i, j int) bool {
+		if customItems[i].Enabled != customItems[j].Enabled {
+			return customItems[i].Enabled
+		}
+		return customItems[i].ID < customItems[j].ID
+	})
 	regInfo, _ := provider.GetProvider(conn.Provider)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider":       conn.Provider,

@@ -83,6 +83,22 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	stats["byProvider"] = byProvider
 	stats["byModel"] = byModel
 
+	var cutoffTime string
+	switch period {
+	case "24h", "today":
+		cutoffTime = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	case "7d":
+		cutoffTime = time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339)
+	case "30d":
+		cutoffTime = time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
+	case "60d":
+		cutoffTime = time.Now().UTC().AddDate(0, 0, -60).Format(time.RFC3339)
+	default:
+		cutoffTime = ""
+	}
+	byKey, byEndpoint, _ := s.DB.GetUsageDimensions(cutoffTime)
+	stats["byKey"] = byKey
+	stats["byEndpoint"] = byEndpoint
 	writeJSON(w, http.StatusOK, stats)
 }
 

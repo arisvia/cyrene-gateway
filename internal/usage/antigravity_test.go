@@ -126,8 +126,8 @@ func TestClusterAntigravityQuotas(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing 'gemini' quota")
 	}
-	if geminiQ.DisplayName != "Gemini (Flash / Pro / Image)" {
-		t.Errorf("expected 'Gemini (Flash / Pro / Image)', got %q", geminiQ.DisplayName)
+	if geminiQ.DisplayName != "Gemini (Flash / Pro / Image / Search)" {
+		t.Errorf("expected 'Gemini (Flash / Pro / Image / Search)', got %q", geminiQ.DisplayName)
 	}
 	if geminiQ.Used != 50 || geminiQ.Remaining != 950 || geminiQ.RemainingPercentage != 95.0 {
 		t.Errorf("unexpected gemini quota math: %+v", geminiQ)
@@ -237,7 +237,7 @@ func TestFetchAntigravity_MockServer(t *testing.T) {
 	if len(res.Quotas) != 2 {
 		t.Fatalf("expected 2 quotas, got %d: %+v", len(res.Quotas), res.Quotas)
 	}
-	if res.Quotas["gemini"].DisplayName != "Gemini (Flash / Pro / Image)" {
+	if res.Quotas["gemini"].DisplayName != "Gemini (Flash / Pro / Image / Search)" {
 		t.Errorf("unexpected gemini label: %s", res.Quotas["gemini"].DisplayName)
 	}
 	if res.Quotas["claude"].DisplayName != "Claude & GPT (Shared)" {
@@ -314,12 +314,12 @@ func TestClusterAntigravitySummary(t *testing.T) {
 	}
 
 	gSess, ok := quotas["gemini_session"]
-	if !ok || gSess.DisplayName != "Gemini (5h Rolling)" || gSess.RemainingPercentage != 80.0 {
+	if !ok || gSess.DisplayName != "Gemini (Search / Image) (5h Rolling)" || gSess.RemainingPercentage != 80.0 {
 		t.Errorf("unexpected gemini_session: %+v", gSess)
 	}
 
 	gWeek, ok := quotas["gemini_weekly"]
-	if !ok || gWeek.DisplayName != "Gemini (Weekly)" || gWeek.RemainingPercentage != 60.0 {
+	if !ok || gWeek.DisplayName != "Gemini (Search / Image) (Weekly)" || gWeek.RemainingPercentage != 60.0 {
 		t.Errorf("unexpected gemini_weekly: %+v", gWeek)
 	}
 

@@ -51,6 +51,62 @@ func TestGetProviderModels(t *testing.T) {
 	}
 }
 
+func TestGetProviderModels_DisplayNameFallback(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "qoder-conn",
+		Provider: "qoder",
+		AuthType: "oauth",
+		IsActive: true,
+	}
+	database.CreateConnection(conn)
+
+	// Qoder returns cryptic model ID "kmodel_latest" with display name "Kimi-K3" and zero context length
+	cachedRaw := `{"provider":"qoder","models":[{"id":"kmodel_latest","display_name":"Kimi-K3"}]}`
+	database.KVSet("providerModelCache", "qoder", cachedRaw)
+
+	req := httptest.NewRequest("GET", "/api/providers/qoder-conn/models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		RegistryModels []struct {
+			ID            string `json:"id"`
+			Name          string `json:"name"`
+			ContextLength int    `json:"contextLength"`
+			MaxOutput     int    `json:"maxOutputTokens"`
+			CanEdit       bool   `json:"canEdit"`
+		} `json:"registryModels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp.RegistryModels) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(resp.RegistryModels))
+	}
+	m := resp.RegistryModels[0]
+	if m.ID != "kmodel_latest" {
+		t.Errorf("expected ID kmodel_latest, got %s", m.ID)
+	}
+	if m.Name != "Kimi-K3" {
+		t.Errorf("expected Name Kimi-K3, got %s", m.Name)
+	}
+	if m.ContextLength != 1048576 {
+		t.Errorf("expected ContextLength 1048576 via DisplayName fallback, got %d", m.ContextLength)
+	}
+	if m.MaxOutput != 131072 {
+		t.Errorf("expected MaxOutput 131072 via DisplayName fallback, got %d", m.MaxOutput)
+	}
+	if !m.CanEdit {
+		t.Errorf("expected CanEdit=true for fallback-matched model, got false")
+	}
+}
+
 func TestGetProviderModelsNotFound(t *testing.T) {
 	srv, _ := setupTestServer(t)
 

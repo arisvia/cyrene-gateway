@@ -160,7 +160,8 @@ func ensureAdminPassword(database *db.DB, explicitPassword string) {
 ========================================================================
 [Cyrene Gateway] Initial Admin Password Generated:
   Password:  %s
-Please copy this password to log in and change it in Settings.
+Localhost defaults to local-first mode (no login required). This password
+is reserved for remote WAN access or if you enable 'Require Login' in Settings.
 ========================================================================
 `, initialPassword)
 		slog.Info("Initial admin password generated", slog.String("password", initialPassword))

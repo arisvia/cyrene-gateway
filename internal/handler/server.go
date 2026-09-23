@@ -75,6 +75,13 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		}
 		s.MediaClient.HTTPClient = provider.SafeHTTPClient(2*time.Minute, allowPrivate)
 	}
+	// Hydrate models.dev catalog from SQLite on startup
+	if raw, err := database.KVGet("modelsDevCatalog", "cache"); err == nil && raw != "" {
+		var dbCat map[string]model.ModelsDevEntry
+		if err := json.Unmarshal([]byte(raw), &dbCat); err == nil && len(dbCat) > 0 {
+			model.SetModelsDevCatalog(dbCat)
+		}
+	}
 	s.registerRoutes()
 	s.registerMediaRoutes()
 	// Prometheus scrape endpoint (public; no session required)
@@ -753,7 +760,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 
 		// models.dev backfill for context/output metadata when the provider
 		// API omits it (best-effort, never overwrites live values).
-		if catalog, catErr := model.LoadModelsDevCatalog(client); catErr == nil {
+		if catalog := s.loadModelsDevCatalog(client); len(catalog) > 0 {
 			model.BackfillFromModelsDev(models, catalog)
 		}
 	}
@@ -821,6 +828,31 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 		models = provider.QoderCatalogModels(creds, client, true)
 	}
 	return models
+}
+
+func (s *Server) loadModelsDevCatalog(client *http.Client) map[string]model.ModelsDevEntry {
+	// 1. Prime in-memory cache from DB if memory is currently empty
+	if len(model.GetModelsDevCatalog()) == 0 {
+		if raw, err := s.DB.KVGet("modelsDevCatalog", "cache"); err == nil && raw != "" {
+			var dbCat map[string]model.ModelsDevEntry
+			if err := json.Unmarshal([]byte(raw), &dbCat); err == nil && len(dbCat) > 0 {
+				model.SetModelsDevCatalog(dbCat)
+			}
+		}
+	}
+
+	// 2. Fetch fresh from network (LoadModelsDevCatalog respects 24h TTL internally)
+	catalog, err := model.LoadModelsDevCatalog(client)
+	if err == nil && len(catalog) > 0 {
+		// Persist to DB for offline/cold-start resilience
+		if data, err := json.Marshal(catalog); err == nil {
+			s.DB.KVSet("modelsDevCatalog", "cache", string(data))
+		}
+		return catalog
+	}
+
+	// 3. Fallback to existing memory cache
+	return model.GetModelsDevCatalog()
 }
 
 // StartBackgroundModelSync starts periodic synchronization of models for active connections.
@@ -914,9 +946,10 @@ func (s *Server) syncAllActiveConnections() {
 			continue
 		}
 
-		if catalog, catErr := model.LoadModelsDevCatalog(client); catErr == nil {
+		if catalog := s.loadModelsDevCatalog(client); len(catalog) > 0 {
 			model.BackfillFromModelsDev(models, catalog)
 		}
+		model.EnrichModelsFromCatalog(models)
 
 		cached := model.CachedModels{
 			FetchedAt: time.Now().UTC(),
@@ -960,9 +993,10 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 		}
 	}
 	if len(models) > 0 {
-		if catalog, catErr := model.LoadModelsDevCatalog(client); catErr == nil {
+		if catalog := s.loadModelsDevCatalog(client); len(catalog) > 0 {
 			model.BackfillFromModelsDev(models, catalog)
 		}
+		model.EnrichModelsFromCatalog(models)
 		cached := model.CachedModels{
 			FetchedAt: time.Now().UTC(),
 			Models:    models,

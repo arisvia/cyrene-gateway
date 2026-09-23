@@ -241,6 +241,15 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 		select {
 		case <-r.Context().Done():
 			slog.Info("Client disconnected during Qoder non-stream aggregation", slog.String("model", model))
+			if uc != nil {
+				uc.Status = 499
+				if content.Len() > 0 {
+					uc.Response = content.String()
+				} else if reasoning.Len() > 0 {
+					uc.Response = reasoning.String()
+				}
+			}
+			s.recordUsage(uc, lastUsage)
 			return
 		default:
 		}
@@ -297,11 +306,10 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 			}
 		}
 	}
-
-	if lastUsage.TotalTokens > 0 {
-		s.recordUsage(uc, lastUsage)
+	if uc != nil {
+		uc.Response = content.String()
 	}
-
+	s.recordUsage(uc, lastUsage)
 	if id == "" {
 		id = "chatcmpl-qoder-" + generateID()[:12]
 	}
@@ -357,15 +365,20 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	var lastUsage usage.Usage
+	var (
+		lastUsage   usage.Usage
+		respBuilder strings.Builder
+	)
 
 	for scanner.Scan() {
 		select {
 		case <-ctx.Done():
 			slog.Info("Client disconnected during Qoder stream", slog.String("model", model))
-			if lastUsage.TotalTokens > 0 {
-				s.recordUsage(uc, lastUsage)
+			if uc != nil {
+				uc.Status = 499
+				uc.Response = respBuilder.String()
 			}
+			s.recordUsage(uc, lastUsage)
 			return
 		default:
 		}
@@ -374,9 +387,10 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		data, done := provider.UnwrapQoderSSELine(line, "qoder/"+model)
 
 		if done {
-			if lastUsage.TotalTokens > 0 {
-				s.recordUsage(uc, lastUsage)
+			if uc != nil {
+				uc.Response = respBuilder.String()
 			}
+			s.recordUsage(uc, lastUsage)
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
 			// Terminal frame received — Qoder keeps the socket open after
@@ -393,14 +407,27 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 			lastUsage = u
 		}
 
+		var chunk chatStreamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err == nil {
+			for _, choice := range chunk.Choices {
+				if respBuilder.Len() < 16384 {
+					if choice.Delta.Content != "" {
+						respBuilder.WriteString(choice.Delta.Content)
+					} else if choice.Delta.ReasoningContent != "" {
+						respBuilder.WriteString(choice.Delta.ReasoningContent)
+					}
+				}
+			}
+		}
+
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
-
 	// Stream ended without a terminal frame — emit [DONE] ourselves.
-	if lastUsage.TotalTokens > 0 {
-		s.recordUsage(uc, lastUsage)
-	}
 	fmt.Fprintf(w, "data: [DONE]\n\n")
+	if uc != nil {
+		uc.Response = respBuilder.String()
+	}
+	s.recordUsage(uc, lastUsage)
 	flusher.Flush()
 }

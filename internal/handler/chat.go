@@ -1075,6 +1075,11 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 		event, err := reader.ReadEvent(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
+				if uc != nil {
+					uc.Status = 499
+					uc.Response = respBuilder.String()
+				}
+				s.recordUsage(uc, lastUsage)
 				return
 			}
 			complete := len(finished) > 0
@@ -1082,6 +1087,11 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 				complete = complete && done
 			}
 			if !errors.Is(err, io.EOF) || !complete {
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+					uc.Response = respBuilder.String()
+				}
+				s.recordUsage(uc, lastUsage)
 				fail("upstream stream ended before completion: " + err.Error())
 				return
 			}
@@ -1110,7 +1120,11 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			for _, choice := range chunk.Choices {
 				finished[choice.Index] = finished[choice.Index] || choice.FinishReason != ""
 				if respBuilder.Len() < 16384 {
-					respBuilder.WriteString(choice.Delta.Content)
+					if choice.Delta.Content != "" {
+						respBuilder.WriteString(choice.Delta.Content)
+					} else if choice.Delta.ReasoningContent != "" {
+						respBuilder.WriteString(choice.Delta.ReasoningContent)
+					}
 				}
 			}
 			var writeErr error
@@ -1120,6 +1134,11 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 				_, writeErr = fmt.Fprintf(w, "data: %s\n\n", chunkData)
 			}
 			if writeErr != nil {
+				if uc != nil {
+					uc.Status = 499
+					uc.Response = respBuilder.String()
+				}
+				s.recordUsage(uc, lastUsage)
 				return
 			}
 			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
@@ -1440,6 +1459,27 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
+				if uc != nil {
+					uc.Status = 499
+					uc.Response = outBuilder.String()
+				}
+				if totalUsage.TotalTokens > 0 {
+					s.recordUsage(uc, totalUsage)
+				} else {
+					estimatedPrompt := len(translatedBody) / 4
+					if estimatedPrompt < 1 {
+						estimatedPrompt = 1
+					}
+					complTokens := totalStreamChars / 4
+					if complTokens < 1 && outBuilder.Len() > 0 {
+						complTokens = outBuilder.Len() / 4
+					}
+					s.recordUsage(uc, usage.Usage{
+						PromptTokens:     estimatedPrompt,
+						CompletionTokens: complTokens,
+						TotalTokens:      estimatedPrompt + complTokens,
+					})
+				}
 				return
 			default:
 			}
@@ -1819,15 +1859,39 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		}
 		s.Metrics.ObserveRequest(uc.Provider, uc.Model, uc.Endpoint, uc.Status, dur, measuredUsage)
 	}
+	statusStr := "ok"
+	if uc.Status == 499 {
+		statusStr = "canceled"
+	} else if uc.Status >= 400 {
+		statusStr = fmt.Sprintf("%d", uc.Status)
+	}
+
+	promptTokens := u.PromptTokens
+	completionTokens := u.CompletionTokens
+	if !usageKnown {
+		if len(uc.Prompt) > 0 {
+			promptTokens = len(uc.Prompt) / 4
+			if promptTokens < 1 {
+				promptTokens = 1
+			}
+		}
+		if len(uc.Response) > 0 {
+			completionTokens = len(uc.Response) / 4
+			if completionTokens < 1 {
+				completionTokens = 1
+			}
+		}
+	}
+
 	entry := &db.UsageEntry{
 		Provider:         uc.Provider,
 		Model:            uc.Model,
 		ConnectionID:     uc.ConnectionID,
 		APIKey:           uc.APIKey,
 		Endpoint:         uc.Endpoint,
-		PromptTokens:     u.PromptTokens,
-		CompletionTokens: u.CompletionTokens,
-		Status:           "ok",
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		Status:           statusStr,
 	}
 	meta := map[string]any{}
 	if !usageKnown {
@@ -1858,9 +1922,9 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		"provider":         uc.Provider,
 		"model":            uc.Model,
 		"connectionId":     uc.ConnectionID,
-		"status":           "ok",
-		"promptTokens":     u.PromptTokens,
-		"completionTokens": u.CompletionTokens,
+		"status":           statusStr,
+		"promptTokens":     promptTokens,
+		"completionTokens": completionTokens,
 		"cost":             entry.Cost,
 		"latencyMs":        latencyMs,
 		"endpoint":         uc.Endpoint,
@@ -1885,7 +1949,7 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		Provider:     uc.Provider,
 		Model:        uc.Model,
 		ConnectionID: uc.ConnectionID,
-		Status:       "ok",
+		Status:       statusStr,
 		Data:         string(rdBytes),
 	}); err != nil {
 		slog.Warn("Failed to record request detail", "error", err, "model", uc.Model)
@@ -1898,9 +1962,9 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 			Provider:  uc.Provider,
 			Model:     uc.Model,
-			Status:    "ok",
-			Prompt:    u.PromptTokens,
-			Compl:     u.CompletionTokens,
+			Status:    statusStr,
+			Prompt:    promptTokens,
+			Compl:     completionTokens,
 			Endpoint:  uc.Endpoint,
 			LatencyMs: int64(latencyMs),
 		})

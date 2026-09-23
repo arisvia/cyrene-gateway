@@ -224,7 +224,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		}
 		rem := math.Round(rep.remFrac * total)
 		quotas["gemini"] = Quota{
-			DisplayName:         "Gemini (Flash / Pro / Image)",
+			DisplayName:         "Gemini (Flash / Pro / Image / Search)",
 			Total:               total,
 			Used:                total - rem,
 			Remaining:           rem,
@@ -300,7 +300,7 @@ func clusterAntigravitySummary(summary AntigravityQuotaSummaryResponse) map[stri
 		baseDisplay := groupName
 		if strings.Contains(lowerGroup, "gemini") {
 			baseKey = "gemini"
-			baseDisplay = "Gemini"
+			baseDisplay = "Gemini (Search / Image)"
 		} else if strings.Contains(lowerGroup, "claude") || strings.Contains(lowerGroup, "gpt") {
 			baseKey = "claude"
 			baseDisplay = "Claude & GPT"

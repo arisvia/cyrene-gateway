@@ -481,7 +481,26 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	chatCmpleID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())
 	var outBuilder strings.Builder
 	var reasoningBuilder strings.Builder
+	ctx := r.Context()
 	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			slog.Info("Client disconnected during Antigravity stream", slog.String("model", model))
+			finalOutput := outBuilder.String()
+			if finalOutput == "" && reasoningBuilder.Len() > 0 {
+				finalOutput = reasoningBuilder.String()
+			}
+			if uc != nil {
+				uc.Status = 499
+				uc.Response = finalOutput
+			}
+			s.recordUsage(uc, usage.Usage{
+				TotalTokens:     chatSeq * 4,
+				ReasoningTokens: len(reasoningBuilder.String()) / 4,
+			})
+			return
+		default:
+		}
 		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
 		if !ok || isDone {
 			continue
@@ -568,8 +587,21 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		}
 
 		chunkBytes, _ := json.Marshal(chunk)
-		fmt.Fprintf(w, "data: %s\n\n", string(chunkBytes))
-		flusher.Flush()
+		if _, writeErr := fmt.Fprintf(w, "data: %s\n\n", string(chunkBytes)); writeErr != nil {
+			finalOutput := outBuilder.String()
+			if finalOutput == "" && reasoningBuilder.Len() > 0 {
+				finalOutput = reasoningBuilder.String()
+			}
+			if uc != nil {
+				uc.Status = 499
+				uc.Response = finalOutput
+			}
+			s.recordUsage(uc, usage.Usage{
+				TotalTokens:     chatSeq * 4,
+				ReasoningTokens: len(reasoningBuilder.String()) / 4,
+			})
+			return
+		}
 		chatSeq++
 	}
 

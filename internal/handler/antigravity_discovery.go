@@ -242,6 +242,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					Capabilities:  caps,
 					Modalities:    mods,
 					Family:        family,
+					FromUpstream:  m.MaxTokens > 0,
 				})
 			}
 			if len(out) > 0 {
