@@ -4,7 +4,7 @@ import { useGatewayStore } from './stores/gateway'
 import { useBackgroundStore } from './stores/background'
 import { ThemeToggle, LanguageToggle } from './components/layout/Sidebar'
 import { useI18n } from './i18n'
-import { ToastHost, ConfirmDialogHost, CyreneLogo, Skeleton, Button, IconButton, IconHome, IconServer, IconPlayground, IconLayers, IconActivity, IconClock, IconImage, IconGlobe, IconFileText, IconSettings, IconClose, IconMenu, IconLogout } from './components/ui'
+import { ToastHost, ConfirmDialogHost, CyreneLogo, Skeleton, Button, IconButton, BackToTop, IconHome, IconServer, IconPlayground, IconLayers, IconActivity, IconClock, IconImage, IconGlobe, IconFileText, IconSettings, IconClose, IconMenu, IconLogout } from './components/ui'
 import { LoginModal } from './components/layout/LoginModal'
 import Home from './pages/Home'
 const Providers = lazy(() => import('./pages/Providers'))
@@ -119,18 +119,34 @@ const App: Component = () => {
       <div class={`min-h-screen text-text relative selection:bg-accent/25 app-root-shell ${bgStore.hasCustomBg() ? '' : 'bg-bg'}`}>
         <Show when={bgStore.hasCustomBg()}>
           <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-bg">
-            <img
-              src={bgStore.imageData()}
-              alt=""
-              referrerpolicy="no-referrer"
-              class="w-full h-full object-cover transition-all duration-300 ease-out"
-              style={{
-                filter: bgStore.config().blur ? `blur(${bgStore.config().blur}px)` : undefined,
-                opacity: bgStore.config().opacity ?? 1,
-                transform: bgStore.config().blur ? 'scale(1.05)' : undefined,
-              }}
-            />
-            <div class="absolute inset-0 bg-wallpaper-scrim pointer-events-none" />
+            {/* 1. LQIP 极速微缩占位层：0ms 同步直出，平滑模糊铺满，消灭加载跳白 */}
+            <Show when={bgStore.config().thumbnail}>
+              <img
+                src={bgStore.config().thumbnail}
+                alt=""
+                aria-hidden="true"
+                class="absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out"
+                style={{
+                  filter: `blur(${Math.max(16, (bgStore.config().blur ?? 0) + 12)}px)`,
+                  opacity: (bgStore.config().opacity ?? 1) * 0.95,
+                  transform: 'scale(1.08)',
+                }}
+              />
+            </Show>
+            {/* 2. 高清全量壁纸层：从 IndexedDB 异步就绪后 500ms 丝滑淡入无缝替换 */}
+            <Show when={bgStore.imageData()}>
+              <img
+                src={bgStore.imageData()}
+                alt=""
+                referrerpolicy="no-referrer"
+                class="absolute inset-0 w-full h-full object-cover transition-all duration-500 ease-out"
+                style={{
+                  filter: bgStore.config().blur ? `blur(${bgStore.config().blur}px)` : undefined,
+                  opacity: bgStore.config().opacity ?? 1,
+                  transform: bgStore.config().blur ? 'scale(1.05)' : undefined,
+                }}
+              />
+            </Show>
           </div>
         </Show>
         <div class="app-ambient" aria-hidden="true" />
@@ -145,7 +161,7 @@ const App: Component = () => {
             </div>
           </div>
           <SidebarNav onNavigate={() => setOpen(false)} />
-          <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40">
+          <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between">
             <div class="flex items-center gap-1">
               <ThemeToggle />
               <LanguageToggle />
@@ -184,7 +200,7 @@ const App: Component = () => {
               </IconButton>
             </div>
             <SidebarNav onNavigate={() => setOpen(false)} />
-            <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between bg-card/40 shrink-0">
+            <div class="h-14 px-4 border-t border-glass-border flex items-center justify-between shrink-0">
               <div class="flex items-center gap-1">
                 <ThemeToggle />
                 <LanguageToggle />
@@ -250,6 +266,7 @@ const App: Component = () => {
             {props.children}
           </Suspense>
         </main>
+        <BackToTop />
       </div>
 
       {/* 登录认证拦截弹窗 */}

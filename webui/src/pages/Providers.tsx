@@ -763,7 +763,7 @@ const Providers: Component = () => {
         <Show
           when={groupedConnections().length > 0}
           fallback={
-            <Card class="p-12 border-dashed border-subtle">
+            <Card class="p-12">
               <Empty
                 icon={<IconPlug size={24} />}
                 title={t('providers.emptyTitle')}

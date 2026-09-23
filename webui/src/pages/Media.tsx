@@ -196,7 +196,7 @@ const Media: Component = () => {
               when={providers().length > 0}
               fallback={
                 <Show when={!loadingProviders()}>
-                  <Card class="p-12 border-dashed border-subtle">
+                  <Card class="p-12">
                     <Empty
                       icon={<IconPlug size={24} />}
                       title={t('media.emptyTitle', { cap: currentCap()?.label || '' })}

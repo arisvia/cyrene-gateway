@@ -13,6 +13,21 @@
   <title>Cyrene Gateway</title>
   <script>
     if (localStorage.getItem('cyrene-theme') === 'light') document.documentElement.classList.add('light');
+    const tc = localStorage.getItem('cyrene-theme-color');
+    if (tc) document.documentElement.dataset.themeColor = tc;
+    try {
+      const bgCfg = JSON.parse(localStorage.getItem('cyrene_wallpaper_config') || '{}');
+      if (bgCfg && bgCfg.enabled) {
+        document.documentElement.classList.add('custom-background');
+        if (bgCfg.surfaceAlpha) document.documentElement.style.setProperty('--app-surface-alpha', String(bgCfg.surfaceAlpha));
+        if (bgCfg.glassBlur !== undefined) {
+          document.documentElement.style.setProperty('--app-glass-blur', bgCfg.glassBlur + 'px');
+          document.documentElement.style.setProperty('--glass-blur', bgCfg.glassBlur + 'px');
+          document.documentElement.style.setProperty('--blur-lg', bgCfg.glassBlur + 'px');
+          document.documentElement.style.setProperty('--blur-md', bgCfg.glassBlur + 'px');
+        }
+      }
+    } catch (e) {}
   </script>
 </head>
 <body>

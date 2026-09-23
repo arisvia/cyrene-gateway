@@ -1,10 +1,11 @@
 import { type Component, For, Show, Switch, Match, createSignal, createEffect, on, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useBackgroundStore } from '@/stores/background'
+import { useThemeStore } from '@/stores/theme'
 import { fetchRemoteImageDataUrl } from '@/lib/backgroundStore'
 import {
-  Card, Badge, Button, IconButton, Input, Select, Toggle, Field, Empty, Alert, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition, Skeleton, LoadState,
-  IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo,
+  Card, Badge, Button, IconButton, Input, Select, Toggle, Field, Empty, Alert, confirm, PageHeader, SegmentedControl, Checkbox, Slider, FileUpload, StatusPulse, TabTransition, Skeleton, LoadState, UnsavedChangesBar,
+  IconLock, IconKey, IconZap, IconSparkles, IconPalette, IconInfo, IconCheck, IconSun, IconMoon,
   IconDownload, IconUpload, IconAlertTriangle, IconDatabase, IconServer, IconRotateCcw, IconActivity,
 } from '@/components/ui'
 import { formatUptime, formatVersion, formatBytes, type UptimeUnits } from '@/lib/format'
@@ -24,6 +25,7 @@ interface CacheStats {
 
 const Settings: Component = () => {
   const { t } = useI18n()
+  const themeStore = useThemeStore()
   const cavemanOptions = () => [
     { value: 'lite', label: t('settings.tokenSaver.cavemanLevels.lite') },
     { value: 'full', label: t('settings.tokenSaver.cavemanLevels.full') },
@@ -81,7 +83,18 @@ const Settings: Component = () => {
   // 设置分类 Tab
   type ActiveTabType = 'gateway' | 'appearance' | 'data' | 'ops'
   const [activeTab, setActiveTab] = createSignal<ActiveTabType>('gateway')
-  function handleTabChange(tab: ActiveTabType) {
+  async function handleTabChange(tab: ActiveTabType) {
+    if (activeTab() === 'gateway' && dirty()) {
+      const ok = await confirm({
+        title: t('common.unsavedChangesTitle'),
+        message: t('common.unsavedChangesMessage'),
+        confirmText: t('common.discardAndLeave'),
+        cancelText: t('common.stayAndSave'),
+        variant: 'warning',
+      })
+      if (!ok) return
+      setLocal({ ...(store.settings() || {}) })
+    }
     setActiveTab(tab)
     if (tab === 'ops') {
       void fetchSystemStats()
@@ -493,39 +506,40 @@ const Settings: Component = () => {
             </Button>
           </Show>
         }
-      >
-        <div class="pt-2 border-t border-subtle/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <SegmentedControl
-            class="shrink-0"
-            options={[
-              { value: 'gateway', label: t('settings.tabs.gateway') },
-              { value: 'appearance', label: t('settings.tabs.appearance') },
-              { value: 'data', label: t('settings.tabs.data') },
-              { value: 'ops', label: t('settings.tabs.ops') },
-            ]}
-            value={activeTab()}
-            onChange={handleTabChange}
-          />
-          <div class="text-xs text-faint flex items-center gap-1.5 px-0.5 min-w-0 overflow-hidden">
-            <Show when={activeTab() === 'gateway'}>
-              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
-              <span class="truncate">{t('settings.hosts.gateway')}</span>
-            </Show>
-            <Show when={activeTab() === 'appearance'}>
-              <span class="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
-              <span class="truncate">{t('settings.hosts.appearance')}</span>
-            </Show>
-            <Show when={activeTab() === 'data'}>
-              <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
-              <span class="truncate">{t('settings.hosts.data')}</span>
-            </Show>
-            <Show when={activeTab() === 'ops'}>
-              <span class="w-1.5 h-1.5 rounded-full bg-info shrink-0" />
-              <span class="truncate">{t('settings.hosts.ops')}</span>
-            </Show>
-          </div>
+      />
+
+      {/* 紧凑型吸顶分类切换器 */}
+      <div class="sticky top-17 z-20 glass-panel py-2.5 rounded-2xl px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all">
+        <SegmentedControl
+          class="shrink-0"
+          options={[
+            { value: 'gateway', label: t('settings.tabs.gateway') },
+            { value: 'appearance', label: t('settings.tabs.appearance') },
+            { value: 'data', label: t('settings.tabs.data') },
+            { value: 'ops', label: t('settings.tabs.ops') },
+          ]}
+          value={activeTab()}
+          onChange={handleTabChange}
+        />
+        <div class="text-xs text-faint flex items-center gap-1.5 px-0.5 min-w-0 overflow-hidden">
+          <Show when={activeTab() === 'gateway'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+            <span class="truncate">{t('settings.hosts.gateway')}</span>
+          </Show>
+          <Show when={activeTab() === 'appearance'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
+            <span class="truncate">{t('settings.hosts.appearance')}</span>
+          </Show>
+          <Show when={activeTab() === 'data'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+            <span class="truncate">{t('settings.hosts.data')}</span>
+          </Show>
+          <Show when={activeTab() === 'ops'}>
+            <span class="w-1.5 h-1.5 rounded-full bg-info shrink-0" />
+            <span class="truncate">{t('settings.hosts.ops')}</span>
+          </Show>
         </div>
-      </PageHeader>
+      </div>
 
       <TabTransition
         value={activeTab()}
@@ -612,7 +626,7 @@ const Settings: Component = () => {
               {hasPw() ? t('settings.access.pwConfigured') : t('settings.access.pwUnset')}
             </Badge>
           </div>
-          <div class="min-w-0">
+          <div class="p-4 rounded-xl bg-surface-inset min-w-0">
             <Field label={t('settings.access.changePassword')} hint={t('settings.access.pwHelpText')}>
               <div class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 pt-1">
                 <Input
@@ -906,6 +920,94 @@ const Settings: Component = () => {
             <Match when={tab === 'appearance'}>
               <div class="space-y-3.5">
 
+        {/* 主题色与视觉风格卡片 */}
+        <Card class="p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
+            <div class="flex flex-wrap items-center gap-2 min-w-0">
+              <IconPalette size={16} class="text-accent shrink-0" />
+              <div>
+                <h3 class="text-sm font-semibold">{t('settings.appearance.themeCardTitle')}</h3>
+                <p class="text-xs text-faint mt-0.5">{t('settings.appearance.themeCardSubtitle')}</p>
+              </div>
+            </div>
+            <Badge tone="blue">
+              {t(themeStore.colorOptions.find(o => o.id === themeStore.color())?.nameKey ?? 'settings.appearance.themeColorIndigo')}
+            </Badge>
+          </div>
+
+          <div class="space-y-4">
+            {/* 明暗模式 */}
+            <div class="p-4 rounded-xl bg-surface-inset space-y-2.5">
+              <div class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <IconSun size={14} class="text-accent" />
+                <span>{t('settings.appearance.themeModeTitle')}</span>
+                <span class="text-faint font-normal">· {t('settings.appearance.themeModeSubtitle')}</span>
+              </div>
+              <div class="w-full sm:w-64 pt-0.5">
+                <SegmentedControl
+                  value={themeStore.mode()}
+                  onChange={v => themeStore.setMode(v as 'dark' | 'light')}
+                  options={[
+                    { value: 'dark', label: t('settings.appearance.themeModeDark'), icon: <IconMoon size={14} /> },
+                    { value: 'light', label: t('settings.appearance.themeModeLight'), icon: <IconSun size={14} /> },
+                  ]}
+                  size="sm"
+                />
+              </div>
+            </div>
+
+            {/* 品牌主题色选择网格 */}
+            <div class="p-4 rounded-xl bg-surface-inset space-y-2.5">
+              <div class="text-xs font-semibold text-foreground flex items-center justify-between gap-1.5">
+                <div class="flex items-center gap-1.5">
+                  <IconSparkles size={14} class="text-accent" />
+                  <span>{t('settings.appearance.themeColorTitle')}</span>
+                  <span class="text-faint font-normal">· {t('settings.appearance.themeColorSubtitle')}</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 pt-0.5">
+                <For each={themeStore.colorOptions}>
+                  {opt => {
+                    const isSelected = () => themeStore.color() === opt.id
+                    return (
+                      <button
+                        type="button"
+                        class={`group relative flex flex-col p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer overflow-hidden ${
+                          isSelected()
+                            ? 'bg-accent/10 border-accent shadow-xs ring-1 ring-accent/30'
+                            : 'bg-surface-inset hover:bg-glass border-control-border hover:border-subtle/80'
+                        }`}
+                        onClick={() => themeStore.setColor(opt.id)}
+                      >
+                        <div class="flex items-center justify-between w-full mb-2">
+                          <div class="flex items-center gap-2">
+                            <span
+                              class="w-5 h-5 rounded-full shrink-0 shadow-xs border border-white/20 flex items-center justify-center transition-transform group-hover:scale-105"
+                              style={{
+                                background: `linear-gradient(135deg, ${opt.primary} 0%, ${opt.secondary} 100%)`,
+                              }}
+                            />
+                            <span class="text-xs font-semibold text-foreground">{t(opt.nameKey)}</span>
+                          </div>
+                          <Show when={isSelected()}>
+                            <span class="w-4 h-4 rounded-full bg-accent text-on-accent flex items-center justify-center shrink-0 animate-scale-in">
+                              <IconCheck size={11} stroke-width={3} />
+                            </span>
+                          </Show>
+                        </div>
+                        <p class="text-[11px] text-faint leading-relaxed line-clamp-2">
+                          {t(opt.descKey)}
+                        </p>
+                      </button>
+                    )
+                  }}
+                </For>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* 界面与壁纸卡片 */}
         <Card class="p-5 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3 border-b border-subtle/50 pb-3">
@@ -1184,10 +1286,7 @@ const Settings: Component = () => {
             </Alert>
           </div>
 
-          <div class="pt-1 flex flex-wrap items-center justify-between gap-3">
-              <span class="min-w-0 flex-1 basis-full sm:basis-64 text-xs text-faint font-mono wrap-anywhere">
-                {restoreFile() ? t('settings.fileReady', { name: restoreFile()!.name }) : t('settings.noFileSelected')}
-              </span>
+          <div class="pt-1 flex items-center justify-end">
               <Button
                 variant="danger"
                 disabled={!restoreFile()}
@@ -1581,6 +1680,13 @@ const Settings: Component = () => {
           </Card>
         </div>
       </Show>
+      {/* 浮动未保存操作底栏 */}
+      <UnsavedChangesBar
+        show={activeTab() === 'gateway' && dirty()}
+        loading={saving()}
+        onSave={save}
+        onReset={() => setLocal({ ...(store.settings() || {}) })}
+      />
     </div>
   )
 }

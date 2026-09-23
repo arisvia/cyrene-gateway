@@ -2,12 +2,13 @@ import { type Component, For, Show, Switch, Match, createSignal, createMemo, onM
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
 import { Card, Badge, Button, IconButton, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
+import { ProviderAvatar } from '@/components/ui/ProviderIcon'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
-import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
+import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, maskKey } from '@/lib/format'
 import { getStoredSessionToken } from '@/lib/api'
 import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
-import type { RequestDetail, LiveUsageEvent } from '@/types/domain'
+import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
 
 const Usage: Component = () => {
   const { t } = useI18n()
@@ -23,6 +24,7 @@ const Usage: Component = () => {
   const [hoveredPoint, setHoveredPoint] = createSignal<{ label: string; tokens: number } | null>(null)
   const loading = () => store.usagePeriod() !== period()
   const [live, setLive] = createSignal(false)
+  const [realtimeEvents, setRealtimeEvents] = createSignal<LiveUsageEvent[]>([])
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
   const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
   let es: EventSource | null = null
@@ -39,7 +41,20 @@ const Usage: Component = () => {
   }
   onMount(() => {
     load()
-    store.loadRequestDetails(1, 10)
+    store.loadRequestDetails(1, 10).then(() => {
+      if (liveEvents().length === 0 && store.requestDetails().length > 0) {
+        setLiveEvents(store.requestDetails().slice(0, 10).map(rd => ({
+          timestamp: rd.timestamp,
+          provider: rd.provider,
+          model: rd.model,
+          status: rd.status,
+          promptTokens: rd.promptTokens,
+          completionTokens: rd.completionTokens,
+          latencyMs: rd.latencyMs,
+          endpoint: rd.endpoint,
+        })))
+      }
+    })
     fetchModelDisplayNameMap().then(setModelNameMap)
     toggleLive()
   })
@@ -61,6 +76,7 @@ const Usage: Component = () => {
         try {
           const d = JSON.parse(ev.data)
           if (d && (d.model || d.provider || d.endpoint)) {
+            setRealtimeEvents([d])
             setLiveEvents(list => [d, ...list].slice(0, 30))
           }
         } catch { /* 忽略心跳与解析错误 */ }
@@ -108,11 +124,63 @@ const Usage: Component = () => {
     { label: t('usage.estimatedCost'), value: fmtCost(store.usageStats.totalCost ?? 0) },
   ])
 
-  const byProvider = createMemo(() =>
-    Object.entries(store.usageStats.byProvider ?? {})
-      .map(([k, v]) => ({ provider: k, ...v }))
-      .sort((a, b) => b.requests - a.requests),
-  )
+  type BreakdownDimension = 'provider' | 'model' | 'key' | 'endpoint'
+  type BreakdownMetric = 'requests' | 'totalTokens' | 'promptTokens' | 'completionTokens' | 'cost'
+
+  const [dimension, setDimension] = createSignal<BreakdownDimension>('provider')
+  const [metric, setMetric] = createSignal<BreakdownMetric>('requests')
+
+  const breakdownItems = createMemo(() => {
+    const stats = store.usageStats
+    let raw: Record<string, UsageDimensionItem> | undefined
+    const dim = dimension()
+    if (dim === 'provider') raw = stats.byProvider
+    else if (dim === 'model') raw = stats.byModel
+    else if (dim === 'key') raw = stats.byKey
+    else if (dim === 'endpoint') raw = stats.byEndpoint
+
+    if (!raw) return []
+
+    const m = metric()
+    const items = Object.entries(raw).map(([key, v]) => {
+      let displayName = key
+      if (dim === 'model') {
+        const parts = key.split('|')
+        displayName = resolveModelDisplayName(modelNameMap(), parts[0]) || parts[0]
+      } else if (dim === 'key' && key === 'default') {
+        displayName = t('usage.defaultKeyLabel')
+      }
+
+      const totalTokens = (v.promptTokens || 0) + (v.completionTokens || 0)
+      let val = 0
+      if (m === 'requests') val = v.requests || 0
+      else if (m === 'totalTokens') val = totalTokens
+      else if (m === 'promptTokens') val = v.promptTokens || 0
+      else if (m === 'completionTokens') val = v.completionTokens || 0
+      else if (m === 'cost') val = v.cost || 0
+
+      return {
+        key,
+        displayName,
+        requests: v.requests || 0,
+        promptTokens: v.promptTokens || 0,
+        completionTokens: v.completionTokens || 0,
+        totalTokens,
+        cost: v.cost || 0,
+        metricVal: val,
+      }
+    })
+
+    return items.sort((a, b) => b.metricVal - a.metricVal)
+  })
+
+  const maxMetricVal = createMemo(() => Math.max(1, ...breakdownItems().map(i => i.metricVal)))
+
+  function formatMetricValue(val: number, m: BreakdownMetric): string {
+    if (m === 'cost') return fmtCost(val)
+    if (m === 'requests') return `${fmtNum(val)}`
+    return fmtNum(val)
+  }
 
   return (
     <div class="space-y-5 stagger">
@@ -152,7 +220,7 @@ const Usage: Component = () => {
                 <GatewayTopology
                   providers={store.providers()}
                   activeConnections={store.activeConnections()}
-                  liveEvents={liveEvents()}
+                  liveEvents={realtimeEvents()}
                 />
                 {/* 概览视图：KPI、Token 趋势、按提供商与实时事件 */}
         {/* KPI */}
@@ -279,51 +347,125 @@ const Usage: Component = () => {
         </Card>
 
         <div class="grid lg:grid-cols-2 gap-4">
-          {/* 按提供商 */}
-          <Card class="p-5">
-            <h3 class="text-sm font-semibold mb-3">{t('usage.byProvider')}</h3>
-            <Show when={!loading()} fallback={<Show when={!store.loadErrors.usage}><Skeleton class="h-24 w-full" /></Show>}>
-            <Show when={byProvider().length > 0} fallback={<Empty message={t('common.noData')} />}>
-              <div class="space-y-2">
-                <For each={byProvider()}>
-                  {p => (
-                    <div class="flex items-center gap-3 text-sm">
-                      <span class="w-28 truncate font-mono text-xs">{p.provider}</span>
-                      <div class="flex-1 min-w-0 h-1.5 rounded-full bg-control overflow-hidden">
-                        <div
-                          class="h-full bg-accent"
-                          style={{ width: `${(p.requests / Math.max(1, byProvider()[0].requests)) * 100}%` }}
-                        />
-                      </div>
-                      <span class="w-16 text-right text-xs text-faint tabular-nums">{fmtNum(p.requests)}</span>
-                    </div>
-                  )}
-                </For>
+          {/* 多维用量分析 */}
+          <Card class="p-5 flex flex-col min-h-[380px]">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <div class="flex items-center gap-2 min-w-0">
+                <h3 class="text-sm font-semibold truncate">{t('usage.breakdownTitle')}</h3>
+                <span class="text-xs text-faint">({breakdownItems().length})</span>
               </div>
-            </Show>
+              <Select
+                value={metric()}
+                onChange={v => setMetric(v as BreakdownMetric)}
+                size="sm"
+                class="w-32 text-xs shrink-0"
+                options={[
+                  { value: 'requests', label: t('usage.metrics.requests') },
+                  { value: 'totalTokens', label: t('usage.metrics.totalTokens') },
+                  { value: 'promptTokens', label: t('usage.metrics.promptTokens') },
+                  { value: 'completionTokens', label: t('usage.metrics.completionTokens') },
+                  { value: 'cost', label: t('usage.metrics.cost') },
+                ]}
+              />
+            </div>
+
+            <div class="mb-3.5">
+              <SegmentedControl
+                value={dimension()}
+                onChange={setDimension}
+                size="sm"
+                class="w-full"
+                options={[
+                  { value: 'provider', label: t('usage.dimensions.provider') },
+                  { value: 'model', label: t('usage.dimensions.model') },
+                  { value: 'key', label: t('usage.dimensions.key') },
+                  { value: 'endpoint', label: t('usage.dimensions.endpoint') },
+                ]}
+              />
+            </div>
+
+            <Show when={!loading()} fallback={<Show when={!store.loadErrors.usage}><Skeleton class="h-48 w-full" /></Show>}>
+              <Show when={breakdownItems().length > 0} fallback={<Empty message={t('common.noData')} />}>
+                <div class="space-y-1.5 flex-1 overflow-y-auto max-h-[320px] px-0.5">
+                  <For each={breakdownItems()}>
+                    {item => (
+                      <div
+                        class="group flex items-center gap-3 text-xs py-2 px-2.5 rounded-lg hover:bg-surface/70 transition-colors"
+                        title={`${item.displayName}\n${t('usage.metrics.requests')}: ${fmtNum(item.requests)}\n${t('usage.metrics.promptTokens')}: ${fmtNum(item.promptTokens)}\n${t('usage.metrics.completionTokens')}: ${fmtNum(item.completionTokens)}\n${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
+                      >
+                        <div class="w-36 shrink-0 truncate flex items-center gap-2">
+                          <Show when={dimension() === 'provider'}>
+                            <ProviderAvatar provider={item.key} size="sm" class="w-5 h-5 rounded-md shrink-0" />
+                          </Show>
+                          <span class="truncate font-medium text-[11px]" title={item.displayName}>
+                            {dimension() === 'key' ? (item.key === 'default' ? t('usage.defaultKeyLabel') : maskKey(item.key)) : item.displayName}
+                          </span>
+                        </div>
+
+                        <div class="flex-1 min-w-0 h-1.5 rounded-full bg-control/70 overflow-hidden">
+                          <div
+                            class="h-full bg-accent transition-all duration-300 rounded-full"
+                            style={{ width: `${Math.max(2, (item.metricVal / maxMetricVal()) * 100)}%` }}
+                          />
+                        </div>
+
+                        <span class="w-20 shrink-0 text-right font-mono text-[11px] text-faint group-hover:text-foreground tabular-nums transition-colors">
+                          {formatMetricValue(item.metricVal, metric())}
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </Show>
           </Card>
 
           {/* 实时事件 */}
-          <Card class="p-5">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-sm font-semibold">{t('usage.liveEvents')}</h3>
-              <Show when={live()}><Badge tone="green">{t('usage.connecting')}</Badge></Show>
+          <Card class="p-5 flex flex-col min-h-[380px]">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold">{t('usage.liveEvents')}</h3>
+                <Show when={liveEvents().length > 0}>
+                  <span class="text-xs text-faint">({liveEvents().length})</span>
+                </Show>
+              </div>
+              <Show when={live()} fallback={<Badge tone="gray">{t('common.paused')}</Badge>}>
+                <Badge tone="green">{t('usage.connecting')}</Badge>
+              </Show>
             </div>
+
             <Show when={liveEvents().length > 0} fallback={<Empty message={live() ? t('usage.waitingEvents') : t('usage.clickLiveToListen')} />}>
-              <div class="space-y-1 max-h-64 overflow-y-auto px-1">
+              <div class="space-y-2 flex-1 max-h-[360px] overflow-y-auto px-1">
                 <For each={liveEvents()}>
                   {e => (
-                    <div class="flex flex-wrap items-center gap-2 min-w-0 text-xs py-2 border-b border-subtle/50 last:border-0">
-                      <span class="text-faint font-mono">{fmtTime(e.timestamp, timeUnits())}</span>
-                      <div class="truncate flex items-baseline gap-1" title={e.model || e.endpoint || '-'}>
-                        <span class="font-medium text-foreground">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
-                        <Show when={Boolean(e.model && resolveModelDisplayName(modelNameMap(), e.model) !== e.model)}>
-                          <span class="text-[10px] text-faint font-mono truncate">({e.model})</span>
+                    <div class="flex flex-col gap-1.5 py-2 px-2.5 rounded-lg border border-subtle/50 bg-surface/30 hover:bg-surface/70 transition-colors">
+                      <div class="flex items-center gap-2 text-xs min-w-0">
+                        <span class="text-faint font-mono text-[10px] shrink-0">{fmtTime(e.timestamp, timeUnits())}</span>
+                        <div class="truncate flex items-baseline gap-1" title={e.model || e.endpoint || '-'}>
+                          <span class="font-medium text-foreground text-[11px]">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
+                          <Show when={Boolean(e.model && resolveModelDisplayName(modelNameMap(), e.model) !== e.model)}>
+                            <span class="text-[9px] text-faint font-mono truncate">({e.model})</span>
+                          </Show>
+                        </div>
+                        <Badge
+                          tone={e.status === 'ok' ? 'green' : e.status === 'routing' ? 'blue' : e.status === 'canceled' ? 'amber' : 'red'}
+                          class="shrink-0 text-[10px] px-1.5 py-0"
+                        >
+                          {e.status || '-'}
+                        </Badge>
+                        <Show when={e.latencyMs != null}>
+                          <span class="ml-auto font-mono text-[10px] text-faint shrink-0">{e.latencyMs}ms</span>
                         </Show>
                       </div>
-                      <Badge tone={e.status === 'ok' ? 'green' : e.status === 'routing' ? 'blue' : 'red'}>{e.status || '-'}</Badge>
-                      <Show when={e.latencyMs}><span class="ml-auto text-faint">{e.latencyMs}ms</span></Show>
+                      <div class="flex items-center justify-between text-[10px] text-faint">
+                        <span class="font-mono truncate max-w-[220px]" title={e.endpoint}>{e.endpoint || '/v1/chat/completions'}</span>
+                        <Show when={(e.promptTokens || 0) > 0 || (e.completionTokens || 0) > 0}>
+                          <div class="flex items-center gap-2 font-mono shrink-0">
+                            <span>in: <span class="text-foreground">{fmtNum(e.promptTokens ?? 0)}</span></span>
+                            <span>out: <span class="text-foreground">{fmtNum(e.completionTokens ?? 0)}</span></span>
+                          </div>
+                        </Show>
+                      </div>
                     </div>
                   )}
                 </For>

@@ -3,7 +3,7 @@ import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
 import { formatBytes } from '@/lib/format'
-import { IconClose, IconCheck, IconChevronDown, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
+import { IconClose, IconCheck, IconChevronDown, IconChevronUp, IconAlertCircle, IconAlertTriangle, IconInfo, IconUpload, IconFile, IconImage } from './icons'
 import type { BadgeTone } from '@/types/domain'
 export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export * from './CyreneLogo'
@@ -87,6 +87,22 @@ export const Badge: Component<{ tone?: BadgeTone; class?: string; children?: JSX
     <span class={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${tones[props.tone ?? 'gray']} ${props.class ?? ''}`}>
       {props.children}
     </span>
+  )
+}
+
+// 统一认证类型徽章 (AuthBadge: 统一 API Key 与 OAuth 标签视觉规范)
+export const AuthBadge: Component<{ authType?: string; class?: string }> = props => {
+  const norm = () => {
+    const t = (props.authType || '').toLowerCase().trim()
+    if (t === 'oauth') return 'OAuth'
+    if (t === 'api-key' || t === 'apikey' || t === 'pat' || t === 'key') return 'API Key'
+    if (t === 'none') return 'None'
+    return props.authType || 'API Key'
+  }
+  return (
+    <Badge tone="blue" class={`text-[10px] h-5 px-2 font-medium shrink-0 ${props.class ?? ''}`}>
+      {norm()}
+    </Badge>
   )
 }
 
@@ -271,6 +287,113 @@ export function ToastHost() {
         }}
       </For>
     </div>
+  )
+}
+export interface BackToTopProps {
+  threshold?: number
+  class?: string
+}
+
+export const BackToTop: Component<BackToTopProps> = props => {
+  const { t } = useI18n()
+  const [visible, setVisible] = createSignal(false)
+  const threshold = () => props.threshold ?? 280
+
+  onMount(() => {
+    const handleScroll = () => {
+      setVisible(window.scrollY > threshold())
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    onCleanup(() => window.removeEventListener('scroll', handleScroll))
+  })
+
+  return (
+    <Show when={visible()}>
+      <div class={`fixed bottom-6 right-6 z-30 animate-fade-in pointer-events-auto ${props.class ?? ''}`}>
+        <IconButton
+          size="lg"
+          variant="secondary"
+          class="rounded-full shadow-lg glass-card hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          title={t('common.backToTop')}
+          aria-label={t('common.backToTop')}
+        >
+          <IconChevronUp size={16} />
+        </IconButton>
+      </div>
+    </Show>
+  )
+}
+
+export interface UnsavedChangesBarProps {
+  show: boolean
+  loading?: boolean
+  message?: string
+  saveLabel?: string
+  resetLabel?: string
+  onSave: () => void | Promise<void>
+  onReset?: () => void
+  class?: string
+}
+
+export const UnsavedChangesBar: Component<UnsavedChangesBarProps> = props => {
+  const { t } = useI18n()
+
+  // 绑定全局快捷键 Ctrl+S / Cmd+S
+  createEffect(() => {
+    if (!props.show) return
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        if (!props.loading) {
+          props.onSave()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    onCleanup(() => window.removeEventListener('keydown', handleKey))
+  })
+
+  return (
+    <Show when={props.show}>
+      <div class={`fixed bottom-6 inset-x-0 z-40 flex justify-center pointer-events-none px-4 ${props.class ?? ''}`}>
+        <div class="pointer-events-auto flex items-center justify-between sm:justify-start gap-3.5 px-4 py-2.5 rounded-2xl glass-float border border-accent/40 shadow-2xl backdrop-blur-xl animate-slide-up max-w-lg w-full sm:w-auto">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-2 h-2 rounded-full bg-warning animate-pulse shrink-0" />
+            <span class="text-xs font-medium text-foreground truncate">
+              {props.message ?? t('common.unsavedChanges')}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <Show when={props.onReset}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={props.onReset}
+                disabled={props.loading}
+                class="text-xs text-muted hover:text-foreground cursor-pointer"
+              >
+                {props.resetLabel ?? t('common.discard')}
+              </Button>
+            </Show>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={props.loading}
+              onClick={props.onSave}
+              class="gap-1.5 shadow-xs text-xs font-semibold cursor-pointer"
+            >
+              <IconCheck size={14} />
+              <span>{props.saveLabel ?? t('common.saveChanges')}</span>
+              <kbd class="hidden sm:inline-block text-[10px] font-mono px-1 py-0.2 rounded bg-white/20 text-on-accent leading-none">
+                Ctrl+S
+              </kbd>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Show>
   )
 }
 
@@ -821,30 +944,41 @@ export const Select: Component<{
   )
 }
 
-export const Toggle: Component<{ ariaLabel: string; checked?: boolean; disabled?: boolean; onChange?: (v: boolean) => void }> = props => (
-  <button
-    type="button"
-    role="switch"
-    aria-label={props.ariaLabel}
-    aria-checked={props.checked ?? false}
-    disabled={props.disabled}
-    onClick={e => {
-      e.stopPropagation()
-      props.onChange?.(!props.checked)
-    }}
-    class={`ui-control relative inline-flex items-center w-9 h-5 shrink-0 p-0.5 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-inner ${
-      props.checked
-        ? 'bg-accent'
-        : 'bg-control-border'
-    }`}
-  >
-    <span
-      class={`pointer-events-none block w-4 h-4 rounded-full bg-switch-thumb shadow-sm transition-transform duration-200 ${
-        props.checked ? 'translate-x-4' : 'translate-x-0'
+export const Toggle: Component<{
+  ariaLabel: string
+  checked?: boolean
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  onChange?: (v: boolean) => void
+}> = props => {
+  const isSm = () => props.size === 'sm'
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={props.ariaLabel}
+      aria-checked={props.checked ?? false}
+      disabled={props.disabled}
+      onClick={e => {
+        e.stopPropagation()
+        props.onChange?.(!props.checked)
+      }}
+      class={`ui-control relative inline-flex items-center shrink-0 p-0.5 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-inner transition-colors duration-200 ${
+        isSm() ? 'w-7 h-4' : 'w-9 h-5'
+      } ${
+        props.checked ? 'bg-accent' : 'bg-control-border'
       }`}
-    />
-  </button>
-)
+    >
+      <span
+        class={`pointer-events-none block rounded-full bg-switch-thumb shadow-sm transition-transform duration-200 ${
+          isSm() ? 'w-3 h-3' : 'w-4 h-4'
+        } ${
+          props.checked ? (isSm() ? 'translate-x-3' : 'translate-x-4') : 'translate-x-0'
+        }`}
+      />
+    </button>
+  )
+}
 export interface CheckboxProps {
   checked?: boolean
   disabled?: boolean
@@ -950,7 +1084,19 @@ export function SegmentedControl<T extends string = string>(props: SegmentedCont
   )
 }
 
-export const Modal: Component<{ open: boolean; title: string; onClose: () => void; children?: JSX.Element }> = props => {
+export interface ModalProps {
+  open: boolean
+  title?: string
+  header?: JSX.Element
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  class?: string
+  bodyClass?: string
+  footer?: JSX.Element
+  onClose: () => void
+  children?: JSX.Element
+}
+
+export const Modal: Component<ModalProps> = props => {
   const [panel, setPanel] = createSignal<HTMLDivElement>()
   const { t } = useI18n()
 
@@ -1005,7 +1151,7 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
   return (
     <Show when={props.open}>
       <Portal>
-        <div class="fixed inset-0 z-100 flex items-center justify-center p-4">
+        <div class="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6">
           <button
             type="button"
             tabIndex={-1}
@@ -1018,20 +1164,28 @@ export const Modal: Component<{ open: boolean; title: string; onClose: () => voi
             role="dialog"
             tabIndex={-1}
             aria-modal="true"
-            aria-label={props.title}
-            class="relative flex flex-col max-h-[calc(100dvh-2rem)] w-full max-w-lg rounded-2xl glass-float animate-scale-in"
+            aria-label={props.title || 'Dialog'}
+            class={`relative flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3rem)] w-full ${props.size === '2xl' ? 'max-w-2xl' : props.size === 'xl' ? 'max-w-xl' : props.size === 'md' ? 'max-w-md' : props.size === 'sm' ? 'max-w-sm' : 'max-w-lg'} rounded-2xl glass-float animate-scale-in z-10 shadow-2xl ${props.class ?? ''}`}
           >
-            <div class="shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-b border-subtle/50 bg-surface-inset rounded-t-2xl">
-              <h3 class="min-w-0 text-sm font-semibold wrap-break-word">{props.title}</h3>
+            <div class="shrink-0 flex items-center justify-between gap-3 px-5 py-3.5 border-b border-subtle/50 bg-surface-inset/50 rounded-t-2xl">
+              <Show when={props.header} fallback={<h3 class="min-w-0 text-sm font-semibold wrap-break-word">{props.title}</h3>}>
+                {props.header}
+              </Show>
               <IconButton
                 size="sm"
+                class="shrink-0"
                 onClick={props.onClose}
                 aria-label={t('common.close')}
               >
                 <IconClose size={14} />
               </IconButton>
             </div>
-            <div class="min-h-0 overflow-y-auto px-5 py-5">{props.children}</div>
+            <div class={`min-h-0 overflow-y-auto ${props.bodyClass ?? 'px-5 py-5'}`}>{props.children}</div>
+            <Show when={props.footer}>
+              <div class="min-h-14 px-5 py-3 border-t border-subtle/50 flex items-center justify-end shrink-0 bg-surface-inset/30 rounded-b-2xl">
+                {props.footer}
+              </div>
+            </Show>
           </div>
         </div>
       </Portal>
@@ -1348,7 +1502,7 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
       setOutgoingSnapshot(null)
       setIsTransitioning(false)
       timer = undefined
-    }, 260)
+    }, 160)
   })
 
   onCleanup(() => {

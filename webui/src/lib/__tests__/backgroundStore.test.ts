@@ -40,6 +40,31 @@ describe('backgroundStore - 容灾与自愈测试', () => {
     expect(cfg.remoteUrl).toBe('https://example.com/wallpaper.jpg')
   })
 
+  it('保存与读取带 LQIP 缩略图配置正常', () => {
+    saveWallpaperConfig({
+      ...DEFAULT_WALLPAPER_CONFIG,
+      enabled: true,
+      thumbnail: 'data:image/jpeg;base64,mockthumb',
+    })
+
+    const cfg = getWallpaperConfig()
+    expect(cfg.enabled).toBe(true)
+    expect(cfg.thumbnail).toBe('data:image/jpeg;base64,mockthumb')
+  })
+
+  it('当仅有 thumbnail 且全量大图尚未读出时，hasCustomBg 立即为 true (0ms 秒开)', () => {
+    mockStore['cyrene_wallpaper_config'] = JSON.stringify({
+      ...DEFAULT_WALLPAPER_CONFIG,
+      enabled: true,
+      thumbnail: 'data:image/jpeg;base64,mockthumb',
+    })
+
+    const store = useBackgroundStore()
+    expect(store.config().enabled).toBe(true)
+    expect(store.config().thumbnail).toBe('data:image/jpeg;base64,mockthumb')
+    expect(store.hasCustomBg()).toBe(true)
+  })
+
   it('IndexedDB 被清理但有 remoteUrl 时，init() 自动降级自愈且不重置 enabled 开关', async () => {
     const remoteUrl = 'https://example.com/wallpaper.jpg'
     mockStore['cyrene_wallpaper_config'] = JSON.stringify({

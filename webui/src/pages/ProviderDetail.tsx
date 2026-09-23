@@ -1,4 +1,4 @@
-import { type Component, For, Show, Switch, Match, createSignal, createResource, createEffect, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createMemo, createResource, createEffect, onMount, onCleanup } from 'solid-js'
 import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api, apiPost } from '@/lib/api'
@@ -6,7 +6,7 @@ import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
 import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
-import { Card, Badge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
+import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -581,6 +581,29 @@ const ProviderDetail: Component = () => {
       .concat(modelsData().customModels ?? models()?.customModels ?? [])
   const enabledModelsCount = () => allDisplayModels().filter(m => m.enabled !== false).length
   const disabledModelsCount = () => allDisplayModels().filter(m => m.enabled === false).length
+  const sortedRegistryModels = createMemo<ProviderModel[]>(() => {
+    const list: ProviderModel[] = modelsData().registryModels ?? models()?.registryModels ?? []
+    return list.slice().sort((a, b) => {
+      const aEnabled = a.enabled !== false
+      const bEnabled = b.enabled !== false
+      if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
+      const idA = a.id || a.name || ''
+      const idB = b.id || b.name || ''
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' })
+    })
+  })
+
+  const sortedCustomModels = createMemo<ProviderModel[]>(() => {
+    const list: ProviderModel[] = modelsData().customModels ?? models()?.customModels ?? []
+    return list.slice().sort((a, b) => {
+      const aEnabled = a.enabled !== false
+      const bEnabled = b.enabled !== false
+      if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
+      const idA = a.id || a.name || ''
+      const idB = b.id || b.name || ''
+      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' })
+    })
+  })
   async function testSingleModel(modelId: string) {
     if (!conn() || testingModels()[modelId]) return
     const p = conn()!.provider
@@ -927,7 +950,7 @@ const ProviderDetail: Component = () => {
             badge={
               <div class="flex items-center gap-2 flex-wrap">
                 <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? t('common.enabled') : t('common.disabled')}</Badge>
-                <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
+                <AuthBadge authType={c().authType} />
                 <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-surface-inset border border-subtle max-w-full wrap-anywhere">
                   {c().provider}
                 </span>
@@ -1166,18 +1189,18 @@ const ProviderDetail: Component = () => {
                                   : 'border-subtle/40 bg-bg-elevated/20 opacity-60 hover:opacity-100'
                               }`}
                             >
-                              <div class="flex flex-wrap items-center justify-between gap-2">
-                                <div class="flex flex-wrap items-center gap-2 min-w-0">
+                              <div class="flex items-center justify-between gap-2 min-w-0">
+                                <div class="flex items-center gap-1.5 min-w-0 flex-1">
                                   <span class={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
                                     isCurrent() ? 'bg-accent text-on-accent border-accent' : 'bg-bg text-faint border-subtle'
                                   }`}>
                                     #{idx() + 1}
                                   </span>
-                                  <span class="text-xs font-semibold text-foreground min-w-0 wrap-anywhere">
+                                  <span class="text-xs font-semibold text-foreground truncate min-w-0 shrink-0 max-w-[130px] sm:max-w-[160px]" title={getAccountDisplayName(acc, idx())}>
                                     {getAccountDisplayName(acc, idx())}
                                   </span>
                                   <Show when={acc.email && acc.email !== getAccountDisplayName(acc, idx())}>
-                                    <span class="text-xs text-faint min-w-0 wrap-anywhere font-mono">
+                                    <span class="text-xs text-faint truncate min-w-0 font-mono" title={acc.email}>
                                       ({acc.email})
                                     </span>
                                   </Show>
@@ -1231,9 +1254,7 @@ const ProviderDetail: Component = () => {
                               </div>
 
                               <div class="mt-2.5 flex items-center gap-2 flex-wrap text-xs">
-                                <span class="inline-flex items-center justify-center h-5 px-2 text-[10px] font-medium rounded-full text-info bg-info/12 border border-info/30">
-                                  {acc.authType === 'api-key' || acc.authType === 'apikey' ? 'API Key' : acc.authType === 'oauth' ? 'OAuth' : acc.authType}
-                                </span>
+                                <AuthBadge authType={acc.authType} />
                                 <span class={`inline-flex items-center h-5 gap-1.5 text-[10px] px-2 rounded-full border font-mono ${
                                   idx() === 0
                                     ? 'bg-accent/15 border-accent/40 text-accent font-semibold'
@@ -1273,7 +1294,7 @@ const ProviderDetail: Component = () => {
                       <div class="min-w-0 flex-1 basis-full sm:basis-64">
                         <div class="text-sm font-semibold flex flex-wrap items-center gap-2 wrap-anywhere">
                           <span class="min-w-0">{t('providerDetail.editAccountWith', { name: getAccountDisplayName(c()) })}</span>
-                          <Badge tone="blue">{c().authType === 'api-key' ? 'API Key' : c().authType === 'oauth' ? 'OAuth' : c().authType}</Badge>
+                          <AuthBadge authType={c().authType} />
                         </div>
                         <div class="text-xs text-faint mt-1 font-mono flex flex-wrap items-center gap-x-2 gap-y-1 wrap-anywhere">
                           <span>{t('providerDetail.nodeId', { id: c().id })}</span>
@@ -1517,7 +1538,7 @@ const ProviderDetail: Component = () => {
                         <Show when={customCount() > 0} fallback={
                           <span class="text-xs text-faint">{t('providerDetail.noCustomModels')}</span>
                         }>
-                          <For each={modelsData().customModels ?? models()?.customModels ?? []}>
+                          <For each={sortedCustomModels()}>
                             {m => (
                               <span class={`inline-flex flex-wrap max-w-full min-w-0 items-center gap-2 px-2.5 py-1 rounded-control border text-xs wrap-anywhere transition-colors ${
                                 m.enabled !== false ? 'bg-control border-subtle text-foreground' : 'bg-surface-inset border-subtle/50 text-faint opacity-60'
@@ -1574,7 +1595,7 @@ const ProviderDetail: Component = () => {
                     fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
                     <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                        <For each={(modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
+                        <For each={sortedRegistryModels().filter(m => {
                           const q = modelSearch().trim().toLowerCase()
                           if (!q) return true
                           return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)

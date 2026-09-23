@@ -45,9 +45,26 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
                 stroke-dasharray={node.isActive ? 'none' : '4 4'}
               />
               <Show when={node.isHitting || props.hoveredNode === node.id}>
-                <path d={path} fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" />
+                <path
+                  d={path}
+                  fill="none"
+                  stroke="var(--accent)"
+                  stroke-width={node.isHitting ? 2.5 : 2}
+                  stroke-linecap="round"
+                  stroke-dasharray={node.isHitting && !props.reducedMotion ? '60 180' : 'none'}
+                >
+                  <Show when={node.isHitting && !props.reducedMotion}>
+                    <animate
+                      attributeName="stroke-dashoffset"
+                      from="240"
+                      to="0"
+                      dur="1.8s"
+                      repeatCount="indefinite"
+                    />
+                  </Show>
+                </path>
                 <Show when={node.isHitting && !props.reducedMotion}>
-                  <circle r="3" fill="var(--accent)">
+                  <circle r="3.5" fill="var(--accent)">
                     <animateMotion path={path} dur="1.8s" repeatCount="indefinite" />
                   </circle>
                 </Show>

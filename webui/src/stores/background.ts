@@ -7,17 +7,17 @@ import {
   clearStoredWallpaper,
   cleanupLegacyStorage,
   fetchRemoteImageDataUrl,
+  processAndCompressImage,
   type WallpaperConfig,
   DEFAULT_WALLPAPER_CONFIG,
 } from '@/lib/backgroundStore'
-
 export interface BackgroundStore {
   config: Accessor<WallpaperConfig>
   imageData: Accessor<string>
   hasCustomBg: Accessor<boolean>
   loaded: Accessor<boolean>
   init: () => Promise<void>
-  setWallpaper: (dataUrl: string, meta?: { sourceType?: 'remote' | 'upload'; remoteUrl?: string }) => Promise<void>
+  setWallpaper: (dataUrl: string, meta?: { sourceType?: 'remote' | 'upload'; remoteUrl?: string; thumbnail?: string }) => Promise<void>
   updateConfig: (partial: Partial<WallpaperConfig>) => void
   resetWallpaper: () => Promise<void>
 }
@@ -43,11 +43,17 @@ function applyAppearanceVariables(config: WallpaperConfig, enabled: boolean) {
 }
 
 function createCustomBgStore(): BackgroundStore {
-  const [config, setConfig] = createSignal<WallpaperConfig>(getWallpaperConfig())
+  const initialCfg = getWallpaperConfig()
+  const [config, setConfig] = createSignal<WallpaperConfig>(initialCfg)
   const [imageData, setImageData] = createSignal<string>('')
   const [loaded, setLoaded] = createSignal(false)
 
-  const hasCustomBg = () => config().enabled && !!imageData()
+  // 同步初始化外观变量：在 store 创建瞬间生效，彻底消除样式跳闪 (Zero-FOUC)
+  if (initialCfg.enabled) {
+    applyAppearanceVariables(initialCfg, true)
+  }
+
+  const hasCustomBg = () => config().enabled && (!!imageData() || !!config().thumbnail)
 
   async function init() {
     try {
@@ -55,18 +61,24 @@ function createCustomBgStore(): BackgroundStore {
       const cfg = getWallpaperConfig()
       setConfig(cfg)
       if (cfg.enabled) {
+        applyAppearanceVariables(cfg, true)
         let data = await getStoredWallpaper()
         if (!data && cfg.remoteUrl?.trim()) {
           // 容灾与自愈：
-          // 若 IndexedDB 缓存被清理（如浏览器隐私清理工具、清理垃圾缓存等），
-          // 但用户的远程图片 URL 依然保存在 localStorage 配置中：
-          // 1. 立即降级使用 remoteUrl 作为图像源，保证刷新即呈现壁纸，绝不误把 enabled 关闭
+          // 若 IndexedDB 缓存被清理，但用户远程 URL 依然存在：
+          // 1. 立即降级使用 remoteUrl 作为图像源
           data = cfg.remoteUrl.trim()
-          // 2. 在后台异步重新拉取图片并回填至 IndexedDB，恢复离线能力与秒开体验
+          // 2. 在后台异步重新拉取并智能压缩，回填至 IndexedDB
           fetchRemoteImageDataUrl(data).then(async base64 => {
             if (base64) {
-              await saveStoredWallpaper(base64)
-              setImageData(base64)
+              const proc = await processAndCompressImage(base64)
+              await saveStoredWallpaper(proc.dataUrl)
+              setImageData(proc.dataUrl)
+              if (proc.thumbnail && proc.thumbnail !== config().thumbnail) {
+                const updated = { ...config(), thumbnail: proc.thumbnail }
+                setConfig(updated)
+                saveWallpaperConfig(updated)
+              }
             }
           }).catch(() => {})
         }
@@ -74,8 +86,18 @@ function createCustomBgStore(): BackgroundStore {
         if (data) {
           setImageData(data)
           applyAppearanceVariables(cfg, true)
-        } else {
-          // 仅在既无本地缓存也无远程 URL 时才重置开关
+          // 自愈升级：若旧版本用户此前没有生成过 thumbnail，在后台静默生成并写入 localStorage
+          if (!cfg.thumbnail) {
+            processAndCompressImage(data).then(proc => {
+              if (proc.thumbnail) {
+                const updated = { ...config(), thumbnail: proc.thumbnail }
+                setConfig(updated)
+                saveWallpaperConfig(updated)
+              }
+            }).catch(() => {})
+          }
+        } else if (!cfg.thumbnail) {
+          // 仅在既无本地缓存也无缩略图也无远程 URL 时才重置开关
           const disabledCfg = { ...cfg, enabled: false }
           setConfig(disabledCfg)
           saveWallpaperConfig(disabledCfg)
@@ -91,14 +113,28 @@ function createCustomBgStore(): BackgroundStore {
     }
   }
 
-  async function setWallpaper(dataUrl: string, meta?: { sourceType?: 'remote' | 'upload'; remoteUrl?: string }) {
-    await saveStoredWallpaper(dataUrl)
-    setImageData(dataUrl)
+  async function setWallpaper(
+    dataUrl: string,
+    meta?: { sourceType?: 'remote' | 'upload'; remoteUrl?: string; thumbnail?: string }
+  ) {
+    let finalData = dataUrl
+    let finalThumb = meta?.thumbnail
+
+    // 若未传入预计算的 thumbnail，自动进行智能降采样与压缩
+    if (!finalThumb) {
+      const proc = await processAndCompressImage(dataUrl)
+      finalData = proc.dataUrl
+      finalThumb = proc.thumbnail
+    }
+
+    await saveStoredWallpaper(finalData)
+    setImageData(finalData)
     const newConfig: WallpaperConfig = {
       ...config(),
       enabled: true,
+      thumbnail: finalThumb || config().thumbnail,
       sourceType: meta?.sourceType ?? 'upload',
-      remoteUrl: meta?.remoteUrl ?? config().remoteUrl,
+      remoteUrl: meta?.remoteUrl ?? (meta?.sourceType === 'upload' ? undefined : config().remoteUrl),
     }
     setConfig(newConfig)
     saveWallpaperConfig(newConfig)
@@ -130,6 +166,7 @@ function createCustomBgStore(): BackgroundStore {
     const resetCfg: WallpaperConfig = {
       ...DEFAULT_WALLPAPER_CONFIG,
       remoteUrl: '',
+      thumbnail: undefined,
     }
     setConfig(resetCfg)
     saveWallpaperConfig(resetCfg)

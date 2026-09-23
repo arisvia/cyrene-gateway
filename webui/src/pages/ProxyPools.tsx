@@ -66,7 +66,7 @@ const ProxyPools: Component = () => {
         </div>
       }>
       <Show when={store.proxyPools().length > 0} fallback={
-        <Card class="p-12 border-dashed border-subtle">
+        <Card class="p-12">
           <Empty
             icon={<IconGlobe size={24} />}
             title={t('proxies.emptyTitle')}

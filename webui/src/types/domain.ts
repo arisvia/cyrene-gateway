@@ -102,6 +102,13 @@ export interface ProviderModel {
   hasOverride?: boolean
 }
 
+export interface UsageDimensionItem {
+  requests: number
+  promptTokens: number
+  completionTokens: number
+  cost?: number
+}
+
 export interface UsageStats {
   totalRequests?: number
   totalRequestsLifetime?: number
@@ -109,8 +116,10 @@ export interface UsageStats {
   totalCompletionTokens?: number
   totalCost?: number
   period?: string
-  byProvider?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
-  byModel?: Record<string, { requests: number; promptTokens: number; completionTokens: number }>
+  byProvider?: Record<string, UsageDimensionItem>
+  byModel?: Record<string, UsageDimensionItem>
+  byKey?: Record<string, UsageDimensionItem>
+  byEndpoint?: Record<string, UsageDimensionItem>
   last10Minutes?: { minute: string; requests: number }[]
 }
 
@@ -158,8 +167,9 @@ export interface LiveUsageEvent {
   status?: string
   latencyMs?: number
   endpoint?: string
+  promptTokens?: number
+  completionTokens?: number
 }
-
 export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'purple' | 'cyan' | 'pink' | 'violet' | 'teal' | 'rose' | 'orange' | 'indigo'
 export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
 export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'

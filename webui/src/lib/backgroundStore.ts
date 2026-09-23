@@ -15,6 +15,7 @@ export interface WallpaperConfig {
   glassBlur: number // 0 ~ 40 px (面板毛玻璃模糊度，对齐 zashboard)
   sourceType?: 'remote' | 'upload'
   remoteUrl?: string
+  thumbnail?: string // 32x18 极微缩 Base64 占位图，用于首屏 0ms 瞬间直出消除白屏闪烁
 }
 
 export const DEFAULT_WALLPAPER_CONFIG: WallpaperConfig = {
@@ -41,6 +42,7 @@ export function getWallpaperConfig(): WallpaperConfig {
       glassBlur: typeof parsed.glassBlur === 'number' ? parsed.glassBlur : DEFAULT_WALLPAPER_CONFIG.glassBlur,
       sourceType: parsed.sourceType,
       remoteUrl: parsed.remoteUrl,
+      thumbnail: typeof parsed.thumbnail === 'string' ? parsed.thumbnail : undefined,
     }
   } catch {
     return { ...DEFAULT_WALLPAPER_CONFIG }
@@ -146,5 +148,91 @@ export async function fetchRemoteImageDataUrl(url: string): Promise<string | nul
     return await promise
   } catch {
     return null
+  }
+}
+
+export interface ProcessedWallpaper {
+  dataUrl: string
+  thumbnail: string
+}
+
+/**
+ * 客户端智能降采样与压缩管道：
+ * 1. 约束最大尺寸在 2560px（2K 黄金比例），防止超大原始图导致内存崩溃与卡顿；
+ * 2. 导出高效 WebP/JPEG（质量 0.85），大幅缩减体积；
+ * 3. 抽取 32xH 超微缩占位图（LQIP，~500 字节），存入 localStorage 用于 0ms 首屏秒开。
+ */
+export async function processAndCompressImage(source: string): Promise<ProcessedWallpaper> {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return { dataUrl: source, thumbnail: '' }
+  }
+  try {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('Failed to load image'))
+    img.src = source
+    await promise
+
+    const MAX_DIM = 2560
+    let w = img.naturalWidth || img.width || 1920
+    let h = img.naturalHeight || img.height || 1080
+    if (w > MAX_DIM || h > MAX_DIM) {
+      if (w > h) {
+        h = Math.round((h * MAX_DIM) / w)
+        w = MAX_DIM
+      } else {
+        w = Math.round((w * MAX_DIM) / h)
+        h = MAX_DIM
+      }
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      return { dataUrl: source, thumbnail: '' }
+    }
+
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(img, 0, 0, w, h)
+
+    let compData = ''
+    try {
+      compData = canvas.toDataURL('image/webp', 0.85)
+      if (!compData.startsWith('data:image/webp')) {
+        compData = canvas.toDataURL('image/jpeg', 0.85)
+      }
+    } catch {
+      compData = source
+    }
+
+    // LQIP 微缩图：固定 32px 宽度，高按比例自适应
+    let thumbData = ''
+    try {
+      const tw = 32
+      const th = Math.max(16, Math.round((32 * h) / w))
+      const thumbCanvas = document.createElement('canvas')
+      thumbCanvas.width = tw
+      thumbCanvas.height = th
+      const thumbCtx = thumbCanvas.getContext('2d')
+      if (thumbCtx) {
+        thumbCtx.imageSmoothingEnabled = true
+        thumbCtx.imageSmoothingQuality = 'medium'
+        thumbCtx.drawImage(img, 0, 0, tw, th)
+        thumbData = thumbCanvas.toDataURL('image/jpeg', 0.6)
+      }
+    } catch {}
+
+    return {
+      dataUrl: compData || source,
+      thumbnail: thumbData,
+    }
+  } catch (e) {
+    console.warn('[processAndCompressImage] Fallback to raw source:', e)
+    return { dataUrl: source, thumbnail: '' }
   }
 }

@@ -1,26 +1,16 @@
-import { createSignal, onCleanup } from 'solid-js'
 import { useI18n } from '@/i18n'
+import { useThemeStore } from '@/stores/theme'
 import { Button, IconButton, IconSun, IconMoon, IconGlobe } from '@/components/ui'
 
 export function ThemeToggle() {
   const { t } = useI18n()
-  const [light, setLight] = createSignal(document.documentElement.classList.contains('light'))
-  const observer = new MutationObserver(() => setLight(document.documentElement.classList.contains('light')))
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-  onCleanup(() => observer.disconnect())
-
-  const toggle = () => {
-    const next = !document.documentElement.classList.contains('light')
-    document.documentElement.classList.toggle('light', next)
-    setLight(next)
-    localStorage.setItem('cyrene-theme', next ? 'light' : 'dark')
-  }
-
+  const theme = useThemeStore()
+  const light = () => theme.mode() === 'light'
   return (
     <IconButton
       size="lg"
       class="relative"
-      onClick={toggle}
+      onClick={e => theme.toggleMode(e)}
       aria-label={t('sidebar.themeToggle')}
       aria-pressed={light()}
       title={light() ? t('sidebar.switchToDark') : t('sidebar.switchToLight')}

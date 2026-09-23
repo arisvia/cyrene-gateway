@@ -26,10 +26,21 @@
     --brand-cyan: hsl(188.74 94.50% 42.75%);
     --brand-indigo: hsl(238.73 83.53% 66.67%);
     --brand-violet: hsl(258.31 89.53% 66.27%);
-    --accent: color-mix(in srgb, var(--brand-indigo) 65%, hsl(0 0% 100%));
-    --accent-hover: color-mix(in srgb, var(--brand-indigo) 55%, hsl(0 0% 100%));
-    --accent-2: color-mix(in srgb, var(--brand-cyan) 80%, hsl(0 0% 100%));
-    --on-accent: hsl(239 45% 12%);
+    /* Default Theme: Indigo (星际蓝紫) */
+    --theme-primary: var(--brand-indigo);
+    --theme-secondary: var(--brand-cyan);
+    --theme-on-accent-dark: hsl(239 45% 12%);
+    --theme-on-accent-light: hsl(0 0% 100%);
+    --theme-mix-dark: 65%;
+    --theme-mix-dark-hover: 55%;
+    --theme-mix-light: 88%;
+    --theme-mix-light-hover: 76%;
+    --ambient-hue: 65deg;
+
+    --accent: color-mix(in srgb, var(--theme-primary) var(--theme-mix-dark), hsl(0 0% 100%));
+    --accent-hover: color-mix(in srgb, var(--theme-primary) var(--theme-mix-dark-hover), hsl(0 0% 100%));
+    --accent-2: color-mix(in srgb, var(--theme-secondary) 80%, hsl(0 0% 100%));
+    --on-accent: var(--theme-on-accent-dark);
     --success: hsl(155 58% 63%);
     --warning: hsl(38 87% 66%);
     --danger: hsl(355 82% 74%);
@@ -46,7 +57,6 @@
     --code-bg: hsl(216 28% 6% / 0.6);
     --overlay: hsl(218 32% 4% / 0.62);
     --switch-thumb: hsl(0 0% 100%);
-    --wallpaper-scrim: hsl(216 24% 8% / 0.86);
     --glass-blur: 20px;
     --glass: hsl(216 19% 14% / 0.72);
     --card-hover: hsl(216 19% 17% / 0.84);
@@ -58,11 +68,11 @@
     --glass-depth: inset 0 1px 0 var(--glass-highlight), 0 2px 3px hsl(220 40% 3% / 0.08), 0 8px 28px -12px hsl(220 40% 3% / 0.28);
     --glass-depth-hover: inset 0 1px 0 var(--glass-highlight), 0 8px 30px -10px hsl(220 40% 3% / 0.4);
     --float-shadow: inset 0 1px 0 var(--glass-highlight), 0 16px 48px -12px hsl(220 40% 3% / 0.55);
+    --float-surface: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
     --shell-surface: hsl(216 22% 10% / 0.86);
-    --segment-surface: hsl(215 16% 26% / 0.65);
     --ring: color-mix(in srgb, var(--accent) 80%, transparent);
     --ring-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-    --accent-shadow: 0 2px 8px -2px color-mix(in srgb, var(--brand-indigo) 25%, transparent);
+    --accent-shadow: 0 2px 8px -2px color-mix(in srgb, var(--theme-primary) 25%, transparent);
     --scroll-thumb: hsl(215 16% 60% / 0.3);
     --ambient-opacity: 0.26;
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -70,12 +80,51 @@
     --sidebar-w: 232px;
     color-scheme: dark;
   }
+  /* Theme Color: Cyan (赛博青蓝) */
+  :root[data-theme-color="cyan"], [data-theme-color="cyan"] {
+    --theme-primary: var(--brand-cyan);
+    --theme-secondary: var(--brand-mint);
+    --theme-on-accent-dark: hsl(188 90% 10%);
+    --theme-on-accent-light: hsl(0 0% 100%);
+    --theme-mix-dark: 75%;
+    --theme-mix-dark-hover: 60%;
+    --theme-mix-light: 85%;
+    --theme-mix-light-hover: 72%;
+    --ambient-hue: 15deg;
+  }
+
+  /* Theme Color: Mint (清新薄荷) */
+  :root[data-theme-color="mint"], [data-theme-color="mint"] {
+    --theme-primary: var(--brand-mint);
+    --theme-secondary: var(--brand-cyan);
+    --theme-on-accent-dark: hsl(172 90% 10%);
+    --theme-on-accent-light: hsl(0 0% 100%);
+    --theme-mix-dark: 75%;
+    --theme-mix-dark-hover: 60%;
+    --theme-mix-light: 85%;
+    --theme-mix-light-hover: 72%;
+    --ambient-hue: 310deg;
+  }
+
+  /* Theme Color: Violet (极光深紫) */
+  :root[data-theme-color="violet"], [data-theme-color="violet"] {
+    --theme-primary: var(--brand-violet);
+    --theme-secondary: var(--brand-indigo);
+    --theme-on-accent-dark: hsl(258 50% 12%);
+    --theme-on-accent-light: hsl(0 0% 100%);
+    --theme-mix-dark: 70%;
+    --theme-mix-dark-hover: 55%;
+    --theme-mix-light: 85%;
+    --theme-mix-light-hover: 72%;
+    --ambient-hue: 100deg;
+  }
+
 
   .light {
-    --accent: color-mix(in srgb, var(--brand-indigo) 88%, hsl(0 0% 0%));
-    --accent-hover: color-mix(in srgb, var(--brand-indigo) 76%, hsl(0 0% 0%));
-    --accent-2: color-mix(in srgb, var(--brand-cyan) 65%, hsl(0 0% 0%));
-    --on-accent: hsl(0 0% 100%);
+    --accent: color-mix(in srgb, var(--theme-primary) var(--theme-mix-light), hsl(0 0% 0%));
+    --accent-hover: color-mix(in srgb, var(--theme-primary) var(--theme-mix-light-hover), hsl(0 0% 0%));
+    --accent-2: color-mix(in srgb, var(--theme-secondary) 65%, hsl(0 0% 0%));
+    --on-accent: var(--theme-on-accent-light);
     --success: hsl(158 76% 27%);
     --warning: hsl(30 88% 31%);
     --danger: hsl(352 72% 43%);
@@ -90,8 +139,7 @@
     --control-border: hsl(215 24% 30% / 0.22);
     --subtle: hsl(215 24% 30% / 0.12);
     --code-bg: hsl(214 22% 40% / 0.055);
-    --overlay: hsl(216 28% 16% / 0.3);
-    --wallpaper-scrim: hsl(210 25% 96% / 0.92);
+    --overlay: hsl(216 28% 16% / 0.45);
     --glass: hsl(0 0% 100% / 0.78);
     --card-hover: hsl(0 0% 100% / 0.94);
     --glass-hover: hsl(214 24% 40% / 0.065);
@@ -102,11 +150,11 @@
     --glass-depth: inset 0 1px 0 var(--glass-highlight), 0 1px 3px hsl(216 30% 30% / 0.025), 0 8px 28px -14px hsl(216 30% 30% / 0.1);
     --glass-depth-hover: inset 0 1px 0 var(--glass-highlight), 0 8px 28px -10px hsl(216 30% 30% / 0.14);
     --float-shadow: inset 0 1px 0 var(--glass-highlight), 0 16px 48px -12px hsl(216 30% 20% / 0.2);
+    --float-surface: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
     --shell-surface: hsl(210 30% 98% / 0.84);
-    --segment-surface: hsl(0 0% 100% / 0.92);
     --ring: color-mix(in srgb, var(--accent) 75%, transparent);
     --ring-soft: color-mix(in srgb, var(--accent) 12%, transparent);
-    --accent-shadow: 0 2px 8px -2px color-mix(in srgb, var(--brand-indigo) 20%, transparent);
+    --accent-shadow: 0 2px 8px -2px color-mix(in srgb, var(--theme-primary) 20%, transparent);
     --scroll-thumb: hsl(215 16% 45% / 0.28);
     --ambient-opacity: 0.035;
     color-scheme: light;
@@ -117,10 +165,11 @@
     --app-glass-blur: 24px;
     --glass: color-mix(in srgb, var(--bg-elevated) calc(var(--app-surface-alpha) * 100%), transparent);
     --card-hover: color-mix(in srgb, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.08, 0.98) * 100%), transparent);
-    --shell-surface: color-mix(in srgb, var(--bg-elevated) calc(min(var(--app-surface-alpha) + 0.12, 0.96) * 100%), transparent);
+    --shell-surface: color-mix(in srgb, var(--bg-elevated) calc(var(--app-surface-alpha) * 100%), transparent);
+    --float-surface: color-mix(in srgb, var(--bg-elevated) calc(min(max(var(--app-surface-alpha) + 0.08, 0.74), 0.84) * 100%), transparent);
+    --surface-inset: color-mix(in srgb, var(--bg-elevated) calc(min(max(var(--app-surface-alpha) - 0.22, 0.30), 0.52) * 100%), transparent);
     --glass-blur: var(--app-glass-blur);
   }
-
   *, *::before, *::after { box-sizing: border-box; }
   html { font-size: 16px; scroll-padding-top: 6rem; }
   body {
@@ -173,12 +222,12 @@
   }
 
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes scaleIn { from { opacity: 0; transform: translateY(4px) scale(0.985); } to { opacity: 1; transform: none; } }
-  @keyframes tabSlideInRight { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
-  @keyframes tabSlideOutLeft { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-10px); } }
-  @keyframes tabSlideInLeft { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
-  @keyframes tabSlideOutRight { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(10px); } }
+  @keyframes slideUp { from { opacity: 0.7; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes scaleIn { from { opacity: 0.8; transform: translateY(3px) scale(0.99); } to { opacity: 1; transform: none; } }
+  @keyframes tabSlideInRight { from { opacity: 0.7; transform: translateX(6px); } to { opacity: 1; transform: none; } }
+  @keyframes tabSlideOutLeft { from { opacity: 1; transform: none; } to { opacity: 0.5; transform: translateX(-6px); } }
+  @keyframes tabSlideInLeft { from { opacity: 0.7; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes tabSlideOutRight { from { opacity: 1; transform: none; } to { opacity: 0.5; transform: translateX(6px); } }
   @keyframes shake { 25%, 75% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
 
   .animate-tab-slide-in-right { animation: var(--animate-tab-slide-in-right); }
@@ -225,7 +274,6 @@
   --color-control-border: var(--control-border);
   --color-surface-inset: var(--surface-inset);
   --color-overlay: var(--overlay);
-  --color-wallpaper-scrim: var(--wallpaper-scrim);
   --color-switch-thumb: var(--switch-thumb);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -243,11 +291,11 @@
   --animate-fade-in: fadeIn 180ms var(--ease-out-expo) both;
   --animate-slide-up: slideUp 240ms var(--ease-out-expo) both;
   --animate-scale-in: scaleIn 200ms var(--ease-out-expo) both;
-  --animate-stagger: slideUp 280ms var(--ease-out-expo) backwards;
-  --animate-tab-slide-in-right: tabSlideInRight 260ms var(--ease-out-expo) both;
-  --animate-tab-slide-out-left: tabSlideOutLeft 260ms var(--ease-out-expo) both;
-  --animate-tab-slide-in-left: tabSlideInLeft 260ms var(--ease-out-expo) both;
-  --animate-tab-slide-out-right: tabSlideOutRight 260ms var(--ease-out-expo) both;
+  --animate-stagger: slideUp 180ms var(--ease-out-expo) backwards;
+  --animate-tab-slide-in-right: tabSlideInRight 160ms var(--ease-out-expo) both;
+  --animate-tab-slide-out-left: tabSlideOutLeft 160ms var(--ease-out-expo) both;
+  --animate-tab-slide-in-left: tabSlideInLeft 160ms var(--ease-out-expo) both;
+  --animate-tab-slide-out-right: tabSlideOutRight 160ms var(--ease-out-expo) both;
   --animate-shake: shake 240ms ease both;
 }
 
@@ -258,15 +306,17 @@
     inset: 0;
     pointer-events: none;
     background: url('/glass-atmosphere.webp') center / cover no-repeat;
-    filter: hue-rotate(65deg);
+    filter: hue-rotate(var(--ambient-hue, 65deg));
+    transition: filter 300ms ease, opacity 300ms ease;
     opacity: var(--ambient-opacity);
   }
   .custom-background .app-ambient { display: none; }
   .app-sidebar {
-    background: var(--shell-surface);
-    backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+    background-color: var(--glass);
+    background-image: var(--glass-sheen);
     -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(125%);
-    border-right: 1px solid var(--subtle);
+    backdrop-filter: blur(var(--glass-blur)) saturate(125%);
+    border-right: 1px solid var(--glass-border);
   }
   .nav-link {
     position: relative;
@@ -320,6 +370,9 @@
   backdrop-filter: blur(var(--glass-blur)) saturate(125%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-depth);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 @utility glass-card {
@@ -329,6 +382,9 @@
   backdrop-filter: blur(var(--glass-blur)) saturate(125%);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-depth);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 @utility glass-sticky {
@@ -339,6 +395,9 @@
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-highlight);
   transition: background-color var(--duration), box-shadow var(--duration);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 @utility glass-avatar {
@@ -348,21 +407,75 @@
 }
 
 @utility glass-segment {
-  background-color: var(--segment-surface);
-  border: 1px solid var(--glass-border-hover);
-  box-shadow: inset 0 1px 0 var(--glass-highlight), 0 1px 3px hsl(216 30% 15% / 0.08);
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.06);
 }
 
 @utility glass-float {
-  background-color: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  background-color: var(--float-surface);
   background-image: var(--glass-sheen);
-  -webkit-backdrop-filter: blur(28px) saturate(140%);
-  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 4px)) saturate(150%);
+  backdrop-filter: blur(calc(var(--glass-blur) + 4px)) saturate(150%);
   border: 1px solid var(--glass-border-hover);
   box-shadow: var(--float-shadow);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
+}
+
+/* 全局主题切换扩散与收束 (Circular Clip-path View Transition) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@keyframes switch-theme-expand {
+  from {
+    clip-path: circle(0px at var(--theme-switch-x, 50%) var(--theme-switch-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--theme-switch-r, 150vmax) at var(--theme-switch-x, 50%) var(--theme-switch-y, 50%));
+  }
+}
+
+@keyframes switch-theme-contract {
+  from {
+    clip-path: circle(var(--theme-switch-r, 150vmax) at var(--theme-switch-x, 50%) var(--theme-switch-y, 50%));
+  }
+  to {
+    clip-path: circle(0px at var(--theme-switch-x, 50%) var(--theme-switch-y, 50%));
+  }
+}
+
+/* 1. 切亮色：html 上挂载了 .light 类名
+   - 新视口 (::view-transition-new) 在顶层 (z-index: 9999) 从图标处扩散展开全屏
+   - 旧视口 (::view-transition-old) 在底层 (z-index: 1) 静止
+   - 使用 both 关键字，确保第 0 帧立即锁定为 circle(0px)，彻底消除未裁剪瞬时闪烁！ */
+html.light::view-transition-new(root) {
+  z-index: 9999;
+  animation: switch-theme-expand 420ms cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+html.light::view-transition-old(root) {
+  z-index: 1;
+  animation: none;
+}
+
+/* 2. 切暗色：html 上没有 .light 类名 (默认暗色)
+   - 旧视口 (::view-transition-old, 亮色) 在顶层 (z-index: 9999) 向图标中心收缩敛光
+   - 新视口 (::view-transition-new, 暗色) 在底层 (z-index: 1) 露出
+   - 使用 both 关键字，确保动画结束后严格保持在 circle(0px)，彻底消除收束后的闪烁！ */
+html:not(.light)::view-transition-old(root) {
+  z-index: 9999;
+  animation: switch-theme-contract 420ms cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+html:not(.light)::view-transition-new(root) {
+  z-index: 1;
+  animation: none;
 }

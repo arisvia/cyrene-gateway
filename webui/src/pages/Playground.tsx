@@ -17,6 +17,7 @@ import {
   Badge,
   IconChat,
   IconZap,
+  IconSparkles,
   IconSliders,
   IconCode,
   IconClipboard,
@@ -1165,15 +1166,6 @@ main();
               ]}
               size="sm"
             />
-            <div class="hidden sm:flex items-center">
-              <Select
-                class="w-44 text-xs font-mono"
-                size="sm"
-                value={protocol()}
-                options={protocolOptions()}
-                onChange={v => setProtocol(v as ProtocolType)}
-              />
-            </div>
             <Button
               variant="secondary"
               size="sm"
@@ -1644,14 +1636,14 @@ main();
               </div>
               {/* 参数项独立滚动容器 */}
               <div class="flex-1 min-h-0 overflow-y-auto space-y-4 px-1 pt-2">
-              {/* API 协议端点选择卡片 */}
-              <div class="p-2.5 rounded-control bg-surface-inset border border-subtle/60 space-y-2">
+              {/* 1. API 协议端点选择卡片 */}
+              <div class="p-3 rounded-xl bg-surface-inset border border-subtle/50 space-y-2.5">
                 <div class="flex items-center justify-between text-xs">
                   <span class="font-medium text-text flex items-center gap-1.5">
-                    <IconZap size={13} class="text-accent" />
-                    {t('playground.protocol')}
+                    <IconZap size={14} class="text-accent" />
+                    <span>{t('playground.protocol')}</span>
                   </span>
-                  <Badge tone={activeProtocolMeta().badgeTone} class="text-xs font-mono px-1.5 py-0 uppercase">
+                  <Badge tone={activeProtocolMeta().badgeTone} class="text-[10px] font-mono px-1.5 py-0 uppercase">
                     POST
                   </Badge>
                 </div>
@@ -1662,107 +1654,120 @@ main();
                   options={protocolOptions()}
                   onChange={v => setProtocol(v as ProtocolType)}
                 />
-                <div class="flex flex-wrap items-center justify-between gap-1 text-xs text-muted font-mono pt-0.5 min-w-0">
-                  <span>{t('playground.activeEndpoint')}:</span>
-                  <span class="text-accent min-w-0 break-words [overflow-wrap:anywhere]" title={activeProtocolMeta().endpoint}>
-                    {activeProtocolMeta().endpoint}
-                  </span>
-                </div>
               </div>
 
-              {/* 系统提示词 (System Prompt) */}
-              <div class="space-y-1.5">
-                <div class="flex items-center justify-between h-8 gap-2">
-                  <label class="text-xs font-medium text-muted leading-none">{t('playground.systemPrompt')}</label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!systemPrompt()}
-                    class={`text-xs hover:text-danger transition-opacity ${systemPrompt() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    onClick={() => setSystemPrompt('')}
-                  >
-                    {t('playground.systemPromptReset')}
-                  </Button>
+              {/* 2. 系统提示词卡片 */}
+              <div class="p-3 rounded-xl bg-surface-inset border border-subtle/50 space-y-2.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-medium text-text flex items-center gap-1.5">
+                    <IconSparkles size={14} class="text-accent" />
+                    <span>{t('playground.systemPrompt')}</span>
+                  </span>
+                  <Show when={systemPrompt()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-5! min-h-0! px-1.5! py-0! text-[11px]! text-muted hover:text-danger cursor-pointer"
+                      onClick={() => setSystemPrompt('')}
+                    >
+                      {t('playground.systemPromptReset')}
+                    </Button>
+                  </Show>
                 </div>
                 <Textarea
-                  class="p-2 text-sm min-h-[90px] resize-y"
+                  class="p-2 text-xs min-h-[80px] resize-y"
                   ariaLabel={t('playground.systemPrompt')}
                   placeholder={t('playground.systemPromptPlaceholder')}
                   value={systemPrompt()}
                   onInput={setSystemPrompt}
                 />
-                <div class="flex flex-wrap gap-1 pt-1">
+                <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
                   <For each={systemPresets()}>
-                    {preset => (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        class="h-auto min-h-8 min-w-0 max-w-full px-2 py-1 text-xs whitespace-normal break-words [overflow-wrap:anywhere]"
-                        onClick={() => setSystemPrompt(preset.text)}
-                      >
-                        {preset.label}
-                      </Button>
-                    )}
+                    {preset => {
+                      const isActive = () => systemPrompt() === preset.text
+                      return (
+                        <Button
+                          variant={isActive() ? 'primary' : 'secondary'}
+                          size="sm"
+                          class="h-6! min-h-0! px-2.5! py-0! text-[11px]! rounded-full font-normal transition-all"
+                          onClick={() => setSystemPrompt(preset.text)}
+                          title={preset.text}
+                        >
+                          <span class={`w-1.5 h-1.5 rounded-full shrink-0 mr-1.5 ${isActive() ? 'bg-on-accent' : 'bg-muted/70'}`} />
+                          <span>{preset.label}</span>
+                        </Button>
+                      )
+                    }}
                   </For>
                 </div>
               </div>
 
-              {/* Temperature (温度) */}
-              <div class="space-y-1">
-                <Slider
-                  label={t('playground.paramTemperature')}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  value={temperature()}
-                  valueDisplay={temperature().toFixed(2)}
-                  onChange={setTemperature}
-                />
-                <div class="flex justify-between text-xs text-faint">
-                  <span>{t('playground.tempPrecise')}</span>
-                  <span>{t('playground.tempCreative')}</span>
+              {/* 3. 采样与推理参数卡片 */}
+              <div class="p-3 rounded-xl bg-surface-inset border border-subtle/50 space-y-3.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-medium text-text flex items-center gap-1.5">
+                    <IconSliders size={14} class="text-accent" />
+                    <span>{t('playground.samplingParams')}</span>
+                  </span>
                 </div>
-              </div>
 
-              {/* Top P */}
-              <div class="space-y-1">
-                <Slider
-                  label={t('playground.paramTopP')}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={topP()}
-                  valueDisplay={topP().toFixed(2)}
-                  onChange={setTopP}
-                />
-              </div>
-
-              {/* 最大输出 Tokens */}
-              <div class="space-y-1.5">
-                <label class="block text-xs font-medium text-muted leading-none">{t('playground.paramMaxTokens')}</label>
-                <Input
-                  type="number"
-                  min={64}
-                  max={32768}
-                  step={256}
-                  size="sm"
-                  value={maxTokens()}
-                  onInput={(v: string) => setMaxTokens(parseInt(v) || 2048)}
-                  class="font-mono"
-                />
-              </div>
-
-              {/* 流式传输开关 */}
-              <div class="flex items-center justify-between gap-3 pt-2 border-t border-subtle/40">
-                <div class="min-w-0">
-                  <div class="text-xs font-medium text-text">{t('playground.streamLabel')}</div>
-                  <div class="text-xs text-faint">{t('playground.streamDesc')}</div>
+                {/* Temperature (温度) */}
+                <div class="space-y-1">
+                  <Slider
+                    label={t('playground.paramTemperature')}
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    value={temperature()}
+                    valueDisplay={temperature().toFixed(2)}
+                    onChange={setTemperature}
+                  />
+                  <div class="flex justify-between text-[11px] text-faint">
+                    <span>{t('playground.tempPrecise')}</span>
+                    <span>{t('playground.tempCreative')}</span>
+                  </div>
                 </div>
-                <Toggle
-                  ariaLabel={t('playground.streamLabel')}
-                  checked={stream()}
-                  onChange={setStream}
-                />
+
+                {/* Top P */}
+                <div class="space-y-1">
+                  <Slider
+                    label={t('playground.paramTopP')}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={topP()}
+                    valueDisplay={topP().toFixed(2)}
+                    onChange={setTopP}
+                  />
+                </div>
+
+                {/* 最大输出 Tokens */}
+                <div class="space-y-1.5">
+                  <label class="block text-xs font-medium text-muted leading-none">{t('playground.paramMaxTokens')}</label>
+                  <Input
+                    type="number"
+                    min={64}
+                    max={32768}
+                    step={256}
+                    size="sm"
+                    value={maxTokens()}
+                    onInput={(v: string) => setMaxTokens(parseInt(v) || 2048)}
+                    class="font-mono"
+                  />
+                </div>
+
+                {/* 流式传输开关 */}
+                <div class="flex items-center justify-between gap-3 pt-2.5 border-t border-subtle/40">
+                  <div class="min-w-0">
+                    <div class="text-xs font-medium text-text">{t('playground.streamLabel')}</div>
+                    <div class="text-[11px] text-faint">{t('playground.streamDesc')}</div>
+                  </div>
+                  <Toggle
+                    ariaLabel={t('playground.streamLabel')}
+                    checked={stream()}
+                    onChange={setStream}
+                  />
+                </div>
               </div>
               </div>
             </Card>

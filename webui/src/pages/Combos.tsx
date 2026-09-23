@@ -110,7 +110,7 @@ const Combos: Component = () => {
         </div>
       }>
       <Show when={store.combos().length > 0} fallback={
-        <Card class="p-12 border-dashed border-subtle">
+        <Card class="p-12">
           <Empty
             icon={<IconLayers size={24} />}
             title={t('combos.emptyTitle')}
