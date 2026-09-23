@@ -2,6 +2,18 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-09-23
+
+### Added
+- **动态模型目录同步与 SQLite 本地持久化**：深度接入 `models.dev` 3660+ 权威模型库并于网关冷启动预热，模型规格多级自适应探测且离线 0 延时兜底。
+- **Qoder 协议完整代理与非流式聚合**：支持 Qoder COSY 签名鉴权、双向流式 SSE 信封解包与非流式调用自聚合，原生兼容 OpenAI 客户端交互。
+- **全链路用量追踪与请求明细贯通**：端到端捕获 Token 消耗、耗时、成本与双向提示词，支持取消状态捕获与客户端连接感知。
+
+### Changed
+- **静态模型目录重构与全面瘦身**：彻底剔除虚构臆测与历史遗留模型，兜底目录精准收敛至近两年各主流厂商官方现役主力系列。
+- **全站严格国际化与文案统一对齐**：全量覆盖中英文本地化，消除全部硬编码字符串并通过 `NestedKeyOf` 静态类型约束。
+- **设计系统现代性与布局防抖升级**：全站应用 Tailwind CSS v4 现代化质感调优，锁定滚动容器水平内边距以彻底消除布局抖动与焦点环裁剪。
+
 ## [1.3.0] - 2026-09-21
 
 ### Added
@@ -95,6 +107,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.4.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.4...v1.3.0
 [1.2.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.3...v1.2.4
 [1.2.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.2...v1.2.3
