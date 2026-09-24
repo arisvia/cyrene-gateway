@@ -153,19 +153,6 @@ func (d *DB) migrate() error {
 	if err := d.ensureAPIKeyColumns(); err != nil {
 		return fmt.Errorf("ensure apiKeys columns: %w", err)
 	}
-	// Migrate legacy opencode connections from none auth to api-key.
-	// Inactive by default if API key is missing so it prompts for credentials.
-	_, _ = d.conn.Exec(`UPDATE providerConnections SET authType = 'api-key', isActive = 0 WHERE provider = 'opencode' AND authType = 'none'`)
-	// Migrate legacy provider IDs to unified canonical IDs (codebuddy-intl -> codebuddy, alicode-intl -> alicode)
-	_, _ = d.conn.Exec(`UPDATE providerConnections SET provider = 'codebuddy' WHERE provider = 'codebuddy-intl'`)
-	_, _ = d.conn.Exec(`UPDATE providerConnections SET provider = 'alicode' WHERE provider = 'alicode-intl'`)
-	_, _ = d.conn.Exec(`UPDATE requestDetails SET provider = 'codebuddy' WHERE provider = 'codebuddy-intl'`)
-	_, _ = d.conn.Exec(`UPDATE requestDetails SET provider = 'alicode' WHERE provider = 'alicode-intl'`)
-	_, _ = d.conn.Exec(`UPDATE usageHistory SET provider = 'codebuddy' WHERE provider = 'codebuddy-intl'`)
-	_, _ = d.conn.Exec(`UPDATE usageHistory SET provider = 'alicode' WHERE provider = 'alicode-intl'`)
-	_, _ = d.conn.Exec(`UPDATE kv SET key = 'codebuddy' WHERE scope = 'providerModelCache' AND key = 'codebuddy-intl'`)
-	_, _ = d.conn.Exec(`UPDATE kv SET key = 'alicode' WHERE scope = 'providerModelCache' AND key = 'alicode-intl'`)
-
 	// Set schema version
 	_, err := d.conn.Exec(
 		`INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '3')`,

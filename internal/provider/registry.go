@@ -88,34 +88,12 @@ var Registry map[string]ProviderInfo
 // aliasMap is built once for fast lookup
 var aliasMap map[string]string
 
-// legacyAliases provides backward-compatible aliases from previous iterations.
-var legacyAliases = map[string]string{
-	"codebuddy-intl":    "codebuddy",
-	"alicode-intl":      "alicode",
-	"cbai":              "codebuddy",
-	"google":            "gemini",
-	"grok":              "xai",
-	"grok-build":        "grok-cli",
-	"gb":                "grok-cli",
-	"tencent-hunyuan":   "tencent",
-	"openai-custom":     "custom-openai",
-	"generic-openai":    "custom-openai",
-	"anthropic-custom":  "custom-anthropic",
-	"generic-anthropic": "custom-anthropic",
-}
-
 func buildAliasMap() map[string]string {
-	m := make(map[string]string)
+	m := make(map[string]string, len(Registry)*2)
 	for id, p := range Registry {
 		m[id] = id
 		if p.Alias != "" && p.Alias != id {
 			m[p.Alias] = id
-		}
-	}
-	// Apply legacy aliases (do not override existing entries)
-	for alias, id := range legacyAliases {
-		if _, exists := m[alias]; !exists {
-			m[alias] = id
 		}
 	}
 	return m

@@ -72,7 +72,6 @@ func TestResolveProviderAlias(t *testing.T) {
 		{"anthropic", "anthropic"},
 		{"claude", "claude"}, // "claude" is its own provider (Claude Code)
 		{"gemini", "gemini"},
-		{"google", "gemini"},
 		{"or", "openrouter"},
 		{"ds", "deepseek"},
 		{"qd", "qoder"},
@@ -96,10 +95,6 @@ func TestResolveProviderAlias(t *testing.T) {
 		{"nim", "nvidia"},
 		{"hy", "tencent"},
 		{"vx", "vertex"},
-		// Legacy backward-compatibility aliases
-		{"codebuddy-intl", "codebuddy"},
-		{"alicode-intl", "alicode"},
-		{"cbai", "codebuddy"},
 		{"unknown", "unknown"},
 	}
 
