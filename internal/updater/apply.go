@@ -105,7 +105,7 @@ func DownloadAndVerify(assetURL, checksumURL, expectedAssetName, targetDir strin
 func ApplyUpdate(tempBinaryPath, targetExe string) error {
 	var err error
 	if targetExe == "" {
-		targetExe, err = os.Executable()
+		targetExe, err = ExecutablePath()
 		if err != nil {
 			return fmt.Errorf("get executable path: %w", err)
 		}
@@ -141,7 +141,7 @@ func ApplyUpdate(tempBinaryPath, targetExe string) error {
 func Rollback(targetExe string) error {
 	var err error
 	if targetExe == "" {
-		targetExe, err = os.Executable()
+		targetExe, err = ExecutablePath()
 		if err != nil {
 			return fmt.Errorf("get executable path: %w", err)
 		}
@@ -167,14 +167,13 @@ func Rollback(targetExe string) error {
 	return nil
 }
 
-// CleanupOldBinary removes the .old backup binary if present.
-func CleanupOldBinary(targetExe string) {
+func CleanupFailedBinary(targetExe string) {
 	if targetExe == "" {
-		exe, err := os.Executable()
+		exe, err := ExecutablePath()
 		if err != nil {
 			return
 		}
 		targetExe = exe
 	}
-	_ = os.Remove(targetExe + ".old")
+	_ = os.Remove(targetExe + ".failed")
 }

@@ -102,6 +102,7 @@ func TestDownloadVerifyAndApply(t *testing.T) {
 		t.Errorf("expected old content in .old, got %s", string(oldContent))
 	}
 
+	CleanupFailedBinary(targetExe)
 	// 4. Test Rollback
 	if err := Rollback(targetExe); err != nil {
 		t.Fatalf("Rollback failed: %v", err)
@@ -114,12 +115,8 @@ func TestDownloadVerifyAndApply(t *testing.T) {
 		t.Errorf("expected rolled back content, got %s", string(rolledBackContent))
 	}
 
-	// 5. Test CleanupOldBinary
-	if err := os.WriteFile(oldPath, []byte("garbage"), 0644); err != nil {
-		t.Fatalf("write mock old: %v", err)
-	}
-	CleanupOldBinary(targetExe)
-	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
-		t.Errorf("expected .old to be removed by CleanupOldBinary")
+	CleanupFailedBinary(targetExe)
+	if _, err := os.Stat(targetExe + ".failed"); !os.IsNotExist(err) {
+		t.Errorf("failed binary was not removed: %v", err)
 	}
 }

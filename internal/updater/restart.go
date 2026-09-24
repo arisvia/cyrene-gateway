@@ -7,15 +7,26 @@ import (
 	"path/filepath"
 )
 
-// RestartServer launches a new instance of the current executable with the same arguments.
-func RestartServer() error {
+// Linux changes /proc/self/exe after a running binary is renamed during update.
+var executablePath, executablePathErr = resolveExecutablePath()
+
+func resolveExecutablePath() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("get executable: %w", err)
+		return "", err
 	}
-	exe, err = filepath.EvalSymlinks(exe)
+	return filepath.EvalSymlinks(exe)
+}
+
+func ExecutablePath() (string, error) {
+	return executablePath, executablePathErr
+}
+
+// RestartServer launches a new instance of the original executable path.
+func RestartServer() error {
+	exe, err := ExecutablePath()
 	if err != nil {
-		return fmt.Errorf("eval symlink: %w", err)
+		return fmt.Errorf("get executable: %w", err)
 	}
 
 	args := os.Args[1:]

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,8 +26,7 @@ func main() {
 		fmt.Printf("cyrene-gateway %s\n", handler.Version())
 		return
 	}
-	// Clean up stale backup binary from previous updates (.old)
-	updater.CleanupOldBinary("")
+	updater.CleanupFailedBinary("")
 
 	// Auth secret: -secret flag wins; else load/generate <data-dir>/auth-secret
 	auth.SetSecret(cfg.Secret)
@@ -89,27 +89,41 @@ func main() {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           srv.Handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      5 * time.Minute,
-		IdleTimeout:       120 * time.Second,
-	}
-	srv.ShutdownFunc = httpServer.Shutdown
-
-	// Graceful shutdown
+	httpServer := newHTTPServer(ln.Addr().String(), srv.Handler)
+	var serverMu sync.Mutex
+	stopping := false
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(done)
 	serverErr := make(chan error, 1)
-
-	go func() {
-		slog.Info("Gateway listening", slog.String("addr", addr))
-		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+	serve := func(server *http.Server, listener net.Listener) {
+		slog.Info("Gateway listening", slog.String("addr", listener.Addr().String()))
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
-	}()
+	}
+	srv.RestartFunc = func() error {
+		serverMu.Lock()
+		defer serverMu.Unlock()
+		if stopping {
+			return fmt.Errorf("gateway is stopping")
+		}
+		replacement, restored, err := restartHTTPServer(httpServer, updater.RestartServer)
+		if restored != nil {
+			httpServer = replacement
+			go serve(replacement, restored)
+		} else {
+			stopping = true
+			if err != nil {
+				select {
+				case serverErr <- err:
+				default:
+				}
+			}
+		}
+		return err
+	}
+	go serve(httpServer, ln)
 
 	select {
 	case err := <-serverErr:
@@ -122,9 +136,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	serverMu.Lock()
+	stopping = true
 	if err := httpServer.Shutdown(ctx); err != nil {
 		slog.Error("Forced shutdown", "error", err)
 	}
+	serverMu.Unlock()
 
 	slog.Info("Gateway stopped")
 }
