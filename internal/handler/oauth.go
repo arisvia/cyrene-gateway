@@ -628,12 +628,20 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 	}
 
 	// Check if an existing connection for the same provider and account (email or displayName) already exists
+	providerInfo, _ := provider.GetProvider(providerID)
 	existingConns, err := s.DB.ListConnectionsByProvider(providerID)
 	if err == nil {
 		for _, existing := range existingConns {
 			matchesEmail := tokens.Email != "" && existing.Email == tokens.Email
 			matchesName := tokens.DisplayName != "" && (existing.Name == tokens.DisplayName || existing.Email == tokens.DisplayName)
-			if matchesEmail || matchesName {
+			singleEmptyAccount := len(existingConns) == 1 && existing.Email == ""
+			if matchesEmail || matchesName || singleEmptyAccount {
+				if existing.Email == "" && tokens.Email != "" {
+					existing.Email = tokens.Email
+				}
+				if (existing.Name == "" || existing.Name == existing.Provider || existing.Name == providerInfo.Name) && tokens.DisplayName != "" {
+					existing.Name = tokens.DisplayName
+				}
 				// Update existing connection's tokens and credentials rather than creating a duplicate
 				existing.Data.AccessToken = tokens.AccessToken
 				if tokens.RefreshToken != "" {

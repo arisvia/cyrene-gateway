@@ -658,13 +658,28 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 			if expiresIn <= 0 {
 				expiresIn = 86400
 			}
+			tokens := &TokenExchangeResult{
+				AccessToken:  res.Data.AccessToken,
+				RefreshToken: res.Data.RefreshToken,
+				ExpiresIn:    expiresIn,
+			}
+			if parts := strings.Split(res.Data.AccessToken, "."); len(parts) >= 2 {
+				if payload, err := decodeJWTPayload(parts[1]); err == nil {
+					if email, ok := payload["email"].(string); ok && email != "" {
+						tokens.Email = email
+					} else if username, ok := payload["preferred_username"].(string); ok && username != "" {
+						tokens.Email = username
+					}
+					if name, ok := payload["name"].(string); ok && name != "" {
+						tokens.DisplayName = name
+					} else if nickname, ok := payload["nickname"].(string); ok && nickname != "" {
+						tokens.DisplayName = nickname
+					}
+				}
+			}
 			return &PollDeviceCodeResult{
 				Success: true,
-				Tokens: &TokenExchangeResult{
-					AccessToken:  res.Data.AccessToken,
-					RefreshToken: res.Data.RefreshToken,
-					ExpiresIn:    expiresIn,
-				},
+				Tokens:  tokens,
 			}, nil
 		}
 		errMsg := res.Msg
@@ -759,6 +774,11 @@ func ImportToken(providerID, accessToken string) (*TokenExchangeResult, error) {
 				}
 				if preferredUsername, ok := payload["preferred_username"].(string); ok && result.Email == "" {
 					result.Email = preferredUsername
+				}
+				if name, ok := payload["name"].(string); ok && name != "" && result.DisplayName == "" {
+					result.DisplayName = name
+				} else if nickname, ok := payload["nickname"].(string); ok && nickname != "" && result.DisplayName == "" {
+					result.DisplayName = nickname
 				}
 				// OpenAI-specific claims
 				if auth, ok := payload["https://api.openai.com/auth"].(map[string]any); ok {

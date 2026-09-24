@@ -442,6 +442,83 @@ func TestRefreshModels_CodeBuddy_LiveConfig(t *testing.T) {
 	}
 }
 
+func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
+	srv, database := setupTestServer(t)
+	defer database.Close()
+
+	origDevURL := model.ModelsDevURL
+	model.ModelsDevURL = ""
+	defer func() { model.ModelsDevURL = origDevURL }()
+
+	var receivedUA, receivedDomain string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v3/config" {
+			receivedUA = r.Header.Get("User-Agent")
+			receivedDomain = r.Header.Get("X-Domain")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{
+				"code": 0,
+				"data": {
+					"agents": [{"name": "cli", "models": ["hy4-preview", "kimi-k3"]}],
+					"models": [
+						{"id": "default", "name": "Default"},
+						{"id": "hy4-preview", "name": "Hunyuan 4", "maxInputTokens": 1000000, "maxOutputTokens": 64000, "supportsImages": true, "supportsToolCall": true},
+						{"id": "kimi-k3", "name": "Kimi K3", "maxInputTokens": 1000000, "maxOutputTokens": 32000, "supportsToolCall": true}
+					]
+				}
+			}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	orig := provider.Registry["codebuddy-intl"]
+	defer func() { provider.Registry["codebuddy-intl"] = orig }()
+
+	mockInfo := orig
+	mockInfo.BaseURL = ts.URL + "/v2/chat/completions"
+	mockInfo.ModelsURL = ts.URL + "/v3/config"
+	provider.Registry["codebuddy-intl"] = mockInfo
+
+	conn := &model.ProviderConnection{
+		ID:       "cb-intl-live-conn",
+		Provider: "codebuddy-intl",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "cb-intl-token",
+		},
+	}
+	database.CreateConnection(conn)
+
+	req := newLocalRequest("POST", "/api/providers/codebuddy-intl/refresh-models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on live config fetch, got %d: %s", w.Code, w.Body.String())
+	}
+	if receivedUA != "CLI/2.108.1 CodeBuddy/2.108.1" {
+		t.Errorf("expected User-Agent CLI/2.108.1 CodeBuddy/2.108.1, got %q", receivedUA)
+	}
+	if receivedDomain != "www.codebuddy.ai" {
+		t.Errorf("expected X-Domain www.codebuddy.ai, got %q", receivedDomain)
+	}
+
+	var resp struct {
+		OK     bool                  `json:"ok"`
+		Count  int                   `json:"count"`
+		Models []model.ModelMetadata `json:"models"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Count != 2 || len(resp.Models) != 2 {
+		t.Fatalf("expected 2 models, got count=%d, len=%d", resp.Count, len(resp.Models))
+	}
+}
+
 func TestGetProviderModels_CodeBuddy_EmptyCache(t *testing.T) {
 	srv, database := setupTestServer(t)
 

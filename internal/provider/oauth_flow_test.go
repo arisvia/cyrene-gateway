@@ -1,7 +1,9 @@
 package provider
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -322,6 +324,40 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 	}
 	if res.Error != "token expired or revoked" {
 		t.Errorf("expected error 'token expired or revoked', got %q", res.Error)
+	}
+}
+
+func TestPollDeviceCode_CodeBuddy_JWTClaims(t *testing.T) {
+	orig := Registry["codebuddy-intl"]
+	defer func() { Registry["codebuddy-intl"] = orig }()
+
+	// header: {"alg":"none"} -> eyJhbGciOiJub25lIn0
+	// payload: {"email":"user@test.com","name":"Test Dev","preferred_username":"user@test.com"}
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"user@test.com","name":"Test Dev","preferred_username":"user@test.com"}`))
+	jwtToken := "eyJhbGciOiJub25lIn0." + payload + ".signature"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fmt.Sprintf(`{"code":0,"msg":"ok","data":{"accessToken":"%s","refreshToken":"cb-ref-token","expiresIn":7200}}`, jwtToken)))
+	}))
+	defer ts.Close()
+
+	info := orig
+	info.TokenURL = ts.URL
+	Registry["codebuddy-intl"] = info
+
+	res, err := PollDeviceCode("codebuddy-intl", "cb-state-123", "", nil, ts.Client())
+	if err != nil {
+		t.Fatalf("poll failed: %v", err)
+	}
+	if !res.Success || res.Tokens == nil {
+		t.Fatalf("expected success with tokens, got %+v", res)
+	}
+	if res.Tokens.Email != "user@test.com" {
+		t.Errorf("expected Email user@test.com, got %q", res.Tokens.Email)
+	}
+	if res.Tokens.DisplayName != "Test Dev" {
+		t.Errorf("expected DisplayName Test Dev, got %q", res.Tokens.DisplayName)
 	}
 }
 

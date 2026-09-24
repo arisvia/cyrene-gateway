@@ -133,10 +133,9 @@ func init() {
 		DeviceCodeURL: "https://www.codebuddy.ai/v2/plugin/auth/state",
 		TokenURL:      "https://www.codebuddy.ai/v2/plugin/auth/token",
 		Headers: map[string]string{
-			"User-Agent":          "IDE/2.108.1 CodeBuddy/2.108.1",
+			"User-Agent":          "CLI/2.108.1 CodeBuddy/2.108.1",
 			"X-Product":           "SaaS",
-			"X-IDE-Type":          "IDE",
-			"X-IDE-Name":          "IDE",
+			"X-Domain":            "www.codebuddy.ai",
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
 		},
