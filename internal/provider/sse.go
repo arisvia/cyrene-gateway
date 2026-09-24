@@ -5,9 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"strings"
 )
 
 // SSEEvent represents a single standard SSE event.
@@ -111,21 +109,40 @@ func (r *SSEReader) ReadEvent(ctx context.Context) (*SSEEvent, error) {
 
 // FormatSSEEvent formats an event into standard SSE text.
 func FormatSSEEvent(e SSEEvent) []byte {
-	var buf bytes.Buffer
+	// One output allocation, including empty data lines and the final blank line.
+	size := len(e.Data) + 6*bytes.Count(e.Data, []byte("\n")) + 8
 	if e.Event != "" {
-		buf.WriteString(fmt.Sprintf("event: %s\n", e.Event))
+		size += len(e.Event) + 8
 	}
 	if e.ID != "" {
-		buf.WriteString(fmt.Sprintf("id: %s\n", e.ID))
+		size += len(e.ID) + 5
 	}
 	if e.Retry != "" {
-		buf.WriteString(fmt.Sprintf("retry: %s\n", e.Retry))
+		size += len(e.Retry) + 8
+	}
+	var buf bytes.Buffer
+	buf.Grow(size)
+	if e.Event != "" {
+		buf.WriteString("event: ")
+		buf.WriteString(e.Event)
+		buf.WriteByte('\n')
+	}
+	if e.ID != "" {
+		buf.WriteString("id: ")
+		buf.WriteString(e.ID)
+		buf.WriteByte('\n')
+	}
+	if e.Retry != "" {
+		buf.WriteString("retry: ")
+		buf.WriteString(e.Retry)
+		buf.WriteByte('\n')
 	}
 
-	lines := strings.SplitSeq(string(e.Data), "\n")
-	for l := range lines {
-		buf.WriteString(fmt.Sprintf("data: %s\n", l))
+	for line := range bytes.SplitSeq(e.Data, []byte("\n")) {
+		buf.WriteString("data: ")
+		buf.Write(line)
+		buf.WriteByte('\n')
 	}
-	buf.WriteString("\n")
+	buf.WriteByte('\n')
 	return buf.Bytes()
 }

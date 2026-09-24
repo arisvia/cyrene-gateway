@@ -50,30 +50,24 @@ func (cm *ComboManager) GetRotatedModels(models []string, comboName string, stra
 	}
 
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
 	state, ok := cm.rotation[rotationKey]
 	if !ok {
-		state = &rotationState{index: 0, consecutiveUseCount: 0}
+		state = &rotationState{}
+		cm.rotation[rotationKey] = state
 	}
 
 	currentIndex := state.index % len(models)
-	rotated := rotateFromIndex(models, currentIndex)
-
-	nextUseCount := state.consecutiveUseCount + 1
-	if nextUseCount >= stickyLimit {
-		cm.rotation[rotationKey] = &rotationState{
-			index:               (currentIndex + 1) % len(models),
-			consecutiveUseCount: 0,
-		}
-	} else {
-		cm.rotation[rotationKey] = &rotationState{
-			index:               currentIndex,
-			consecutiveUseCount: nextUseCount,
-		}
+	state.index = currentIndex
+	state.consecutiveUseCount++
+	if state.consecutiveUseCount >= stickyLimit {
+		state.index = (currentIndex + 1) % len(models)
+		state.consecutiveUseCount = 0
 	}
+	cm.mu.Unlock()
 
-	return rotated
+	// Rotation uses only the captured index, not state that ResetRotation or
+	// another call may change. Keep slice allocation/copying outside the lock.
+	return rotateFromIndex(models, currentIndex)
 }
 
 // ResetRotation clears rotation state for a specific combo or all combos.

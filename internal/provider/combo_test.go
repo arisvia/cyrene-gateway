@@ -1,6 +1,9 @@
 package provider
 
 import (
+	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -250,4 +253,98 @@ func TestHandleComboFallback_AllFail(t *testing.T) {
 	if result.Status != 429 {
 		t.Errorf("Expected status 429, got %d", result.Status)
 	}
+}
+
+func TestComboRotationResizeAndResetAll(t *testing.T) {
+	cm := NewComboManager()
+	models := []string{"a", "b", "c"}
+	cm.GetRotatedModels(models, "", StrategyRoundRobin, 0)
+	cm.GetRotatedModels(models, "", StrategyRoundRobin, -1)
+	if got := cm.GetRotatedModels(models[:2], "", StrategyRoundRobin, 1); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("resize must wrap index: %v", got)
+	}
+	cm.GetRotatedModels(models, "other", StrategyRoundRobin, 1)
+	cm.ResetRotation("")
+	for _, name := range []string{"", "other"} {
+		if got := cm.GetRotatedModels(models, name, StrategyRoundRobin, 1); !slices.Equal(got, models) {
+			t.Fatalf("reset all failed for %q: %v", name, got)
+		}
+	}
+}
+
+func TestComboConcurrentRotation(t *testing.T) {
+	cm := NewComboManager()
+	models := []string{"a", "b", "c"}
+	var counts [3]atomic.Int64
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Go(func() {
+			for range 60 {
+				got := cm.GetRotatedModels(models, "shared", StrategyRoundRobin, 2)
+				index := slices.Index(models, got[0])
+				if index < 0 || got[1] != models[(index+1)%3] || got[2] != models[(index+2)%3] {
+					t.Errorf("invalid rotation: %v", got)
+					return
+				}
+				counts[index].Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	for i := range counts {
+		if got := counts[i].Load(); got != 120 {
+			t.Errorf("model %d used %d times, want 120", i, got)
+		}
+	}
+	wg.Go(func() {
+		for range 100 {
+			cm.ResetRotation("shared")
+			cm.ResetRotation("")
+		}
+	})
+	for range 3 {
+		wg.Go(func() {
+			for range 100 {
+				cm.GetRotatedModels(models, "shared", StrategyRoundRobin, 2)
+			}
+		})
+	}
+	wg.Wait()
+	cm.ResetRotation("shared")
+	if got := cm.GetRotatedModels(models, "shared", StrategyRoundRobin, 2); !slices.Equal(got, models) {
+		t.Fatalf("reset after concurrent access failed: %v", got)
+	}
+}
+
+func TestComboRotationAllocationBudget(t *testing.T) {
+	cm := NewComboManager()
+	models := []string{"a", "b", "c"}
+	allocs := testing.AllocsPerRun(20, func() {
+		for range 3 {
+			cm.GetRotatedModels(models, "shared", StrategyRoundRobin, 1)
+		}
+	})
+	if allocs > 2 {
+		t.Fatalf("%.0f allocations per cycle: only two rotated slices should allocate", allocs)
+	}
+}
+
+func BenchmarkComboRotation(b *testing.B) {
+	models := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	b.Run("serial", func(b *testing.B) {
+		cm := NewComboManager()
+		b.ReportAllocs()
+		for b.Loop() {
+			cm.GetRotatedModels(models, "shared", StrategyRoundRobin, 2)
+		}
+	})
+	b.Run("parallel", func(b *testing.B) {
+		cm := NewComboManager()
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				cm.GetRotatedModels(models, "shared", StrategyRoundRobin, 2)
+			}
+		})
+	})
 }

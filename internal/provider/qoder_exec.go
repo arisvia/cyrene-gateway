@@ -366,8 +366,9 @@ func toInt(v any) int {
 // UnwrapQoderSSELine processes one upstream SSE line from Qoder's
 // {statusCodeValue, body} envelope. Returns:
 //   - data: the unwrapped OpenAI chunk JSON (empty if line should be skipped)
-//   - done: true when the stream has ended ([DONE])
-func UnwrapQoderSSELine(line, model string) (data string, done bool) {
+//   - done: true for a terminal frame; empty data means normal [DONE], while
+//     non-empty data is a protocol error that MUST be handled before completion.
+func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 	payload, isDone, ok := translator.ParseSSEDataLineString(line)
 	if !ok {
 		return "", false
@@ -376,50 +377,46 @@ func UnwrapQoderSSELine(line, model string) (data string, done bool) {
 		return "", true
 	}
 
+	terminalError := func(status int, message string) (string, bool) {
+		if len(message) > 200 {
+			message = message[:200]
+		}
+		data, _ := json.Marshal(map[string]any{"error": map[string]any{
+			"message": message, "type": "upstream_error", "code": status,
+		}})
+		return string(data), true
+	}
 	var envelope struct {
 		Body            string `json:"body"`
 		StatusCodeValue int    `json:"statusCodeValue"`
 	}
 	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
-		return "", false
+		return terminalError(http.StatusBadGateway, "invalid qoder SSE envelope")
 	}
 
 	statusVal := envelope.StatusCodeValue
 	if statusVal == 0 {
-		statusVal = 200
+		statusVal = http.StatusOK
 	}
-	inner := envelope.Body
-
-	if statusVal != 200 {
-		msg := inner
-		if msg == "" {
-			msg = fmt.Sprintf("upstream status %d", statusVal)
+	inner := strings.TrimSpace(envelope.Body)
+	if statusVal != http.StatusOK {
+		if inner == "" {
+			inner = fmt.Sprintf("upstream status %d", statusVal)
 		}
-		if len(msg) > 200 {
-			msg = msg[:200]
-		}
-		errChunk, _ := json.Marshal(map[string]any{
-			"id":      fmt.Sprintf("qoder-error-%d", time.Now().UnixMilli()),
-			"object":  "chat.completion.chunk",
-			"created": time.Now().Unix(),
-			"model":   model,
-			"choices": []map[string]any{{
-				"index":         0,
-				"delta":         map[string]any{"content": fmt.Sprintf("\n[qoder error %d: %s]", statusVal, msg)},
-				"finish_reason": "stop",
-			}},
-		})
-		return string(errChunk), true
+		return terminalError(statusVal, inner)
 	}
-
 	if inner == "" {
 		return "", false
 	}
 	if inner == "[DONE]" {
 		return "", true
 	}
+	var chunk map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(inner), &chunk); err != nil || chunk == nil {
+		return terminalError(http.StatusBadGateway, "invalid qoder SSE chunk")
+	}
 
-	// Strip embedded newlines so the SSE frame stays a single event
+	// Strip embedded newlines so the SSE frame stays a single event.
 	sanitized := strings.NewReplacer("\r\n", "", "\n", "", "\r", "").Replace(inner)
-	return sanitized, false
+	return sanitized, len(chunk["error"]) > 0 && string(chunk["error"]) != "null"
 }

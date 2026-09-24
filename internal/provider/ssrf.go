@@ -1,68 +1,98 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
-	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
 var (
 	ErrPrivateNetworkBlocked = errors.New("access to private, loopback, or link-local address is blocked by SSRF policy")
-	ErrUnsupportedScheme     = errors.New("url scheme must be https (or http for localhost in dev)")
+	ErrUnsupportedScheme     = errors.New("url scheme must be http or https")
 )
 
+const safeConnectTimeout = 10 * time.Second
+
 // ValidateUpstreamURL validates a user-provided BaseURL or PanelURL against SSRF risks.
+// Configuration may name an offline private service; actual requests always resolve
+// and pin their destination, even when private access is enabled.
 func ValidateUpstreamURL(rawURL string, allowPrivate bool) (*url.URL, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid url: %w", err)
 	}
-
-	if u.Scheme != "https" && u.Scheme != "http" {
-		return nil, ErrUnsupportedScheme
+	ctx, cancel := context.WithTimeout(context.Background(), safeConnectTimeout)
+	defer cancel()
+	if err := validateTargetURL(ctx, u, allowPrivate); err != nil {
+		return nil, err
 	}
-
-	host := u.Hostname()
-	if host == "" {
-		return nil, errors.New("empty host")
-	}
-
-	if !allowPrivate {
-		lowerHost := strings.ToLower(host)
-		if lowerHost == "localhost" ||
-			strings.HasSuffix(lowerHost, ".local") ||
-			strings.HasSuffix(lowerHost, ".internal") ||
-			strings.HasSuffix(lowerHost, ".lan") ||
-			strings.HasSuffix(lowerHost, ".home.arpa") {
-			return nil, fmt.Errorf("%w: reserved local domain %s", ErrPrivateNetworkBlocked, host)
-		}
-
-		// Direct IP check
-		if ip := net.ParseIP(host); ip != nil {
-			if isBlockedIP(ip) {
-				return nil, fmt.Errorf("%w: resolved to %s", ErrPrivateNetworkBlocked, ip.String())
-			}
-			return u, nil
-		}
-
-		// Domain resolution check (if network is available)
-		ips, err := net.LookupIP(host)
-		if err == nil {
-			for _, ip := range ips {
-				if isBlockedIP(ip) {
-					return nil, fmt.Errorf("%w: resolved to %s", ErrPrivateNetworkBlocked, ip.String())
-				}
-			}
-		}
-	}
-
 	return u, nil
+}
+
+func validateTargetURL(ctx context.Context, u *url.URL, allowPrivate bool) error {
+	if allowPrivate {
+		_, err := targetHostname(u, true)
+		return err
+	}
+	_, err := resolveTarget(ctx, u, false)
+	return err
+}
+
+func targetHostname(u *url.URL, allowPrivate bool) (string, error) {
+	if u == nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return "", ErrUnsupportedScheme
+	}
+	if u.Opaque != "" {
+		return "", errors.New("opaque target URL is not allowed")
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "" {
+		return "", errors.New("empty host")
+	}
+	if !allowPrivate && (host == "localhost" ||
+		strings.HasSuffix(host, ".localhost") ||
+		strings.HasSuffix(host, ".local") ||
+		strings.HasSuffix(host, ".internal") ||
+		strings.HasSuffix(host, ".lan") ||
+		strings.HasSuffix(host, ".home.arpa")) {
+		return "", fmt.Errorf("%w: reserved local domain %s", ErrPrivateNetworkBlocked, host)
+	}
+	return host, nil
+}
+
+// resolveTarget is the sole target lookup for a request. Every returned IP must
+// satisfy policy; neither a direct dial nor a proxy may resolve the name again.
+func resolveTarget(ctx context.Context, u *url.URL, allowPrivate bool) ([]net.IPAddr, error) {
+	host, err := targetHostname(u, allowPrivate)
+	if err != nil {
+		return nil, err
+	}
+	var ips []net.IPAddr
+	if addr, err := netip.ParseAddr(host); err == nil {
+		ips = []net.IPAddr{{IP: net.IP(addr.AsSlice()), Zone: addr.Zone()}}
+	} else {
+		ips, err = net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve target %s: %w", host, err)
+		}
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("resolve target %s: no addresses", host)
+	}
+	for _, ip := range ips {
+		if !allowPrivate && isBlockedIP(ip.IP) {
+			return nil, fmt.Errorf("%w: resolved to %s", ErrPrivateNetworkBlocked, ip.String())
+		}
+	}
+	return ips, nil
 }
 
 func isBlockedIP(ip net.IP) bool {
@@ -72,7 +102,7 @@ func isBlockedIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
 		return true
 	}
-	// Explicitly check IPv4 cloud metadata range 169.254.0.0/16 and CGNAT 100.64.0.0/10
+	// Explicitly check IPv4 cloud metadata range 169.254.0.0/16 and CGNAT 100.64.0.0/10.
 	if ip4 := ip.To4(); ip4 != nil {
 		if ip4[0] == 169 && ip4[1] == 254 {
 			return true
@@ -84,14 +114,9 @@ func isBlockedIP(ip net.IP) bool {
 	return false
 }
 
-// SafeDialerControl returns a Control function for net.Dialer that blocks SSRF targets at dial time.
+// SafeDialerControl blocks private destinations at the socket boundary. There
+// are no shared proxy-IP exemptions, including on a NO_PROXY direct route.
 func SafeDialerControl(allowPrivate bool) func(network, address string, c syscall.RawConn) error {
-	return dialerControlExempt(allowPrivate, nil)
-}
-
-// dialerControlExempt is SafeDialerControl with a permit-list of hosts/IPs that
-// are always dialable (the operator's outbound proxy endpoints).
-func dialerControlExempt(allowPrivate bool, exempt map[string]bool) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) error {
 		if allowPrivate {
 			return nil
@@ -100,75 +125,169 @@ func dialerControlExempt(allowPrivate bool, exempt map[string]bool) func(network
 		if err != nil {
 			host = address
 		}
-		if exempt[host] {
-			return nil
-		}
-		ip := net.ParseIP(host)
-		if ip != nil && isBlockedIP(ip) {
+		ip, err := netip.ParseAddr(host)
+		if err != nil || isBlockedIP(net.IP(ip.AsSlice())) {
 			return ErrPrivateNetworkBlocked
 		}
 		return nil
 	}
 }
 
-func safeDialer(allowPrivate bool, exempt map[string]bool) *net.Dialer {
+func safeDialer(allowPrivate bool) *net.Dialer {
 	return &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 30 * time.Second,
-		Control:   dialerControlExempt(allowPrivate, exempt),
+		Timeout: safeConnectTimeout, KeepAlive: 30 * time.Second,
+		Control: SafeDialerControl(allowPrivate),
 	}
 }
 
-// envProxyExemptHosts collects proxy hostnames and resolved IPs from environment variables
-// (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY) to permit dial-time loopback connection to local proxies.
-func envProxyExemptHosts() map[string]bool {
-	exempt := make(map[string]bool)
-	for _, envVar := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
-		val := os.Getenv(envVar)
-		if val == "" {
-			continue
-		}
-		if !strings.Contains(val, "://") {
-			val = "http://" + val
-		}
-		if u, err := url.Parse(val); err == nil {
-			for k, v := range proxyExemptHosts(u) {
-				exempt[k] = v
-			}
-		}
-	}
-	return exempt
+type safeDialPlanKey struct{}
+
+type safeDialPlan struct {
+	requestContext context.Context
+	addresses      []string
+	proxy          *url.URL
 }
 
-// SafeHTTPClient returns an HTTP client equipped with custom dialer checking every resolved IP against SSRF rules.
-// It honors environment proxy settings (HTTP_PROXY / HTTPS_PROXY) while exempting local proxy hosts from dial-time SSRF blocking.
-func SafeHTTPClient(timeout time.Duration, allowPrivate bool) *http.Client {
-	exempt := envProxyExemptHosts()
-	dialer := safeDialer(allowPrivate, exempt)
+// Each wrapper owns its transports. Environment proxy selection happens per
+// request, with distinct pools for actual proxy routes and direct connections.
+// The underlying Transport sees the original URL (Host/SNI), but Proxy is nil:
+// its DialContext establishes an IP-bound tunnel rather than a forward request.
+type safeTransport struct {
+	transport    *http.Transport
+	allowPrivate bool
+	proxy        func(*http.Request) (*url.URL, error)
+	mu           sync.Mutex
+	routes       map[string]*http.Transport
+}
 
-	transport := &http.Transport{
-		DialContext:           dialer.DialContext,
-		Proxy:                 http.ProxyFromEnvironment,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+func (t *safeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	transport, plan, err := t.prepare(req)
+	if err != nil {
+		if req.Body != nil {
+			req.Body.Close()
+		}
+		return nil, err
 	}
-	return &http.Client{
-		Transport: transport,
-		Timeout:   timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return errors.New("stopped after 10 redirects")
-			}
-			if !allowPrivate {
-				_, err := ValidateUpstreamURL(req.URL.String(), false)
-				if err != nil {
-					return fmt.Errorf("redirect blocked: %w", err)
-				}
-			}
-			return nil
+	ctx := context.WithValue(req.Context(), safeDialPlanKey{}, plan)
+	wireReq := req.WithContext(ctx)
+	if plan.proxy != nil && req.Header.Get("Proxy-Authorization") != "" {
+		wireReq = wireReq.Clone(ctx)
+		wireReq.Header.Del("Proxy-Authorization")
+	}
+	return transport.RoundTrip(wireReq)
+}
+
+func (t *safeTransport) prepare(req *http.Request) (*http.Transport, *safeDialPlan, error) {
+	ctx, cancel := context.WithTimeout(req.Context(), safeConnectTimeout)
+	defer cancel()
+	ips, err := resolveTarget(ctx, req.URL, t.allowPrivate)
+	if err != nil {
+		return nil, nil, err
+	}
+	if req.Host != "" && req.Host != req.URL.Host {
+		target := *req.URL
+		target.Host = req.Host
+		if err := validateTargetURL(ctx, &target, t.allowPrivate); err != nil {
+			return nil, nil, err
+		}
+	}
+	proxyURL, err := t.proxy(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if proxyURL != nil {
+		if _, err := proxyEndpoint(proxyURL); err != nil {
+			return nil, nil, err
+		}
+	}
+	port := req.URL.Port()
+	if port == "" {
+		port = "80"
+		if req.URL.Scheme == "https" {
+			port = "443"
+		}
+	}
+	plan := &safeDialPlan{requestContext: req.Context(), proxy: proxyURL}
+	for _, ip := range ips {
+		plan.addresses = append(plan.addresses, net.JoinHostPort(ip.String(), port))
+	}
+	if proxyURL == nil {
+		return t.transport, plan, nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	key := proxyURL.String()
+	transport := t.routes[key]
+	if transport == nil {
+		transport = t.transport.Clone()
+		t.routes[key] = transport
+	}
+	return transport, plan, nil
+}
+
+func (t *safeTransport) dialContext(ctx context.Context, network, _ string) (net.Conn, error) {
+	plan, ok := ctx.Value(safeDialPlanKey{}).(*safeDialPlan)
+	if !ok {
+		return nil, errors.New("missing validated target dial plan")
+	}
+	// net/http detaches DialContext cancellation to allow connection reuse. Link
+	// the original request explicitly so cancelled proxy handshakes cannot linger.
+	ctx, cancel := context.WithTimeout(ctx, safeConnectTimeout)
+	defer cancel()
+	stop := context.AfterFunc(plan.requestContext, cancel)
+	defer stop()
+	var err error
+	for _, address := range plan.addresses {
+		if plan.requestContext.Err() != nil {
+			return nil, plan.requestContext.Err()
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		var conn net.Conn
+		if plan.proxy == nil {
+			conn, err = safeDialer(t.allowPrivate).DialContext(ctx, network, address)
+		} else {
+			conn, err = t.dialProxyTunnel(ctx, network, plan.proxy, address)
+		}
+		if err == nil {
+			return conn, nil
+		}
+	}
+	return nil, err
+}
+
+func (t *safeTransport) CloseIdleConnections() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.transport.CloseIdleConnections()
+	for _, transport := range t.routes {
+		transport.CloseIdleConnections()
+	}
+}
+
+func newSafeTransport(allowPrivate bool, proxyURL *url.URL) *safeTransport {
+	proxy := http.ProxyFromEnvironment
+	if proxyURL != nil {
+		copyURL := *proxyURL
+		proxy = http.ProxyURL(&copyURL)
+	}
+	t := &safeTransport{
+		allowPrivate: allowPrivate, proxy: proxy, routes: make(map[string]*http.Transport),
+		transport: &http.Transport{
+			ForceAttemptHTTP2: true, MaxIdleConns: 100,
+			IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: safeConnectTimeout,
+			ExpectContinueTimeout: time.Second,
 		},
 	}
+	t.transport.DialContext = t.dialContext
+	return t
+}
+
+// SafeHTTPClient returns a fresh client and transport with IP-bound target
+// validation. HTTP_PROXY / HTTPS_PROXY and NO_PROXY follow net/http semantics;
+// local proxy endpoints are permitted, never private targets unless opted in.
+// Redirects pass through the same safety wrapper and standard redirect limit.
+func SafeHTTPClient(timeout time.Duration, allowPrivate bool) *http.Client {
+	return &http.Client{Transport: newSafeTransport(allowPrivate, nil), Timeout: timeout}
 }

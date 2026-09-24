@@ -70,71 +70,75 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 		if _, ok := GetProvider(parsed.Provider); ok {
 			return parsed, nil
 		}
-		if conns, err := database.ListConnectionsByProvider(parsed.Provider); err == nil && len(conns) > 0 {
-			return parsed, nil
-		}
-	}
-
-	// 2. Try model alias from KV store (scope="aliases")
-	aliases, err := database.KVList(model.KVScopeAliases)
-	if err != nil {
-		slog.Warn("Failed to list model aliases from DB", slog.String("error", err.Error()))
-	} else {
-		if target, ok := aliases[modelStr]; ok {
-			resolved := ParseModel(target)
-			if resolved.Provider != "" {
-				return resolved, nil
-			}
-		}
-		if target, ok := aliases[parsed.Model]; ok {
-			resolved := ParseModel(target)
-			if resolved.Provider != "" {
-				return resolved, nil
+		if database != nil {
+			if conns, err := database.ListConnectionsByProvider(parsed.Provider); err == nil && len(conns) > 0 {
+				return parsed, nil
 			}
 		}
 	}
 
-	// 3. Dynamic lookup across cached models of active providers
-	caches, err := database.KVList(model.KVScopeProviderModelCache)
-	if err != nil {
-		slog.Warn("Failed to list provider model cache from DB", slog.String("error", err.Error()))
-	} else if len(caches) > 0 {
-		lowerFull := strings.ToLower(modelStr)
-		lowerModel := strings.ToLower(parsed.Model)
-
-		activeProviders := make(map[string]bool)
-		if conns, err := database.ListConnections(); err == nil && len(conns) > 0 {
-			for _, c := range conns {
-				if c.IsActive {
-					activeProviders[c.Provider] = true
+	if database != nil {
+		// 2. Try model alias from KV store (scope="aliases")
+		aliases, err := database.KVList(model.KVScopeAliases)
+		if err != nil {
+			slog.Warn("Failed to list model aliases from DB", slog.String("error", err.Error()))
+		} else {
+			if target, ok := aliases[modelStr]; ok {
+				resolved := ParseModel(target)
+				if resolved.Provider != "" {
+					return resolved, nil
+				}
+			}
+			if target, ok := aliases[parsed.Model]; ok {
+				resolved := ParseModel(target)
+				if resolved.Provider != "" {
+					return resolved, nil
 				}
 			}
 		}
 
-		var fallbackMatch *model.ModelInfo
-		for providerID, raw := range caches {
-			var cached model.CachedModels
-			if err := json.Unmarshal([]byte(raw), &cached); err != nil {
-				continue
-			}
-			for _, m := range cached.Models {
-				if strings.EqualFold(m.ID, lowerFull) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerFull)) ||
-					strings.EqualFold(m.ID, lowerModel) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerModel)) {
-					match := model.ModelInfo{
-						Provider: providerID,
-						Model:    m.ID,
-					}
-					if activeProviders[providerID] {
-						return match, nil
-					}
-					if fallbackMatch == nil && len(activeProviders) == 0 {
-						fallbackMatch = &match
+		// 3. Dynamic lookup across cached models of active providers
+		caches, err := database.KVList(model.KVScopeProviderModelCache)
+		if err != nil {
+			slog.Warn("Failed to list provider model cache from DB", slog.String("error", err.Error()))
+		} else if len(caches) > 0 {
+			lowerFull := strings.ToLower(modelStr)
+			lowerModel := strings.ToLower(parsed.Model)
+
+			activeProviders := make(map[string]bool)
+			if conns, err := database.ListConnections(); err == nil && len(conns) > 0 {
+				for _, c := range conns {
+					if c.IsActive {
+						activeProviders[c.Provider] = true
 					}
 				}
 			}
-		}
-		if fallbackMatch != nil {
-			return *fallbackMatch, nil
+
+			var fallbackMatch *model.ModelInfo
+			for providerID, raw := range caches {
+				var cached model.CachedModels
+				if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+					continue
+				}
+				for _, m := range cached.Models {
+					if strings.EqualFold(m.ID, lowerFull) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerFull)) ||
+						strings.EqualFold(m.ID, lowerModel) || (m.DisplayName != "" && strings.EqualFold(m.DisplayName, lowerModel)) {
+						match := model.ModelInfo{
+							Provider: providerID,
+							Model:    m.ID,
+						}
+						if activeProviders[providerID] {
+							return match, nil
+						}
+						if fallbackMatch == nil && len(activeProviders) == 0 {
+							fallbackMatch = &match
+						}
+					}
+				}
+			}
+			if fallbackMatch != nil {
+				return *fallbackMatch, nil
+			}
 		}
 	}
 
@@ -154,6 +158,9 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 // Returns the combo and true if found, nil and false otherwise.
 // Combos only apply to bare model names (no "/" separator).
 func ResolveCombo(modelStr string, database *db.DB) (*model.Combo, bool) {
+	if database == nil {
+		return nil, false
+	}
 	// Don't check combos for provider/model format
 	if strings.Contains(modelStr, "/") {
 		return nil, false
@@ -169,6 +176,9 @@ func ResolveCombo(modelStr string, database *db.DB) (*model.Combo, bool) {
 // IsModelDisabled checks if a model is in the disabled models list.
 // It checks both the full identifier (e.g. "opencode/big-pickle") and bare identifier (e.g. "big-pickle").
 func IsModelDisabled(modelStr string, database *db.DB) bool {
+	if database == nil {
+		return false
+	}
 	disabled, err := database.KVList(model.KVScopeDisabledModels)
 	if err != nil || len(disabled) == 0 {
 		return false
