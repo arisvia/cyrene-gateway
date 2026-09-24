@@ -1,10 +1,12 @@
 package cache
 
 import (
+	"bytes"
 	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -65,14 +67,15 @@ func New(maxEntries int, defaultTTL time.Duration) *Cache {
 	}
 }
 
-// Get retrieves an entry by key. Returns (nil, false) on miss or expiration.
+// Get retrieves a caller-owned snapshot, including independent Headers and Body.
+// Returns (nil, false) on miss or expiration.
 func (c *Cache) Get(key string) (*Entry, bool) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	elem, ok := c.items[key]
 	if !ok {
 		c.misses.Add(1)
+		c.mu.Unlock()
 		return nil, false
 	}
 
@@ -81,6 +84,7 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 		// Expired: evict lazily
 		c.removeElement(elem)
 		c.misses.Add(1)
+		c.mu.Unlock()
 		return nil, false
 	}
 
@@ -91,13 +95,21 @@ func (c *Cache) Get(key string) (*Entry, bool) {
 	if entry.TokensSaved > 0 {
 		c.tokensSaved.Add(uint64(entry.TokensSaved))
 	}
-	return entry, true
+	snapshot := *entry
+	c.mu.Unlock()
+
+	// Stored payloads are immutable, so copy outside the lock. The public map
+	// and slice are mutable: sharing them would let readers corrupt the cache.
+	snapshot.Headers = maps.Clone(snapshot.Headers)
+	snapshot.Body = bytes.Clone(snapshot.Body)
+	return &snapshot, true
 }
 
 // MaxEntryBytes enforces a hard size cap per cached response entry (2 MiB).
 const MaxEntryBytes = 2 * 1024 * 1024
 
-// Set inserts or updates an entry in the cache.
+// Set inserts or updates an entry, copying Headers and Body. Callers must not
+// mutate these inputs during Set, but may reuse them once it returns.
 func (c *Cache) Set(key string, statusCode int, headers map[string]string, body []byte, ttl time.Duration, servedModel string, tokensSaved int) {
 	if len(body) > MaxEntryBytes {
 		return
@@ -106,42 +118,37 @@ func (c *Cache) Set(key string, statusCode int, headers map[string]string, body 
 		ttl = c.defaultTTL
 	}
 
+	entry := &Entry{
+		Key:         key,
+		StatusCode:  statusCode,
+		Headers:     maps.Clone(headers),
+		Body:        bytes.Clone(body),
+		ServedModel: servedModel,
+		TokensSaved: tokensSaved,
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	now := time.Now()
-	expiresAt := now.Add(ttl)
+	entry.CreatedAt = now
+	entry.ExpiresAt = now.Add(ttl)
 
-	// If entry already exists, update and move to front
+	// Replace rather than mutate payloads referenced by in-flight snapshots.
 	if elem, ok := c.items[key]; ok {
 		c.evictList.MoveToFront(elem)
 		oldEntry := elem.Value.(*Entry)
 		c.bytesUsed -= int64(len(oldEntry.Body))
 		c.bytesUsed += int64(len(body))
-
-		oldEntry.StatusCode = statusCode
-		oldEntry.Headers = headers
-		oldEntry.Body = body
-		oldEntry.ExpiresAt = expiresAt
-		oldEntry.ServedModel = servedModel
-		oldEntry.TokensSaved = tokensSaved
+		entry.CreatedAt = oldEntry.CreatedAt
+		entry.Hits = oldEntry.Hits
+		elem.Value = entry
 		return
 	}
 
 	// Evict oldest if full
 	for c.evictList.Len() >= c.maxEntries {
 		c.removeOldest()
-	}
-
-	entry := &Entry{
-		Key:         key,
-		StatusCode:  statusCode,
-		Headers:     headers,
-		Body:        body,
-		CreatedAt:   now,
-		ExpiresAt:   expiresAt,
-		ServedModel: servedModel,
-		TokensSaved: tokensSaved,
 	}
 
 	elem := c.evictList.PushFront(entry)
@@ -219,6 +226,12 @@ func ComputeKey(endpoint string, rawBody []byte) (string, error) {
 	if err := json.Unmarshal(rawBody, &m); err != nil {
 		return "", err
 	}
+	return computeParsedKey(endpoint, m)
+}
+
+// computeParsedKey consumes a locally decoded request; removing stream is safe
+// because neither caller uses the map after computing its key.
+func computeParsedKey(endpoint string, m map[string]any) (string, error) {
 	delete(m, "stream")
 
 	// json.Marshal on map[string]any sorts keys deterministically in Go
@@ -253,7 +266,7 @@ func IsEligible(endpoint string, rawBody []byte, cacheAll bool) (bool, string, e
 
 	// Embeddings are always deterministic
 	if endpoint == "embeddings" {
-		key, err := ComputeKey(endpoint, rawBody)
+		key, err := computeParsedKey(endpoint, m)
 		return err == nil, key, err
 	}
 
@@ -269,7 +282,7 @@ func IsEligible(endpoint string, rawBody []byte, cacheAll bool) (bool, string, e
 		}
 	}
 
-	key, err := ComputeKey(endpoint, rawBody)
+	key, err := computeParsedKey(endpoint, m)
 	return err == nil, key, err
 }
 

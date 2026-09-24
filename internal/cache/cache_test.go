@@ -1,9 +1,13 @@
 package cache
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -207,5 +211,158 @@ func TestCacheMaxEntryBytes(t *testing.T) {
 
 	if _, hit := c.Get("k-huge"); hit {
 		t.Fatal("expected oversized entry to be rejected by Set")
+	}
+}
+
+func TestCacheGetSnapshotStable(t *testing.T) {
+	c := New(2, time.Hour)
+	c.Set("key", 200, map[string]string{"version": "old"}, []byte("old"), 0, "old", 10)
+	first, _ := c.Get("key")
+	before := *first
+	c.Get("key")
+	c.Set("key", 201, map[string]string{"version": "new"}, []byte("new body"), time.Minute, "new", 20)
+	if !reflect.DeepEqual(*first, before) {
+		t.Fatalf("previous Get changed after Get/Set: before=%+v after=%+v", before, *first)
+	}
+	latest, _ := c.Get("key")
+	if latest.StatusCode != 201 || string(latest.Body) != "new body" || latest.Headers["version"] != "new" || latest.ServedModel != "new" || latest.TokensSaved != 20 {
+		t.Fatalf("replacement not visible: %+v", latest)
+	}
+	if latest.Hits != 3 || !latest.CreatedAt.Equal(before.CreatedAt) {
+		t.Fatalf("replacement lost lifetime metadata: %+v", latest)
+	}
+	if stats := c.Stats(); stats.BytesUsed != 8 || stats.Hits != 3 || stats.TokensSaved != 40 {
+		t.Fatalf("unexpected stats: %+v", stats)
+	}
+}
+
+func TestCacheSetOwnsInputs(t *testing.T) {
+	c := New(2, time.Hour)
+	for _, bodyText := range []string{"first", "replacement"} {
+		headers := map[string]string{"version": bodyText}
+		body := []byte(bodyText)
+		c.Set("key", 200, headers, body, 0, "model", 0)
+		headers["version"] = "mutated"
+		body[0] = '!'
+		entry, _ := c.Get("key")
+		if entry.Headers["version"] != bodyText || string(entry.Body) != bodyText {
+			t.Fatalf("cache retained caller-owned inputs: %+v", entry)
+		}
+	}
+}
+
+func TestCacheGetOwnsPayload(t *testing.T) {
+	c := New(2, time.Hour)
+	c.Set("key", 200, map[string]string{"version": "old"}, []byte("old"), 0, "model", 0)
+	first, _ := c.Get("key")
+	second, _ := c.Get("key")
+	first.Headers["version"] = "mutated"
+	first.Body[0] = '!'
+	first.StatusCode = 500
+	third, _ := c.Get("key")
+	for _, entry := range []*Entry{second, third} {
+		if entry.Headers["version"] != "old" || string(entry.Body) != "old" || entry.StatusCode != 200 {
+			t.Fatalf("Get results share mutable storage: %+v", entry)
+		}
+	}
+}
+
+func TestCacheConcurrentGetSet(t *testing.T) {
+	c := New(2, time.Hour)
+	c.Set("key", 200, map[string]string{"version": "old"}, []byte("old"), 0, "old", 1)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		<-start
+		for i := range 200 {
+			version := fmt.Sprint(i)
+			c.Set("key", 201, map[string]string{"version": version}, []byte(version), 0, version, i)
+		}
+	})
+	for range 4 {
+		wg.Go(func() {
+			<-start
+			for range 200 {
+				entry, hit := c.Get("key")
+				if !hit {
+					t.Error("unexpected miss")
+					return
+				}
+				before := *entry
+				c.Get("key")
+				if !reflect.DeepEqual(*entry, before) || string(entry.Body) != entry.ServedModel || entry.Headers["version"] != entry.ServedModel {
+					t.Error("inconsistent or mutable snapshot")
+					return
+				}
+			}
+		})
+	}
+	close(start)
+	wg.Wait()
+}
+
+func TestIsEligibleKeyCompatibility(t *testing.T) {
+	for _, endpoint := range []string{"chat", "messages", "embeddings"} {
+		for _, raw := range []string{
+			`{"temperature":0,"stream":false,"messages":[{"content":"hello","role":"user"}],"seed":1e0}`,
+			`{"seed":1,"messages":[{"role":"user","content":"hello"}],"temperature":0}`,
+			`{"temperature":-0.0,"stream":null}`, `null`, `{}`, `{"stream":"false"}`,
+		} {
+			eligible, got, err := IsEligible(endpoint, []byte(raw), true)
+			want, keyErr := ComputeKey(endpoint, []byte(raw))
+			if !eligible || err != nil || keyErr != nil || got != want {
+				t.Errorf("%s %s: eligible=%v key=%q want=%q err=%v/%v", endpoint, raw, eligible, got, want, err, keyErr)
+			}
+		}
+		for _, raw := range []string{`{"stream":true,"temperature":0}`, ""} {
+			if eligible, key, err := IsEligible(endpoint, []byte(raw), true); eligible || key != "" || err != nil {
+				t.Errorf("ineligible %q: %v %q %v", raw, eligible, key, err)
+			}
+		}
+		for _, raw := range []string{`{`, `[]`, `"text"`} {
+			if eligible, _, err := IsEligible(endpoint, []byte(raw), true); eligible || err == nil {
+				t.Errorf("invalid input %q accepted", raw)
+			}
+		}
+	}
+}
+
+func TestIsEligibleAllocationBudget(t *testing.T) {
+	body := []byte(`{"model":"test","temperature":0,"messages":[{"role":"user","content":"hello"}]}`)
+	keyAllocs := testing.AllocsPerRun(100, func() { ComputeKey("chat", body) })
+	eligibleAllocs := testing.AllocsPerRun(100, func() { IsEligible("chat", body, false) })
+	// Under -race, sync.Pool randomly drops JSON encoder buffers. Allow that
+	// noise, but not the 21 extra allocations from decoding this body twice.
+	if eligibleAllocs > keyAllocs+4 {
+		t.Fatalf("eligibility allocates %.0f vs key %.0f; must reuse decoded request", eligibleAllocs, keyAllocs)
+	}
+}
+
+func BenchmarkCacheGetSnapshot(b *testing.B) {
+	for _, size := range []int{1024, 65536} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			c := New(2, time.Hour)
+			c.Set("key", 200, map[string]string{"Content-Type": "application/json"}, bytes.Repeat([]byte("x"), size), 0, "model", 10)
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, ok := c.Get("key"); !ok {
+					b.Fatal("unexpected miss")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkIsEligible(b *testing.B) {
+	for _, endpoint := range []string{"chat", "embeddings"} {
+		b.Run(endpoint, func(b *testing.B) {
+			body := []byte(`{"model":"test","temperature":0,"stream":false,"messages":[{"role":"user","content":"hello"}],"input":"hello"}`)
+			b.ReportAllocs()
+			for b.Loop() {
+				if ok, _, err := IsEligible(endpoint, body, false); !ok || err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

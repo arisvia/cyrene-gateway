@@ -127,23 +127,37 @@ func detectSingleRepeat(seq []string) string {
 // detectSequenceRepeat checks if a sequence of N tool calls repeats >= SequenceRepeatThreshold times.
 func detectSequenceRepeat(seq []string) bool {
 	n := len(seq)
-	for length := n / 2; length >= MinSequenceLength; length-- {
-		for start := 0; start <= n-length*2; start++ {
-			pattern := strings.Join(seq[start:start+length], "|")
-			count := 0
-			pos := 0
-			for pos <= n-length {
-				window := strings.Join(seq[pos:pos+length], "|")
-				if window == pattern {
-					count++
-					pos += length
-				} else {
-					pos++
-				}
+	if n < MinSequenceLength*SequenceRepeatThreshold {
+		return false
+	}
+
+	// Each window is a substring of this single join, preserving the legacy
+	// comparison even when a tool hash contains '|'. String map keys compare
+	// exactly, without probabilistic hashes or per-window allocations.
+	joined := strings.Join(seq, "|")
+	offsets := make([]int, n+1)
+	for i, call := range seq {
+		offsets[i+1] = offsets[i] + len(call) + 1
+	}
+	type match struct {
+		next  int
+		count int
+	}
+	seen := make(map[string]match, n)
+	for length := n / SequenceRepeatThreshold; length >= MinSequenceLength; length-- {
+		clear(seen)
+		for start := 0; start <= n-length; start++ {
+			window := joined[offsets[start] : offsets[start+length]-1]
+			previous := seen[window]
+			if previous.count > 0 && start < previous.next {
+				continue // Greedily count only non-overlapping occurrences.
 			}
-			if count >= SequenceRepeatThreshold {
+			previous.count++
+			if previous.count >= SequenceRepeatThreshold {
 				return true
 			}
+			previous.next = start + length
+			seen[window] = previous
 		}
 	}
 	return false
