@@ -444,6 +444,9 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("X-Product", "SaaS")
 		resp, err = client.Do(req)
 		if err != nil {
+			if providerID == "codebuddy-intl" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+				return nil, fmt.Errorf("device code request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
+			}
 			return nil, fmt.Errorf("device code request failed: %w", err)
 		}
 		defer resp.Body.Close()
@@ -623,6 +626,9 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		req.Header.Set("X-Product", "SaaS")
 		resp, err = client.Do(req)
 		if err != nil {
+			if providerID == "codebuddy-intl" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+				return nil, fmt.Errorf("poll request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
+			}
 			return nil, fmt.Errorf("poll request failed: %w", err)
 		}
 		defer resp.Body.Close()

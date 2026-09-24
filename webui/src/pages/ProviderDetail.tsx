@@ -304,7 +304,7 @@ const ProviderDetail: Component = () => {
       }
 
       // 2. 设备码流（Device Code Flow，如 GitHub, Kimi, Qoder, X.AI 等）
-      const raw = (await apiPost(`/api/oauth/${p}/device-code`)) as Record<string, unknown>
+      const raw = (await apiPost(`/api/oauth/${p}/device-code`, undefined, { silent: true })) as Record<string, unknown>
       const res = {
         verificationUri: ((raw.verificationUri || raw.verification_uri || '') as string),
         verificationUriComplete: ((raw.verificationUriComplete || raw.verification_uri_complete || '') as string),
@@ -336,7 +336,7 @@ const ProviderDetail: Component = () => {
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
             extraData: res.extraData,
-          })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
+          }, { silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
           if (pollRes?.success) {
             clearInterval(pollTimer)
             pollTimer = undefined
@@ -379,7 +379,7 @@ const ProviderDetail: Component = () => {
       await apiPost(`/api/oauth/${p}/import`, {
         accessToken: token,
         name: name().trim() || undefined,
-      })
+      }, { silent: true })
       toast.success(t('toast.tokenImportSuccess', { name: providerDisplayName() }))
       cancelDeviceFlow()
       await store.loadProvidersOnly()
@@ -428,7 +428,7 @@ const ProviderDetail: Component = () => {
         code,
         state,
         redirectUri: p === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
-      })
+      }, { silent: true })
       toast.success(t('toast.oauthSuccess', { name: providerDisplayName() }))
       cancelDeviceFlow()
       await store.loadProvidersOnly()

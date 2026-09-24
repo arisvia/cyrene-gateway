@@ -360,7 +360,7 @@ const Providers: Component = () => {
         provider: reg.id,
         apiKey: f.apiKey.trim(),
         baseUrl: f.baseUrl.trim() || undefined,
-      })) as { ok: boolean; error?: string; latency?: string }
+      }, { silent: true })) as { ok: boolean; error?: string; latency?: string }
 
       if (res.ok) {
         setTestedCreds({ ok: true, msg: t('providers.credVerifiedMsg', { latency: res.latency || t('providerDetail.normal') }) })
@@ -450,7 +450,7 @@ const Providers: Component = () => {
       }
 
       // 3. 设备码流（Device Code Flow，如 GitHub, Kimi, CodeBuddy, Qoder, Grok CLI 等）
-      const raw = (await apiPost(`/api/oauth/${reg.id}/device-code`)) as Record<string, unknown>
+      const raw = (await apiPost(`/api/oauth/${reg.id}/device-code`, undefined, { silent: true })) as Record<string, unknown>
       const res = {
         verificationUri: ((raw.verificationUri || raw.verification_uri || '') as string),
         verificationUriComplete: ((raw.verificationUriComplete || raw.verification_uri_complete || '') as string),
@@ -482,7 +482,7 @@ const Providers: Component = () => {
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
             extraData: res.extraData,
-          })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
+          }, { silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
           if (pollRes?.success) {
             clearInterval(wizardPollTimer)
             wizardPollTimer = undefined
@@ -526,7 +526,7 @@ const Providers: Component = () => {
       await apiPost(`/api/oauth/${reg.id}/import`, {
         accessToken: token,
         name: form().name || reg.name,
-      })
+      }, { silent: true })
       toast.success(t('toast.tokenImportSuccess', { name: reg.name }))
       cancelWizardOAuth()
       setWizardOpen(false)
@@ -562,7 +562,7 @@ const Providers: Component = () => {
         code,
         state,
         redirectUri: reg.id === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
-      })
+      }, { silent: true })
       toast.success(t('toast.oauthSuccess', { name: reg.name }))
       cancelWizardOAuth()
       setWizardOpen(false)

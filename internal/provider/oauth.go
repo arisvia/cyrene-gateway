@@ -426,6 +426,9 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if providerID == "codebuddy-intl" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+			return nil, fmt.Errorf("codebuddy refresh request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
+		}
 		return nil, fmt.Errorf("codebuddy refresh request failed: %w", err)
 	}
 	defer resp.Body.Close()

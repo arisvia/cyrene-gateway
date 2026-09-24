@@ -360,6 +360,27 @@ func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
 	}
 }
 
+func TestRequestDeviceCode_CodeBuddyIntl_NetworkDiagnosis(t *testing.T) {
+	orig := Registry["codebuddy-intl"]
+	defer func() { Registry["codebuddy-intl"] = orig }()
+
+	// Close server immediately so client gets connection reset/refused
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	ts.Close()
+
+	info := orig
+	info.DeviceCodeURL = ts.URL
+	Registry["codebuddy-intl"] = info
+
+	_, err := RequestDeviceCode("codebuddy-intl", ts.Client())
+	if err == nil {
+		t.Fatal("expected error connecting to closed server, got nil")
+	}
+	if !strings.Contains(err.Error(), "codebuddy.ai blocks US/Western proxy nodes via GeoDNS") {
+		t.Errorf("expected GeoDNS diagnostic hint in error, got %v", err)
+	}
+}
+
 func TestRequestDeviceCode_CodeBuddy_Negative(t *testing.T) {
 	orig := Registry["codebuddy-cn"]
 	defer func() { Registry["codebuddy-cn"] = orig }()
