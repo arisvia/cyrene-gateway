@@ -399,6 +399,9 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 		statusVal = http.StatusOK
 	}
 	inner := strings.TrimSpace(envelope.Body)
+	if isQoderBillingBlock(inner) {
+		return terminalError(http.StatusForbidden, inner)
+	}
 	if statusVal != http.StatusOK {
 		if inner == "" {
 			inner = fmt.Sprintf("upstream status %d", statusVal)
@@ -419,4 +422,14 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 	// Strip embedded newlines so the SSE frame stays a single event.
 	sanitized := strings.NewReplacer("\r\n", "", "\n", "", "\r", "").Replace(inner)
 	return sanitized, len(chunk["error"]) > 0 && string(chunk["error"]) != "null"
+}
+
+func isQoderBillingBlock(inner string) bool {
+	lower := strings.ToLower(inner)
+	return strings.Contains(lower, "pricingurl") ||
+		strings.Contains(lower, `"code":"110"`) ||
+		strings.Contains(lower, `"code":"112"`) ||
+		strings.Contains(lower, `"code":"10605"`) ||
+		strings.Contains(lower, "insufficient") ||
+		strings.Contains(lower, "arrears")
 }

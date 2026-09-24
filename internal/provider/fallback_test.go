@@ -72,6 +72,20 @@ func TestCheckFallbackError(t *testing.T) {
 	if result.Cooldown != 0 {
 		t.Errorf("expected 0 cooldown for FreeTierError, got %v", result.Cooldown)
 	}
+	// Request-scoped errors: 400/413/422 without quota text must not cool down the account
+	result = CheckFallbackError(400, `{"error":{"message":"This model's maximum context length is 1048576 tokens"}}`, 0)
+	if result.ShouldFallback || result.Cooldown != 0 {
+		t.Errorf("expected ShouldFallback=false and 0 cooldown for request-scoped 400, got fallback=%v cooldown=%v", result.ShouldFallback, result.Cooldown)
+	}
+	result = CheckFallbackError(413, "payload too large", 0)
+	if result.ShouldFallback || result.Cooldown != 0 {
+		t.Errorf("expected ShouldFallback=false and 0 cooldown for 413, got fallback=%v cooldown=%v", result.ShouldFallback, result.Cooldown)
+	}
+	// 400 with quota wording MUST still trigger fallback
+	result = CheckFallbackError(400, "quota exceeded for current billing cycle", 0)
+	if !result.ShouldFallback || result.Cooldown == 0 {
+		t.Errorf("expected ShouldFallback=true and non-zero cooldown for 400 with quota exceeded, got fallback=%v cooldown=%v", result.ShouldFallback, result.Cooldown)
+	}
 	// Unknown error → transient cooldown
 	result = CheckFallbackError(500, "something weird happened", 0)
 	if result.Cooldown != TransientCooldown {

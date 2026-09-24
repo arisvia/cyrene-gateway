@@ -899,8 +899,14 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 	finishReason := "stop"
 	if stopReason, ok := claudeResp["stop_reason"].(string); ok {
 		finishReason = claudeStopToOpenAI(stopReason)
+		if stopReason == "refusal" && content.Len() == 0 {
+			if stopDetails, ok := claudeResp["stop_details"].(map[string]any); ok {
+				if exp, ok := stopDetails["explanation"].(string); ok && exp != "" {
+					message["content"] = exp
+				}
+			}
+		}
 	}
-
 	openAIResp["choices"] = []any{
 		map[string]any{
 			"index":         0,
@@ -1102,15 +1108,27 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 
 	case "message_delta":
 		finishReason := ""
+		refusalExplanation := ""
 		if d, ok := event["delta"].(map[string]any); ok {
 			if stopReason, ok := d["stop_reason"].(string); ok && stopReason != "" {
 				finishReason = claudeStopToOpenAI(stopReason)
+				if stopReason == "refusal" {
+					if stopDetails, ok := d["stop_details"].(map[string]any); ok {
+						if exp, ok := stopDetails["explanation"].(string); ok && exp != "" {
+							refusalExplanation = exp
+						}
+					}
+				}
 			}
 		}
-		if finishReason == "" && len(usage) == 0 {
+		if finishReason == "" && len(usage) == 0 && refusalExplanation == "" {
 			return nil, false, nil
 		}
-		chunk := buildOpenAIChunk(model, map[string]any{}, finishReason)
+		delta := map[string]any{}
+		if refusalExplanation != "" {
+			delta["content"] = refusalExplanation
+		}
+		chunk := buildOpenAIChunk(model, delta, finishReason)
 		if finishReason == "" {
 			chunk["choices"] = []any{}
 		}
@@ -1299,12 +1317,14 @@ func parseDataURI(uri string) (mediaType, data string) {
 
 func claudeStopToOpenAI(reason string) string {
 	switch reason {
-	case "end_turn":
+	case "end_turn", "stop_sequence":
 		return "stop"
 	case "tool_use":
 		return "tool_calls"
 	case "max_tokens":
 		return "length"
+	case "refusal":
+		return "content_filter"
 	default:
 		return "stop"
 	}

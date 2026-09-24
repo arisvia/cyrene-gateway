@@ -179,7 +179,7 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 					"responseModalities": []string{"TEXT", "IMAGE"},
 				},
 			},
-			"requestType": "agent",
+			"requestType": "image_gen",
 			"userAgent":   "antigravity",
 		}
 		if creds.ProjectID != "" {

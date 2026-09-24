@@ -53,6 +53,8 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "tts-1", DisplayName: "TTS-1", Capabilities: []string{"tts"}, Modalities: []string{"text", "audio"}, Family: "audio"},
 
 	// Anthropic Claude
+	{Pattern: "claude-opus-5-5", DisplayName: "Claude Opus 5.5", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
+	{Pattern: "claude-opus-5", DisplayName: "Claude Opus 5", ContextLength: 1000000, MaxOutput: 128000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-3-7-sonnet", DisplayName: "Claude 3.7 Sonnet", ContextLength: 200000, MaxOutput: 64000, Capabilities: []string{"chat", "code", "vision", "reasoning"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-3-5-sonnet", DisplayName: "Claude 3.5 Sonnet", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
 	{Pattern: "claude-3-5-haiku", DisplayName: "Claude 3.5 Haiku", ContextLength: 200000, MaxOutput: 8192, Capabilities: []string{"chat", "code", "vision"}, Modalities: []string{"text", "image"}, Family: "claude"},
@@ -83,7 +85,8 @@ var StaticCatalog = []CatalogEntry{
 	{Pattern: "gemini-embedding", DisplayName: "Gemini Embedding", ContextLength: 2048, Capabilities: []string{"embeddings"}, Modalities: []string{"text"}, Family: "gemini"},
 
 	// DeepSeek (2024–2026 official)
-	{Pattern: "deepseek-v4.1-flash", DisplayName: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4.1-flash", DisplayName: "DeepSeek V4.1 Flash", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "deepseek"},
+	{Pattern: "deepseek-v4.1", DisplayName: "DeepSeek V4.1", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning", "vision"}, Modalities: []string{"text", "image"}, Family: "deepseek"},
 	{Pattern: "deepseek-v4-pro", DisplayName: "DeepSeek V4 Pro", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code", "reasoning"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v4-flash", DisplayName: "DeepSeek V4 Flash", ContextLength: 1000000, MaxOutput: 384000, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},
 	{Pattern: "deepseek-v3.2", DisplayName: "DeepSeek V3.2", ContextLength: 128000, MaxOutput: 32768, Capabilities: []string{"chat", "code"}, Modalities: []string{"text"}, Family: "deepseek"},

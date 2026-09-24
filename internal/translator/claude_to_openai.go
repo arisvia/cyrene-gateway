@@ -301,6 +301,8 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 					stopReason = "max_tokens"
 				case "tool_calls", "function_call":
 					stopReason = "tool_use"
+				case "content_filter":
+					stopReason = "refusal"
 				default:
 					stopReason = "end_turn"
 				}
@@ -464,6 +466,8 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			stopReason = "max_tokens"
 		} else if t.hasToolCalls || t.finishReason == "tool_calls" || t.finishReason == "function_call" {
 			stopReason = "tool_use"
+		} else if t.finishReason == "content_filter" {
+			stopReason = "refusal"
 		}
 		out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d}}\n\n", stopReason, t.inTokens, t.outputTokens))
 		out.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")

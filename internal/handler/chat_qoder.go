@@ -386,13 +386,6 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
 	ctx := r.Context()
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -407,6 +400,86 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		}
 		s.recordUsage(uc, lastUsage)
 	}()
+
+	// Peek the first data line before committing HTTP 200 headers
+	var (
+		firstData string
+		firstDone bool
+		hasFirst  bool
+	)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			if uc != nil {
+				uc.Status = 499
+			}
+			return
+		}
+		text := scanner.Text()
+		data, done := provider.UnwrapQoderSSELine(text, "qoder/"+model)
+		if !done && data == "" {
+			continue
+		}
+		firstData = data
+		firstDone = done
+		hasFirst = true
+		break
+	}
+
+	if !hasFirst {
+		if scanErr := scanner.Err(); scanErr != nil {
+			writeQoderFailure(w, uc, scanErr.Error(), true)
+		} else {
+			writeQoderFailure(w, uc, "upstream closed without response", true)
+		}
+		return
+	}
+
+	// First-frame upstream error: return error response
+	if firstDone && firstData != "" {
+		writeQoderFailure(w, uc, firstData, true)
+		return
+	}
+
+	// Stream is healthy: commit HTTP 200 headers now
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	if firstDone {
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+		return
+	}
+
+	if firstData != "" {
+		if u := usage.ExtractFromSSELine([]byte(firstData)); u.TotalTokens > 0 {
+			lastUsage = u
+		}
+		var chunk chatStreamChunk
+		if err := json.Unmarshal([]byte(firstData), &chunk); err != nil {
+			writeQoderFailure(w, uc, "invalid qoder SSE chunk", true)
+			return
+		}
+		for _, choice := range chunk.Choices {
+			if respBuilder.Len() < 16384 {
+				if choice.Delta.Content != "" {
+					respBuilder.WriteString(choice.Delta.Content)
+				} else if choice.Delta.ReasoningContent != "" {
+					respBuilder.WriteString(choice.Delta.ReasoningContent)
+				}
+			}
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", firstData); err != nil {
+			if uc != nil {
+				uc.Status = 499
+			}
+			return
+		}
+		flusher.Flush()
+	}
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {
@@ -493,6 +566,8 @@ func writeQoderFailure(w http.ResponseWriter, uc *usageContext, data string, str
 		uc.Status = status
 	}
 	if stream {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(status)
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()

@@ -1385,3 +1385,62 @@ func TestSSETranslatorDone(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeRefusalToOpenAI(t *testing.T) {
+	explanation := "This request was blocked by safety policy."
+	claudeResp := map[string]any{
+		"id":          "msg_refusal_1",
+		"type":        "message",
+		"role":        "assistant",
+		"content":     []any{},
+		"stop_reason": "refusal",
+		"stop_details": map[string]any{
+			"type":        "refusal",
+			"explanation": explanation,
+		},
+		"usage": map[string]any{
+			"input_tokens":  float64(100),
+			"output_tokens": float64(0),
+		},
+	}
+	data, _ := json.Marshal(claudeResp)
+	result, err := claudeToOpenAI(data, "claude-sonnet-4")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var openAIResp map[string]any
+	json.Unmarshal(result, &openAIResp)
+	choices := openAIResp["choices"].([]any)
+	if len(choices) == 0 {
+		t.Fatal("expected choices in response")
+	}
+	first := choices[0].(map[string]any)
+	if first["finish_reason"] != "content_filter" {
+		t.Errorf("expected finish_reason 'content_filter', got %v", first["finish_reason"])
+	}
+	msg := first["message"].(map[string]any)
+	if msg["content"] != explanation {
+		t.Errorf("expected content to be refusal explanation %q, got %q", explanation, msg["content"])
+	}
+
+	// Test streaming delta
+	trans := NewSSETranslator(FormatAnthropic, "claude-sonnet-4")
+	deltaPayload := `{"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"explanation":"Stream refused"}},"usage":{"output_tokens":0}}`
+	out, _, err := trans.TranslateChunk([]byte(deltaPayload))
+	if err != nil {
+		t.Fatalf("unexpected stream translation error: %v", err)
+	}
+	var streamChunk map[string]any
+	if err := json.Unmarshal(out, &streamChunk); err != nil {
+		t.Fatalf("failed to unmarshal stream chunk: %v", err)
+	}
+	sChoices := streamChunk["choices"].([]any)
+	sFirst := sChoices[0].(map[string]any)
+	if sFirst["finish_reason"] != "content_filter" {
+		t.Errorf("expected stream finish_reason 'content_filter', got %v", sFirst["finish_reason"])
+	}
+	sDelta := sFirst["delta"].(map[string]any)
+	if sDelta["content"] != "Stream refused" {
+		t.Errorf("expected stream delta content 'Stream refused', got %v", sDelta["content"])
+	}
+}

@@ -420,9 +420,13 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 		hasUsage = true
 		if pt, ok := sourceUsage["prompt_tokens"].(float64); ok {
 			inTokens = int(pt)
+		} else if it, ok := sourceUsage["input_tokens"].(float64); ok {
+			inTokens = int(it)
 		}
 		if ct, ok := sourceUsage["completion_tokens"].(float64); ok {
 			outTokens = int(ct)
+		} else if ot, ok := sourceUsage["output_tokens"].(float64); ok {
+			outTokens = int(ot)
 		}
 		if tt, ok := sourceUsage["total_tokens"].(float64); ok {
 			totTokens = int(tt)
@@ -1007,17 +1011,25 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 		t.usageSeen = true
 		if pt, ok := usageMap["prompt_tokens"].(float64); ok {
 			t.promptTokens = int(pt)
+		} else if it, ok := usageMap["input_tokens"].(float64); ok {
+			t.promptTokens = int(it)
 		}
 		if ct, ok := usageMap["completion_tokens"].(float64); ok {
 			t.outputTokens = int(ct)
+		} else if ot, ok := usageMap["output_tokens"].(float64); ok {
+			t.outputTokens = int(ot)
 		}
 		if tt, ok := usageMap["total_tokens"].(float64); ok {
 			t.totalTokens = int(tt)
 		}
 		if details, ok := usageMap["prompt_tokens_details"].(map[string]any); ok {
 			t.inputDetails = details
+		} else if details, ok := usageMap["input_tokens_details"].(map[string]any); ok {
+			t.inputDetails = details
 		}
 		if details, ok := usageMap["completion_tokens_details"].(map[string]any); ok {
+			t.outputDetails = details
+		} else if details, ok := usageMap["output_tokens_details"].(map[string]any); ok {
 			t.outputDetails = details
 		}
 	}

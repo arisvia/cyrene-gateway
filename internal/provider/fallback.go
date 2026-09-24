@@ -77,15 +77,10 @@ func GetQuotaCooldown(backoffLevel int) time.Duration {
 
 // CheckFallbackError classifies an upstream error and determines cooldown.
 func CheckFallbackError(status int, errorText string, backoffLevel int) FallbackResult {
-	// Explicit 400 Bad Request / 422 Unprocessable Entity should never trigger fallback across other connections/models
-	if status == 400 || status == 422 {
-		return FallbackResult{ShouldFallback: false}
-	}
-
 	lowerErr := strings.ToLower(errorText)
 
+	// 1. Text-based rules take precedence (e.g. rate limit, quota exceeded on any status code)
 	for _, rule := range ErrorRules {
-		// Text-based rule
 		if rule.Text != "" && lowerErr != "" && strings.Contains(lowerErr, rule.Text) {
 			if rule.CooldownMs == 0 && !rule.Backoff {
 				return FallbackResult{ShouldFallback: false}
@@ -100,8 +95,10 @@ func CheckFallbackError(status int, errorText string, backoffLevel int) Fallback
 			}
 			return FallbackResult{ShouldFallback: true, Cooldown: rule.CooldownMs}
 		}
+	}
 
-		// Status-based rule
+	// 2. Account-scoped status rules (401, 402, 403, 404, 429)
+	for _, rule := range ErrorRules {
 		if rule.Status != 0 && rule.Status == status {
 			if rule.CooldownMs == 0 && !rule.Backoff {
 				return FallbackResult{ShouldFallback: false}
@@ -118,7 +115,14 @@ func CheckFallbackError(status int, errorText string, backoffLevel int) Fallback
 		}
 	}
 
-	// Default: transient cooldown for any unmatched error
+	// 3. Request-scoped client errors that matched no rule above (context length overflow,
+	// payload too large 413, invalid request body 400/422).
+	// Cooling the account down for request-scoped errors unfairly locks healthy connections.
+	if status >= 400 && status < 500 && status != 401 && status != 402 && status != 403 && status != 429 {
+		return FallbackResult{ShouldFallback: false, Cooldown: 0}
+	}
+
+	// 4. Default: transient cooldown for unmatched server/network errors
 	return FallbackResult{ShouldFallback: true, Cooldown: TransientCooldown}
 }
 

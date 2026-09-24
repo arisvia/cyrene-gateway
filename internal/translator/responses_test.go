@@ -1041,3 +1041,42 @@ func TestOpenAIToResponsesTerminalStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAIToResponsesSSETranslatorUsageOnCompleted(t *testing.T) {
+	trans := NewOpenAIToResponsesSSETranslator("gpt-5.4")
+	chunk1 := []byte(`{"id":"chatcmpl-u1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}`)
+	trans.TranslateChunk(chunk1)
+	// Trailing usage-only chunk with empty choices and input_tokens / output_tokens
+	chunkUsage := []byte(`{"id":"chatcmpl-u1","choices":[],"usage":{"input_tokens":120,"output_tokens":45,"total_tokens":165,"input_tokens_details":{"cached_tokens":80}}}`)
+	trans.TranslateChunk(chunkUsage)
+	sDone, doneFinal, _ := trans.TranslateChunk([]byte("[DONE]"))
+	if !doneFinal {
+		t.Fatal("expected doneFinal true on [DONE]")
+	}
+	strDone := string(sDone)
+	if !strings.Contains(strDone, "event: response.completed") {
+		t.Fatalf("expected response.completed, got: %s", strDone)
+	}
+	// Find response.completed data JSON
+	var completedObj map[string]any
+	for _, line := range strings.Split(strDone, "\n") {
+		if strings.HasPrefix(line, "data: ") && strings.Contains(line, "response.completed") {
+			json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &completedObj)
+			break
+		}
+	}
+	if completedObj == nil {
+		t.Fatalf("failed to parse response.completed line: %s", strDone)
+	}
+	resp, ok := completedObj["response"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing response object: %v", completedObj)
+	}
+	usage, ok := resp["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing usage in response.completed: %v", resp)
+	}
+	if usage["input_tokens"] != float64(120) || usage["output_tokens"] != float64(45) || usage["total_tokens"] != float64(165) {
+		t.Errorf("expected usage 120/45/165, got %v", usage)
+	}
+}

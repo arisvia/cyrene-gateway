@@ -89,10 +89,8 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 
 		availableModels := s.getAntigravityAvailableModels()
 		targetModel, _, _, isImage := resolveAntigravityModel(modelInfo.Model, "", availableModels)
-		reqType := "agent"
 		upstreamAction := "streamGenerateContent?alt=sse"
 		if isImage {
-			reqType = "image_gen"
 			upstreamAction = "generateContent"
 		}
 		innerReq := map[string]any{
@@ -107,11 +105,13 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		envelope := map[string]any{
-			"model":       targetModel,
-			"request":     innerReq,
-			"requestType": reqType,
-			"userAgent":   "antigravity",
-			"requestId":   fmt.Sprintf("test-%d", time.Now().UnixMilli()),
+			"model":     targetModel,
+			"request":   innerReq,
+			"userAgent": "antigravity",
+			"requestId": fmt.Sprintf("test-%d", time.Now().UnixMilli()),
+		}
+		if isImage {
+			envelope["requestType"] = "image_gen"
 		}
 		if projID != "" {
 			envelope["project"] = projID
