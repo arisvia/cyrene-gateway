@@ -45,6 +45,58 @@ func TestResponsesUsageDetailsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDeveloperInstructionsSurviveProviderTranslation(t *testing.T) {
+	for _, source := range []string{"responses", "chat"} {
+		for _, format := range []Format{FormatAnthropic, FormatGemini} {
+			t.Run(source+"/"+string(format), func(t *testing.T) {
+				var body map[string]any
+				if source == "responses" {
+					var err error
+					body, err = ResponsesToOpenAIRequest(map[string]any{
+						"instructions": "First line.\nSecond line: 保留指令。",
+						"input":        "hello",
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					body = map[string]any{"messages": []any{
+						map[string]any{"role": "system", "content": "Base instruction."},
+						map[string]any{"role": "developer", "content": []any{map[string]any{"type": "text", "text": "First line.\nSecond line: 保留指令。"}}},
+						map[string]any{"role": "user", "content": "hello"},
+					}}
+				}
+				out, err := TranslateRequest(format, "model", body, false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var instruction string
+				if format == FormatAnthropic {
+					instruction, _ = out["system"].(string)
+				} else if system, ok := out["systemInstruction"].(map[string]any); ok {
+					for _, part := range system["parts"].([]any) {
+						if instruction != "" {
+							instruction += "\n\n"
+						}
+						instruction += part.(map[string]any)["text"].(string)
+					}
+				}
+				want := "First line.\nSecond line: 保留指令。"
+				if source == "chat" {
+					separator := "\n\n"
+					if format == FormatAnthropic {
+						separator = "\n"
+					}
+					want = "Base instruction." + separator + want
+				}
+				if instruction != want {
+					t.Errorf("instruction = %q, want %q; output=%v", instruction, want, out)
+				}
+			})
+		}
+	}
+}
+
 func TestResponsesToOpenAIRequest_StringInput(t *testing.T) {
 	req := map[string]any{
 		"model":        "gpt-5.4",

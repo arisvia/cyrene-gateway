@@ -9,7 +9,7 @@ func TestResponsesUsage(t *testing.T) {
 	for _, total := range []string{"", `,"total_tokens":18`} {
 		data := []byte(`{"usage":{"input_tokens":11,"output_tokens":7,"input_tokens_details":{"cached_tokens":3},"output_tokens_details":{"reasoning_tokens":2}` + total + `}}`)
 		u := ExtractFromResponses(data)
-		want := Usage{PromptTokens: 11, CompletionTokens: 7, TotalTokens: 18, CachedTokens: 3, ReasoningTokens: 2}
+		want := Usage{PromptTokens: 11, CompletionTokens: 7, TotalTokens: 18, CachedTokens: 3, ReasoningTokens: 2, Known: true}
 		if u != want {
 			t.Fatalf("got %+v, want %+v", u, want)
 		}

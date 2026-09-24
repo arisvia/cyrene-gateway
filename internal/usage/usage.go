@@ -11,6 +11,9 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 	CachedTokens     int `json:"cached_tokens,omitempty"`
 	ReasoningTokens  int `json:"reasoning_tokens,omitempty"`
+	// Known indicates whether the upstream actually provided usage metadata.
+	// Zero value false preserves backward compatibility.
+	Known bool `json:"-"`
 }
 
 func (u Usage) OpenAI() map[string]any {
@@ -30,7 +33,7 @@ func (u Usage) OpenAI() map[string]any {
 
 func ExtractFromResponses(data []byte) Usage {
 	var response struct {
-		Usage struct {
+		Usage *struct {
 			InputTokens  int `json:"input_tokens"`
 			OutputTokens int `json:"output_tokens"`
 			TotalTokens  int `json:"total_tokens"`
@@ -42,7 +45,7 @@ func ExtractFromResponses(data []byte) Usage {
 			} `json:"output_tokens_details"`
 		} `json:"usage"`
 	}
-	if err := json.Unmarshal(data, &response); err != nil {
+	if err := json.Unmarshal(data, &response); err != nil || response.Usage == nil {
 		return Usage{}
 	}
 	u := response.Usage
@@ -50,13 +53,13 @@ func ExtractFromResponses(data []byte) Usage {
 	if total == 0 {
 		total = u.InputTokens + u.OutputTokens
 	}
-	return Usage{PromptTokens: u.InputTokens, CompletionTokens: u.OutputTokens, TotalTokens: total, CachedTokens: u.InputDetails.CachedTokens, ReasoningTokens: u.OutputDetails.ReasoningTokens}
+	return Usage{PromptTokens: u.InputTokens, CompletionTokens: u.OutputTokens, TotalTokens: total, CachedTokens: u.InputDetails.CachedTokens, ReasoningTokens: u.OutputDetails.ReasoningTokens, Known: true}
 }
 
 // ExtractFromOpenAI extracts usage from an OpenAI-format response body.
 func ExtractFromOpenAI(data []byte) Usage {
 	var resp struct {
-		Usage struct {
+		Usage *struct {
 			PromptTokens        int `json:"prompt_tokens"`
 			CompletionTokens    int `json:"completion_tokens"`
 			TotalTokens         int `json:"total_tokens"`
@@ -68,13 +71,14 @@ func ExtractFromOpenAI(data []byte) Usage {
 			} `json:"completion_tokens_details"`
 		} `json:"usage"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := json.Unmarshal(data, &resp); err != nil || resp.Usage == nil {
 		return Usage{}
 	}
 	u := Usage{
 		PromptTokens:     resp.Usage.PromptTokens,
 		CompletionTokens: resp.Usage.CompletionTokens,
 		TotalTokens:      resp.Usage.TotalTokens,
+		Known:            true,
 	}
 	if u.TotalTokens == 0 {
 		u.TotalTokens = u.PromptTokens + u.CompletionTokens
@@ -93,23 +97,23 @@ func ExtractFromOpenAI(data []byte) Usage {
 // so we fold them into prompt_tokens for canonical accounting (9router#2873).
 func ExtractFromClaude(data []byte) Usage {
 	var resp struct {
-		Usage struct {
+		Usage *struct {
 			InputTokens              int `json:"input_tokens"`
 			OutputTokens             int `json:"output_tokens"`
 			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		} `json:"usage"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := json.Unmarshal(data, &resp); err != nil || resp.Usage == nil {
 		return Usage{}
 	}
-	// Canonical: prompt includes cache read + creation (matches 9router canonicalizeUsage)
 	prompt := resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens + resp.Usage.CacheCreationInputTokens
 	return Usage{
 		PromptTokens:     prompt,
 		CompletionTokens: resp.Usage.OutputTokens,
 		TotalTokens:      prompt + resp.Usage.OutputTokens,
 		CachedTokens:     resp.Usage.CacheReadInputTokens,
+		Known:            true,
 	}
 }
 
@@ -118,7 +122,7 @@ func ExtractFromClaudeSSE(data []byte) Usage {
 	var event struct {
 		Type    string `json:"type"`
 		Message *struct {
-			Usage struct {
+			Usage *struct {
 				InputTokens              int `json:"input_tokens"`
 				OutputTokens             int `json:"output_tokens"`
 				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
@@ -135,7 +139,7 @@ func ExtractFromClaudeSSE(data []byte) Usage {
 	if err := json.Unmarshal(data, &event); err != nil {
 		return Usage{}
 	}
-	if event.Type == "message_start" && event.Message != nil {
+	if event.Type == "message_start" && event.Message != nil && event.Message.Usage != nil {
 		u := event.Message.Usage
 		prompt := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
 		return Usage{
@@ -143,6 +147,7 @@ func ExtractFromClaudeSSE(data []byte) Usage {
 			CompletionTokens: u.OutputTokens,
 			TotalTokens:      prompt + u.OutputTokens,
 			CachedTokens:     u.CacheReadInputTokens,
+			Known:            true,
 		}
 	}
 	if (event.Type == "message_delta" || event.Type == "") && event.Usage != nil {
@@ -153,6 +158,7 @@ func ExtractFromClaudeSSE(data []byte) Usage {
 			CompletionTokens: u.OutputTokens,
 			TotalTokens:      prompt + u.OutputTokens,
 			CachedTokens:     u.CacheReadInputTokens,
+			Known:            true,
 		}
 	}
 	return Usage{}
@@ -161,7 +167,7 @@ func ExtractFromClaudeSSE(data []byte) Usage {
 // ExtractFromGemini extracts usage from a Gemini response body.
 func ExtractFromGemini(data []byte) Usage {
 	var resp struct {
-		UsageMetadata struct {
+		UsageMetadata *struct {
 			PromptTokenCount        int `json:"promptTokenCount"`
 			CandidatesTokenCount    int `json:"candidatesTokenCount"`
 			TotalTokenCount         int `json:"totalTokenCount"`
@@ -169,7 +175,7 @@ func ExtractFromGemini(data []byte) Usage {
 			ThoughtsTokenCount      int `json:"thoughtsTokenCount"`
 		} `json:"usageMetadata"`
 	}
-	if err := json.Unmarshal(data, &resp); err != nil {
+	if err := json.Unmarshal(data, &resp); err != nil || resp.UsageMetadata == nil {
 		return Usage{}
 	}
 	u := Usage{
@@ -178,8 +184,8 @@ func ExtractFromGemini(data []byte) Usage {
 		TotalTokens:      resp.UsageMetadata.TotalTokenCount,
 		CachedTokens:     resp.UsageMetadata.CachedContentTokenCount,
 		ReasoningTokens:  resp.UsageMetadata.ThoughtsTokenCount,
+		Known:            true,
 	}
-	// Gemini includes thoughts in completion
 	if resp.UsageMetadata.ThoughtsTokenCount > 0 {
 		u.CompletionTokens += resp.UsageMetadata.ThoughtsTokenCount
 	}

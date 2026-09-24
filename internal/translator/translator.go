@@ -231,7 +231,7 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		role, _ := msg["role"].(string)
 
 		switch role {
-		case "system":
+		case "system", "developer":
 			text := extractText(msg["content"])
 			if text != "" {
 				if len(claudeMessages) == 0 {
@@ -609,7 +609,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 		role, _ := msg["role"].(string)
 
 		switch role {
-		case "system":
+		case "system", "developer":
 			text := extractText(msg["content"])
 			if text != "" {
 				systemParts = append(systemParts, map[string]any{"text": text})

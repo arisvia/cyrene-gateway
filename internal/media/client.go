@@ -285,8 +285,8 @@ func (c *Client) HandleTTS(ctx context.Context, providerID string, body []byte, 
 	return c.HTTPClient.Do(httpReq)
 }
 
-// HandleSTT proxies a speech-to-text request (multipart form).
-func (c *Client) HandleSTT(ctx context.Context, providerID string, r *http.Request, creds Credentials) (*http.Response, error) {
+// HandleSTT proxies a speech-to-text request (multipart form) using the resolved model.
+func (c *Client) HandleSTT(ctx context.Context, providerID, resolvedModel string, r *http.Request, creds Credentials) (*http.Response, error) {
 	cfg := GetConfig(providerID, KindSTT)
 	if cfg == nil {
 		return nil, fmt.Errorf("provider '%s' does not support STT", providerID)
@@ -303,17 +303,15 @@ func (c *Client) HandleSTT(ctx context.Context, providerID string, r *http.Reque
 	}
 	defer file.Close()
 
-	model := r.FormValue("model")
-
 	switch cfg.Format {
 	case "openai":
-		return c.sttOpenAICompat(ctx, cfg, file, header, model, r, creds)
+		return c.sttOpenAICompat(ctx, cfg, file, header, resolvedModel, r, creds)
 	case "deepgram":
-		return c.sttDeepgram(ctx, cfg, file, header, model, r, creds)
+		return c.sttDeepgram(ctx, cfg, file, header, resolvedModel, r, creds)
 	case "gemini-stt":
-		return c.sttGemini(ctx, cfg, file, header, model, r, creds)
+		return c.sttGemini(ctx, cfg, file, header, resolvedModel, r, creds)
 	default:
-		return c.sttOpenAICompat(ctx, cfg, file, header, model, r, creds)
+		return c.sttOpenAICompat(ctx, cfg, file, header, resolvedModel, r, creds)
 	}
 }
 

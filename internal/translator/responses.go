@@ -415,14 +415,16 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 	inTokens := 0
 	outTokens := 0
 	totTokens := 0
-	if usage, ok := openAIResp["usage"].(map[string]any); ok {
-		if pt, ok := usage["prompt_tokens"].(float64); ok {
+	hasUsage := false
+	if sourceUsage, ok := openAIResp["usage"].(map[string]any); ok {
+		hasUsage = true
+		if pt, ok := sourceUsage["prompt_tokens"].(float64); ok {
 			inTokens = int(pt)
 		}
-		if ct, ok := usage["completion_tokens"].(float64); ok {
+		if ct, ok := sourceUsage["completion_tokens"].(float64); ok {
 			outTokens = int(ct)
 		}
-		if tt, ok := usage["total_tokens"].(float64); ok {
+		if tt, ok := sourceUsage["total_tokens"].(float64); ok {
 			totTokens = int(tt)
 		}
 	}
@@ -437,20 +439,22 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 		"status":     status,
 		"model":      respModel,
 		"output":     outputItems,
-		"usage": map[string]any{
+	}
+	if hasUsage {
+		usageMap := map[string]any{
 			"total_tokens":  totTokens,
 			"input_tokens":  inTokens,
 			"output_tokens": outTokens,
-		},
-	}
-	if sourceUsage, ok := openAIResp["usage"].(map[string]any); ok {
-		targetUsage := resp["usage"].(map[string]any)
-		if details, ok := sourceUsage["prompt_tokens_details"]; ok {
-			targetUsage["input_tokens_details"] = details
 		}
-		if details, ok := sourceUsage["completion_tokens_details"]; ok {
-			targetUsage["output_tokens_details"] = details
+		if sourceUsage, ok := openAIResp["usage"].(map[string]any); ok {
+			if details, ok := sourceUsage["prompt_tokens_details"]; ok {
+				usageMap["input_tokens_details"] = details
+			}
+			if details, ok := sourceUsage["completion_tokens_details"]; ok {
+				usageMap["output_tokens_details"] = details
+			}
 		}
+		resp["usage"] = usageMap
 	}
 	if outputText != "" {
 		resp["output_text"] = outputText
@@ -805,7 +809,8 @@ type OpenAIToResponsesSSETranslator struct {
 	totalTokens   int
 	inputDetails  map[string]any
 	outputDetails map[string]any
-	deltaChunks   int // fallback chunk counter when upstream omits usage
+	deltaChunks   int  // fallback chunk counter when upstream omits usage
+	usageSeen     bool // whether usage was actually captured from upstream chunks
 	// Output item index allocation: assigned once at first emission, never recomputed.
 	nextOutputIndex int
 	msgOutputIndex  int // -1 until the message item is emitted
@@ -938,7 +943,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 
 		// Use real usage when available, fall back to chunk counter estimate
 		outTokens := t.outputTokens
-		if outTokens == 0 {
+		if outTokens == 0 && !t.usageSeen {
 			outTokens = t.deltaChunks
 		}
 		tot := t.totalTokens
@@ -953,17 +958,20 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 			"model":       t.Model,
 			"output":      compactOutput,
 			"output_text": outText,
-			"usage": map[string]any{
+		}
+		if t.usageSeen {
+			usageMap := map[string]any{
 				"total_tokens":  tot,
 				"input_tokens":  t.promptTokens,
 				"output_tokens": outTokens,
-			},
-		}
-		if t.inputDetails != nil {
-			response["usage"].(map[string]any)["input_tokens_details"] = t.inputDetails
-		}
-		if t.outputDetails != nil {
-			response["usage"].(map[string]any)["output_tokens_details"] = t.outputDetails
+			}
+			if t.inputDetails != nil {
+				usageMap["input_tokens_details"] = t.inputDetails
+			}
+			if t.outputDetails != nil {
+				usageMap["output_tokens_details"] = t.outputDetails
+			}
+			response["usage"] = usageMap
 		}
 		if incompleteDetails != nil {
 			response["incomplete_details"] = incompleteDetails
@@ -996,6 +1004,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 	}
 
 	if usageMap, ok := chunk["usage"].(map[string]any); ok {
+		t.usageSeen = true
 		if pt, ok := usageMap["prompt_tokens"].(float64); ok {
 			t.promptTokens = int(pt)
 		}
