@@ -57,29 +57,35 @@ func TestVerifyAPIKeyInvalidFormat(t *testing.T) {
 	}
 }
 
+func TestSessionTokenRequiresPassword(t *testing.T) {
+	if token, err := CreateSessionToken(""); err == nil || token != "" {
+		t.Fatal("session issuance without a configured password must fail")
+	}
+}
+
 func TestSessionTokenRoundTrip(t *testing.T) {
-	token, err := CreateSessionToken()
+	token, err := CreateSessionToken("test-password-hash")
 	if err != nil {
 		t.Fatalf("failed to create token: %v", err)
 	}
-	if !VerifySessionToken(token) {
+	if !VerifySessionToken(token, "test-password-hash") {
 		t.Fatal("expected valid session token")
 	}
 }
 
 func TestSessionTokenTampered(t *testing.T) {
-	token, _ := CreateSessionToken()
+	token, _ := CreateSessionToken("test-password-hash")
 	tampered := token[:len(token)-2] + "xx"
-	if VerifySessionToken(tampered) {
+	if VerifySessionToken(tampered, "test-password-hash") {
 		t.Fatal("expected tampered token to fail")
 	}
 }
 
 func TestSessionTokenInvalid(t *testing.T) {
-	if VerifySessionToken("") {
+	if VerifySessionToken("", "test-password-hash") {
 		t.Fatal("expected empty token to fail")
 	}
-	if VerifySessionToken("garbage") {
+	if VerifySessionToken("garbage", "test-password-hash") {
 		t.Fatal("expected garbage token to fail")
 	}
 }
@@ -162,10 +168,15 @@ func TestExtractAPIKey(t *testing.T) {
 }
 
 func TestClientIP(t *testing.T) {
-	if ip := ClientIP("192.168.1.1:12345"); ip != "192.168.1.1" {
-		t.Fatalf("expected 192.168.1.1, got %s", ip)
-	}
-	if ip := ClientIP("[::1]:8080"); ip != "[::1]" {
-		t.Fatalf("expected [::1], got %s", ip)
+	for _, tc := range []struct{ remote, want string }{
+		{"192.168.1.1:12345", "192.168.1.1"},
+		{"[::1]:8080", "::1"},
+		{"[2606:4700:4700::1111]:443", "2606:4700:4700::1111"},
+		{"[::ffff:203.0.113.5]:443", "::ffff:203.0.113.5"},
+		{"2001:db8::1", "2001:db8::1"},
+	} {
+		if got := ClientIP(tc.remote); got != tc.want {
+			t.Errorf("ClientIP(%q) = %q, want %q", tc.remote, got, tc.want)
+		}
 	}
 }

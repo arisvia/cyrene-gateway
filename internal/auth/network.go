@@ -8,16 +8,13 @@ import (
 )
 
 // IsLocalOrPrivateIP reports whether ip is a loopback, private LAN (RFC 1918/4193),
-// link-local (RFC 3927/4291), CGNAT (RFC 6598/Tailscale), or unspecified address.
+// link-local unicast (RFC 3927/4291), or CGNAT (RFC 6598/Tailscale) address.
+// Unspecified and multicast addresses cannot establish a local client identity.
 func IsLocalOrPrivateIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-		return true
-	}
-	// In Go httptest or internal testing, 192.0.2.1 is frequently used for local mock runners
-	if ip.Equal(net.ParseIP("192.0.2.1")) {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
 		return true
 	}
 	// CGNAT 100.64.0.0/10 (RFC 6598, heavily used by Tailscale/WireGuard & private overlay nets)
@@ -34,20 +31,26 @@ func IsLocalOrPrivateIP(ip net.IP) bool {
 // or IP addresses that satisfy IsLocalOrPrivateIP.
 func IsLocalOrPrivateHost(host string) bool {
 	h := strings.TrimSpace(host)
-	if h == "" {
-		return true
+	if strings.HasPrefix(h, "[") && strings.HasSuffix(h, "]") {
+		return IsLocalOrPrivateIP(net.ParseIP(h[1 : len(h)-1]))
 	}
-	// Strip IPv6 brackets if present
-	h = strings.TrimPrefix(strings.TrimSuffix(h, "]"), "[")
-	lower := strings.ToLower(h)
+	lower := strings.TrimSuffix(strings.ToLower(h), ".")
 
-	if lower == "localhost" {
-		return true
-	}
-
-	// If it parses as an IP address
 	if ip := net.ParseIP(lower); ip != nil {
 		return IsLocalOrPrivateIP(ip)
+	}
+
+	// Only well-formed hostnames may qualify as local; malformed/missing hosts
+	// must not become single-label LAN names by accident.
+	for _, label := range strings.Split(lower, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, ch := range label {
+			if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-') {
+				return false
+			}
+		}
 	}
 
 	// Single-label hostnames like "ubuntu-nas", "server", "arch"
@@ -73,92 +76,70 @@ func IsLocalOrPrivateHost(host string) bool {
 	return false
 }
 
-// ExtractEffectiveClientIP resolves the client IP, safely honoring X-Forwarded-For
-// or X-Real-IP only if the direct TCP peer (r.RemoteAddr) is a trusted local or private address.
+// ExtractEffectiveClientIP walks X-Forwarded-For from the TCP peer outwards,
+// stopping at the first non-local hop. Headers never replace a public peer or
+// public XFF hop with a private address. Private peers are not authenticated
+// proxies: extra client-IP headers may only strengthen the login requirement.
+// A nil result means the source cannot be established and must require login.
 func ExtractEffectiveClientIP(r *http.Request) net.IP {
-	peerHost := ClientIP(r.RemoteAddr)
-	peerIP := net.ParseIP(peerHost)
-	if peerIP == nil {
-		// Fallback for special mock hostnames
-		if peerHost == "localhost" || peerHost == "" {
-			return net.ParseIP("127.0.0.1")
-		}
+	if r == nil {
 		return nil
 	}
+	peerIP := net.ParseIP(ClientIP(r.RemoteAddr))
+	if !IsLocalOrPrivateIP(peerIP) {
+		return peerIP
+	}
 
-	// Only inspect proxy headers if the peer itself is in a local/private network
-	if IsLocalOrPrivateIP(peerIP) {
-		// Check Cloudflare Tunnel / CDN client IP
-		if cfIP := r.Header.Get("CF-Connecting-IP"); cfIP != "" {
-			if ip := net.ParseIP(strings.TrimSpace(cfIP)); ip != nil {
-				return ip
+	clientIP := peerIP
+	if values := r.Header.Values("X-Forwarded-For"); len(values) > 0 {
+		parts := strings.Split(strings.Join(values, ","), ",")
+		for i := len(parts) - 1; i >= 0; i-- {
+			clientIP = net.ParseIP(strings.TrimSpace(parts[i]))
+			if !IsLocalOrPrivateIP(clientIP) {
+				return clientIP
 			}
 		}
-		// Check X-Forwarded-For (client is the first comma-separated entry)
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			parts := strings.Split(xff, ",")
-			clientPart := strings.TrimSpace(parts[0])
-			if ip := net.ParseIP(clientPart); ip != nil {
-				return ip
-			}
-		}
-		// Check X-Real-IP
-		if xri := r.Header.Get("X-Real-IP"); xri != "" {
-			if ip := net.ParseIP(strings.TrimSpace(xri)); ip != nil {
+	}
+	for _, header := range []string{"X-Real-IP", "CF-Connecting-IP"} {
+		for _, value := range r.Header.Values(header) {
+			ip := net.ParseIP(strings.TrimSpace(value))
+			if !IsLocalOrPrivateIP(ip) {
 				return ip
 			}
 		}
 	}
-
-	return peerIP
+	return clientIP
 }
 
-// IsPublicWANRequest determines if the incoming HTTP request originates from the public Internet (WAN).
-// Returns true if:
-// 1. The effective client IP is a public WAN IP (not loopback, not private LAN).
-// 2. Or the requested Host header is a public domain (not localhost, not LAN hostname/private TLD).
-func IsPublicWANRequest(r *http.Request) bool {
-	if r == nil {
-		return false
+func isLocalRequestHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
+	return IsLocalOrPrivateHost(host)
+}
 
-	// 1. Check client IP
-	clientIP := ExtractEffectiveClientIP(r)
-	if clientIP != nil && !IsLocalOrPrivateIP(clientIP) {
+// IsPublicWANRequest reports whether management authentication is required by
+// network evidence. Public or unknown sources, hosts and origins fail closed.
+// Forwarded hosts supplement the original Host; they never replace it.
+func IsPublicWANRequest(r *http.Request) bool {
+	if r == nil || !IsLocalOrPrivateIP(ExtractEffectiveClientIP(r)) {
 		return true
 	}
-
-	// 2. Check Origin header (prevent CSRF/drive-by requests from public internet origins)
-	if origin := r.Header.Get("Origin"); origin != "" {
-		if u, err := url.Parse(origin); err == nil {
-			h, _, err := net.SplitHostPort(u.Host)
-			if err != nil {
-				h = u.Host
-			}
-			if !IsLocalOrPrivateHost(h) {
+	if !isLocalRequestHost(r.Host) {
+		return true
+	}
+	for _, value := range r.Header.Values("X-Forwarded-Host") {
+		for _, host := range strings.Split(value, ",") {
+			if !isLocalRequestHost(strings.TrimSpace(host)) {
 				return true
 			}
 		}
 	}
-
-	// 3. Check Host header (prevent DNS rebinding attacks like evil.com resolving to 127.0.0.1)
-	host := r.Header.Get("X-Forwarded-Host")
-	if host == "" {
-		host = r.Host
-	}
-	if host != "" {
-		h, _, err := net.SplitHostPort(host)
-		if err != nil {
-			h = host
-		}
-		h = strings.TrimSpace(strings.ToLower(h))
-		// RFC 2606 reserved testing domain "example.com" is used by Go's httptest.NewRequest by default.
-		// Treat as non-WAN only if the client IP itself is a local/test IP.
-		isHttptestDefault := (h == "example.com" || h == "") && IsLocalOrPrivateIP(clientIP)
-		if !isHttptestDefault && !IsLocalOrPrivateHost(h) {
+	for _, origin := range r.Header.Values("Origin") {
+		u, err := url.Parse(origin)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !isLocalRequestHost(u.Host) {
 			return true
 		}
 	}
-
 	return false
 }

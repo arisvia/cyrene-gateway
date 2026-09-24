@@ -192,10 +192,6 @@ func ExtractAPIKey(r *http.Request) string {
 
 // ClientIP extracts the IP address from a host:port string.
 func ClientIP(remoteAddr string) string {
-	if strings.HasPrefix(remoteAddr, "[") && strings.Contains(remoteAddr, "]:") {
-		idx := strings.LastIndex(remoteAddr, "]:")
-		return remoteAddr[:idx+1]
-	}
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
 		return remoteAddr
@@ -210,8 +206,12 @@ type sessionClaims struct {
 	ExpiresAt     int64 `json:"exp"`
 }
 
-// CreateSessionToken creates an HMAC-signed session token for dashboard auth.
-func CreateSessionToken() (string, error) {
+// CreateSessionToken binds dashboard sessions to the current password hash.
+// Password changes revoke sessions without rotating the API key signing secret.
+func CreateSessionToken(passwordHash string) (string, error) {
+	if passwordHash == "" {
+		return "", fmt.Errorf("password not initialized")
+	}
 	claims := sessionClaims{
 		Authenticated: true,
 		ExpiresAt:     time.Now().Add(24 * time.Hour).Unix(),
@@ -221,17 +221,21 @@ func CreateSessionToken() (string, error) {
 		return "", err
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(payload)
-	sig := sign([]byte(encoded))
+	sig := sign([]byte("session:" + passwordHash + "\x00" + encoded))
 	return encoded + "." + sig, nil
 }
 
-// VerifySessionToken validates a session token and checks expiry.
-func VerifySessionToken(token string) bool {
+// VerifySessionToken validates a session against the current password and expiry.
+// Legacy unbound sessions are intentionally rejected.
+func VerifySessionToken(token, passwordHash string) bool {
+	if passwordHash == "" {
+		return false
+	}
 	parts := strings.SplitN(token, ".", 2)
 	if len(parts) != 2 {
 		return false
 	}
-	if !verify([]byte(parts[0]), parts[1]) {
+	if !verify([]byte("session:"+passwordHash+"\x00"+parts[0]), parts[1]) {
 		return false
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[0])

@@ -30,13 +30,17 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 			// Check if requireApiKey is enabled
 			settings, err := database.GetSettings()
 			requireKey := err == nil && settings != nil && settings.RequireAPIKey
+			passwordHash := ""
+			if err == nil && settings != nil {
+				passwordHash = settings.PasswordHash
+			}
 
 			if keyStr == "" {
 				if requireKey {
 					// Allow authenticated dashboard sessions from WebUI / Playground
 					cookie, err := r.Cookie("auth_token")
-					hasValidCookie := err == nil && cookie.Value != "" && auth.VerifySessionToken(cookie.Value)
-					hasValidHeader := r.Header.Get("X-Cyrene-Auth-Token") != "" && auth.VerifySessionToken(r.Header.Get("X-Cyrene-Auth-Token"))
+					hasValidCookie := err == nil && cookie.Value != "" && auth.VerifySessionToken(cookie.Value, passwordHash)
+					hasValidHeader := r.Header.Get("X-Cyrene-Auth-Token") != "" && auth.VerifySessionToken(r.Header.Get("X-Cyrene-Auth-Token"), passwordHash)
 					if hasValidCookie || hasValidHeader {
 						next.ServeHTTP(w, r)
 						return
@@ -48,7 +52,7 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 				return
 			}
 			// Allow authenticated dashboard sessions passing session token in Authorization / Header
-			if auth.VerifySessionToken(keyStr) {
+			if auth.VerifySessionToken(keyStr, passwordHash) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -229,7 +233,7 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 				if token == "" {
 					token = r.URL.Query().Get("token")
 				}
-				if token == "" || !auth.VerifySessionToken(token) {
+				if token == "" || !auth.VerifySessionToken(token, settings.PasswordHash) {
 					writeAuthError(w, http.StatusUnauthorized, "unauthorized")
 					return
 				}

@@ -22,8 +22,8 @@ func TestIsLocalOrPrivateIP(t *testing.T) {
 		{"169.254.1.2", true},
 		{"100.64.0.1", true},      // Tailscale/CGNAT
 		{"100.100.100.100", true}, // Tailscale/CGNAT
-		{"192.0.2.1", true},       // mock test runner
-		{"0.0.0.0", true},
+		{"192.0.2.1", false},
+		{"0.0.0.0", false},
 		{"8.8.8.8", false},
 		{"1.1.1.1", false},
 		{"203.0.113.195", false},
@@ -111,6 +111,47 @@ func TestIsPublicWANRequest(t *testing.T) {
 	req6.Header.Set("Origin", "https://malicious-public-site.com")
 	if !IsPublicWANRequest(req6) {
 		t.Errorf("expected cross-origin request from public domain to be WAN")
+	}
+}
+
+func TestEffectiveClientIPPreservesPublicEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name, remote, xff, cf, real, want string
+	}{
+		{"rightmost public boundary", "127.0.0.1:1234", "198.51.100.2, 203.0.113.5, 10.0.0.1", "", "", "203.0.113.5"},
+		{"private prefix ignored", "127.0.0.1:1234", "192.168.1.1, 203.0.113.5", "127.0.0.1", "", "203.0.113.5"},
+		{"CF cannot override public peer", "203.0.113.5:1234", "127.0.0.1", "198.51.100.2", "", "203.0.113.5"},
+		{"real IP evidence", "127.0.0.1:1234", "192.168.1.1", "127.0.0.1", "203.0.113.5", "203.0.113.5"},
+		{"missing peer", "", "127.0.0.1", "", "", ""},
+		{"malformed chain", "127.0.0.1:1234", "unknown, 10.0.0.1", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "http://localhost/api/settings", nil)
+			r.RemoteAddr = tc.remote
+			if tc.xff != "" {
+				r.Header.Set("X-Forwarded-For", tc.xff)
+			}
+			if tc.cf != "" {
+				r.Header.Set("CF-Connecting-IP", tc.cf)
+			}
+			if tc.real != "" {
+				r.Header.Set("X-Real-IP", tc.real)
+			}
+			ip := ExtractEffectiveClientIP(r)
+			if tc.want == "" {
+				if ip != nil {
+					t.Errorf("unknown source resolved to %v", ip)
+				}
+			} else if ip == nil || ip.String() != tc.want {
+				t.Errorf("client IP = %v, want %s", ip, tc.want)
+			}
+		})
+	}
+}
+
+func TestUnknownRequestRequiresAuthentication(t *testing.T) {
+	if !IsPublicWANRequest(nil) {
+		t.Fatal("unknown request must require authentication")
 	}
 }
 

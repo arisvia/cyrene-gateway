@@ -250,6 +250,74 @@ func TestAPIKeyAuth_GeminiSurface(t *testing.T) {
 	})
 }
 
+func TestDashboardAuth_NetworkEvidence(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	settings, err := database.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.RequireLogin = false
+	if err := database.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	handler := DashboardAuth(database)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	for _, tc := range []struct {
+		name, remote, host string
+		headers            http.Header
+		want               int
+	}{
+		{"local IPv4", "127.0.0.1:1234", "localhost:20128", nil, 200},
+		{"local IPv6", "[::1]:1234", "[::1]:20128", nil, 200},
+		{"LAN", "192.168.1.10:1234", "gateway.lan", nil, 200},
+		{"LAN IPv6", "[fd00::2]:1234", "[fd00::1]:20128", nil, 200},
+		{"overlay", "100.64.0.5:1234", "my-server", nil, 200},
+		{"local proxy LAN chain", "127.0.0.1:1234", "gateway.local", http.Header{"X-Forwarded-For": {"192.168.1.10, 10.0.0.2"}, "X-Forwarded-Host": {"gateway.lan"}}, 200},
+		{"WAN IPv4", "203.0.113.5:1234", "localhost", nil, 401},
+		{"WAN IPv6", "[2606:4700:4700::1111]:1234", "localhost", nil, 401},
+		{"WAN mapped IPv6", "[::ffff:203.0.113.5]:1234", "localhost", nil, 401},
+		{"missing peer", "", "localhost", nil, 401},
+		{"hostname peer", "localhost:1234", "localhost", nil, 401},
+		{"invalid peer", "not-an-ip:1234", "localhost", nil, 401},
+		{"unspecified peer", "[::]:1234", "localhost", nil, 401},
+		{"test peer is not LAN", "192.0.2.1:1234", "localhost", nil, 401},
+		{"WAN cannot spoof LAN", "203.0.113.5:1234", "localhost", http.Header{"X-Forwarded-For": {"127.0.0.1"}, "Cf-Connecting-Ip": {"127.0.0.1"}}, 401},
+		{"XFF private prefix", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-For": {"127.0.0.1, 203.0.113.5, 10.0.0.2"}}, 401},
+		{"XFF multiple lines", "10.0.0.2:1234", "localhost", http.Header{"X-Forwarded-For": {"127.0.0.1", "203.0.113.5, 10.0.0.1"}}, 401},
+		{"CF cannot mask XFF", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-For": {"203.0.113.5"}, "Cf-Connecting-Ip": {"127.0.0.1"}}, 401},
+		{"CF cannot mask real IP", "127.0.0.1:1234", "localhost", http.Header{"X-Real-Ip": {"203.0.113.5"}, "Cf-Connecting-Ip": {"127.0.0.1"}}, 401},
+		{"XFF cannot mask CF", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-For": {"127.0.0.1"}, "Cf-Connecting-Ip": {"203.0.113.5"}}, 401},
+		{"invalid XFF", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-For": {"unknown, 10.0.0.2"}}, 401},
+		{"invalid CF", "127.0.0.1:1234", "localhost", http.Header{"Cf-Connecting-Ip": {"unknown"}}, 401},
+		{"public host cannot be replaced", "127.0.0.1:1234", "gateway.example.net", http.Header{"X-Forwarded-Host": {"localhost"}}, 401},
+		{"example host is public", "127.0.0.1:1234", "example.com", nil, 401},
+		{"forwarded public host", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-Host": {"gateway.example.net"}}, 401},
+		{"forwarded host chain", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-Host": {"gateway.example.net, gateway.lan"}}, 401},
+		{"forwarded host multiple lines", "127.0.0.1:1234", "localhost", http.Header{"X-Forwarded-Host": {"localhost", "gateway.example.net"}}, 401},
+		{"missing host", "127.0.0.1:1234", "", nil, 401},
+		{"invalid host", "127.0.0.1:1234", "[not-ip]", nil, 401},
+		{"public origin", "127.0.0.1:1234", "localhost", http.Header{"Origin": {"https://evil.example.net"}}, 401},
+		{"opaque origin", "127.0.0.1:1234", "localhost", http.Header{"Origin": {"null"}}, 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+			req.RemoteAddr, req.Host = tc.remote, tc.host
+			for name, values := range tc.headers {
+				for _, value := range values {
+					req.Header.Add(name, value)
+				}
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Errorf("got status %d, want %d: %s", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestDashboardAuth_SecurityAndRebinding(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -327,7 +395,11 @@ func TestDashboardAuth_SecurityAndRebinding(t *testing.T) {
 
 	// 6. Valid session token -> 200 OK for remote IP
 	{
-		token, _ := auth.CreateSessionToken()
+		st.PasswordHash = auth.HashPassword("test-password")
+		if err := database.SaveSettings(st); err != nil {
+			t.Fatal(err)
+		}
+		token, _ := auth.CreateSessionToken(st.PasswordHash)
 		req := httptest.NewRequest("GET", "/api/providers", nil)
 		req.RemoteAddr = "203.0.113.195:43210"
 		req.Host = "mygateway.example.com"
