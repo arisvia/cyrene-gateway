@@ -113,13 +113,29 @@ const ProviderDetail: Component = () => {
   const [editMaxOutput, setEditMaxOutput] = createSignal('')
   const [savingMeta, setSavingMeta] = createSignal(false)
   // ── 多账号管理状态 ──
-  const accounts = () =>
-    store
-      .providers()
-      .filter(p => p.provider === conn()?.provider)
-      .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
+  const regInfo = () => {
+    const p = conn()?.provider
+    if (!p) return undefined
+    const list = store.registryList()
+    return (
+      list.find(r => r.id === p) ||
+      list.find(r => r.alias === p) ||
+      (p === 'codebuddy-intl' ? list.find(r => r.id === 'codebuddy') : undefined) ||
+      (p === 'alicode-intl' ? list.find(r => r.id === 'alicode') : undefined)
+    )
+  }
 
-  const regInfo = () => store.registryList().find(r => r.id === conn()?.provider)
+  const accounts = () => {
+    const current = conn()
+    if (!current) return []
+    const reg = regInfo()
+    const targetId = reg?.id || current.provider
+    return store
+      .providers()
+      .filter(p => p.provider === targetId || (reg && (p.provider === reg.id || p.provider === reg.alias || (reg.id === 'codebuddy' && p.provider === 'codebuddy-intl') || (reg.id === 'alicode' && p.provider === 'alicode-intl'))))
+      .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
+  }
+
   const providerDisplayName = () => regInfo()?.name || conn()?.provider || t('providerDetail.details')
 
   function getAccountDisplayName(acc?: Provider | null, idx?: number): string {

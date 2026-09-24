@@ -14,6 +14,7 @@ export interface Provider {
 export interface RegistryProvider {
   id: string
   name: string
+  alias?: string
   category: string
   authType: string
   apiType?: string
