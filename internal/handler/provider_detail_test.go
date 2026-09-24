@@ -517,6 +517,31 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 	if resp.Count != 2 || len(resp.Models) != 2 {
 		t.Fatalf("expected 2 models, got count=%d, len=%d", resp.Count, len(resp.Models))
 	}
+
+	// Verify GET /api/providers/{id}/models returns CanEdit=false (locked) for upstream CodeBuddy models
+	getReq := newLocalRequest("GET", "/api/providers/cb-intl-live-conn/models", nil)
+	getW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(getW, getReq)
+	if getW.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", getW.Code, getW.Body.String())
+	}
+	var detailResp struct {
+		RegistryModels []struct {
+			ID      string `json:"id"`
+			CanEdit bool   `json:"canEdit"`
+		} `json:"registryModels"`
+	}
+	if err := json.Unmarshal(getW.Body.Bytes(), &detailResp); err != nil {
+		t.Fatalf("failed to decode detail response: %v", err)
+	}
+	if len(detailResp.RegistryModels) == 0 {
+		t.Fatalf("expected models in detail response")
+	}
+	for _, m := range detailResp.RegistryModels {
+		if m.CanEdit {
+			t.Errorf("model %s should have CanEdit=false (locked) because CodeBuddy upstream provided explicit metadata", m.ID)
+		}
+	}
 }
 
 func TestGetProviderModels_CodeBuddy_EmptyCache(t *testing.T) {

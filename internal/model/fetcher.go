@@ -286,6 +286,7 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 			DisplayName:   m.Name,
 			ContextLength: m.MaxInputTokens,
 			MaxOutput:     m.MaxOutputTokens,
+			FromUpstream:  m.MaxInputTokens > 0,
 		}
 		if m.SupportsImages {
 			meta.Modalities = []string{"text", "image"}
@@ -477,6 +478,7 @@ func normalizeMistral(body []byte) ([]ModelMetadata, error) {
 			ID:            m.ID,
 			ContextLength: m.MaxContextLength,
 			Family:        "mistral",
+			FromUpstream:  m.MaxContextLength > 0,
 		}
 
 		if m.Capabilities.CompletionChat {

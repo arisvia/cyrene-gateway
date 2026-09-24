@@ -158,9 +158,9 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		if cachedMeta, ok := cacheIndex[fullID]; ok && cachedMeta != nil {
 			item.ContextLength = cachedMeta.ContextLength
 			item.MaxOutput = cachedMeta.MaxOutput
-			// 规则：只有明确上游动态同步下发了确切元数据（FromUpstream），才锁定编辑；
+			// 规则：只有明确上游动态同步下发了确切元数据（FromUpstream，或 CodeBuddy / Antigravity 上游同步），才锁定编辑；
 			// 底层 Catalog 兜底匹配（无论来自缓存同步还是即时兜底），只要上游未明确下发，始终允许用户自由编辑！
-			isExplicitUpstream := (cachedMeta.FromUpstream || conn.Provider == "antigravity") && conn.Provider != "qoder"
+			isExplicitUpstream := (cachedMeta.FromUpstream || conn.Provider == "antigravity" || strings.HasPrefix(conn.Provider, "codebuddy")) && conn.Provider != "qoder"
 			if isExplicitUpstream && cachedMeta.ContextLength > 0 {
 				item.CanEdit = false
 			} else {
