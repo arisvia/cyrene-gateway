@@ -56,7 +56,6 @@ type ProviderInfo struct {
 	ValidateURL string `json:"validateUrl,omitempty"`
 	// ThinkingFormat indicates how reasoning tokens are surfaced ("openai" = reasoning_content field).
 	ThinkingFormat string   `json:"thinkingFormat,omitempty"`
-	Aliases        []string `json:"aliases,omitempty"`
 	AuthModes      []string `json:"authModes,omitempty"` // supported auth modes
 	AuthHooks      []string `json:"authHooks,omitempty"` // provider header overlays (e.g. "kimiHeaders")
 	Priority       int      `json:"priority,omitempty"`  // lower = higher priority
@@ -89,26 +88,28 @@ var Registry map[string]ProviderInfo
 // aliasMap is built once for fast lookup
 var aliasMap map[string]string
 
-// legacyAliases provides backward-compatible aliases from the original registry
+// legacyAliases provides backward-compatible aliases from previous iterations.
 var legacyAliases = map[string]string{
-	"oai":    "openai",
-	"claude": "anthropic",
-	"google": "gemini",
-	"or":     "openrouter",
-	"ds":     "deepseek",
-	"nim":    "nvidia",
-	"grok":   "xai",
+	"codebuddy-intl":    "codebuddy",
+	"alicode-intl":      "alicode",
+	"cbai":              "codebuddy",
+	"google":            "gemini",
+	"grok":              "xai",
+	"grok-build":        "grok-cli",
+	"gb":                "grok-cli",
+	"tencent-hunyuan":   "tencent",
+	"openai-custom":     "custom-openai",
+	"generic-openai":    "custom-openai",
+	"anthropic-custom":  "custom-anthropic",
+	"generic-anthropic": "custom-anthropic",
 }
 
 func buildAliasMap() map[string]string {
 	m := make(map[string]string)
 	for id, p := range Registry {
 		m[id] = id
-		if p.Alias != "" {
+		if p.Alias != "" && p.Alias != id {
 			m[p.Alias] = id
-		}
-		for _, a := range p.Aliases {
-			m[a] = id
 		}
 	}
 	// Apply legacy aliases (do not override existing entries)

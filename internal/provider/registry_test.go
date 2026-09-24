@@ -222,3 +222,41 @@ func TestRegistryTransportCompleteness(t *testing.T) {
 		}
 	}
 }
+
+// TestRegistryAliasesBrevityAndUniqueness verifies that provider aliases are
+// strictly concise (<= 5 chars), non-colliding, and resolve correctly.
+func TestRegistryAliasesBrevityAndUniqueness(t *testing.T) {
+	seenAliases := make(map[string]string)
+
+	for id, p := range Registry {
+		// Canonical ID must resolve to itself
+		if got := ResolveProviderAlias(id); got != id {
+			t.Errorf("ResolveProviderAlias(%q) = %q, want %q", id, got, id)
+		}
+
+		if p.Alias == "" {
+			continue
+		}
+
+		// Brevity rule: shorthand alias must be 5 chars or fewer (e.g. cbcn, qdcn)
+		if len(p.Alias) > 5 {
+			t.Errorf("Provider %q has alias %q which exceeds 5 characters", id, p.Alias)
+		}
+
+		// Shorthand must not collide with another canonical ID
+		if other, exists := Registry[p.Alias]; exists && p.Alias != id {
+			t.Errorf("Alias %q of provider %q collides with canonical provider %q", p.Alias, id, other.ID)
+		}
+
+		// Uniqueness: no two providers may claim the same alias
+		if prev, exists := seenAliases[p.Alias]; exists {
+			t.Errorf("Alias %q is claimed by both %q and %q", p.Alias, prev, id)
+		}
+		seenAliases[p.Alias] = id
+
+		// Alias must resolve to canonical ID
+		if got := ResolveProviderAlias(p.Alias); got != id {
+			t.Errorf("ResolveProviderAlias(%q) = %q, want %q", p.Alias, got, id)
+		}
+	}
+}

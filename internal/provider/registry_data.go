@@ -25,7 +25,7 @@ func init() {
 
 	Registry["alicode"] = ProviderInfo{
 		ID: "alicode", Name: "Alibaba (Intl)",
-		Alias: "alicode", Aliases: []string{"alicode", "alicode-intl"},
+		Alias:   "ali",
 		BaseURL: "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 10,
@@ -37,7 +37,7 @@ func init() {
 	}
 	Registry["alicode-cn"] = ProviderInfo{
 		ID: "alicode-cn", Name: "Alibaba (China)",
-		Alias: "alicode-cn", Aliases: []string{"alicode-cn"},
+		Alias:   "alicn",
 		BaseURL: "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 20,
@@ -49,7 +49,6 @@ func init() {
 	}
 	Registry["anthropic"] = ProviderInfo{
 		ID: "anthropic", Name: "Anthropic",
-		Alias: "anthropic", Aliases: []string{"anthropic"},
 		BaseURL: "https://api.anthropic.com/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 30,
@@ -64,7 +63,7 @@ func init() {
 	}
 	Registry["antigravity"] = ProviderInfo{
 		ID: "antigravity", Name: "Antigravity",
-		Alias: "ag", Aliases: []string{"ag"},
+		Alias:   "ag",
 		BaseURL: "",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 20,
@@ -78,7 +77,6 @@ func init() {
 	}
 	Registry["cerebras"] = ProviderInfo{
 		ID: "cerebras", Name: "Cerebras",
-		Alias: "cerebras", Aliases: []string{"cerebras"},
 		BaseURL: "https://api.cerebras.ai/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 60,
@@ -90,7 +88,7 @@ func init() {
 	}
 	Registry["claude"] = ProviderInfo{
 		ID: "claude", Name: "Claude Code",
-		Alias: "cc", Aliases: []string{"cc"},
+		Alias:   "cc",
 		BaseURL: "https://api.anthropic.com/v1/messages",
 		APIType: "anthropic", AuthType: "oauth",
 		// Phase 36 T4: dual-auth (OAuth preferred, API key fallback —
@@ -108,7 +106,7 @@ func init() {
 	}
 	Registry["codebuddy-cn"] = ProviderInfo{
 		ID: "codebuddy-cn", Name: "CodeBuddy (CN)",
-		Alias: "codebuddy-cn", Aliases: []string{"codebuddy-cn", "cbcn"},
+		Alias:   "cbcn",
 		BaseURL: "https://copilot.tencent.com/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 90,
@@ -132,7 +130,7 @@ func init() {
 	}
 	Registry["codebuddy"] = ProviderInfo{
 		ID: "codebuddy", Name: "CodeBuddy (Intl)",
-		Alias: "codebuddy", Aliases: []string{"codebuddy", "codebuddy-intl", "cbai"},
+		Alias:   "cb",
 		BaseURL: "https://www.codebuddy.ai/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 90,
@@ -156,7 +154,7 @@ func init() {
 	}
 	Registry["codex"] = ProviderInfo{
 		ID: "codex", Name: "OpenAI Codex",
-		Alias: "cx", Aliases: []string{"cx"},
+		Alias:   "cx",
 		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
 		APIType: "responses", AuthType: "oauth",
 		ForceStream: true,
@@ -171,7 +169,7 @@ func init() {
 	}
 	Registry["cursor"] = ProviderInfo{
 		ID: "cursor", Name: "Cursor",
-		Alias: "cu", Aliases: []string{"cu"},
+		Alias:   "cu",
 		BaseURL: "https://api2.cursor.sh",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 50,
@@ -181,7 +179,7 @@ func init() {
 	}
 	Registry["deepseek"] = ProviderInfo{
 		ID: "deepseek", Name: "DeepSeek",
-		Alias: "deepseek", Aliases: []string{"deepseek", "ds"},
+		Alias:   "ds",
 		BaseURL: "https://api.deepseek.com/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 110,
@@ -193,7 +191,6 @@ func init() {
 	}
 	Registry["gemini"] = ProviderInfo{
 		ID: "gemini", Name: "Gemini",
-		Alias: "gemini", Aliases: []string{"gemini"},
 		BaseURL: "https://generativelanguage.googleapis.com/v1beta/models",
 		APIType: "gemini", AuthType: "api-key",
 		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 50,
@@ -214,7 +211,7 @@ func init() {
 	}
 	Registry["github"] = ProviderInfo{
 		ID: "github", Name: "GitHub Copilot",
-		Alias: "gh", Aliases: []string{"gh"},
+		Alias:   "gh",
 		BaseURL: "https://api.githubcopilot.com/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 40,
@@ -238,7 +235,7 @@ func init() {
 	}
 	Registry["glm-cn"] = ProviderInfo{
 		ID: "glm-cn", Name: "GLM (China)",
-		Alias: "glm-cn", Aliases: []string{"glm-cn"},
+		Alias:   "glmcn",
 		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
@@ -250,7 +247,6 @@ func init() {
 	}
 	Registry["glm"] = ProviderInfo{
 		ID: "glm", Name: "GLM Coding",
-		Alias: "glm", Aliases: []string{"glm"},
 		BaseURL: "https://api.z.ai/api/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 140,
@@ -271,7 +267,7 @@ func init() {
 	}
 	Registry["grok-cli"] = ProviderInfo{
 		ID: "grok-cli", Name: "Grok Build",
-		Alias: "gcli", Aliases: []string{"gcli", "grok-build", "gb"},
+		Alias:     "gcli",
 		BaseURL:   "",
 		ModelsURL: "https://api.x.ai/v1/models",
 		APIType:   "openai", AuthType: "oauth",
@@ -286,7 +282,6 @@ func init() {
 	}
 	Registry["groq"] = ProviderInfo{
 		ID: "groq", Name: "Groq",
-		Alias: "groq", Aliases: []string{"groq"},
 		BaseURL: "https://api.groq.com/openai/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 60,
@@ -300,7 +295,7 @@ func init() {
 	}
 	Registry["kimi"] = ProviderInfo{
 		ID: "kimi", Name: "Kimi Code",
-		Alias: "kimi", Aliases: []string{"kimi", "kimi-coding", "kmc"},
+		Alias:   "km",
 		BaseURL: "https://api.kimi.com/coding/v1/messages",
 		APIType: "anthropic", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 170,
@@ -326,7 +321,7 @@ func init() {
 	}
 	Registry["minimax-cn"] = ProviderInfo{
 		ID: "minimax-cn", Name: "MiniMax (China)",
-		Alias: "minimax-cn", Aliases: []string{"minimax-cn"},
+		Alias:   "mmcn",
 		BaseURL: "https://api.minimaxi.com/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 190,
@@ -345,7 +340,7 @@ func init() {
 	}
 	Registry["minimax"] = ProviderInfo{
 		ID: "minimax", Name: "MiniMax Coding",
-		Alias: "minimax", Aliases: []string{"minimax"},
+		Alias:   "mm",
 		BaseURL: "https://api.minimax.io/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 90,
@@ -364,7 +359,7 @@ func init() {
 	}
 	Registry["nvidia"] = ProviderInfo{
 		ID: "nvidia", Name: "NVIDIA NIM",
-		Alias: "nvidia", Aliases: []string{"nvidia"},
+		Alias:   "nim",
 		BaseURL: "https://integrate.api.nvidia.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 20,
@@ -377,7 +372,7 @@ func init() {
 	}
 	Registry["openai"] = ProviderInfo{
 		ID: "openai", Name: "OpenAI",
-		Alias: "openai", Aliases: []string{"openai"},
+		Alias:   "oai",
 		BaseURL: "https://api.openai.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 30,
@@ -390,7 +385,7 @@ func init() {
 	}
 	Registry["opencode"] = ProviderInfo{
 		ID: "opencode", Name: "OpenCode",
-		Alias: "oc", Aliases: []string{"oc"},
+		Alias: "oc",
 		Brand: "OpenCode", Region: "zen",
 		BaseURL: "https://opencode.ai/zen/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
@@ -409,7 +404,7 @@ func init() {
 	}
 	Registry["opencode-go"] = ProviderInfo{
 		ID: "opencode-go", Name: "OpenCode Go",
-		Alias: "ocg", Aliases: []string{"ocg", "opencode_go"},
+		Alias: "ocg",
 		Brand: "OpenCode", Region: "go",
 		BaseURL: "https://opencode.ai/zen/go/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
@@ -428,7 +423,7 @@ func init() {
 	}
 	Registry["openrouter"] = ProviderInfo{
 		ID: "openrouter", Name: "OpenRouter",
-		Alias: "openrouter", Aliases: []string{"openrouter"},
+		Alias:   "or",
 		BaseURL: "https://openrouter.ai/api/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 10,
@@ -441,7 +436,7 @@ func init() {
 	}
 	Registry["qoder"] = ProviderInfo{
 		ID: "qoder", Name: "Qoder (Intl)",
-		Alias: "qd", Aliases: []string{"qd"},
+		Alias:   "qd",
 		BaseURL: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
@@ -456,7 +451,7 @@ func init() {
 	}
 	Registry["qoder-cn"] = ProviderInfo{
 		ID: "qoder-cn", Name: "Qoder (CN)",
-		Alias: "qdcn", Aliases: []string{"qdcn"},
+		Alias:   "qdcn",
 		BaseURL: "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
@@ -471,7 +466,7 @@ func init() {
 	}
 	Registry["tencent"] = ProviderInfo{
 		ID: "tencent", Name: "Tencent Hunyuan",
-		Alias: "hunyuan", Aliases: []string{"hunyuan", "tencent-hunyuan"},
+		Alias:   "hy",
 		BaseURL: "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
@@ -483,7 +478,7 @@ func init() {
 	}
 	Registry["vertex"] = ProviderInfo{
 		ID: "vertex", Name: "Vertex AI",
-		Alias: "vertex", Aliases: []string{"vertex", "vx"},
+		Alias:   "vx",
 		BaseURL: "https://aiplatform.googleapis.com",
 		APIType: "openai", AuthType: "api-key",
 		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 40,
@@ -494,7 +489,6 @@ func init() {
 	}
 	Registry["xai"] = ProviderInfo{
 		ID: "xai", Name: "xAI (Grok)",
-		Alias: "xai", Aliases: []string{"xai"},
 		BaseURL: "https://api.x.ai/v1/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 280,
@@ -509,7 +503,6 @@ func init() {
 	}
 	Registry["custom-openai"] = ProviderInfo{
 		ID: "custom-openai", Name: "OpenAI Compatible",
-		Alias: "custom-openai", Aliases: []string{"custom-openai", "openai-custom", "generic-openai"},
 		BaseURL: "https://api.openai.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "custom", AuthModes: []string{"api-key"}, Priority: 50,
@@ -521,7 +514,6 @@ func init() {
 	}
 	Registry["custom-anthropic"] = ProviderInfo{
 		ID: "custom-anthropic", Name: "Anthropic Compatible",
-		Alias: "custom-anthropic", Aliases: []string{"custom-anthropic", "anthropic-custom", "generic-anthropic"},
 		BaseURL: "https://api.anthropic.com/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "custom", AuthModes: []string{"api-key"}, Priority: 50,
