@@ -289,6 +289,7 @@ func TestCookieAuthScheme(t *testing.T) {
 func TestRefreshLeadOverrides_Batch2(t *testing.T) {
 	tests := map[string]time.Duration{
 		"github":         5 * time.Minute,
+		"codebuddy":      5 * time.Minute,
 		"codebuddy-cn":   5 * time.Minute,
 		"codebuddy-intl": 5 * time.Minute,
 		"grok-cli":       5 * time.Minute,

@@ -57,7 +57,7 @@ func TestSanitizeCodebuddyRequest_Intl(t *testing.T) {
 		},
 	}
 
-	sanitizeCodebuddyRequest("codebuddy-intl", body)
+	sanitizeCodebuddyRequest("codebuddy", body)
 
 	msgs, ok := body["messages"].([]any)
 	if !ok || len(msgs) != 2 {
@@ -117,17 +117,17 @@ func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
 	cand := ExecutionCandidate{
 		Connection: &model.ProviderConnection{
 			ID:       "test-cb",
-			Provider: "codebuddy-intl",
+			Provider: "codebuddy",
 			AuthType: "oauth",
 			Data: model.ConnectionData{
 				AccessToken: "cb-test-token",
 			},
 		},
 		ModelInfo: model.ModelInfo{
-			Provider: "codebuddy-intl",
+			Provider: "codebuddy",
 			Model:    "hy4-preview",
 		},
-		ProviderInfo: Registry["codebuddy-intl"],
+		ProviderInfo: Registry["codebuddy"],
 	}
 
 	rawBody := []byte(`{"messages":[{"role":"user","content":"Hello"}],"stream":false}`)

@@ -50,6 +50,7 @@ func TestGetProviderFlowType(t *testing.T) {
 		{"github", FlowDeviceCode},
 		{"kimi", FlowDeviceCode},
 		{"grok-cli", FlowDeviceCode},
+		{"codebuddy", FlowDeviceCode},
 		{"codebuddy-cn", FlowDeviceCode},
 		{"codebuddy-intl", FlowDeviceCode},
 		{"claude", FlowAuthorizationCodePKCE},
@@ -328,8 +329,8 @@ func TestPollDeviceCode_CodeBuddy(t *testing.T) {
 }
 
 func TestPollDeviceCode_CodeBuddy_JWTClaims(t *testing.T) {
-	orig := Registry["codebuddy-intl"]
-	defer func() { Registry["codebuddy-intl"] = orig }()
+	orig := Registry["codebuddy"]
+	defer func() { Registry["codebuddy"] = orig }()
 
 	// header: {"alg":"none"} -> eyJhbGciOiJub25lIn0
 	// payload: {"email":"user@test.com","name":"Test Dev","preferred_username":"user@test.com"}
@@ -344,9 +345,9 @@ func TestPollDeviceCode_CodeBuddy_JWTClaims(t *testing.T) {
 
 	info := orig
 	info.TokenURL = ts.URL
-	Registry["codebuddy-intl"] = info
+	Registry["codebuddy"] = info
 
-	res, err := PollDeviceCode("codebuddy-intl", "cb-state-123", "", nil, ts.Client())
+	res, err := PollDeviceCode("codebuddy", "cb-state-123", "", nil, ts.Client())
 	if err != nil {
 		t.Fatalf("poll failed: %v", err)
 	}
@@ -362,8 +363,8 @@ func TestPollDeviceCode_CodeBuddy_JWTClaims(t *testing.T) {
 }
 
 func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
-	orig := Registry["codebuddy-intl"]
-	defer func() { Registry["codebuddy-intl"] = orig }()
+	orig := Registry["codebuddy"]
+	defer func() { Registry["codebuddy"] = orig }()
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("platform") != "ide" {
@@ -382,9 +383,9 @@ func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
 
 	info := orig
 	info.DeviceCodeURL = ts.URL
-	Registry["codebuddy-intl"] = info
+	Registry["codebuddy"] = info
 
-	resp, err := RequestDeviceCode("codebuddy-intl", ts.Client())
+	resp, err := RequestDeviceCode("codebuddy", ts.Client())
 	if err != nil {
 		t.Fatalf("RequestDeviceCode failed: %v", err)
 	}
@@ -397,18 +398,17 @@ func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
 }
 
 func TestRequestDeviceCode_CodeBuddyIntl_NetworkDiagnosis(t *testing.T) {
-	orig := Registry["codebuddy-intl"]
-	defer func() { Registry["codebuddy-intl"] = orig }()
-
+	orig := Registry["codebuddy"]
+	defer func() { Registry["codebuddy"] = orig }()
 	// Close server immediately so client gets connection reset/refused
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	ts.Close()
 
 	info := orig
 	info.DeviceCodeURL = ts.URL
-	Registry["codebuddy-intl"] = info
+	Registry["codebuddy"] = info
 
-	_, err := RequestDeviceCode("codebuddy-intl", ts.Client())
+	_, err := RequestDeviceCode("codebuddy", ts.Client())
 	if err == nil {
 		t.Fatal("expected error connecting to closed server, got nil")
 	}

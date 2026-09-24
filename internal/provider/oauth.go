@@ -28,6 +28,7 @@ var refreshLeadOverrides = map[string]time.Duration{
 	"google":         5 * time.Minute,
 	"grok-cli":       5 * time.Minute,
 	"github":         5 * time.Minute,
+	"codebuddy":      5 * time.Minute,
 	"codebuddy-cn":   5 * time.Minute,
 	"codebuddy-intl": 5 * time.Minute,
 }
@@ -159,11 +160,14 @@ var refreshProfiles = map[string]refreshProfile{
 	"github": {
 		url: "https://github.com/login/oauth/access_token",
 	},
+	"codebuddy": {
+		// CodeBuddy (Intl) uses X-Refresh-Token header, handled separately.
+	},
 	"codebuddy-cn": {
 		// CodeBuddy CN uses X-Refresh-Token header, handled separately.
 	},
 	"codebuddy-intl": {
-		// CodeBuddy intl uses X-Refresh-Token header, handled separately.
+		// CodeBuddy legacy alias uses X-Refresh-Token header, handled separately.
 	},
 }
 
@@ -253,7 +257,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 	}
 
 	// CodeBuddy CN/intl use X-Refresh-Token header (not standard OAuth2 body).
-	if providerID == "codebuddy-cn" || providerID == "codebuddy-intl" {
+	if providerID == "codebuddy-cn" || providerID == "codebuddy" || providerID == "codebuddy-intl" {
 		return refreshCodebuddy(providerID, conn, client)
 	}
 
@@ -405,7 +409,7 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 		refreshURL = "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
 		domain = "copilot.tencent.com"
 		userAgent = "CLI/2.108.1 CodeBuddy/2.108.1"
-	default: // codebuddy-intl
+	default: // codebuddy (intl)
 		refreshURL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
 		domain = "www.codebuddy.ai"
 		userAgent = "CLI/2.108.1 CodeBuddy/2.108.1"
@@ -426,7 +430,7 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if providerID == "codebuddy-intl" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+		if (providerID == "codebuddy" || providerID == "codebuddy-intl") && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
 			return nil, fmt.Errorf("codebuddy refresh request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
 		}
 		return nil, fmt.Errorf("codebuddy refresh request failed: %w", err)

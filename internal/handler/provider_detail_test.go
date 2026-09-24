@@ -473,17 +473,17 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	orig := provider.Registry["codebuddy-intl"]
-	defer func() { provider.Registry["codebuddy-intl"] = orig }()
+	orig := provider.Registry["codebuddy"]
+	defer func() { provider.Registry["codebuddy"] = orig }()
 
 	mockInfo := orig
 	mockInfo.BaseURL = ts.URL + "/v2/chat/completions"
 	mockInfo.ModelsURL = ts.URL + "/v3/config"
-	provider.Registry["codebuddy-intl"] = mockInfo
+	provider.Registry["codebuddy"] = mockInfo
 
 	conn := &model.ProviderConnection{
 		ID:       "cb-intl-live-conn",
-		Provider: "codebuddy-intl",
+		Provider: "codebuddy",
 		AuthType: "oauth",
 		IsActive: true,
 		Data: model.ConnectionData{
@@ -492,7 +492,7 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 	}
 	database.CreateConnection(conn)
 
-	req := newLocalRequest("POST", "/api/providers/codebuddy-intl/refresh-models", nil)
+	req := newLocalRequest("POST", "/api/providers/codebuddy/refresh-models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 

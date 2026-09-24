@@ -9,11 +9,11 @@ func TestRegistryCompleteness(t *testing.T) {
 	expectedProviders := []string{
 		// Curated coding providers (13)
 		"claude", "codex", "github", "grok-cli", "cursor", "qoder",
-		"codebuddy-intl", "kimi", "antigravity", "opencode", "openrouter",
+		"codebuddy", "kimi", "antigravity", "opencode", "openrouter",
 		"glm", "glm-cn",
 		// Direct vendor APIs (8)
 		"anthropic", "openai", "gemini", "vertex", "tencent",
-		"xai", "alicode-intl", "alicode",
+		"xai", "alicode", "alicode-cn",
 		// E2E-verified (4)
 		"deepseek", "cerebras", "groq", "nvidia",
 		// Brand pairs / quota-ported (5)
@@ -89,11 +89,12 @@ func TestRegistryProviderFields(t *testing.T) {
 // sibling pair carries the same Brand and a distinct Region.
 func TestRegistryBrandRegion(t *testing.T) {
 	brands := map[string][]string{
-		"GLM":      {"glm", "glm-cn"},
-		"MiniMax":  {"minimax", "minimax-cn"},
-		"Alibaba":  {"alicode-intl", "alicode"},
-		"OpenCode": {"opencode", "opencode-go"},
-		"Qoder":    {"qoder", "qoder-cn"},
+		"GLM":       {"glm", "glm-cn"},
+		"MiniMax":   {"minimax", "minimax-cn"},
+		"Alibaba":   {"alicode", "alicode-cn"},
+		"CodeBuddy": {"codebuddy", "codebuddy-cn"},
+		"OpenCode":  {"opencode", "opencode-go"},
+		"Qoder":     {"qoder", "qoder-cn"},
 	}
 	for brand, ids := range brands {
 		for _, id := range ids {
@@ -115,22 +116,22 @@ func TestRegistryBrandRegion(t *testing.T) {
 // TestRegistryOfficialNames verifies Phase 36 T2 vendor-official display names.
 func TestRegistryOfficialNames(t *testing.T) {
 	names := map[string]string{
-		"grok-cli":       "Grok Build",
-		"kimi":           "Kimi Code",
-		"antigravity":    "Antigravity",
-		"codebuddy-intl": "CodeBuddy (Intl)",
-		"codebuddy-cn":   "CodeBuddy (CN)",
-		"cursor":         "Cursor",
-		"opencode":       "OpenCode",
-		"opencode-go":    "OpenCode Go",
-		"claude":         "Claude Code",
-		"codex":          "OpenAI Codex",
-		"github":         "GitHub Copilot",
-		"openrouter":     "OpenRouter",
-		"alicode":        "Alibaba (China)",
-		"alicode-intl":   "Alibaba (Intl)",
-		"qoder":          "Qoder (Intl)",
-		"qoder-cn":       "Qoder (CN)",
+		"grok-cli":     "Grok Build",
+		"kimi":         "Kimi Code",
+		"antigravity":  "Antigravity",
+		"codebuddy":    "CodeBuddy (Intl)",
+		"codebuddy-cn": "CodeBuddy (CN)",
+		"cursor":       "Cursor",
+		"opencode":     "OpenCode",
+		"opencode-go":  "OpenCode Go",
+		"claude":       "Claude Code",
+		"codex":        "OpenAI Codex",
+		"github":       "GitHub Copilot",
+		"openrouter":   "OpenRouter",
+		"alicode":      "Alibaba (Intl)",
+		"alicode-cn":   "Alibaba (China)",
+		"qoder":        "Qoder (Intl)",
+		"qoder-cn":     "Qoder (CN)",
 	}
 	for id, want := range names {
 		p, ok := Registry[id]

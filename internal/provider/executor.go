@@ -254,7 +254,7 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 		return
 	}
 
-	if providerID == "codebuddy-intl" {
+	if providerID == "codebuddy" || providerID == "codebuddy-intl" {
 		var filtered []any
 		filtered = append(filtered, map[string]any{"role": "system", "content": "You are CodeBuddy Code."})
 		for _, m := range rawMsgs {

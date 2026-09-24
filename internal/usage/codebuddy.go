@@ -92,7 +92,7 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 	userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
 	ideType := "CLI"
 
-	if strings.Contains(c.Provider, "intl") {
+	if c.Provider == "codebuddy" || strings.Contains(c.Provider, "intl") {
 		targetURL = codebuddyIntlBillingURL
 		userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
 		ideType = "IDE"

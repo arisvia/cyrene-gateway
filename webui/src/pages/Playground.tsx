@@ -329,7 +329,7 @@ const Playground: Component = () => {
   function getProviderBadge(providerId: string): string {
     const reg = store.registryList().find(r => r.id === providerId)
     if (reg?.name) return reg.name
-    if (providerId === 'codebuddy-cn') return 'CodeBuddy'
+    if (providerId === 'codebuddy-cn' || providerId === 'codebuddy') return 'CodeBuddy'
     if (providerId === 'openrouter') return 'OpenRouter'
     if (providerId === 'antigravity') return 'Antigravity'
     if (providerId === 'opencode') return 'OpenCode'

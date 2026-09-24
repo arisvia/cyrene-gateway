@@ -500,19 +500,19 @@ func TestCodebuddyChatSanitization(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	origIntl := provider.Registry["codebuddy-intl"]
-	defer func() { provider.Registry["codebuddy-intl"] = origIntl }()
+	origIntl := provider.Registry["codebuddy"]
+	defer func() { provider.Registry["codebuddy"] = origIntl }()
 
 	mockInfo := origIntl
 	mockInfo.BaseURL = upstream.URL
-	provider.Registry["codebuddy-intl"] = mockInfo
+	provider.Registry["codebuddy"] = mockInfo
 
 	srv, database := setupTestServer(t)
 	defer database.Close()
 
 	conn := &model.ProviderConnection{
 		ID:       "cb-test-conn",
-		Provider: "codebuddy-intl",
+		Provider: "codebuddy",
 		AuthType: "oauth",
 		IsActive: true,
 		Data: model.ConnectionData{
@@ -524,7 +524,7 @@ func TestCodebuddyChatSanitization(t *testing.T) {
 	}
 
 	// Client sends regular OpenAI non-streaming request without system prompt
-	reqBody := `{"model":"codebuddy-intl/hy4-preview","messages":[{"role":"user","content":"Hello CodeBuddy"}],"stream":false}`
+	reqBody := `{"model":"codebuddy/hy4-preview","messages":[{"role":"user","content":"Hello CodeBuddy"}],"stream":false}`
 	r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(reqBody))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

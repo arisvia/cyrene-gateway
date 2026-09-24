@@ -83,6 +83,7 @@ const getProviderAsset = (key: string): string | undefined => {
 }
 
 const PROVIDER_IMAGE_MAP: Record<string, string> = {
+  'alicode-cn': getProviderAsset('alicode')!,
   'alicode-intl': getProviderAsset('alicode')!,
   alicode: getProviderAsset('alicode')!,
   'codebuddy-intl': getProviderAsset('codebuddy')!,

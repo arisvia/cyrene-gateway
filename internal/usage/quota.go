@@ -70,6 +70,7 @@ var quotaFetchers = map[string]QuotaFetcher{
 	"qoder":          fetchQoder,
 	"qoder-cn":       fetchQoder,
 	"antigravity":    fetchAntigravity,
+	"codebuddy":      fetchCodebuddy,
 	"codebuddy-cn":   fetchCodebuddy,
 	"codebuddy-intl": fetchCodebuddy,
 	"opencode":       fetchOpenCode,

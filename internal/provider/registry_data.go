@@ -23,9 +23,9 @@ var claudeOAuthHeaders = map[string]string{
 func init() {
 	Registry = make(map[string]ProviderInfo, 40)
 
-	Registry["alicode-intl"] = ProviderInfo{
-		ID: "alicode-intl", Name: "Alibaba (Intl)",
-		Alias: "alicode-intl", Aliases: []string{"alicode-intl"},
+	Registry["alicode"] = ProviderInfo{
+		ID: "alicode", Name: "Alibaba (Intl)",
+		Alias: "alicode", Aliases: []string{"alicode", "alicode-intl"},
 		BaseURL: "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 10,
@@ -35,9 +35,9 @@ func init() {
 		Icon:     "cloud",
 		TextIcon: "ALi",
 	}
-	Registry["alicode"] = ProviderInfo{
-		ID: "alicode", Name: "Alibaba (China)",
-		Alias: "alicode", Aliases: []string{"alicode"},
+	Registry["alicode-cn"] = ProviderInfo{
+		ID: "alicode-cn", Name: "Alibaba (China)",
+		Alias: "alicode-cn", Aliases: []string{"alicode-cn"},
 		BaseURL: "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 20,
@@ -108,7 +108,7 @@ func init() {
 	}
 	Registry["codebuddy-cn"] = ProviderInfo{
 		ID: "codebuddy-cn", Name: "CodeBuddy (CN)",
-		Alias: "cbcn", Aliases: []string{"cbcn"},
+		Alias: "codebuddy-cn", Aliases: []string{"codebuddy-cn", "cbcn"},
 		BaseURL: "https://copilot.tencent.com/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 90,
@@ -130,9 +130,9 @@ func init() {
 		ThinkingFormat: "openai",
 		ModelsURL:      "https://copilot.tencent.com/v3/config",
 	}
-	Registry["codebuddy-intl"] = ProviderInfo{
-		ID: "codebuddy-intl", Name: "CodeBuddy (Intl)",
-		Alias: "cbai", Aliases: []string{"cbai"},
+	Registry["codebuddy"] = ProviderInfo{
+		ID: "codebuddy", Name: "CodeBuddy (Intl)",
+		Alias: "codebuddy", Aliases: []string{"codebuddy", "codebuddy-intl", "cbai"},
 		BaseURL: "https://www.codebuddy.ai/v2/chat/completions",
 		APIType: "openai", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 90,

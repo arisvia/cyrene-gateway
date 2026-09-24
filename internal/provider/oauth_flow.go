@@ -126,7 +126,8 @@ func ClearSession(state string) {
 
 // GetProviderFlowType determines the OAuth flow type for a provider.
 func GetProviderFlowType(providerID string) OAuthFlowType {
-	info, ok := Registry[providerID]
+	canonical := ResolveProviderAlias(providerID)
+	info, ok := Registry[canonical]
 	if !ok {
 		return ""
 	}
@@ -420,11 +421,11 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
-	case "codebuddy-cn", "codebuddy-intl":
+	case "codebuddy", "codebuddy-cn", "codebuddy-intl":
 		platform := "CLI"
 		domain := "copilot.tencent.com"
 		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
-		if providerID == "codebuddy-intl" {
+		if providerID == "codebuddy" || providerID == "codebuddy-intl" {
 			platform = "ide"
 			domain = "www.codebuddy.ai"
 			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
@@ -444,7 +445,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("X-Product", "SaaS")
 		resp, err = client.Do(req)
 		if err != nil {
-			if providerID == "codebuddy-intl" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+			if (providerID == "codebuddy" || providerID == "codebuddy-intl") && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
 				return nil, fmt.Errorf("device code request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
 			}
 			return nil, fmt.Errorf("device code request failed: %w", err)
@@ -603,10 +604,10 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
-	case "codebuddy-cn", "codebuddy-intl":
+	case "codebuddy", "codebuddy-cn", "codebuddy-intl":
 		domain := "copilot.tencent.com"
 		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
-		if providerID == "codebuddy-intl" {
+		if providerID == "codebuddy" || providerID == "codebuddy-intl" {
 			domain = "www.codebuddy.ai"
 			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
 		}
@@ -626,7 +627,7 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		req.Header.Set("X-Product", "SaaS")
 		resp, err = client.Do(req)
 		if err != nil {
-			if providerID == "codebuddy-intl" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+			if (providerID == "codebuddy" || providerID == "codebuddy-intl") && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
 				return nil, fmt.Errorf("poll request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
 			}
 			return nil, fmt.Errorf("poll request failed: %w", err)
