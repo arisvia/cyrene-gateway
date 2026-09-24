@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/config"
@@ -35,6 +36,7 @@ const (
 type DashboardHandler struct {
 	cfg      *config.Config
 	embedded fs.FS
+	mu       sync.RWMutex
 }
 
 func NewDashboardHandler(cfg *config.Config) *DashboardHandler {
@@ -47,6 +49,8 @@ func NewDashboardHandler(cfg *config.Config) *DashboardHandler {
 }
 
 func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	addDashboardVary(w.Header())
 	path := strings.TrimPrefix(r.URL.Path, "/")
 
@@ -297,9 +301,13 @@ func (d *DashboardHandler) TryDownload() {
 		return
 	}
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxPanelDownload))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxPanelDownload+1))
 	if err != nil {
 		slog.Warn("Failed to read panel response", "error", err)
+		return
+	}
+	if len(data) > maxPanelDownload {
+		slog.Warn("Panel download exceeds size limit")
 		return
 	}
 
@@ -340,88 +348,95 @@ func (d *DashboardHandler) panelDir() string {
 
 // extractPanel safely extracts a zip archive, guarding against zip-slip.
 func (d *DashboardHandler) extractPanel(data []byte) error {
-	tmp, err := os.CreateTemp(d.cfg.DataDir, "panel-*.zip")
-	if err != nil {
-		return fmt.Errorf("create temp: %w", err)
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write temp: %w", err)
-	}
-	tmp.Close()
-
-	zr, err := zip.OpenReader(tmpPath)
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return fmt.Errorf("open zip: %w", err)
 	}
-	defer zr.Close()
-
 	if len(zr.File) > maxPanelFiles {
 		return fmt.Errorf("zip contains too many files (%d > %d)", len(zr.File), maxPanelFiles)
 	}
-
-	dest := filepath.Join(d.cfg.DataDir, fmt.Sprintf("panel_dist_%s", Version()))
-	// Remove stale extraction from same version (re-download)
-	os.RemoveAll(dest)
+	staging, err := os.MkdirTemp(d.cfg.DataDir, ".panel-staging-")
+	if err != nil {
+		return fmt.Errorf("create staging directory: %w", err)
+	}
+	defer os.RemoveAll(staging)
 
 	foundIndex := false
 	for _, zf := range zr.File {
 		if zf.FileInfo().IsDir() {
 			continue
 		}
-
-		name := filepath.FromSlash(zf.Name)
-		// Zip-slip protection: reject absolute paths and traversal
-		if filepath.IsAbs(name) || strings.Contains(name, "..") {
+		if !fs.ValidPath(zf.Name) || strings.Contains(zf.Name, `\`) || !zf.Mode().IsRegular() {
+			return fmt.Errorf("zip entry with unsafe path or type: %s", zf.Name)
+		}
+		name := strings.TrimPrefix(zf.Name, "dist/")
+		if !filepath.IsLocal(name) {
 			return fmt.Errorf("zip entry with unsafe path: %s", zf.Name)
 		}
-
-		// Strip single top-level directory (e.g. "dist/index.html" → "index.html")
-		if parts := strings.SplitN(name, string(os.PathSeparator), 2); len(parts) == 2 && parts[0] == "dist" {
-			name = parts[1]
+		if zf.UncompressedSize64 > maxPanelFileSize {
+			return fmt.Errorf("zip entry exceeds size limit: %s", zf.Name)
 		}
-
-		target := filepath.Join(dest, name)
-		if !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) {
-			return fmt.Errorf("zip entry escapes target dir: %s", zf.Name)
-		}
-
-		if name == "index.html" {
-			foundIndex = true
-		}
-
+		target := filepath.Join(staging, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return fmt.Errorf("mkdir: %w", err)
 		}
-
 		rc, err := zf.Open()
 		if err != nil {
 			return fmt.Errorf("open entry %s: %w", zf.Name, err)
 		}
-
 		out, err := os.Create(target)
 		if err != nil {
 			rc.Close()
 			return fmt.Errorf("create %s: %w", target, err)
 		}
-
-		_, err = io.Copy(out, io.LimitReader(rc, maxPanelFileSize))
+		n, copyErr := io.Copy(out, io.LimitReader(rc, maxPanelFileSize+1))
 		rc.Close()
-		out.Close()
-		if err != nil {
-			return fmt.Errorf("extract %s: %w", zf.Name, err)
+		closeErr := out.Close()
+		if copyErr != nil {
+			return fmt.Errorf("extract %s: %w", zf.Name, copyErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close %s: %w", zf.Name, closeErr)
+		}
+		if n > maxPanelFileSize {
+			return fmt.Errorf("zip entry exceeds size limit: %s", zf.Name)
+		}
+		if name == "index.html" {
+			foundIndex = true
 		}
 	}
-
 	if !foundIndex {
-		os.RemoveAll(dest)
 		return fmt.Errorf("zip does not contain index.html")
 	}
 
-	// Clean up stale panel dirs from previous versions
+	// Readers must not observe the gap between directory renames on Windows.
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	dest := filepath.Join(d.cfg.DataDir, fmt.Sprintf("panel_dist_%s", Version()))
+	backup, err := os.MkdirTemp(d.cfg.DataDir, ".panel-backup-")
+	if err != nil {
+		return fmt.Errorf("create backup directory: %w", err)
+	}
+	if err := os.Remove(backup); err != nil {
+		return err
+	}
+	hadPrevious := false
+	if err := os.Rename(dest, backup); err == nil {
+		hadPrevious = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("preserve previous panel: %w", err)
+	}
+	if err := os.Rename(staging, dest); err != nil {
+		if hadPrevious {
+			if restoreErr := os.Rename(backup, dest); restoreErr != nil {
+				return fmt.Errorf("publish panel: %v; previous panel retained at %s: %w", err, backup, restoreErr)
+			}
+		}
+		return fmt.Errorf("publish panel: %w", err)
+	}
+	if hadPrevious {
+		os.RemoveAll(backup)
+	}
 	d.cleanStaleCaches()
 	return nil
 }
@@ -444,8 +459,25 @@ func (d *DashboardHandler) writeCache(data []byte) error {
 	if err := os.MkdirAll(d.cfg.DataDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
+	file, err := os.CreateTemp(d.cfg.DataDir, ".panel-html-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err := os.Rename(file.Name(), d.cachePath()); err != nil {
+		return err
+	}
 	d.cleanStaleCaches()
-	return os.WriteFile(d.cachePath(), data, 0o644)
+	return nil
 }
 
 // cleanStaleCaches removes panel caches and extractions from previous versions.

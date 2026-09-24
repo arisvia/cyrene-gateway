@@ -10,10 +10,18 @@ import (
 )
 
 func TestHandleEndpoints_CurrentDomainAndDeduplication(t *testing.T) {
-	srv, _ := setupTestServer(t)
+	srv, database := setupTestServer(t)
+	settings, err := database.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.PasswordHash = auth.HashPassword("test-password")
+	if err := database.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. Authenticated request via public domain with HTTPS proxy header
-	token, err := auth.CreateSessionToken()
+	token, err := auth.CreateSessionToken(settings.PasswordHash)
 	if err != nil {
 		t.Fatalf("failed to create token: %v", err)
 	}
@@ -58,8 +66,12 @@ func TestHandleEndpoints_CurrentDomainAndDeduplication(t *testing.T) {
 	// 2. Request via localhost - should deduplicate with localhost entry
 	req2 := httptest.NewRequest("GET", "/api/endpoints", nil)
 	req2.Host = "localhost:20128"
+	req2.RemoteAddr = "127.0.0.1:1234"
 	w2 := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 for local request, got %d", w2.Code)
+	}
 
 	var resp2 struct {
 		Endpoints []struct {

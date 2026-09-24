@@ -81,7 +81,10 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 				conn.Data.ProviderSpecificData = make(map[string]any)
 			}
 			conn.Data.ProviderSpecificData["projectId"] = projID
-			s.DB.UpdateConnection(conn)
+			if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": projID}); err != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "failed to persist project discovery"})
+				return
+			}
 		}
 
 		availableModels := s.getAntigravityAvailableModels()

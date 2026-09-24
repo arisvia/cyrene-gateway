@@ -2,12 +2,14 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
@@ -584,7 +586,7 @@ func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
 			// Mark connection as needing re-auth.
 			conn.Data.TestStatus = "expired"
 			conn.Data.LastError = refreshErr.Error()
-			if err := s.DB.UpdateConnection(conn); err != nil {
+			if err := s.DB.UpdateConnectionHealth(conn.ID, conn.Data); err != nil {
 				slog.Error("Failed to persist expired OAuth status", "provider", providerID, "error", err)
 			}
 		}
@@ -592,9 +594,17 @@ func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider.ApplyRefreshResult(conn, result)
-	if err := s.DB.UpdateConnection(conn); err != nil {
+	if err := s.persistRefreshedCredentials(conn, result); err != nil {
 		slog.Error("Failed to persist refreshed OAuth token", "provider", providerID, "error", err)
+		status := http.StatusInternalServerError
+		message := "failed to persist refreshed credentials"
+		if errors.Is(err, db.ErrNotFound) {
+			status, message = http.StatusNotFound, "connection no longer exists"
+		} else if errors.Is(err, db.ErrConnectionCredentialsChanged) {
+			status, message = http.StatusConflict, "connection credentials changed during refresh"
+		}
+		writeJSON(w, status, map[string]string{"error": message})
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

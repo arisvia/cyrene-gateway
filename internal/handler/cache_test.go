@@ -149,6 +149,8 @@ func TestResponseCacheIntegration(t *testing.T) {
 	// 3. Invalidation test on Settings save: saving settings should purge cache
 	putSettingsBody := bytes.NewReader([]byte(`{"rtkEnabled":true,"responseCacheEnabled":true}`))
 	putReq := httptest.NewRequest("PUT", "/api/settings", putSettingsBody)
+	putReq.RemoteAddr = "127.0.0.1:1234"
+	putReq.Host = "localhost"
 	putReq.Header.Set("Content-Type", "application/json")
 	putW := httptest.NewRecorder()
 	srv.handlePutSettings(putW, putReq)

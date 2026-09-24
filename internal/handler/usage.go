@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -24,21 +25,32 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 		"period":                period,
 	}
 
-	// Aggregate from daily data
-	var cutoffKey string
+	// One clock and cutoff govern all dimensions. Natural-day periods use UTC;
+	// only 24h is a rolling window, whose totals cannot come from daily blobs.
+	now := time.Now().UTC()
+	today := now.Truncate(24 * time.Hour)
+	var start time.Time
 	switch period {
+	case "today":
+		start = today
+	case "24h":
+		start = now.Add(-24 * time.Hour)
 	case "7d":
-		cutoffKey = time.Now().UTC().AddDate(0, 0, -6).Format("2006-01-02")
+		start = today.AddDate(0, 0, -6)
 	case "30d":
-		cutoffKey = time.Now().UTC().AddDate(0, 0, -29).Format("2006-01-02")
+		start = today.AddDate(0, 0, -29)
 	case "60d":
-		cutoffKey = time.Now().UTC().AddDate(0, 0, -59).Format("2006-01-02")
-	case "24h", "today":
-		cutoffKey = time.Now().UTC().Format("2006-01-02")
-	default:
-		cutoffKey = ""
+		start = today.AddDate(0, 0, -59)
 	}
-
+	var cutoffKey string
+	if !start.IsZero() {
+		cutoffKey = start.Format("2006-01-02")
+	}
+	history, err := s.DB.GetUsageSummary(start, now)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get usage history summary"})
+		return
+	}
 	days, err := s.DB.GetUsageDailyRange(cutoffKey)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get usage data"})
@@ -52,7 +64,14 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	byProvider := make(map[string]db.DayCounter)
 	byModel := make(map[string]db.DayCounter)
 
-	for _, day := range days {
+	missingDates := make([]string, 0)
+	for date, day := range days {
+		if date > today.Format("2006-01-02") {
+			continue
+		}
+		if day.Requests > history.RequestsByDay[date] {
+			missingDates = append(missingDates, date)
+		}
 		totalRequests += day.Requests
 		totalPrompt += day.PromptTokens
 		totalCompletion += day.CompletionTokens
@@ -76,6 +95,22 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	stats["totalsSource"] = "daily"
+	if period == "24h" {
+		totalRequests = history.Requests
+		totalPrompt = history.PromptTokens
+		totalCompletion = history.CompletionTokens
+		totalCost = history.Cost
+		byProvider = history.ByProvider
+		byModel = history.ByModel
+		stats["totalsSource"] = "history"
+	}
+	// For partial-day windows this is a conservative coverage warning, not an
+	// invented missing count: pruned records cannot be assigned to keys or hours.
+	sort.Strings(missingDates)
+	stats["historyIncomplete"] = len(missingDates) > 0
+	stats["historyMissingDates"] = missingDates
+	stats["keyEndpointSource"] = "history"
 	stats["totalRequests"] = totalRequests
 	stats["totalPromptTokens"] = totalPrompt
 	stats["totalCompletionTokens"] = totalCompletion
@@ -83,22 +118,8 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	stats["byProvider"] = byProvider
 	stats["byModel"] = byModel
 
-	var cutoffTime string
-	switch period {
-	case "24h", "today":
-		cutoffTime = time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
-	case "7d":
-		cutoffTime = time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339)
-	case "30d":
-		cutoffTime = time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
-	case "60d":
-		cutoffTime = time.Now().UTC().AddDate(0, 0, -60).Format(time.RFC3339)
-	default:
-		cutoffTime = ""
-	}
-	byKey, byEndpoint, _ := s.DB.GetUsageDimensions(cutoffTime)
-	stats["byKey"] = byKey
-	stats["byEndpoint"] = byEndpoint
+	stats["byKey"] = history.ByKey
+	stats["byEndpoint"] = history.ByEndpoint
 	writeJSON(w, http.StatusOK, stats)
 }
 

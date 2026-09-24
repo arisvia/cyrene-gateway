@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
@@ -24,22 +25,23 @@ import (
 )
 
 type Server struct {
-	DB           *db.DB
-	Router       *http.ServeMux
-	Handler      http.Handler // Router wrapped with middleware
-	Combos       *provider.ComboManager
-	Proxies      *provider.ProxyManager
-	MediaClient  *media.Client
-	Dashboard    *DashboardHandler
-	Auth         *AuthHandler
-	Endpoints    *EndpointHandler
-	Events       *EventBroadcaster
-	Metrics      *metrics.M
-	Config       *config.Config
-	Cache        *cache.Cache
-	startTime    time.Time
-	onRestart    func()
-	ShutdownFunc func(ctx context.Context) error
+	DB          *db.DB
+	Router      *http.ServeMux
+	Handler     http.Handler // Router wrapped with middleware
+	Combos      *provider.ComboManager
+	Proxies     *provider.ProxyManager
+	MediaClient *media.Client
+	Dashboard   *DashboardHandler
+	Auth        *AuthHandler
+	Endpoints   *EndpointHandler
+	Events      *EventBroadcaster
+	Metrics     *metrics.M
+	Config      *config.Config
+	Cache       *cache.Cache
+	startTime   time.Time
+	onRestart   func()
+	RestartFunc func() error
+	restarting  atomic.Bool
 }
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {
@@ -935,6 +937,9 @@ func (s *Server) syncAllActiveConnections() {
 			models = s.fetchAntigravityCatalog(context.Background(), client, target.conn.Data.AccessToken, projectID)
 		} else {
 			cfg := provider.ModelsFetchFor(pInfo)
+			if target.conn != nil && target.conn.Data.BaseURL != "" {
+				cfg.URL = ""
+			}
 			fetched, err := model.FetchModels(client, target.providerID, target.baseURL, target.apiKey, target.accessToken, cfg)
 			if err == nil && len(fetched) > 0 {
 				models = fetched
@@ -985,6 +990,9 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 		models = s.fetchAntigravityCatalog(context.Background(), client, conn.Data.AccessToken, projectID)
 	} else {
 		cfg := provider.ModelsFetchFor(pInfo)
+		if conn.Data.BaseURL != "" {
+			cfg.URL = ""
+		}
 		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
 		if err == nil && len(fetched) > 0 {
 			models = fetched
@@ -1330,11 +1338,23 @@ func (s *Server) handleResetProviderStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	provider.ResetAccountState(conn)
+	lockPatch := make(map[string]any)
+	for key := range conn.Data.ProviderSpecificData {
+		if strings.HasPrefix(key, "modelLock_") {
+			lockPatch[key] = nil
+		}
+	}
 	provider.ClearModelLocks(conn)
 
-	if err := s.DB.UpdateConnection(conn); err != nil {
+	if err := s.DB.UpdateConnectionHealth(conn.ID, conn.Data); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset connection"})
 		return
+	}
+	if len(lockPatch) > 0 {
+		if err := s.DB.UpdateConnectionProviderData(conn.ID, lockPatch); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset model locks"})
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, conn.ToDTO())
 }
@@ -1457,6 +1477,11 @@ func (s *Server) handleCreateCombo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" || strings.Contains(req.Name, "/") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "combo name must be non-empty and must not contain '/'"})
+		return
+	}
 	c := &model.Combo{
 		ID:     generateID(),
 		Name:   req.Name,
@@ -1513,6 +1538,11 @@ func (s *Server) handleUpdateCombo(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Models != nil {
 		existing.Models = *req.Models
+	}
+	existing.Name = strings.TrimSpace(existing.Name)
+	if existing.Name == "" || strings.Contains(existing.Name, "/") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "combo name must be non-empty and must not contain '/'"})
+		return
 	}
 
 	if err := s.DB.UpdateCombo(existing); err != nil {

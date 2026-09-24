@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -18,6 +19,81 @@ import (
 	"time"
 )
 
+// extractRoutingFields parses a JSON body, detects case-conflicting routing
+// fields (e.g. both "model" and "Model"), and returns a normalised body with
+// canonical lowercase "model"/"provider" keys plus the extracted values.
+// Using map[string]json.RawMessage preserves numeric precision for unrelated
+// fields (e.g. large integers that would lose precision through float64).
+func extractRoutingFields(bodyBytes []byte) (cleanBody []byte, bodyMap map[string]json.RawMessage, modelName, providerName string, err error) {
+	var raw map[string]json.RawMessage
+	if err = json.Unmarshal(bodyBytes, &raw); err != nil {
+		return nil, nil, "", "", err
+	}
+
+	// Detect case-insensitive duplicates for "model" and "provider".
+	for key := range raw {
+		lower := strings.ToLower(key)
+		if lower != "model" && lower != "provider" {
+			continue
+		}
+		for other := range raw {
+			if other != key && strings.EqualFold(other, key) {
+				return nil, nil, "", "", fmt.Errorf("ambiguous routing field: both %q and %q present", key, other)
+			}
+		}
+	}
+
+	// Extract values from whichever case variant exists.
+	for key, val := range raw {
+		if strings.ToLower(key) == "model" {
+			json.Unmarshal(val, &modelName)
+		}
+		if strings.ToLower(key) == "provider" {
+			json.Unmarshal(val, &providerName)
+		}
+	}
+
+	// Rebuild body: remove non-canonical routing keys, insert lowercase.
+	normalized := make(map[string]json.RawMessage, len(raw))
+	for k, v := range raw {
+		lower := strings.ToLower(k)
+		if lower == "model" || lower == "provider" {
+			continue
+		}
+		normalized[k] = v
+	}
+	if modelName != "" {
+		b, _ := json.Marshal(modelName)
+		normalized["model"] = b
+	}
+	if providerName != "" {
+		b, _ := json.Marshal(providerName)
+		normalized["provider"] = b
+	}
+
+	cleanBody, err = json.Marshal(normalized)
+	if err != nil {
+		return nil, nil, "", "", err
+	}
+	return cleanBody, normalized, modelName, providerName, nil
+}
+
+// checkMediaModelAccess is applied to both the requested and resolved model.
+// An empty model is only allowed for keys without model restrictions.
+func (s *Server) checkMediaModelAccess(w http.ResponseWriter, r *http.Request, modelName string) bool {
+	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil && !keyObj.IsModelAllowed(modelName) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error": fmt.Sprintf("model '%s' is not allowed for this API key", modelName),
+		})
+		return false
+	}
+	if modelName != "" && provider.IsModelDisabled(modelName, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelName)})
+		return false
+	}
+	return true
+}
+
 // handleImageGeneration handles POST /v1/images/generations
 func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := io.ReadAll(r.Body)
@@ -26,25 +102,25 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Model string `json:"model"`
-	}
-	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	bodyBytes, bodyMap, modelName, _, err := extractRoutingFields(bodyBytes)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.Model == "" {
+	if modelName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
 		return
 	}
 
-	modelInfo, err := provider.ResolveModel(req.Model, s.DB)
-	if err != nil || modelInfo.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
+	if !s.checkMediaModelAccess(w, r, modelName) {
 		return
 	}
-	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+	modelInfo, err := provider.ResolveModel(modelName, s.DB)
+	if err != nil || modelInfo.Provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
+		return
+	}
+	if !s.checkMediaModelAccess(w, r, modelInfo.Provider+"/"+modelInfo.Model) {
 		return
 	}
 
@@ -60,9 +136,7 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Replace model in body with resolved model
-	var bodyMap map[string]any
-	json.Unmarshal(bodyBytes, &bodyMap)
-	bodyMap["model"] = modelInfo.Model
+	bodyMap["model"], _ = json.Marshal(modelInfo.Model)
 	bodyBytes, _ = json.Marshal(bodyMap)
 
 	startTime := time.Now()
@@ -94,25 +168,25 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Model string `json:"model"`
-	}
-	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	bodyBytes, bodyMap, modelName, _, err := extractRoutingFields(bodyBytes)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.Model == "" {
+	if modelName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
 		return
 	}
 
-	modelInfo, err := provider.ResolveModel(req.Model, s.DB)
-	if err != nil || modelInfo.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
+	if !s.checkMediaModelAccess(w, r, modelName) {
 		return
 	}
-	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+	modelInfo, err := provider.ResolveModel(modelName, s.DB)
+	if err != nil || modelInfo.Provider == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
+		return
+	}
+	if !s.checkMediaModelAccess(w, r, modelInfo.Provider+"/"+modelInfo.Model) {
 		return
 	}
 
@@ -127,9 +201,7 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var bodyMap map[string]any
-	json.Unmarshal(bodyBytes, &bodyMap)
-	bodyMap["model"] = modelInfo.Model
+	bodyMap["model"], _ = json.Marshal(modelInfo.Model)
 	bodyBytes, _ = json.Marshal(bodyMap)
 	startTime := time.Now()
 	resp, err := s.MediaClient.HandleTTS(r.Context(), modelInfo.Provider, bodyBytes, creds)
@@ -159,13 +231,15 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if !s.checkMediaModelAccess(w, r, modelStr) {
+		return
+	}
 	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelStr)})
 		return
 	}
-	if provider.IsModelDisabled(modelStr, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelStr)})
+	if !s.checkMediaModelAccess(w, r, modelInfo.Provider+"/"+modelInfo.Model) {
 		return
 	}
 
@@ -180,7 +254,7 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	startTime := time.Now()
-	resp, err := s.MediaClient.HandleSTT(r.Context(), modelInfo.Provider, r, creds)
+	resp, err := s.MediaClient.HandleSTT(r.Context(), modelInfo.Provider, modelInfo.Model, r, creds)
 	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
 		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/transcriptions", "502", latencyMs)
@@ -202,25 +276,34 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var req struct {
-		Model    string `json:"model"`
-		Provider string `json:"provider"`
-	}
-	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	bodyBytes, bodyMap, modelName, providerID, err := extractRoutingFields(bodyBytes)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	providerID := req.Provider
-	if providerID == "" && req.Model != "" {
-		modelInfo, err := provider.ResolveModel(req.Model, s.DB)
-		if err == nil && modelInfo.Provider != "" {
-			providerID = modelInfo.Provider
-		}
-	}
-	if req.Model != "" && (provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(providerID+"/"+req.Model, s.DB)) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+	if !s.checkMediaModelAccess(w, r, modelName) {
 		return
+	}
+	resolvedModel := modelName
+	if modelName != "" {
+		modelInfo, err := provider.ResolveModel(modelName, s.DB)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
+			return
+		}
+		resolvedModel = modelInfo.Model
+		if resolvedModel == "" && !s.checkMediaModelAccess(w, r, "") {
+			return
+		}
+		if providerID == "" {
+			providerID = modelInfo.Provider
+		} else if modelInfo.Provider != "" && modelInfo.Provider != providerID && !s.checkMediaModelAccess(w, r, modelInfo.Provider+"/"+resolvedModel) {
+			return
+		}
+		if !s.checkMediaModelAccess(w, r, providerID+"/"+resolvedModel) {
+			return
+		}
 	}
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider or model"})
@@ -238,17 +321,22 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if resolvedModel != modelName {
+		bodyMap["model"], _ = json.Marshal(resolvedModel)
+		bodyBytes, _ = json.Marshal(bodyMap)
+	}
+
 	startTime := time.Now()
 	resp, err := s.MediaClient.HandleVideo(r.Context(), providerID, "generations", bodyBytes, creds)
 	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
-		s.recordMediaDetail(providerID, req.Model, conn.ID, "/v1/videos/generations", "502", latencyMs)
+		s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/videos/generations", "502", latencyMs)
 		slog.Error("Video generation failed", "provider", providerID, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(providerID, req.Model, conn.ID, "/v1/videos/generations", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
+	s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/videos/generations", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -259,6 +347,10 @@ func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 	providerID := r.URL.Query().Get("provider")
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider query param"})
+		return
+	}
+	// A job ID alone cannot prove which model was used.
+	if !s.checkMediaModelAccess(w, r, "") {
 		return
 	}
 
@@ -328,49 +420,71 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Provider string `json:"provider"`
-		Query    string `json:"query"`
-		Model    string `json:"model"`
-	}
-	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	bodyBytes, bodyMap, modelName, providerID, err := extractRoutingFields(bodyBytes)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if req.Provider == "" {
+	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})
 		return
 	}
 
-	if !media.SupportsKind(req.Provider, media.KindWebSearch) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web search", req.Provider)})
+	if !media.SupportsKind(providerID, media.KindWebSearch) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web search", providerID)})
 		return
 	}
-	if req.Model != "" && (provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(req.Provider+"/"+req.Model, s.DB)) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+	// Authorize the same default model that the Antigravity client would use.
+	if modelName == "" && providerID == "antigravity" {
+		modelName = "antigravity/gemini-2.5-flash"
+	}
+	if modelName != "" {
+		if !s.checkMediaModelAccess(w, r, modelName) {
+			return
+		}
+		modelInfo, err := provider.ResolveModel(modelName, s.DB)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
+			return
+		}
+		if modelInfo.Model == "" && !s.checkMediaModelAccess(w, r, "") {
+			return
+		}
+		if modelInfo.Provider != "" && modelInfo.Provider != providerID && !s.checkMediaModelAccess(w, r, modelInfo.Provider+"/"+modelInfo.Model) {
+			return
+		}
+		if !s.checkMediaModelAccess(w, r, providerID+"/"+modelInfo.Model) {
+			return
+		}
+		bodyMap["model"], _ = json.Marshal(modelInfo.Model)
+		bodyBytes, _ = json.Marshal(bodyMap)
+	}
+
+	conn, creds := s.resolveMediaCredentials(providerID)
+	if conn == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(req.Provider)
-	if conn == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", req.Provider)})
-		return
+	var queryStr string
+	if q, ok := bodyMap["query"]; ok {
+		json.Unmarshal(q, &queryStr)
 	}
 
 	startTime := time.Now()
-	resp, err := s.MediaClient.HandleWebSearch(r.Context(), req.Provider, bodyBytes, creds)
+	resp, err := s.MediaClient.HandleWebSearch(r.Context(), providerID, bodyBytes, creds)
 	latencyMs := int(time.Since(startTime).Milliseconds())
 	if err != nil {
-		s.recordMediaDetail(req.Provider, req.Model, conn.ID, "/v1/search", "502", latencyMs)
-		slog.Error("Web search failed", "provider", req.Provider, "error", err)
+		s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/search", "502", latencyMs)
+		slog.Error("Web search failed", "provider", providerID, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(req.Provider, req.Model, conn.ID, "/v1/search", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
+	s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/search", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
-	if req.Provider == "antigravity" {
-		s.aggregateAntigravitySearchResponse(w, resp, req.Query)
+	if providerID == "antigravity" {
+		s.aggregateAntigravitySearchResponse(w, resp, queryStr)
 		return
 	}
 

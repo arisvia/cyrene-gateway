@@ -43,7 +43,7 @@ func TestTestModelOpenCodeFreeModel(t *testing.T) {
 
 	// Test free model: big-pickle -> must route with Bearer public and OpenCode fingerprint headers
 	reqBody := `{"model":"opencode/big-pickle","connectionId":"oc-test-conn"}`
-	req := httptest.NewRequest("POST", "/api/models/test", strings.NewReader(reqBody))
+	req := newLocalRequest("POST", "/api/models/test", strings.NewReader(reqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -75,7 +75,7 @@ func TestTestModelOpenCodeFreeModel(t *testing.T) {
 
 	// Test paid model: deepseek-v4-pro -> must route with configured APIKey
 	reqPaidBody := `{"model":"opencode/deepseek-v4-pro","connectionId":"oc-test-conn"}`
-	reqPaid := httptest.NewRequest("POST", "/api/models/test", strings.NewReader(reqPaidBody))
+	reqPaid := newLocalRequest("POST", "/api/models/test", strings.NewReader(reqPaidBody))
 	reqPaid.Header.Set("Content-Type", "application/json")
 	wPaid := httptest.NewRecorder()
 

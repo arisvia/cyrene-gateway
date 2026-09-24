@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -141,7 +140,7 @@ func (s *Server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetExe, err := os.Executable()
+	targetExe, err := updater.ExecutablePath()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "locate executable: " + err.Error()})
 		return
@@ -180,6 +179,15 @@ func (s *Server) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.RestartFunc == nil && s.onRestart == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "restart is unavailable"})
+		return
+	}
+	if !s.restarting.CompareAndSwap(false, true) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "restart is already in progress"})
+		return
+	}
+
 	// 1. Respond 200 OK immediately and flush buffer so client receives response
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
@@ -200,19 +208,13 @@ func (s *Server) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
 
 		if s.onRestart != nil {
 			s.onRestart()
+			s.restarting.Store(false)
 			return
 		}
 
-		// Close listener first to release the TCP port
-		if s.ShutdownFunc != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			_ = s.ShutdownFunc(ctx)
-			cancel()
-		}
-
-		// Spawn new server process with CYRENE_RESTART=1 retry-bind
-		if err := updater.RestartServer(); err != nil {
-			slog.Error("Failed to spawn new server process", "error", err)
+		if err := s.RestartFunc(); err != nil {
+			s.restarting.Store(false)
+			slog.Error("Failed to restart gateway", "error", err)
 			return
 		}
 
@@ -223,6 +225,12 @@ func (s *Server) handleSystemRestart(w http.ResponseWriter, r *http.Request) {
 
 // handleSystemRollback handles POST /api/system/rollback
 func (s *Server) handleSystemRollback(w http.ResponseWriter, r *http.Request) {
+	if system.IsRunningInDocker() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "in-place binary rollback is disabled in containerized environments; please roll back the Docker image instead",
+		})
+		return
+	}
 	if err := updater.Rollback(""); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "rollback: " + err.Error()})
 		return

@@ -210,9 +210,10 @@ func (s *Server) handleAntigravityChat(
 			slog.String("connection_id", conn.ID))
 		refreshResult, refreshErr := provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
 		if refreshErr == nil {
-			provider.ApplyRefreshResult(conn, refreshResult)
-			if s.DB != nil {
-				_ = s.DB.UpdateConnection(conn)
+			if err := s.persistRefreshedCredentials(conn, refreshResult); err != nil {
+				slog.Error("Failed to persist refreshed Antigravity credentials", "error", err)
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to persist refreshed credentials"})
+				return
 			}
 			token = conn.Data.AccessToken
 			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
@@ -249,15 +250,17 @@ func (s *Server) handleAntigravityChat(
 			"input":        extractPromptSummary(req.Messages),
 		}
 		rdBytes, _ := json.Marshal(rdData)
-		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
-			ID:           rdID,
-			Timestamp:    rdData["timestamp"].(string),
-			Provider:     conn.Provider,
-			Model:        modelInfo.Model,
-			ConnectionID: conn.ID,
-			Status:       statusStr,
-			Data:         string(rdBytes),
-		})
+		if s.DB != nil {
+			_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+				ID:           rdID,
+				Timestamp:    rdData["timestamp"].(string),
+				Provider:     conn.Provider,
+				Model:        modelInfo.Model,
+				ConnectionID: conn.ID,
+				Status:       statusStr,
+				Data:         string(rdBytes),
+			})
+		}
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(conn.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
@@ -351,7 +354,7 @@ func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[
 		role := strings.ToLower(msg.Role)
 		text := parseMessageContent(msg.Content)
 
-		if role == "system" {
+		if role == "system" || role == "developer" {
 			systemParts = append(systemParts, map[string]any{"text": text})
 			continue
 		}
@@ -459,6 +462,46 @@ func (p *antigravityChunkPayload) getCandidates() []antigravityCandidateItem {
 	return p.Candidates
 }
 
+// Antigravity may wrap Gemini's response, or put usageMetadata at the root.
+func extractAntigravityUsage(data []byte) usage.Usage {
+	// Detect whether usageMetadata is actually present (not absent/null).
+	rootHas := hasNonNullField(data, "usageMetadata")
+
+	var envelopeHas bool
+	var responseRaw json.RawMessage
+	var env struct {
+		Response json.RawMessage `json:"response"`
+	}
+	if err := json.Unmarshal(data, &env); err == nil && len(env.Response) > 0 && string(env.Response) != "null" {
+		responseRaw = env.Response
+		envelopeHas = hasNonNullField(responseRaw, "usageMetadata")
+	}
+
+	var u usage.Usage
+	if envelopeHas {
+		u = usage.ExtractFromGemini(responseRaw)
+	} else if rootHas {
+		u = usage.ExtractFromGemini(data)
+	}
+	if u.TotalTokens == 0 {
+		u.TotalTokens = u.PromptTokens + u.CompletionTokens
+	}
+	if envelopeHas || rootHas {
+		u.Known = true
+	}
+	return u
+}
+
+// hasNonNullField reports whether obj contains key with a non-null value.
+func hasNonNullField(obj json.RawMessage, key string) bool {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(obj, &m); err != nil {
+		return false
+	}
+	raw, ok := m[key]
+	return ok && len(raw) > 0 && string(raw) != "null" && string(raw) != "{}"
+}
+
 func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -477,8 +520,8 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 5*1024*1024)
 
-	chatSeq := 0
 	chatCmpleID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())
+	var lastUsage usage.Usage
 	var outBuilder strings.Builder
 	var reasoningBuilder strings.Builder
 	ctx := r.Context()
@@ -494,10 +537,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 				uc.Status = 499
 				uc.Response = finalOutput
 			}
-			s.recordUsage(uc, usage.Usage{
-				TotalTokens:     chatSeq * 4,
-				ReasoningTokens: len(reasoningBuilder.String()) / 4,
-			})
+			s.recordUsage(uc, lastUsage)
 			return
 		default:
 		}
@@ -509,6 +549,9 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		var payload antigravityChunkPayload
 		if err := json.Unmarshal([]byte(data), &payload); err != nil {
 			continue
+		}
+		if u := extractAntigravityUsage([]byte(data)); u.Known || u.TotalTokens > 0 {
+			lastUsage = u
 		}
 
 		textChunk := ""
@@ -596,15 +639,18 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 				uc.Status = 499
 				uc.Response = finalOutput
 			}
-			s.recordUsage(uc, usage.Usage{
-				TotalTokens:     chatSeq * 4,
-				ReasoningTokens: len(reasoningBuilder.String()) / 4,
-			})
+			s.recordUsage(uc, lastUsage)
 			return
 		}
-		chatSeq++
 	}
 
+	if lastUsage.Known || lastUsage.TotalTokens > 0 {
+		chunk, _ := json.Marshal(map[string]any{
+			"id": chatCmpleID, "object": "chat.completion.chunk", "created": time.Now().Unix(),
+			"model": model, "choices": []any{}, "usage": lastUsage.OpenAI(),
+		})
+		fmt.Fprintf(w, "data: %s\n\n", chunk)
+	}
 	// Send final [DONE]
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	flusher.Flush()
@@ -613,11 +659,10 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	if finalOutput == "" && reasoningBuilder.Len() > 0 {
 		finalOutput = reasoningBuilder.String()
 	}
-	uc.Response = finalOutput
-	s.recordUsage(uc, usage.Usage{
-		TotalTokens:     chatSeq * 4,
-		ReasoningTokens: len(reasoningBuilder.String()) / 4,
-	})
+	if uc != nil {
+		uc.Response = finalOutput
+	}
+	s.recordUsage(uc, lastUsage)
 }
 
 func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.Response, model string, uc *usageContext) {
@@ -630,8 +675,16 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 	fullText := ""
 	reasoningText := ""
 	var toolCalls []any
+	var lastUsage usage.Usage
 
-	extractParts := func(payload antigravityChunkPayload) {
+	extractParts := func(data []byte) {
+		var payload antigravityChunkPayload
+		if err := json.Unmarshal(data, &payload); err != nil {
+			return
+		}
+		if u := extractAntigravityUsage(data); u.Known || u.TotalTokens > 0 {
+			lastUsage = u
+		}
 		for _, cand := range payload.getCandidates() {
 			for i, part := range cand.Content.Parts {
 				if part.Thought {
@@ -655,10 +708,7 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 
 	trimmed := bytes.TrimSpace(respBytes)
 	if bytes.HasPrefix(trimmed, []byte("{")) {
-		var payload antigravityChunkPayload
-		if err := json.Unmarshal(trimmed, &payload); err == nil {
-			extractParts(payload)
-		}
+		extractParts(trimmed)
 	} else {
 		scanner := bufio.NewScanner(bytes.NewReader(respBytes))
 		scanner.Buffer(make([]byte, 1024*1024), 5*1024*1024)
@@ -667,10 +717,7 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 			if !ok || isDone {
 				continue
 			}
-			var payload antigravityChunkPayload
-			if err := json.Unmarshal([]byte(data), &payload); err == nil {
-				extractParts(payload)
-			}
+			extractParts([]byte(data))
 		}
 	}
 
@@ -705,6 +752,9 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 		},
 	}
 
+	if lastUsage.Known || lastUsage.TotalTokens > 0 {
+		respObj["usage"] = lastUsage.OpenAI()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	json.NewEncoder(w).Encode(respObj)
@@ -712,11 +762,10 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 	if finalResp == "" && reasoningText != "" {
 		finalResp = reasoningText
 	}
-	uc.Response = finalResp
-	s.recordUsage(uc, usage.Usage{
-		TotalTokens:     len(fullText) / 4,
-		ReasoningTokens: len(reasoningText) / 4,
-	})
+	if uc != nil {
+		uc.Response = finalResp
+	}
+	s.recordUsage(uc, lastUsage)
 }
 func randomHex(n int) string {
 	b := make([]byte, n)
@@ -725,6 +774,9 @@ func randomHex(n int) string {
 }
 
 func (s *Server) getAntigravityAvailableModels() []model.ModelMetadata {
+	if s.DB == nil {
+		return nil
+	}
 	if raw, err := s.DB.KVGet("providerModelCache", "antigravity"); err == nil && raw != "" {
 		var cached model.CachedModels
 		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {

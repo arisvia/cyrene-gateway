@@ -106,7 +106,9 @@ func (s *Server) EnsureAntigravityProject(ctx context.Context, conn *model.Provi
 	}
 	conn.Data.ProviderSpecificData["projectId"] = discovered
 	if s.DB != nil {
-		_ = s.DB.UpdateConnection(conn)
+		if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": discovered}); err != nil {
+			return "", fmt.Errorf("persist antigravity project: %w", err)
+		}
 	}
 	return discovered, nil
 }

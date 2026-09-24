@@ -196,7 +196,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Phase: Response Cache check
-	settings, _ := s.DB.GetSettings()
+	var settings *db.Settings
+	if s.DB != nil {
+		settings, _ = s.DB.GetSettings()
+	}
 	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
 	var cacheKey string
 	if cacheEnabled && !cache.ShouldBypass(r.Header) {
@@ -280,7 +283,7 @@ func (s *Server) getHTTPClient(timeout time.Duration) *http.Client {
 	if s.Config != nil && s.Config.AllowPrivateNetworks {
 		allowPrivate = true
 	}
-	if s.Proxies != nil && s.Proxies.HasProxies() {
+	if s.Proxies != nil {
 		client := s.Proxies.GetHTTPClient(allowPrivate)
 		client.Timeout = timeout
 		return client
@@ -311,17 +314,29 @@ func (s *Server) tryRefreshToken(conn *model.ProviderConnection) bool {
 		if provider.IsUnrecoverableRefreshError(err) {
 			conn.Data.TestStatus = "expired"
 			conn.Data.LastError = err.Error()
-			if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
-				slog.Error("Failed to persist expired connection status", "provider", conn.Provider, "error", errUpdate)
+			if s.DB != nil {
+				if errUpdate := s.DB.UpdateConnectionHealth(conn.ID, conn.Data); errUpdate != nil {
+					slog.Error("Failed to persist expired connection status", "provider", conn.Provider, "error", errUpdate)
+				}
 			}
 		}
 		return true
 	}
-	provider.ApplyRefreshResult(conn, result)
-	if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
+	if errUpdate := s.persistRefreshedCredentials(conn, result); errUpdate != nil {
 		slog.Error("Failed to persist refreshed connection token", "provider", conn.Provider, "error", errUpdate)
 	}
 	return true
+}
+
+// persistRefreshedCredentials writes only refreshed fields, conditional on the
+// credentials that produced the refresh. Administrator configuration stays intact.
+func (s *Server) persistRefreshedCredentials(conn *model.ProviderConnection, result *provider.RefreshResult) error {
+	oldAccess, oldRefresh := conn.Data.AccessToken, conn.Data.RefreshToken
+	provider.ApplyRefreshResult(conn, result)
+	if s.DB == nil {
+		return nil
+	}
+	return s.DB.UpdateConnectionTokens(conn.ID, oldAccess, oldRefresh, conn.Data, result.Extra)
 }
 
 // tryRefreshCopilotToken exchanges the stored GitHub OAuth token for a fresh
@@ -360,14 +375,19 @@ func (s *Server) tryRefreshCopilotToken(conn *model.ProviderConnection) bool {
 	}
 
 	// Cache the copilot token; preserve the GitHub token for future exchanges.
-	psd["githubAccessToken"] = githubToken
-	psd["copilotToken"] = result.AccessToken
+	oldAccess, oldRefresh := conn.Data.AccessToken, conn.Data.RefreshToken
+	patch := map[string]any{"githubAccessToken": githubToken, "copilotToken": result.AccessToken}
 	if result.ExpiresIn > 0 {
-		psd["copilotTokenExpiresAt"] = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
+		patch["copilotTokenExpiresAt"] = time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
+	}
+	for key, value := range patch {
+		psd[key] = value
 	}
 	conn.Data.AccessToken = result.AccessToken
-	if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
-		slog.Error("Failed to persist copilot token", "provider", conn.Provider, "error", errUpdate)
+	if s.DB != nil {
+		if errUpdate := s.DB.UpdateConnectionTokens(conn.ID, oldAccess, oldRefresh, conn.Data, patch); errUpdate != nil {
+			slog.Error("Failed to persist copilot token", "provider", conn.Provider, "error", errUpdate)
+		}
 	}
 	return true
 }
@@ -495,7 +515,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			lastStatus = 502
 			slog.Warn("Combo model failed", slog.String("model", modelStr), "error", err)
 			provider.ApplyErrorState(conn, 502, err.Error())
-			s.DB.UpdateConnection(conn)
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			continue
 		}
 
@@ -503,7 +523,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			slog.Info("Combo model succeeded", slog.String("model", modelStr))
 			provider.ResetAccountState(conn)
-			s.DB.UpdateConnection(conn)
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			uc := &usageContext{
 				Provider:     modelInfo.Provider,
 				Model:        modelInfo.Model,
@@ -528,7 +548,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 
 		// Apply and persist error state for this connection
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
-		s.DB.UpdateConnection(conn)
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 
 		// Check if should fallback
 		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
@@ -671,8 +691,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 		result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
 		if refreshErr == nil {
-			provider.ApplyRefreshResult(conn, result)
-			if errUpdate := s.DB.UpdateConnection(conn); errUpdate != nil {
+			if errUpdate := s.persistRefreshedCredentials(conn, result); errUpdate != nil {
 				slog.Error("Failed to persist connection after 401 refresh", "provider", conn.Provider, "error", errUpdate)
 			}
 
@@ -703,7 +722,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			slog.String("body", string(errBody)),
 		)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
-		s.DB.UpdateConnection(conn)
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		// Record failed request detail for observability in "请求明细"
 		latencyMs := int(time.Since(start).Milliseconds())
 		if latencyMs < 0 {
@@ -757,7 +776,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// Reset error state on success
 	provider.ResetAccountState(conn)
-	s.DB.UpdateConnection(conn)
+	s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 
 	// Proxy the response with format translation
 	uc := &usageContext{
@@ -1214,7 +1233,10 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Phase: Response Cache check
-	settings, _ := s.DB.GetSettings()
+	var settings *db.Settings
+	if s.DB != nil {
+		settings, _ = s.DB.GetSettings()
+	}
 	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
 	var cacheKey string
 	if cacheEnabled && !cache.ShouldBypass(r.Header) {
@@ -1369,7 +1391,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		errBody, _ := io.ReadAll(resp.Body)
 		slog.Warn("Messages upstream error response", "status", resp.StatusCode, "provider", modelInfo.Provider, "body", string(errBody))
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
-		s.DB.UpdateConnection(conn)
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 
 		latencyMs := int(time.Since(start).Milliseconds())
 		if latencyMs < 0 {
@@ -1421,7 +1443,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	provider.ResetAccountState(conn)
-	s.DB.UpdateConnection(conn)
+	s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 
 	prompt := extractAnthropicPrompt(reqBody)
 	uc := &usageContext{
@@ -1641,7 +1663,10 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Phase: Response Cache check
-	settings, _ := s.DB.GetSettings()
+	var settings *db.Settings
+	if s.DB != nil {
+		settings, _ = s.DB.GetSettings()
+	}
 	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
 	var cacheKey string
 	if cacheEnabled && !cache.ShouldBypass(r.Header) {
@@ -1844,7 +1869,7 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if uc == nil {
 		return
 	}
-	usageKnown := u.TotalTokens > 0
+	usageKnown := u.Known || u.TotalTokens > 0
 	if s.Metrics != nil {
 		dur := time.Since(uc.StartedAt).Seconds()
 		if dur < 0 {
@@ -1858,6 +1883,9 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 			}
 		}
 		s.Metrics.ObserveRequest(uc.Provider, uc.Model, uc.Endpoint, uc.Status, dur, measuredUsage)
+	}
+	if s.DB == nil {
+		return
 	}
 	statusStr := "ok"
 	if uc.Status == 499 {

@@ -25,7 +25,7 @@ func TestGetProviderModels(t *testing.T) {
 	// Seed live cached models as Cyrene Gateway uses purely dynamic model caching
 	cachedRaw := `{"provider":"anthropic","models":[{"id":"claude-3-5-sonnet","displayName":"Claude 3.5 Sonnet"}]}`
 	database.KVSet("providerModelCache", "anthropic", cachedRaw)
-	req := httptest.NewRequest("GET", "/api/providers/detail-conn/models", nil)
+	req := newLocalRequest("GET", "/api/providers/detail-conn/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -66,7 +66,7 @@ func TestGetProviderModels_DisplayNameFallback(t *testing.T) {
 	cachedRaw := `{"provider":"qoder","models":[{"id":"kmodel_latest","display_name":"Kimi-K3"}]}`
 	database.KVSet("providerModelCache", "qoder", cachedRaw)
 
-	req := httptest.NewRequest("GET", "/api/providers/qoder-conn/models", nil)
+	req := newLocalRequest("GET", "/api/providers/qoder-conn/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -110,7 +110,7 @@ func TestGetProviderModels_DisplayNameFallback(t *testing.T) {
 func TestGetProviderModelsNotFound(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/providers/does-not-exist/models", nil)
+	req := newLocalRequest("GET", "/api/providers/does-not-exist/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -133,7 +133,7 @@ func TestCustomModelCRUD(t *testing.T) {
 
 	// Add a custom model
 	body := `{"id":"my-finetune-v1","name":"My Finetune"}`
-	req := httptest.NewRequest("POST", "/api/providers/crud-conn/models", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/providers/crud-conn/models", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -149,7 +149,7 @@ func TestCustomModelCRUD(t *testing.T) {
 	}
 
 	// Duplicate add should conflict
-	req = httptest.NewRequest("POST", "/api/providers/crud-conn/models", strings.NewReader(body))
+	req = newLocalRequest("POST", "/api/providers/crud-conn/models", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -158,7 +158,7 @@ func TestCustomModelCRUD(t *testing.T) {
 	}
 
 	// Verify it shows up in GET
-	req = httptest.NewRequest("GET", "/api/providers/crud-conn/models", nil)
+	req = newLocalRequest("GET", "/api/providers/crud-conn/models", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	var getResp map[string]any
@@ -169,7 +169,7 @@ func TestCustomModelCRUD(t *testing.T) {
 
 	// Delete the custom model
 	delBody := `{"id":"my-finetune-v1"}`
-	req = httptest.NewRequest("DELETE", "/api/providers/crud-conn/models", strings.NewReader(delBody))
+	req = newLocalRequest("DELETE", "/api/providers/crud-conn/models", strings.NewReader(delBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -178,7 +178,7 @@ func TestCustomModelCRUD(t *testing.T) {
 	}
 
 	// Delete non-existent model
-	req = httptest.NewRequest("DELETE", "/api/providers/crud-conn/models", strings.NewReader(delBody))
+	req = newLocalRequest("DELETE", "/api/providers/crud-conn/models", strings.NewReader(delBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -201,7 +201,7 @@ func TestAddProviderModelValidation(t *testing.T) {
 
 	// Missing id
 	body := `{"name":"No ID"}`
-	req := httptest.NewRequest("POST", "/api/providers/val-conn/models", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/providers/val-conn/models", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -224,7 +224,7 @@ func TestModelMetadataOverride(t *testing.T) {
 	database.KVSet("providerModelCache", "openai", cachedRaw)
 	// Save custom metadata for gpt-4o
 	metaBody := `{"id":"gpt-4o","displayName":"GPT-4o Custom","contextLength":128000,"maxOutputTokens":16384}`
-	req := httptest.NewRequest("POST", "/api/providers/meta-conn/models/meta", strings.NewReader(metaBody))
+	req := newLocalRequest("POST", "/api/providers/meta-conn/models/meta", strings.NewReader(metaBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -233,7 +233,7 @@ func TestModelMetadataOverride(t *testing.T) {
 	}
 
 	// Verify handleGetProviderModels reflects the override
-	req = httptest.NewRequest("GET", "/api/providers/meta-conn/models", nil)
+	req = newLocalRequest("GET", "/api/providers/meta-conn/models", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -308,7 +308,7 @@ func TestModelMetadataOverride(t *testing.T) {
 
 	// Reset meta override
 	resetBody := `{"id":"gpt-4o"}`
-	req = httptest.NewRequest("DELETE", "/api/providers/meta-conn/models/meta", strings.NewReader(resetBody))
+	req = newLocalRequest("DELETE", "/api/providers/meta-conn/models/meta", strings.NewReader(resetBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -354,7 +354,7 @@ func TestRefreshModels_CodeBuddy_LiveFailure(t *testing.T) {
 
 	// POST /api/providers/codebuddy-cn/refresh-models
 	// Live fetch fails with 404, without static fallback models it must return 502 Bad Gateway
-	req := httptest.NewRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
+	req := newLocalRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -411,7 +411,7 @@ func TestRefreshModels_CodeBuddy_LiveConfig(t *testing.T) {
 	}
 	database.CreateConnection(conn)
 
-	req := httptest.NewRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
+	req := newLocalRequest("POST", "/api/providers/codebuddy-cn/refresh-models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -458,7 +458,7 @@ func TestGetProviderModels_CodeBuddy_EmptyCache(t *testing.T) {
 
 	// GET /api/providers/cb-conn-empty-cache/models
 	// Dynamic provider has no hardcoded registry models; when cache is empty, returns empty list.
-	req := httptest.NewRequest("GET", "/api/providers/cb-conn-empty-cache/models", nil)
+	req := newLocalRequest("GET", "/api/providers/cb-conn-empty-cache/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 

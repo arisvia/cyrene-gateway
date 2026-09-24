@@ -157,6 +157,13 @@ func TestSystemOpsHandlers(t *testing.T) {
 		if recRestart.Code != http.StatusBadRequest {
 			t.Errorf("expected 400 Bad Request in docker for restart, got %d", recRestart.Code)
 		}
+
+		reqRollback := httptest.NewRequest("POST", "/api/system/rollback", nil)
+		recRollback := httptest.NewRecorder()
+		server.Router.ServeHTTP(recRollback, reqRollback)
+		if recRollback.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request in docker for rollback, got %d", recRollback.Code)
+		}
 	})
 
 	_ = os.DevNull

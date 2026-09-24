@@ -81,7 +81,7 @@ func (h *AuthHandler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	auth.RecordSuccess(ip)
 
-	token, err := auth.CreateSessionToken()
+	token, err := auth.CreateSessionToken(settings.PasswordHash)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session"})
 		return
@@ -139,7 +139,7 @@ func (h *AuthHandler) HandleSetPassword(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Issue session token and set cookie so the caller is immediately authenticated
-	token, err := auth.CreateSessionToken()
+	token, err := auth.CreateSessionToken(settings.PasswordHash)
 	if err == nil {
 		secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 		http.SetCookie(w, &http.Cookie{
@@ -172,7 +172,7 @@ func (h *AuthHandler) HandleStatus(w http.ResponseWriter, r *http.Request) {
 	} else {
 		cookie, err := r.Cookie("auth_token")
 		if err == nil {
-			authenticated = auth.VerifySessionToken(cookie.Value)
+			authenticated = auth.VerifySessionToken(cookie.Value, settings.PasswordHash)
 		}
 	}
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,8 +10,323 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/translator"
+	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
+
+func setupAntigravityReviewUpstream(t *testing.T, fixture string) (*Server, <-chan map[string]any) {
+	t.Helper()
+	received := make(chan map[string]any, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1internal:streamGenerateContent" || r.URL.Query().Get("alt") != "sse" {
+			t.Errorf("not routed through Antigravity handler: %s", r.URL)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		received <- body
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, fixture)
+	}))
+	t.Cleanup(upstream.Close)
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "ag-review", Provider: "antigravity", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "test-only", BaseURL: upstream.URL,
+			ProviderSpecificData: map[string]any{"projectId": "review-project"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return srv, received
+}
+
+func TestAntigravityReviewDeveloperInstructionsEndToEnd(t *testing.T) {
+	for _, tc := range []struct {
+		path, body string
+		want       []string
+	}{
+		{"/v1/responses", `{"model":"antigravity/claude-sonnet-4-6","instructions":"First line.\n保留指令。","input":[{"role":"developer","content":[{"type":"input_text","text":"Another instruction."}]},{"role":"user","content":"hello"}]}`, []string{"First line.\n保留指令。", "Another instruction."}},
+		{"/v1/chat/completions", `{"model":"antigravity/claude-sonnet-4-6","messages":[{"role":"system","content":"System text."},{"role":"developer","content":[{"type":"text","text":"First line.\n"},{"type":"text","text":"保留指令。"}]},{"role":"developer","content":"Another instruction."},{"role":"user","content":"hello"}]}`, []string{"System text.", "First line.\n保留指令。", "Another instruction."}},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			srv, received := setupAntigravityReviewUpstream(t, "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Answer\"}]}}]}\n\n")
+			w := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)))
+			if w.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			var body map[string]any
+			select {
+			case body = <-received:
+			default:
+				t.Fatal("no upstream request")
+			}
+			inner := body["request"].(map[string]any)
+			system, ok := inner["systemInstruction"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing systemInstruction: %v", inner)
+			}
+			parts := system["parts"].([]any)
+			if len(parts) != len(tc.want) {
+				t.Errorf("instruction parts=%v want=%v", parts, tc.want)
+			} else {
+				for i, want := range tc.want {
+					if parts[i].(map[string]any)["text"] != want {
+						t.Errorf("instruction %d changed: %v", i, parts[i])
+					}
+				}
+			}
+			contents := inner["contents"].([]any)
+			if len(contents) != 1 || contents[0].(map[string]any)["role"] != "user" {
+				t.Errorf("instruction roles leaked into contents: %v", contents)
+			}
+		})
+	}
+}
+
+func TestAntigravityReviewResponsesUsageEndToEnd(t *testing.T) {
+	for _, tc := range []struct {
+		name, metadata     string
+		known              bool
+		prompt, completion int
+	}{
+		{"missing", "", false, 4, 4},
+		{"null", `"usageMetadata":null`, false, 4, 4},
+		{"empty", `"usageMetadata":{}`, false, 4, 4},
+		{"zero", `"usageMetadata":{"promptTokenCount":0,"candidatesTokenCount":0,"totalTokenCount":0}`, true, 0, 0},
+		{"output-zero", `"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":0,"totalTokenCount":5}`, true, 5, 0},
+		{"known", `"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":7,"totalTokenCount":18}`, true, 11, 7},
+	} {
+		for _, stream := range []bool{false, true} {
+			for _, nested := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/stream=%t/nested=%t", tc.name, stream, nested), func(t *testing.T) {
+					fixture := "data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Answer with text\"}]},\"finishReason\":\"STOP\"}]}}\n\n"
+					if tc.metadata != "" {
+						metadata := "{" + tc.metadata + "}"
+						if nested {
+							metadata = `{"response":` + metadata + `}`
+						}
+						fixture += "data: " + metadata + "\n\n"
+					}
+					fixture += "data: {}\n\ndata: [DONE]\n\n"
+					srv, _ := setupAntigravityReviewUpstream(t, fixture)
+					body := fmt.Sprintf(`{"model":"antigravity/claude-sonnet-4-6","input":"A sixteen prompt","stream":%t}`, stream)
+					w := httptest.NewRecorder()
+					srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body)))
+					if w.Code != http.StatusOK {
+						t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+					}
+					var response map[string]any
+					if stream {
+						for _, line := range strings.Split(w.Body.String(), "\n") {
+							data, done, ok := translator.ParseSSEDataLineString(line)
+							if !ok || done {
+								continue
+							}
+							var event map[string]any
+							if err := json.Unmarshal([]byte(data), &event); err != nil {
+								t.Fatal(err)
+							}
+							if event["type"] == "response.completed" {
+								response, _ = event["response"].(map[string]any)
+							}
+						}
+					} else if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+						t.Fatal(err)
+					}
+					if response["output_text"] != "Answer with text" {
+						t.Fatalf("lost output: %v", response)
+					}
+					u, hasUsage := response["usage"].(map[string]any)
+					if hasUsage != tc.known {
+						t.Errorf("usage presence=%t want=%t: %v", hasUsage, tc.known, response)
+					} else if tc.known && (u["input_tokens"] != float64(tc.prompt) || u["output_tokens"] != float64(tc.completion) || u["total_tokens"] != float64(tc.prompt+tc.completion)) {
+						t.Errorf("real usage changed: %v", u)
+					}
+					entries, err := srv.DB.GetUsageHistory(db.UsageFilter{Provider: "antigravity"})
+					if err != nil || len(entries) != 1 {
+						t.Fatalf("entries=%v err=%v", entries, err)
+					}
+					entry := entries[0]
+					if entry.Endpoint != "/v1/responses" || entry.PromptTokens != tc.prompt || entry.CompletionTokens != tc.completion || strings.Contains(entry.Meta, `"usage_missing":true`) == tc.known {
+						t.Errorf("incorrect accounting: %+v", entry)
+					}
+					details, err := srv.DB.GetRequestDetails(db.RequestDetailFilter{Provider: "antigravity", Page: 1, PageSize: 10})
+					if err != nil || len(details.Details) != 1 {
+						t.Fatalf("details=%v err=%v", details, err)
+					}
+					var detail map[string]any
+					if err := json.Unmarshal(details.Details[0], &detail); err != nil {
+						t.Fatal(err)
+					}
+					if detail["usageKnown"] != tc.known {
+						t.Errorf("usageKnown=%v want=%t", detail["usageKnown"], tc.known)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestAntigravityUpstreamUsageAndMissingAccounting(t *testing.T) {
+	for _, mode := range []string{"json", "aggregate-sse", "stream"} {
+		for _, nested := range []bool{false, true} {
+			for _, counts := range []string{"known", "no-total", "missing"} {
+				t.Run(fmt.Sprintf("%s/nested=%t/%s", mode, nested, counts), func(t *testing.T) {
+					srv, database := setupTestServer(t)
+					candidates := `"candidates":[{"content":{"parts":[{"text":"Answer with text"},{"thought":true,"text":"Thinking about tools"},{"functionCall":{"name":"weather","args":{"city":"Paris"}}}]},"finishReason":"STOP"}]`
+					metadata := `"usageMetadata":{"promptTokenCount":101,"candidatesTokenCount":17,"cachedContentTokenCount":13,"thoughtsTokenCount":9`
+					if counts == "known" {
+						metadata += `,"totalTokenCount":127`
+					}
+					metadata += `}`
+					if counts == "missing" {
+						metadata = ""
+					}
+					wrap := func(fields string) string {
+						if nested {
+							return `{"response":{` + fields + `}}`
+						}
+						return `{` + fields + `}`
+					}
+					var body string
+					if mode == "json" {
+						fields := candidates
+						if metadata != "" {
+							fields += "," + metadata
+						}
+						body = wrap(fields)
+					} else {
+						// Usage arrives in a separate terminal frame without candidates.
+						body = "data: " + wrap(candidates) + "\n\n"
+						if metadata != "" {
+							body += "data: " + wrap(metadata) + "\n\n"
+						}
+						body += "data: [DONE]\n\n"
+					}
+					resp := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}
+					uc := &usageContext{StartedAt: time.Now(), Provider: "antigravity", Model: "gemini-test", Status: 200, Prompt: "A sixteen prompt"}
+					w := httptest.NewRecorder()
+					if mode == "stream" {
+						srv.proxyAntigravityStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "gemini-test", uc)
+					} else {
+						srv.proxyAntigravityNonStreaming(w, resp, "gemini-test", uc)
+					}
+					if w.Code != 200 || !strings.Contains(w.Body.String(), "weather") || !strings.Contains(w.Body.String(), "Thinking about tools") || uc.Response != "Answer with text" {
+						t.Errorf("lost content/tool/thought: HTTP %d %s", w.Code, w.Body.String())
+					}
+					var responseUsage usage.Usage
+					if mode == "stream" {
+						for _, line := range strings.Split(w.Body.String(), "\n") {
+							data, done, ok := translator.ParseSSEDataLineString(line)
+							if ok && !done {
+								if u := usage.ExtractFromOpenAI([]byte(data)); u.TotalTokens > 0 {
+									responseUsage = u
+								}
+							}
+						}
+					} else {
+						responseUsage = usage.ExtractFromOpenAI(w.Body.Bytes())
+					}
+					known := counts != "missing"
+					wantUsage := usage.Usage{PromptTokens: 101, CompletionTokens: 26, TotalTokens: 127, CachedTokens: 13, ReasoningTokens: 9, Known: true}
+					if known && responseUsage != wantUsage {
+						t.Errorf("response usage=%+v, want %+v", responseUsage, wantUsage)
+					}
+					if !known && strings.Contains(w.Body.String(), `"usage"`) {
+						t.Errorf("invented response usage: %s", w.Body.String())
+					}
+					entries, err := database.GetUsageHistory(db.UsageFilter{Provider: "antigravity"})
+					if err != nil || len(entries) != 1 {
+						t.Fatalf("usage entries=%v err=%v", entries, err)
+					}
+					entry := entries[0]
+					wantPrompt, wantCompletion := 101, 26
+					if !known {
+						wantPrompt, wantCompletion = 4, 4
+					}
+					if entry.PromptTokens != wantPrompt || entry.CompletionTokens != wantCompletion {
+						t.Errorf("stored tokens=%d/%d, want %d/%d", entry.PromptTokens, entry.CompletionTokens, wantPrompt, wantCompletion)
+					}
+					var meta map[string]any
+					if err := json.Unmarshal([]byte(entry.Meta), &meta); err != nil {
+						t.Fatal(err)
+					}
+					if known {
+						if meta["cached_tokens"] != float64(13) || meta["reasoning_tokens"] != float64(9) || meta["usage_missing"] == true {
+							t.Errorf("stored metadata=%v", meta)
+						}
+					} else if meta["usage_missing"] != true || meta["reasoning_tokens"] != nil {
+						t.Errorf("missing usage not unknown: %v", meta)
+					}
+					details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: "antigravity", Page: 1, PageSize: 10})
+					if err != nil || len(details.Details) != 1 {
+						t.Fatalf("details=%v err=%v", details, err)
+					}
+					var detail map[string]any
+					if err := json.Unmarshal(details.Details[0], &detail); err != nil {
+						t.Fatal(err)
+					}
+					if detail["usageKnown"] != known {
+						t.Errorf("usageKnown=%v want %t", detail["usageKnown"], known)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestAntigravityToolAndThoughtOnlyUsage(t *testing.T) {
+	for _, part := range []string{
+		`{"thought":true,"text":"Thinking only now"}`,
+		`{"functionCall":{"name":"search","args":{"q":"Go"}}}`,
+	} {
+		for _, stream := range []bool{false, true} {
+			for _, known := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/stream=%t/known=%t", part, stream, known), func(t *testing.T) {
+					srv, database := setupTestServer(t)
+					// Nested candidates with top-level metadata is also an upstream format.
+					body := `{"response":{"candidates":[{"content":{"parts":[` + part + `]}}]}`
+					if known {
+						body += `,"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":2,"thoughtsTokenCount":7,"totalTokenCount":20}`
+					}
+					body += `}`
+					if stream {
+						body = "data: " + body + "\n\ndata: [DONE]\n\n"
+					}
+					w := httptest.NewRecorder()
+					resp := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}
+					uc := &usageContext{Provider: "antigravity", Model: "model", StartedAt: time.Now(), Status: 200, Prompt: "test prompt"}
+					if stream {
+						srv.proxyAntigravityStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "model", uc)
+					} else {
+						srv.proxyAntigravityNonStreaming(w, resp, "model", uc)
+					}
+					entries, err := database.GetUsageHistory(db.UsageFilter{Provider: "antigravity"})
+					if err != nil || len(entries) != 1 {
+						t.Fatalf("entries=%v err=%v", entries, err)
+					}
+					entry := entries[0]
+					if known {
+						if entry.PromptTokens != 11 || entry.CompletionTokens != 9 || !strings.Contains(w.Body.String(), `"total_tokens":20`) || !strings.Contains(w.Body.String(), `"reasoning_tokens":7`) {
+							t.Errorf("lost real usage: entry=%+v response=%s", entry, w.Body.String())
+						}
+					} else {
+						if !strings.Contains(entry.Meta, `"usage_missing":true`) || strings.Contains(w.Body.String(), `"usage"`) {
+							t.Errorf("invented usage: entry=%+v response=%s", entry, w.Body.String())
+						}
+						if strings.Contains(part, "thought") && (uc.Response != "Thinking only now" || entry.CompletionTokens != 4) {
+							t.Errorf("thought-only fallback lost: entry=%+v response=%q", entry, uc.Response)
+						}
+					}
+				})
+			}
+		}
+	}
+}
 
 func TestAntigravityThinkingTierRouting(t *testing.T) {
 	cases := []struct {

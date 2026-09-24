@@ -148,7 +148,11 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 			conn.Data.ProviderSpecificData = make(map[string]any)
 		}
 		conn.Data.ProviderSpecificData["projectId"] = projID
-		s.DB.UpdateConnection(conn)
+		if conn.ID != "" {
+			if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": projID}); err != nil {
+				return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: "failed to persist project discovery"}
+			}
+		}
 		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: http.StatusOK}
 	}
 
@@ -275,7 +279,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		conn.Data.TestStatus = "error"
 		conn.Data.LastError = err.Error()
 		if conn.ID != "" {
-			s.DB.UpdateConnection(conn)
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
 		return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
 	}
@@ -296,7 +300,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 			conn.Data.TestStatus = "error"
 			conn.Data.LastError = errMsg
 			if conn.ID != "" {
-				s.DB.UpdateConnection(conn)
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			}
 			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: errMsg}
 		}
@@ -306,7 +310,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 			if conn.ID != "" {
 				conn.Data.TestStatus = "ok"
 				conn.Data.LastError = ""
-				s.DB.UpdateConnection(conn)
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			}
 			return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
 		}
@@ -318,7 +322,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 		if conn.ID != "" {
 			conn.Data.TestStatus = "ok"
 			conn.Data.LastError = ""
-			s.DB.UpdateConnection(conn)
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
 		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
 	}
@@ -326,7 +330,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	conn.Data.TestStatus = "error"
 	conn.Data.LastError = "HTTP " + fmt.Sprintf("%d", resp.StatusCode)
 	if conn.ID != "" {
-		s.DB.UpdateConnection(conn)
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 	}
 	return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: "HTTP " + fmt.Sprintf("%d", resp.StatusCode)}
 }

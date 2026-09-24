@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,15 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
+
+func newLocalRequest(method, target string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, target, body)
+	r.RemoteAddr = "127.0.0.1:1234"
+	if r.Host == "example.com" {
+		r.Host = "localhost"
+	}
+	return r
+}
 
 func setupTestServer(t *testing.T) (*Server, *db.DB) {
 	t.Helper()
@@ -37,7 +47,7 @@ func setupTestServer(t *testing.T) (*Server, *db.DB) {
 func TestHealthEndpoint(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/health", nil)
+	req := newLocalRequest("GET", "/api/health", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -68,7 +78,7 @@ func TestModelsEndpoint(t *testing.T) {
 	}
 	database.CreateConnection(conn)
 
-	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req := newLocalRequest("GET", "/v1/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -87,7 +97,7 @@ func TestChatCompletionsMissingModel(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	body := `{"messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -101,7 +111,7 @@ func TestChatCompletionsNoCredentials(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -162,7 +172,7 @@ func TestChatCompletionsWithMockUpstream(t *testing.T) {
 	database.CreateConnection(conn)
 
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -223,7 +233,7 @@ func TestChatCompletionsStreaming(t *testing.T) {
 	database.CreateConnection(conn)
 
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -288,7 +298,7 @@ func TestMessagesEndpoint(t *testing.T) {
 	database.CreateConnection(conn)
 
 	body := `{"model":"anthropic/claude-sonnet-4-20250514","messages":[{"role":"user","content":"hello"}],"max_tokens":1024}`
-	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/messages", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -345,7 +355,7 @@ func TestMessagesOutputConfigFormatStrippedForNonAnthropic(t *testing.T) {
 		},
 		"max_tokens":1024
 	}`
-	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/messages", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -406,7 +416,7 @@ func TestMessagesOutputConfigFormatRetainedForOfficialClaude(t *testing.T) {
 		},
 		"max_tokens":1024
 	}`
-	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/messages", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -472,7 +482,7 @@ func TestProxyNonStreamingUnwrapsSuccessEnvelope(t *testing.T) {
 	database.CreateConnection(conn)
 
 	body := `{"model":"openai/gpt-4o","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -508,7 +518,7 @@ func TestProxyNonStreamingUnwrapsSuccessEnvelope(t *testing.T) {
 func TestCORSHeaders(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/health", nil)
+	req := newLocalRequest("GET", "/api/health", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -520,7 +530,7 @@ func TestCORSHeaders(t *testing.T) {
 func TestOptionsPreflight(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("OPTIONS", "/v1/chat/completions", nil)
+	req := newLocalRequest("OPTIONS", "/v1/chat/completions", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -536,7 +546,7 @@ func TestDisabledModel(t *testing.T) {
 	database.KVSet("disabledModels", "openai/gpt-4", "true")
 
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -561,7 +571,7 @@ func TestDisabledModelExcludedFromV1Models(t *testing.T) {
 	// Disable a model
 	database.KVSet("disabledModels", "openai/gpt-4o", "true")
 
-	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req := newLocalRequest("GET", "/v1/models", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -593,7 +603,7 @@ func TestSetDisabledModelsAPI(t *testing.T) {
 
 	// 1. Batch disable via models array
 	body := `{"models":["openai/gpt-4o","openai/gpt-4o-mini"],"disabled":true}`
-	req := httptest.NewRequest("POST", "/api/models/disabled", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/models/disabled", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -611,7 +621,7 @@ func TestSetDisabledModelsAPI(t *testing.T) {
 
 	// 2. Single enable via model string fallback
 	body = `{"model":"openai/gpt-4o","disabled":false}`
-	req = httptest.NewRequest("POST", "/api/models/disabled", strings.NewReader(body))
+	req = newLocalRequest("POST", "/api/models/disabled", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -632,7 +642,7 @@ func TestSetDisabledModelsAPI(t *testing.T) {
 
 	// 3. Empty payload
 	body = `{"models":[],"disabled":true}`
-	req = httptest.NewRequest("POST", "/api/models/disabled", strings.NewReader(body))
+	req = newLocalRequest("POST", "/api/models/disabled", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -667,7 +677,7 @@ func TestOpenCodeHeadersInjection(t *testing.T) {
 
 	// Free model should route with Bearer public and canonical headers
 	body := `{"model":"opencode/big-pickle","messages":[{"role":"user","content":"hi"}]}`
-	reqChat := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	reqChat := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	reqChat.Header.Set("Content-Type", "application/json")
 	wChat := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(wChat, reqChat)
@@ -697,7 +707,7 @@ func TestOpenCodeHeadersInjection(t *testing.T) {
 
 	// Paid model should route with the configured API key
 	bodyPaid := `{"model":"opencode/deepseek-v4-pro","messages":[{"role":"user","content":"hi"}]}`
-	reqPaid := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(bodyPaid))
+	reqPaid := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(bodyPaid))
 	reqPaid.Header.Set("Content-Type", "application/json")
 	wPaid := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(wPaid, reqPaid)
@@ -712,7 +722,7 @@ func TestOpenCodeTestConnection(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	// 1. Missing API key should be rejected immediately without calling upstream
-	reqNoKey := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(`{"provider":"opencode","apiKey":""}`))
+	reqNoKey := newLocalRequest("POST", "/api/providers/test-credentials", strings.NewReader(`{"provider":"opencode","apiKey":""}`))
 	reqNoKey.Header.Set("Content-Type", "application/json")
 	wNoKey := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(wNoKey, reqNoKey)
@@ -732,7 +742,7 @@ func TestOpenCodeTestConnection(t *testing.T) {
 	}))
 	defer mock401.Close()
 
-	req401 := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode","apiKey":"invalid-key","baseUrl":%q}`, mock401.URL)))
+	req401 := newLocalRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode","apiKey":"invalid-key","baseUrl":%q}`, mock401.URL)))
 	req401.Header.Set("Content-Type", "application/json")
 	w401 := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w401, req401)
@@ -752,7 +762,7 @@ func TestOpenCodeTestConnection(t *testing.T) {
 	}))
 	defer mock200.Close()
 
-	req200 := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode-go","apiKey":"valid-go-key","baseUrl":%q}`, mock200.URL)))
+	req200 := newLocalRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode-go","apiKey":"valid-go-key","baseUrl":%q}`, mock200.URL)))
 	req200.Header.Set("Content-Type", "application/json")
 	w200 := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w200, req200)
@@ -769,7 +779,7 @@ func TestOpenCodeTestConnection(t *testing.T) {
 	}))
 	defer mock429.Close()
 
-	req429 := httptest.NewRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode","apiKey":"valid-zen-key","baseUrl":%q}`, mock429.URL)))
+	req429 := newLocalRequest("POST", "/api/providers/test-credentials", strings.NewReader(fmt.Sprintf(`{"provider":"opencode","apiKey":"valid-zen-key","baseUrl":%q}`, mock429.URL)))
 	req429.Header.Set("Content-Type", "application/json")
 	w429 := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w429, req429)
@@ -783,7 +793,7 @@ func TestOpenCodeTestConnection(t *testing.T) {
 func TestDashboardServesHTML(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := newLocalRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -806,7 +816,7 @@ func TestDashboardAssetMissIs404NotSPA(t *testing.T) {
 	// must return 404 — never the SPA index.html fallback, which
 	// previously made a missing JS bundle indistinguishable from a
 	// real one (browser got text/html with 200 and rendered a blank page).
-	req := httptest.NewRequest("GET", "/assets/index-DOESNOTEXIST.js", nil)
+	req := newLocalRequest("GET", "/assets/index-DOESNOTEXIST.js", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -821,7 +831,7 @@ func TestDashboardAssetMissIs404NotSPA(t *testing.T) {
 func TestAuthStatusNoLoginRequired(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("GET", "/api/auth/status", nil)
+	req := newLocalRequest("GET", "/api/auth/status", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -848,7 +858,7 @@ func TestLoginWithDefaultPassword(t *testing.T) {
 	database.SaveSettings(settings)
 
 	body := `{"password":"secure-password-123"}`
-	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/auth/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -874,7 +884,7 @@ func TestLoginWithWrongPassword(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	body := `{"password":"wrongpass"}`
-	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/auth/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -887,7 +897,7 @@ func TestLoginWithWrongPassword(t *testing.T) {
 func TestLogout(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
-	req := httptest.NewRequest("POST", "/api/auth/logout", nil)
+	req := newLocalRequest("POST", "/api/auth/logout", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -914,7 +924,7 @@ func TestAPIKeyAuthEnforcement(t *testing.T) {
 
 	// Request without API key should be rejected
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -944,7 +954,7 @@ func TestAPIKeyAuthWithValidKey(t *testing.T) {
 
 	// Request with valid API key should pass through (will get 503 for no credentials, not 401)
 	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
-	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKeyStr)
 	w := httptest.NewRecorder()
@@ -964,7 +974,7 @@ func TestDashboardAuthEnforcement(t *testing.T) {
 	database.SaveSettings(settings)
 
 	// Request to protected API without session should be rejected
-	req := httptest.NewRequest("GET", "/api/providers", nil)
+	req := newLocalRequest("GET", "/api/providers", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -973,7 +983,7 @@ func TestDashboardAuthEnforcement(t *testing.T) {
 	}
 
 	// Public paths should still work
-	req = httptest.NewRequest("GET", "/api/health", nil)
+	req = newLocalRequest("GET", "/api/health", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -986,7 +996,7 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 	srv, database := setupTestServer(t)
 
 	// 1. Initial state: hasPassword should be false
-	req := httptest.NewRequest("GET", "/api/settings", nil)
+	req := newLocalRequest("GET", "/api/settings", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1000,7 +1010,7 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 
 	// 2. Attempt to enable requireLogin via PUT without password: must be rejected with 400
 	body := `{"requireLogin":true}`
-	req = httptest.NewRequest("PUT", "/api/settings", strings.NewReader(body))
+	req = newLocalRequest("PUT", "/api/settings", strings.NewReader(body))
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -1008,7 +1018,7 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 	}
 
 	// 3. Attempt to enable requireLogin via PATCH without password: must be rejected with 400
-	req = httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(body))
+	req = newLocalRequest("PATCH", "/api/settings", strings.NewReader(body))
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -1017,7 +1027,7 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 
 	// 4. Set password via /api/auth/password
 	pwBody := `{"password":"admin-password-123"}`
-	req = httptest.NewRequest("POST", "/api/auth/password", strings.NewReader(pwBody))
+	req = newLocalRequest("POST", "/api/auth/password", strings.NewReader(pwBody))
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1025,7 +1035,7 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 	}
 
 	// Verify hasPassword is now true
-	req = httptest.NewRequest("GET", "/api/settings", nil)
+	req = newLocalRequest("GET", "/api/settings", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	json.Unmarshal(w.Body.Bytes(), &sResp)
@@ -1034,14 +1044,14 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 	}
 
 	// 5. Now enabling requireLogin via PATCH should succeed
-	req = httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(body))
+	req = newLocalRequest("PATCH", "/api/settings", strings.NewReader(body))
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 enabling requireLogin after password set, got %d", w.Code)
 	}
 	loginBody := `{"password":"admin-password-123"}`
-	req = httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
+	req = newLocalRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1051,7 +1061,7 @@ func TestSettingsPasswordAndRequireLoginGuard(t *testing.T) {
 
 	// 7. Verify that saving settings with passwordHash="" does NOT wipe existing password
 	patchEmptyPw := `{"apiKeyRpm":10,"passwordHash":""}`
-	req = httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(patchEmptyPw))
+	req = newLocalRequest("PATCH", "/api/settings", strings.NewReader(patchEmptyPw))
 	req.AddCookie(cookie)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1068,7 +1078,7 @@ func TestCreateAPIKeyEndpoint(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	body := `{"name":"my-key"}`
-	req := httptest.NewRequest("POST", "/api/keys", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/keys", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1101,7 +1111,7 @@ func TestHealthEndpointEnhanced(t *testing.T) {
 	}
 	database.CreateConnection(conn)
 
-	req := httptest.NewRequest("GET", "/api/health", nil)
+	req := newLocalRequest("GET", "/api/health", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -1131,7 +1141,7 @@ func TestProxyPoolCRUD(t *testing.T) {
 
 	// Create
 	body := `{"name":"test-proxy","proxyUrl":"http://127.0.0.1:7890","type":"http","strictProxy":true}`
-	req := httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1156,7 +1166,7 @@ func TestProxyPoolCRUD(t *testing.T) {
 	}
 
 	// List
-	req = httptest.NewRequest("GET", "/api/proxy-pools", nil)
+	req = newLocalRequest("GET", "/api/proxy-pools", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -1171,7 +1181,7 @@ func TestProxyPoolCRUD(t *testing.T) {
 	}
 
 	// Get by ID
-	req = httptest.NewRequest("GET", "/api/proxy-pools/"+poolID, nil)
+	req = newLocalRequest("GET", "/api/proxy-pools/"+poolID, nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -1181,7 +1191,7 @@ func TestProxyPoolCRUD(t *testing.T) {
 
 	// Update
 	body = `{"name":"updated-proxy","isActive":false}`
-	req = httptest.NewRequest("PUT", "/api/proxy-pools/"+poolID, strings.NewReader(body))
+	req = newLocalRequest("PUT", "/api/proxy-pools/"+poolID, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1201,7 +1211,7 @@ func TestProxyPoolCRUD(t *testing.T) {
 	}
 
 	// Delete
-	req = httptest.NewRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
+	req = newLocalRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -1210,7 +1220,7 @@ func TestProxyPoolCRUD(t *testing.T) {
 	}
 
 	// Verify deleted
-	req = httptest.NewRequest("GET", "/api/proxy-pools/"+poolID, nil)
+	req = newLocalRequest("GET", "/api/proxy-pools/"+poolID, nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -1224,7 +1234,7 @@ func TestProxyPoolCreateValidation(t *testing.T) {
 
 	// Missing name
 	body := `{"proxyUrl":"http://127.0.0.1:7890"}`
-	req := httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1235,7 +1245,7 @@ func TestProxyPoolCreateValidation(t *testing.T) {
 
 	// Missing proxyUrl
 	body = `{"name":"test"}`
-	req = httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req = newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1250,7 +1260,7 @@ func TestProxyPoolDeleteConflict(t *testing.T) {
 
 	// Create a proxy pool
 	body := `{"name":"bound-proxy","proxyUrl":"http://127.0.0.1:7890"}`
-	req := httptest.NewRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req := newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -1274,7 +1284,7 @@ func TestProxyPoolDeleteConflict(t *testing.T) {
 	database.CreateConnection(conn)
 
 	// Attempt delete should return 409
-	req = httptest.NewRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
+	req = newLocalRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -1350,7 +1360,7 @@ func TestChatToResponsesUpstream_NonStreamAndStream(t *testing.T) {
 
 	// 1. Non-streaming test
 	bodyNonStream := fmt.Sprintf(`{"model":"%s/model-a","messages":[{"role":"user","content":"Hello"}]}`, provID)
-	req1 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(bodyNonStream))
+	req1 := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(bodyNonStream))
 	req1.Header.Set("Content-Type", "application/json")
 	w1 := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w1, req1)
@@ -1371,7 +1381,7 @@ func TestChatToResponsesUpstream_NonStreamAndStream(t *testing.T) {
 
 	// 2. Streaming test
 	bodyStream := fmt.Sprintf(`{"model":"%s/model-a","messages":[{"role":"user","content":"Hello"}],"stream":true}`, provID)
-	req2 := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(bodyStream))
+	req2 := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(bodyStream))
 	req2.Header.Set("Content-Type", "application/json")
 	w2 := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w2, req2)

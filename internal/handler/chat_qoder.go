@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -150,7 +152,9 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(resp.Body)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
-		s.DB.UpdateConnection(conn)
+		if s.DB != nil {
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+		}
 		latencyMs := int(time.Since(start).Milliseconds())
 		if latencyMs < 0 {
 			latencyMs = 0
@@ -170,15 +174,17 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			"input":        extractPromptSummary(req.Messages),
 		}
 		rdBytes, _ := json.Marshal(rdData)
-		_ = s.DB.SaveRequestDetail(&db.RequestDetail{
-			ID:           rdID,
-			Timestamp:    rdData["timestamp"].(string),
-			Provider:     modelInfo.Provider,
-			Model:        modelInfo.Model,
-			ConnectionID: conn.ID,
-			Status:       statusStr,
-			Data:         string(rdBytes),
-		})
+		if s.DB != nil {
+			_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+				ID:           rdID,
+				Timestamp:    rdData["timestamp"].(string),
+				Provider:     modelInfo.Provider,
+				Model:        modelInfo.Model,
+				ConnectionID: conn.ID,
+				Status:       statusStr,
+				Data:         string(rdBytes),
+			})
+		}
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
@@ -200,7 +206,9 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	provider.ResetAccountState(conn)
-	s.DB.UpdateConnection(conn)
+	if s.DB != nil {
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+	}
 
 	uc := &usageContext{
 		Provider:     modelInfo.Provider,
@@ -230,32 +238,44 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var lastUsage usage.Usage
-	var content strings.Builder
-	var reasoning strings.Builder
-	var toolCalls []map[string]any
-	finishReason := ""
+	type toolState struct {
+		id, kind        string
+		name, arguments strings.Builder
+	}
+	type choiceState struct {
+		content, reasoning strings.Builder
+		finishReason       string
+		tools              map[int]*toolState
+	}
+	choices := make(map[int]*choiceState)
 	id, created := "", int64(0)
-	role := "assistant"
-
-	for scanner.Scan() {
-		select {
-		case <-r.Context().Done():
-			slog.Info("Client disconnected during Qoder non-stream aggregation", slog.String("model", model))
-			if uc != nil {
-				uc.Status = 499
-				if content.Len() > 0 {
-					uc.Response = content.String()
-				} else if reasoning.Len() > 0 {
-					uc.Response = reasoning.String()
+	complete := false
+	defer func() {
+		if uc != nil {
+			if choice := choices[0]; choice != nil {
+				uc.Response = choice.content.String()
+				if uc.Response == "" {
+					uc.Response = choice.reasoning.String()
 				}
 			}
-			s.recordUsage(uc, lastUsage)
-			return
-		default:
 		}
+		s.recordUsage(uc, lastUsage)
+	}()
 
+	for scanner.Scan() {
+		if r.Context().Err() != nil {
+			if uc != nil {
+				uc.Status = 499
+			}
+			return
+		}
 		data, done := provider.UnwrapQoderSSELine(scanner.Text(), "qoder/"+model)
 		if done {
+			if data != "" {
+				writeQoderFailure(w, uc, data, false)
+				return
+			}
+			complete = true
 			break
 		}
 		if data == "" {
@@ -264,22 +284,10 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 		if u := usage.ExtractFromSSELine([]byte(data)); u.TotalTokens > 0 {
 			lastUsage = u
 		}
-
-		var chunk struct {
-			ID      string `json:"id"`
-			Choices []struct {
-				FinishReason string `json:"finish_reason"`
-				Delta        struct {
-					Role             string          `json:"role"`
-					Content          string          `json:"content"`
-					ReasoningContent string          `json:"reasoning_content"`
-					ToolCalls        json.RawMessage `json:"tool_calls"`
-				} `json:"delta"`
-			} `json:"choices"`
-			Created int64 `json:"created"`
-		}
+		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
+			writeQoderFailure(w, uc, "invalid qoder SSE chunk", false)
+			return
 		}
 		if chunk.ID != "" {
 			id = chunk.ID
@@ -287,58 +295,78 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 		if chunk.Created > 0 {
 			created = chunk.Created
 		}
-		if len(chunk.Choices) == 0 {
-			continue
-		}
-		c := chunk.Choices[0]
-		if c.Delta.Role != "" {
-			role = c.Delta.Role
-		}
-		content.WriteString(c.Delta.Content)
-		reasoning.WriteString(c.Delta.ReasoningContent)
-		if c.FinishReason != "" {
-			finishReason = c.FinishReason
-		}
-		if len(c.Delta.ToolCalls) > 0 {
-			var tcs []map[string]any
-			if err := json.Unmarshal(c.Delta.ToolCalls, &tcs); err == nil {
-				toolCalls = append(toolCalls, tcs...)
+		for _, delta := range chunk.Choices {
+			choice := choices[delta.Index]
+			if choice == nil {
+				choice = &choiceState{tools: make(map[int]*toolState)}
+				choices[delta.Index] = choice
+			}
+			choice.content.WriteString(delta.Delta.Content)
+			choice.reasoning.WriteString(delta.Delta.ReasoningContent)
+			if delta.FinishReason != "" {
+				choice.finishReason = delta.FinishReason
+			}
+			for _, call := range delta.Delta.ToolCalls {
+				tool := choice.tools[call.Index]
+				if tool == nil {
+					tool = &toolState{kind: "function"}
+					choice.tools[call.Index] = tool
+				}
+				if call.ID != "" {
+					tool.id = call.ID
+				}
+				if call.Type != "" {
+					tool.kind = call.Type
+				}
+				tool.name.WriteString(call.Function.Name)
+				tool.arguments.WriteString(call.Function.Arguments)
 			}
 		}
 	}
-	if uc != nil {
-		uc.Response = content.String()
+	if r.Context().Err() != nil {
+		if uc != nil {
+			uc.Status = 499
+		}
+		return
 	}
-	s.recordUsage(uc, lastUsage)
+	if !complete {
+		message := "qoder stream ended before completion"
+		if err := scanner.Err(); err != nil {
+			message = "failed to read qoder stream: " + err.Error()
+		}
+		writeQoderFailure(w, uc, message, false)
+		return
+	}
 	if id == "" {
 		id = "chatcmpl-qoder-" + generateID()[:12]
 	}
 	if created == 0 {
 		created = time.Now().Unix()
 	}
-
-	msg := map[string]any{"role": role, "content": content.String()}
-	if reasoning.Len() > 0 {
-		msg["reasoning_content"] = reasoning.String()
-	}
-	if len(toolCalls) > 0 {
-		msg["tool_calls"] = toolCalls
+	var output []map[string]any
+	for _, index := range slices.Sorted(maps.Keys(choices)) {
+		choice := choices[index]
+		msg := map[string]any{"role": "assistant", "content": choice.content.String()}
+		if choice.reasoning.Len() > 0 {
+			msg["reasoning_content"] = choice.reasoning.String()
+		}
+		if len(choice.tools) > 0 {
+			var calls []map[string]any
+			for _, toolIndex := range slices.Sorted(maps.Keys(choice.tools)) {
+				tool := choice.tools[toolIndex]
+				calls = append(calls, map[string]any{
+					"id": tool.id, "type": tool.kind,
+					"function": map[string]any{"name": tool.name.String(), "arguments": tool.arguments.String()},
+				})
+			}
+			msg["tool_calls"] = calls
+		}
+		output = append(output, map[string]any{"index": index, "message": msg, "finish_reason": choice.finishReason})
 	}
 	respBody := map[string]any{
-		"id":      id,
-		"object":  "chat.completion",
-		"created": created,
-		"model":   model,
-		"choices": []map[string]any{{
-			"index":         0,
-			"message":       msg,
-			"finish_reason": finishReason,
-		}},
-		"usage": map[string]any{
-			"prompt_tokens":     lastUsage.PromptTokens,
-			"completion_tokens": lastUsage.CompletionTokens,
-			"total_tokens":      lastUsage.TotalTokens,
-		},
+		"id": id, "object": "chat.completion", "created": created,
+		"model": model, "choices": output,
+		"usage": lastUsage.OpenAI(),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -350,7 +378,11 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		io.Copy(w, resp.Body)
+		if uc != nil {
+			uc.Status = http.StatusInternalServerError
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming unsupported"})
+		s.recordUsage(uc, usage.Usage{})
 		return
 	}
 
@@ -369,65 +401,105 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		lastUsage   usage.Usage
 		respBuilder strings.Builder
 	)
+	defer func() {
+		if uc != nil {
+			uc.Response = respBuilder.String()
+		}
+		s.recordUsage(uc, lastUsage)
+	}()
 
 	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			slog.Info("Client disconnected during Qoder stream", slog.String("model", model))
+		if ctx.Err() != nil {
 			if uc != nil {
 				uc.Status = 499
-				uc.Response = respBuilder.String()
 			}
-			s.recordUsage(uc, lastUsage)
 			return
-		default:
 		}
 
-		line := scanner.Text()
-		data, done := provider.UnwrapQoderSSELine(line, "qoder/"+model)
-
+		data, done := provider.UnwrapQoderSSELine(scanner.Text(), "qoder/"+model)
 		if done {
-			if uc != nil {
-				uc.Response = respBuilder.String()
+			if data != "" {
+				writeQoderFailure(w, uc, data, true)
+				return
 			}
-			s.recordUsage(uc, lastUsage)
 			fmt.Fprintf(w, "data: [DONE]\n\n")
 			flusher.Flush()
-			// Terminal frame received — Qoder keeps the socket open after
-			// [DONE] (agent keepalive); stop reading so the stream closes
-			// immediately (9router@9c9dd7b1).
+			// Qoder keeps the socket open after [DONE]; stop reading immediately.
 			return
 		}
-
 		if data == "" {
 			continue
 		}
-
 		if u := usage.ExtractFromSSELine([]byte(data)); u.TotalTokens > 0 {
 			lastUsage = u
 		}
-
 		var chunk chatStreamChunk
-		if err := json.Unmarshal([]byte(data), &chunk); err == nil {
-			for _, choice := range chunk.Choices {
-				if respBuilder.Len() < 16384 {
-					if choice.Delta.Content != "" {
-						respBuilder.WriteString(choice.Delta.Content)
-					} else if choice.Delta.ReasoningContent != "" {
-						respBuilder.WriteString(choice.Delta.ReasoningContent)
-					}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			writeQoderFailure(w, uc, "invalid qoder SSE chunk", true)
+			return
+		}
+		for _, choice := range chunk.Choices {
+			if respBuilder.Len() < 16384 {
+				if choice.Delta.Content != "" {
+					respBuilder.WriteString(choice.Delta.Content)
+				} else if choice.Delta.ReasoningContent != "" {
+					respBuilder.WriteString(choice.Delta.ReasoningContent)
 				}
 			}
 		}
 
-		fmt.Fprintf(w, "data: %s\n\n", data)
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			if uc != nil {
+				uc.Status = 499
+			}
+			return
+		}
 		flusher.Flush()
 	}
-	// Stream ended without a terminal frame — emit [DONE] ourselves.
-	fmt.Fprintf(w, "data: [DONE]\n\n")
-	if uc != nil {
-		uc.Response = respBuilder.String()
+	if ctx.Err() != nil {
+		if uc != nil {
+			uc.Status = 499
+		}
+		return
 	}
-	s.recordUsage(uc, lastUsage)
-	flusher.Flush()
+	message := "qoder stream ended before completion"
+	if err := scanner.Err(); err != nil {
+		message = "failed to read qoder stream: " + err.Error()
+	}
+	writeQoderFailure(w, uc, message, true)
+}
+
+// writeQoderFailure preserves upstream protocol errors, never completion text.
+// Streaming headers may already be committed, so report failure as an SSE event.
+func writeQoderFailure(w http.ResponseWriter, uc *usageContext, data string, stream bool) {
+	status := http.StatusBadGateway
+	var payload struct {
+		Error json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(data), &payload); err != nil || len(payload.Error) == 0 {
+		encoded, _ := json.Marshal(map[string]any{"error": map[string]any{
+			"message": data, "type": "upstream_error", "code": status,
+		}})
+		data = string(encoded)
+	} else {
+		var upstream struct {
+			Code int `json:"code"`
+		}
+		if json.Unmarshal(payload.Error, &upstream) == nil && upstream.Code >= 400 && upstream.Code <= 599 {
+			status = upstream.Code
+		}
+	}
+	if uc != nil {
+		uc.Status = status
+	}
+	if stream {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		fmt.Fprintln(w, data)
+	}
 }

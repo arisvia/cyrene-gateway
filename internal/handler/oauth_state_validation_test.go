@@ -15,7 +15,7 @@ func TestOAuthCallbackStateValidation(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	// Case 1: Missing state parameter must be rejected with 400
-	req := httptest.NewRequest("GET", "/api/oauth/github/callback?code=mock_code", nil)
+	req := newLocalRequest("GET", "/api/oauth/github/callback?code=mock_code", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -26,7 +26,7 @@ func TestOAuthCallbackStateValidation(t *testing.T) {
 	}
 
 	// Case 2: Invalid/expired state must be rejected with 400
-	req = httptest.NewRequest("GET", "/api/oauth/github/callback?code=mock_code&state=nonexistent_state", nil)
+	req = newLocalRequest("GET", "/api/oauth/github/callback?code=mock_code&state=nonexistent_state", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -45,7 +45,7 @@ func TestOAuthCallbackStateValidation(t *testing.T) {
 	})
 	defer provider.ClearSession("mismatched_state")
 
-	req = httptest.NewRequest("GET", "/api/oauth/github/callback?code=mock_code&state=mismatched_state", nil)
+	req = newLocalRequest("GET", "/api/oauth/github/callback?code=mock_code&state=mismatched_state", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {

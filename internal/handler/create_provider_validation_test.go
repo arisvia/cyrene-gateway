@@ -68,7 +68,7 @@ func TestHandleCreateProviderValidation(t *testing.T) {
 				}
 			}
 
-			req := httptest.NewRequest("POST", "/api/providers", strings.NewReader(tc.body))
+			req := newLocalRequest("POST", "/api/providers", strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			srv.Handler.ServeHTTP(w, req)

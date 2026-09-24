@@ -41,7 +41,7 @@ func TestOAuthDeviceCode_WireFormat(t *testing.T) {
 	provider.Registry["codebuddy-cn"] = mockInfo
 
 	// 1. Test POST /api/oauth/codebuddy-cn/device-code
-	req := httptest.NewRequest("POST", "/api/oauth/codebuddy-cn/device-code", nil)
+	req := newLocalRequest("POST", "/api/oauth/codebuddy-cn/device-code", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 
@@ -65,7 +65,7 @@ func TestOAuthDeviceCode_WireFormat(t *testing.T) {
 		t.Errorf("unexpected snake_case verification_uri in response: %v", bodyMap)
 	}
 	pollReqBody := `{"deviceCode":"mock-state-abc"}`
-	pollReq := httptest.NewRequest("POST", "/api/oauth/codebuddy-cn/device-code/poll", strings.NewReader(pollReqBody))
+	pollReq := newLocalRequest("POST", "/api/oauth/codebuddy-cn/device-code/poll", strings.NewReader(pollReqBody))
 	pollReq.Header.Set("Content-Type", "application/json")
 	pollW := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(pollW, pollReq)
@@ -80,7 +80,7 @@ func TestOAuthDeviceCode_WireFormat(t *testing.T) {
 
 	// 3. Test POST /api/oauth/codebuddy-cn/device-code/poll with snake_case device_code fallback
 	pollSnakeBody := `{"device_code":"mock-state-abc"}`
-	pollSnakeReq := httptest.NewRequest("POST", "/api/oauth/codebuddy-cn/device-code/poll", strings.NewReader(pollSnakeBody))
+	pollSnakeReq := newLocalRequest("POST", "/api/oauth/codebuddy-cn/device-code/poll", strings.NewReader(pollSnakeBody))
 	pollSnakeReq.Header.Set("Content-Type", "application/json")
 	pollSnakeW := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(pollSnakeW, pollSnakeReq)

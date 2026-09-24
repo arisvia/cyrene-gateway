@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
+	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/middleware"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
@@ -36,7 +38,7 @@ func TestSecretRedactionContract(t *testing.T) {
 	}
 
 	// 1. GET /api/providers (List)
-	req := httptest.NewRequest("GET", "/api/providers", nil)
+	req := newLocalRequest("GET", "/api/providers", nil)
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -47,7 +49,7 @@ func TestSecretRedactionContract(t *testing.T) {
 	assertNoSecrets(t, listBody)
 
 	// 2. GET /api/providers/{id} (Detail)
-	req = httptest.NewRequest("GET", "/api/providers/secret-test-conn", nil)
+	req = newLocalRequest("GET", "/api/providers/secret-test-conn", nil)
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -70,7 +72,7 @@ func TestSecretRedactionContract(t *testing.T) {
 
 	// 3. PUT /api/providers/{id} (Update without secrets preserves them)
 	updatePayload := `{"name":"Updated Name","data":{"baseUrl":"https://custom.openai.com/v1"}}`
-	req = httptest.NewRequest("PUT", "/api/providers/secret-test-conn", strings.NewReader(updatePayload))
+	req = newLocalRequest("PUT", "/api/providers/secret-test-conn", strings.NewReader(updatePayload))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -182,6 +184,124 @@ func TestInitialPasswordSetupAndSessionIssuance(t *testing.T) {
 	}
 }
 
+func TestPasswordChangeRevokesSessions(t *testing.T) {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	settings, err := database.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.RequireLogin, settings.RequireAPIKey = true, true
+	settings.PasswordHash = auth.HashPassword("original-password")
+	if err := database.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	key := &model.APIKey{ID: "password-change-key", Key: auth.GenerateAPIKey(), Name: "existing key", IsActive: true}
+	if err := database.CreateAPIKey(key); err != nil {
+		t.Fatal(err)
+	}
+
+	authHandler := NewAuthHandler(database)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/auth/login", authHandler.HandleLogin)
+	mux.HandleFunc("POST /api/auth/password", authHandler.HandleSetPassword)
+	mux.HandleFunc("GET /api/auth/status", authHandler.HandleStatus)
+	mux.HandleFunc("GET /api/protected", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("GET /v1/protected", func(w http.ResponseWriter, r *http.Request) {
+		if obj := auth.APIKeyFromContext(r.Context()); obj != nil {
+			w.Header().Set("X-Test-Key-ID", obj.ID)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := middleware.DashboardAuth(database)(middleware.APIKeyAuth(database)(mux))
+	send := func(method, path, body, token, transport string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, "http://localhost"+path, strings.NewReader(body))
+		req.RemoteAddr = "203.0.113.177:1234"
+		if token != "" {
+			switch transport {
+			case "cookie":
+				req.AddCookie(&http.Cookie{Name: "auth_token", Value: token})
+			case "bearer":
+				req.Header.Set("Authorization", "Bearer "+token)
+			case "header":
+				req.Header.Set("X-Cyrene-Auth-Token", token)
+			case "query":
+				q := req.URL.Query()
+				q.Set("token", token)
+				req.URL.RawQuery = q.Encode()
+			}
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+	readToken := func(rec *httptest.ResponseRecorder) string {
+		t.Helper()
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected token response 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var result struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Token == "" {
+			t.Fatalf("missing session token: %v", err)
+		}
+		return result.Token
+	}
+	assertAPIKey := func() {
+		t.Helper()
+		if !auth.VerifyAPIKeySignature(key.Key) {
+			t.Error("existing API key signature revoked")
+		}
+		rec := send("GET", "/v1/protected", "", key.Key, "bearer")
+		if rec.Code != http.StatusOK || rec.Header().Get("X-Test-Key-ID") != key.ID {
+			t.Errorf("existing API key rejected or not attributed: status %d, key %q", rec.Code, rec.Header().Get("X-Test-Key-ID"))
+		}
+	}
+
+	oldToken := readToken(send("POST", "/api/auth/login", `{"password":"original-password"}`, "", ""))
+	if rec := send("GET", "/api/protected", "", oldToken, "cookie"); rec.Code != http.StatusOK {
+		t.Fatalf("login token rejected before password change: %d", rec.Code)
+	}
+	assertAPIKey()
+	newToken := readToken(send("POST", "/api/auth/password", `{"password":"replacement-password"}`, oldToken, "cookie"))
+	for _, path := range []string{"/api/protected", "/v1/protected"} {
+		for _, transport := range []string{"cookie", "bearer", "header", "query"} {
+			if path == "/v1/protected" && transport == "query" {
+				continue // APIKeyAuth does not accept dashboard query tokens.
+			}
+			t.Run(path+"/"+transport, func(t *testing.T) {
+				if rec := send("GET", path, "", oldToken, transport); rec.Code != http.StatusUnauthorized {
+					t.Errorf("old session survived password change: got %d, want 401", rec.Code)
+				}
+				if rec := send("GET", path, "", newToken, transport); rec.Code != http.StatusOK {
+					t.Errorf("new session rejected: got %d, want 200", rec.Code)
+				}
+			})
+		}
+	}
+	for _, tc := range []struct {
+		token string
+		want  bool
+	}{{oldToken, false}, {newToken, true}} {
+		rec := send("GET", "/api/auth/status", "", tc.token, "cookie")
+		var status struct {
+			Authenticated bool `json:"authenticated"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusOK || status.Authenticated != tc.want {
+			t.Errorf("status authenticated = %v, want %v (HTTP %d)", status.Authenticated, tc.want, rec.Code)
+		}
+	}
+	assertAPIKey()
+}
+
 func TestPasswordArgon2idMigration(t *testing.T) {
 	srv, database := setupTestServer(t)
 
@@ -194,7 +314,7 @@ func TestPasswordArgon2idMigration(t *testing.T) {
 
 	// Login with correct password
 	loginBody := `{"password":"my-old-hmac-password"}`
-	req := httptest.NewRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
+	req := newLocalRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
@@ -214,7 +334,7 @@ func TestManagementAPICORS(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	// 1. Same-origin public domain via reverse proxy / Cloudflare Tunnel
-	sameOriginReq := httptest.NewRequest("OPTIONS", "/api/providers", nil)
+	sameOriginReq := newLocalRequest("OPTIONS", "/api/providers", nil)
 	sameOriginReq.Header.Set("Origin", "https://ai.mycompany.com")
 	sameOriginReq.Header.Set("X-Forwarded-Host", "ai.mycompany.com")
 	sameOriginW := httptest.NewRecorder()
@@ -227,7 +347,7 @@ func TestManagementAPICORS(t *testing.T) {
 	}
 
 	// 2. Loopback origin (e.g. local dev server or local browser)
-	loopbackReq := httptest.NewRequest("OPTIONS", "/api/providers", nil)
+	loopbackReq := newLocalRequest("OPTIONS", "/api/providers", nil)
 	loopbackReq.Header.Set("Origin", "http://localhost:5173")
 	loopbackW := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(loopbackW, loopbackReq)
@@ -236,7 +356,7 @@ func TestManagementAPICORS(t *testing.T) {
 	}
 
 	// 3. Untrusted cross-origin website (e.g. CSRF attack)
-	evilReq := httptest.NewRequest("OPTIONS", "/api/providers", nil)
+	evilReq := newLocalRequest("OPTIONS", "/api/providers", nil)
 	evilReq.Header.Set("Origin", "https://malicious-site.com")
 	evilReq.Header.Set("X-Forwarded-Host", "ai.mycompany.com")
 	evilW := httptest.NewRecorder()

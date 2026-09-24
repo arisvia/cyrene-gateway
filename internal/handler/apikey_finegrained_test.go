@@ -57,7 +57,7 @@ func TestAPIKey_ModelWhitelistAndContextInjection(t *testing.T) {
 
 	// 3. Test PUT /api/keys/{id} to update whitelist and RPM
 	updatePayload := `{"name":"Updated DeepSeek Key","allowedModels":["deepseek/*","openai/gpt-4o"],"rpm":50}`
-	req = httptest.NewRequest("PUT", "/api/keys/"+key.ID, strings.NewReader(updatePayload))
+	req = newLocalRequest("PUT", "/api/keys/"+key.ID, strings.NewReader(updatePayload))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
