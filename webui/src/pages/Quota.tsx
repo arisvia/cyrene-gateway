@@ -309,7 +309,7 @@ const Quota: Component = () => {
           <For each={currentKeys()}>
             {k => {
               const b = () => props.quotasObj[k]
-              const label = () => b().displayName || (k === 'user' ? t('quota.bucketUser') : k === 'organization' ? t('quota.bucketOrg') : k)
+              const label = () => b().displayName || (k === 'user' ? t('quota.bucketUser') : k === 'organization' ? t('quota.bucketOrg') : k === 'addOn' ? t('quota.bucketAddOn') : k)
               return <QuotaItem name={label()} quota={b()} />
             }}
           </For>

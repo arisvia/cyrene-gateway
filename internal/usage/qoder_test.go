@@ -75,3 +75,59 @@ func TestFetchQoderNoToken(t *testing.T) {
 		t.Errorf("expected no-token message, got %q", res.Message)
 	}
 }
+func TestFetchQoder_AddOnQuotaAndDynamicBuckets(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"userId": "019fe95f-b50b-745f-8fd9-5c917f5998ea",
+			"userType": "personal_standard",
+			"usageType": "credits",
+			"totalUsagePercentage": 0,
+			"isQuotaExceeded": false,
+			"expiresAt": 253402214400000,
+			"userQuota": {"total": 0, "used": 0, "remaining": 0, "percentage": 0, "unit": "credits"},
+			"addOnQuota": {
+				"total": 100,
+				"used": 0,
+				"remaining": 100,
+				"percentage": 0,
+				"unit": "credits",
+				"detailUrl": "https://qoder.com/account/usage"
+			},
+			"campaignQuota": {
+				"total": 500,
+				"used": 50,
+				"remaining": 450,
+				"unit": "credits"
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+		Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
+	})
+
+	if !strings.Contains(res.Plan, "Personal Standard") {
+		t.Errorf("expected plan to mention Personal Standard, got %q", res.Plan)
+	}
+
+	addOn, ok := res.Quotas["addOn"]
+	if !ok {
+		t.Fatalf("expected addOn quota to be unpacked, got %v", res.Quotas)
+	}
+	if addOn.Total != 100 || addOn.Remaining != 100 || addOn.RemainingPercentage != 100 {
+		t.Errorf("unexpected addOn values: %+v", addOn)
+	}
+	if addOn.ResetAt != "" {
+		t.Errorf("expected perpetual timestamp 253402214400000 to be ignored, got %q", addOn.ResetAt)
+	}
+
+	campaign, ok := res.Quotas["campaignQuota"]
+	if !ok {
+		t.Fatalf("expected campaignQuota to be dynamically unpacked, got %v", res.Quotas)
+	}
+	if campaign.Total != 500 || campaign.Remaining != 450 || campaign.DisplayName != "Campaign Quota" {
+		t.Errorf("unexpected campaign quota: %+v", campaign)
+	}
+}

@@ -837,6 +837,7 @@ export const zhCN = {
     usedSuffix: " (已用: {used})",
     bucketUser: "用户个人额度",
     bucketOrg: "组织共享包",
+    bucketAddOn: "活动/加量额度",
     noMatchingMetrics: "未找到匹配的配额指标",
     usageApiUnavailable: "官方暂未开放标准在线余量查询接口",
     adaptiveThrottle: "网内自适应限流调度",

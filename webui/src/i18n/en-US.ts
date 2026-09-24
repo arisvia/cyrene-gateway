@@ -839,6 +839,7 @@ export const enUS: TranslationDict = {
     usedSuffix: " (used: {used})",
     bucketUser: "Personal quota",
     bucketOrg: "Organization pool",
+    bucketAddOn: "Add-on / Promotion quota",
     noMatchingMetrics: "No matching quota metrics",
     usageApiUnavailable: "The upstream does not expose a standard online quota API yet",
     adaptiveThrottle: "Adaptive in-network throttling",

@@ -106,18 +106,10 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		accountID = uid
 	}
 
-	// Quota records live under userQuota / orgResourcePackage; the absolute
-	// reset timestamp (expiresAt ms) is surfaced on every record.
-	userQuota, _ := data["userQuota"].(map[string]any)
-	orgQuota, _ := data["orgResourcePackage"].(map[string]any)
-
-	resetAt := ""
-	if expMs := num(data["expiresAt"]); expMs > 0 {
-		resetAt = unixToISO(expMs)
-	}
+	resetAt := parseQoderReset(num(data["expiresAt"]))
 
 	quotas := map[string]Quota{}
-	addQoderQuota := func(name string, q map[string]any) {
+	extractQuotaBucket := func(name string, q map[string]any, defaultDisplayName string) {
 		if q == nil {
 			return
 		}
@@ -138,32 +130,93 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			unit = "credits"
 		}
 		remainingPct := 0.0
-		if total > 0 {
+		if pct := num(q["percentage"]); pct > 0 {
+			remainingPct = 100 - pct
+			if pct <= 1.0 {
+				remainingPct = (1.0 - pct) * 100
+			}
+		} else if total > 0 {
 			remainingPct = remaining / total * 100
-			if remainingPct < 0 {
-				remainingPct = 0
-			}
-			if remainingPct > 100 {
-				remainingPct = 100
-			}
 		}
+		if remainingPct < 0 {
+			remainingPct = 0
+		}
+		if remainingPct > 100 {
+			remainingPct = 100
+		}
+
+		dispName := defaultDisplayName
+		if n, ok := q["name"].(string); ok && strings.TrimSpace(n) != "" {
+			dispName = strings.TrimSpace(n)
+		} else if t, ok := q["title"].(string); ok && strings.TrimSpace(t) != "" {
+			dispName = strings.TrimSpace(t)
+		}
+
 		quotas[name] = Quota{
 			Used:                used,
 			Total:               total,
 			Remaining:           remaining,
 			RemainingPercentage: remainingPct,
+			ResetAt:             parseBucketReset(q, resetAt),
+			Unit:                unit,
+			DisplayName:         dispName,
+		}
+	}
+
+	// 1. Process known standard buckets
+	userQuota, _ := data["userQuota"].(map[string]any)
+	orgQuota, _ := data["orgResourcePackage"].(map[string]any)
+	addOnQuota, _ := data["addOnQuota"].(map[string]any)
+
+	extractQuotaBucket("user", userQuota, "")
+	extractQuotaBucket("organization", orgQuota, "")
+	extractQuotaBucket("addOn", addOnQuota, "")
+
+	// 2. Dynamically unpack any other quota or package structures in response
+	for k, v := range data {
+		if k == "userQuota" || k == "orgResourcePackage" || k == "addOnQuota" {
+			continue
+		}
+		lowerK := strings.ToLower(k)
+		if m, ok := v.(map[string]any); ok {
+			if isQuotaMetricsMap(m) || strings.HasSuffix(lowerK, "quota") || strings.HasSuffix(lowerK, "package") {
+				extractQuotaBucket(k, m, formatBucketTitle(k))
+			}
+		} else if list, ok := v.([]any); ok && (strings.Contains(lowerK, "quota") || strings.Contains(lowerK, "package")) {
+			for i, item := range list {
+				if itemMap, ok := item.(map[string]any); ok && isQuotaMetricsMap(itemMap) {
+					subKey := fmt.Sprintf("%s_%d", k, i+1)
+					extractQuotaBucket(subKey, itemMap, formatBucketTitle(subKey))
+				}
+			}
+		}
+	}
+
+	// 3. Fallback: If all extracted buckets are empty but userQuota was returned,
+	// retain userQuota with 0 balance so the UI reflects 0 credits rather than an error.
+	if len(quotas) == 0 && userQuota != nil {
+		unit, _ := userQuota["unit"].(string)
+		if unit == "" {
+			unit = "credits"
+		}
+		quotas["user"] = Quota{
+			Used:                0,
+			Total:               0,
+			Remaining:           0,
+			RemainingPercentage: 0,
 			ResetAt:             resetAt,
 			Unit:                unit,
 		}
 	}
-	addQoderQuota("user", userQuota)
-	addQoderQuota("organization", orgQuota)
 
 	if len(quotas) == 0 {
 		return QuotaResult{Message: "Qoder connected. No quota data was returned."}
 	}
 
 	plan := "Qoder"
+	if ut, ok := data["userType"].(string); ok && strings.TrimSpace(ut) != "" {
+		plan = fmt.Sprintf("Qoder (%s)", formatBucketTitle(ut))
+	}
 	if pct := num(data["totalUsagePercentage"]); pct > 0 {
 		if pct <= 1.0 {
 			pct *= 100
@@ -174,4 +227,68 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		plan = "Qoder (Quota Exceeded)"
 	}
 	return QuotaResult{Plan: plan, Quotas: quotas, AccountID: accountID}
+}
+
+func parseQoderReset(expMs float64) string {
+	if expMs > 0 && expMs < 200000000000000 {
+		return unixToISO(expMs)
+	}
+	return ""
+}
+
+func parseBucketReset(q map[string]any, fallback string) string {
+	if exp := num(q["expiresAt"]); exp > 0 {
+		return parseQoderReset(exp)
+	}
+	if exp := num(q["expireTime"]); exp > 0 {
+		return parseQoderReset(exp)
+	}
+	if s, ok := q["resetAt"].(string); ok && s != "" {
+		return parseResetTime(s)
+	}
+	if s, ok := q["validUntil"].(string); ok && s != "" {
+		return parseResetTime(s)
+	}
+	return fallback
+}
+
+func isQuotaMetricsMap(m map[string]any) bool {
+	if m == nil {
+		return false
+	}
+	_, hasTotal := m["total"]
+	_, hasCap := m["cap"]
+	_, hasRemaining := m["remaining"]
+	_, hasUsed := m["used"]
+	return hasTotal || hasCap || hasRemaining || hasUsed
+}
+
+func formatBucketTitle(s string) string {
+	var words []string
+	var cur strings.Builder
+	for i, r := range s {
+		if r == '_' || r == '-' {
+			if cur.Len() > 0 {
+				words = append(words, cur.String())
+				cur.Reset()
+			}
+			continue
+		}
+		if i > 0 && r >= 'A' && r <= 'Z' && s[i-1] >= 'a' && s[i-1] <= 'z' {
+			if cur.Len() > 0 {
+				words = append(words, cur.String())
+				cur.Reset()
+			}
+		}
+		cur.WriteRune(r)
+	}
+	if cur.Len() > 0 {
+		words = append(words, cur.String())
+	}
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+		}
+	}
+	return strings.Join(words, " ")
 }
