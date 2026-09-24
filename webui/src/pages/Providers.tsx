@@ -113,15 +113,8 @@ const Providers: Component = () => {
   })
 
   // 快捷获取 Registry 项
-  const registryFor = (id: string): RegistryProvider | undefined => {
-    const list = store.registryList()
-    return (
-      list.find(r => r.id === id) ||
-      list.find(r => r.alias === id) ||
-      (id === 'codebuddy-intl' ? list.find(r => r.id === 'codebuddy') : undefined) ||
-      (id === 'alicode-intl' ? list.find(r => r.id === 'alicode') : undefined)
-    )
-  }
+  const registryFor = (id: string): RegistryProvider | undefined =>
+    store.registryList().find(r => r.id === id || r.alias === id)
 
   // 过滤后的已接入连接
   // 过滤与聚合后的已接入供应商列表（以 Provider 为唯一主体聚合多账号）

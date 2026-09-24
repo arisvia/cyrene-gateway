@@ -421,11 +421,11 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
-	case "codebuddy", "codebuddy-cn", "codebuddy-intl":
+	case "codebuddy", "codebuddy-cn":
 		platform := "CLI"
 		domain := "copilot.tencent.com"
 		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
-		if providerID == "codebuddy" || providerID == "codebuddy-intl" {
+		if providerID == "codebuddy" {
 			platform = "ide"
 			domain = "www.codebuddy.ai"
 			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
@@ -445,7 +445,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("X-Product", "SaaS")
 		resp, err = client.Do(req)
 		if err != nil {
-			if (providerID == "codebuddy" || providerID == "codebuddy-intl") && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+			if providerID == "codebuddy" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
 				return nil, fmt.Errorf("device code request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
 			}
 			return nil, fmt.Errorf("device code request failed: %w", err)
@@ -604,10 +604,10 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
-	case "codebuddy", "codebuddy-cn", "codebuddy-intl":
+	case "codebuddy", "codebuddy-cn":
 		domain := "copilot.tencent.com"
 		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
-		if providerID == "codebuddy" || providerID == "codebuddy-intl" {
+		if providerID == "codebuddy" {
 			domain = "www.codebuddy.ai"
 			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
 		}
@@ -627,7 +627,7 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		req.Header.Set("X-Product", "SaaS")
 		resp, err = client.Do(req)
 		if err != nil {
-			if (providerID == "codebuddy" || providerID == "codebuddy-intl") && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+			if providerID == "codebuddy" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
 				return nil, fmt.Errorf("poll request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
 			}
 			return nil, fmt.Errorf("poll request failed: %w", err)

@@ -22,15 +22,14 @@ const RefreshLeadTime = 5 * time.Minute
 
 // Per-provider refresh lead overrides (mirrors 9router REFRESH_LEAD_MS).
 var refreshLeadOverrides = map[string]time.Duration{
-	"codex":          5 * 24 * time.Hour, // 432000000ms — codex tokens are long-lived
-	"kimi":           5 * time.Minute,
-	"xai":            5 * time.Minute,
-	"google":         5 * time.Minute,
-	"grok-cli":       5 * time.Minute,
-	"github":         5 * time.Minute,
-	"codebuddy":      5 * time.Minute,
-	"codebuddy-cn":   5 * time.Minute,
-	"codebuddy-intl": 5 * time.Minute,
+	"codex":        5 * 24 * time.Hour, // 432000000ms — codex tokens are long-lived
+	"kimi":         5 * time.Minute,
+	"xai":          5 * time.Minute,
+	"google":       5 * time.Minute,
+	"grok-cli":     5 * time.Minute,
+	"github":       5 * time.Minute,
+	"codebuddy":    5 * time.Minute,
+	"codebuddy-cn": 5 * time.Minute,
 }
 
 // GetRefreshLead returns the pre-expiry buffer for a provider.
@@ -166,9 +165,6 @@ var refreshProfiles = map[string]refreshProfile{
 	"codebuddy-cn": {
 		// CodeBuddy CN uses X-Refresh-Token header, handled separately.
 	},
-	"codebuddy-intl": {
-		// CodeBuddy legacy alias uses X-Refresh-Token header, handled separately.
-	},
 }
 
 // kimiRefreshHeaders builds X-Msh-* headers for kimi token refresh.
@@ -257,7 +253,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 	}
 
 	// CodeBuddy CN/intl use X-Refresh-Token header (not standard OAuth2 body).
-	if providerID == "codebuddy-cn" || providerID == "codebuddy" || providerID == "codebuddy-intl" {
+	if providerID == "codebuddy-cn" || providerID == "codebuddy" {
 		return refreshCodebuddy(providerID, conn, client)
 	}
 
@@ -430,7 +426,7 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if (providerID == "codebuddy" || providerID == "codebuddy-intl") && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
+		if providerID == "codebuddy" && (strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "refused")) {
 			return nil, fmt.Errorf("codebuddy refresh request failed (%w): codebuddy.ai blocks US/Western proxy nodes via GeoDNS; please use direct connection, Asia-Pacific proxy (HK/SG), or switch to CodeBuddy (CN)", err)
 		}
 		return nil, fmt.Errorf("codebuddy refresh request failed: %w", err)

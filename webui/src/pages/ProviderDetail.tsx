@@ -115,14 +115,7 @@ const ProviderDetail: Component = () => {
   // ── 多账号管理状态 ──
   const regInfo = () => {
     const p = conn()?.provider
-    if (!p) return undefined
-    const list = store.registryList()
-    return (
-      list.find(r => r.id === p) ||
-      list.find(r => r.alias === p) ||
-      (p === 'codebuddy-intl' ? list.find(r => r.id === 'codebuddy') : undefined) ||
-      (p === 'alicode-intl' ? list.find(r => r.id === 'alicode') : undefined)
-    )
+    return p ? store.registryList().find(r => r.id === p || r.alias === p) : undefined
   }
 
   const accounts = () => {
@@ -132,7 +125,7 @@ const ProviderDetail: Component = () => {
     const targetId = reg?.id || current.provider
     return store
       .providers()
-      .filter(p => p.provider === targetId || (reg && (p.provider === reg.id || p.provider === reg.alias || (reg.id === 'codebuddy' && p.provider === 'codebuddy-intl') || (reg.id === 'alicode' && p.provider === 'alicode-intl'))))
+      .filter(p => p.provider === targetId)
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
   }
 

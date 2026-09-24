@@ -52,7 +52,6 @@ func TestGetProviderFlowType(t *testing.T) {
 		{"grok-cli", FlowDeviceCode},
 		{"codebuddy", FlowDeviceCode},
 		{"codebuddy-cn", FlowDeviceCode},
-		{"codebuddy-intl", FlowDeviceCode},
 		{"claude", FlowAuthorizationCodePKCE},
 		{"codex", FlowAuthorizationCodePKCE},
 		{"nonexistent", ""},
