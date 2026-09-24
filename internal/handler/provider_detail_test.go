@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -577,5 +578,55 @@ func TestGetProviderModels_CodeBuddy_EmptyCache(t *testing.T) {
 	}
 	if len(resp.RegistryModels) != 0 {
 		t.Fatalf("expected 0 fallback registry models for dynamic codebuddy-cn, got %d", len(resp.RegistryModels))
+	}
+}
+func TestGetProviderModels_CachedPriceFactor(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "qoder-conn-pf",
+		Provider: "qoder",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "dt-mock",
+		},
+	}
+	database.CreateConnection(conn)
+
+	cached := model.CachedModels{
+		FetchedAt: time.Now().UTC(),
+		Models: []model.ModelMetadata{
+			{ID: "smodel", DisplayName: "Sonus", PriceFactor: 8.0},
+			{ID: "qmodel", DisplayName: "Qwen3.7-Plus", PriceFactor: 0.1},
+		},
+	}
+	data, _ := json.Marshal(cached)
+	database.KVSet("providerModelCache", "qoder", string(data))
+
+	req := newLocalRequest("GET", "/api/providers/qoder-conn-pf/models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		RegistryModels []ProviderModelItem `json:"registryModels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.RegistryModels) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(resp.RegistryModels))
+	}
+	for _, m := range resp.RegistryModels {
+		if m.ID == "smodel" && m.PriceFactor != 8.0 {
+			t.Errorf("expected Sonus PriceFactor 8.0, got %f", m.PriceFactor)
+		}
+		if m.ID == "qmodel" && m.PriceFactor != 0.1 {
+			t.Errorf("expected Qwen3.7-Plus PriceFactor 0.1, got %f", m.PriceFactor)
+		}
 	}
 }

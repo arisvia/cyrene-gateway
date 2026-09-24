@@ -34,13 +34,11 @@ import (
 // --- Qoder constants (from shared/qoder/constants.js) ---
 
 const (
-	QoderChatURL        = "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
-	QoderLoginURL       = "https://qoder.com/device/selectAccounts"
-	QoderDeviceTokenURL = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
+	QoderChatURL  = "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+	QoderLoginURL = "https://qoder.com/device/selectAccounts"
 
-	QoderCnChatURL        = "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
-	QoderCnLoginURL       = "https://qoder.com.cn/device/selectAccounts"
-	QoderCnDeviceTokenURL = "https://openapi.qoder.com.cn/api/v1/deviceToken/poll"
+	QoderCnChatURL  = "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+	QoderCnLoginURL = "https://qoder.com.cn/device/selectAccounts"
 
 	qoderIDEVersion   = "1.26.0"
 	qoderClientType   = "5"
@@ -51,8 +49,10 @@ const (
 )
 
 var (
-	QoderUserinfoURL   = "https://openapi.qoder.sh/api/v1/userinfo"
-	QoderCnUserinfoURL = "https://openapi.qoder.com.cn/api/v1/userinfo"
+	QoderDeviceTokenURL   = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
+	QoderCnDeviceTokenURL = "https://openapi.qoder.com.cn/api/v1/deviceToken/poll"
+	QoderUserinfoURL      = "https://openapi.qoder.sh/api/v1/userinfo"
+	QoderCnUserinfoURL    = "https://openapi.qoder.com.cn/api/v1/userinfo"
 )
 
 // RSA public key for COSY encryption (from Qoder IDE v0.9).

@@ -65,6 +65,9 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 		} else if ctxLen = toInt(raw["max_context_length"]); ctxLen > 0 {
 			m.ContextLength = ctxLen
 		}
+		if pf := toFloat(raw["price_factor"]); pf > 0 {
+			m.PriceFactor = pf
+		}
 		m.Capabilities = []string{"chat"}
 		m.Modalities = []string{"text"}
 		if isReasoning, _ := raw["is_reasoning"].(bool); isReasoning {

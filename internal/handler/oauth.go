@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,14 +67,23 @@ func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var priority *int
+	if pStr := r.URL.Query().Get("priority"); pStr != "" {
+		if pVal, err := strconv.Atoi(pStr); err == nil {
+			priority = &pVal
+		}
+	}
+	nameStr := r.URL.Query().Get("name")
+
 	// Store session for callback validation
 	provider.StoreSession(pkce.State, &provider.OAuthSession{
 		Provider:    providerID,
 		PKCE:        pkce,
 		RedirectURI: redirectURI,
+		Priority:    priority,
+		Name:        nameStr,
 		CreatedAt:   time.Now(),
 	})
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authorizeUrl": authURL,
 		"state":        pkce.State,
@@ -135,7 +145,7 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create connection
-	conn := s.createOAuthConnection(providerID, tokens)
+	conn := s.createOAuthConnection(providerID, tokens, session.Priority, session.Name)
 	if conn == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
@@ -184,6 +194,8 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 		RedirectURI  string `json:"redirectUri"`
 		CodeVerifier string `json:"codeVerifier"`
 		State        string `json:"state"`
+		Name         string `json:"name"`
+		Priority     *int   `json:"priority"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -202,7 +214,7 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
-		conn := s.createOAuthConnection(providerID, tokens)
+		conn := s.createOAuthConnection(providerID, tokens, req.Priority, req.Name)
 		if conn == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 			return
@@ -234,6 +246,12 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 		if req.RedirectURI == "" {
 			req.RedirectURI = session.RedirectURI
 		}
+		if req.Priority == nil && session.Priority != nil {
+			req.Priority = session.Priority
+		}
+		if req.Name == "" && session.Name != "" {
+			req.Name = session.Name
+		}
 		provider.ClearSession(req.State)
 	}
 	tokens, err := provider.ExchangeCode(providerID, req.Code, req.RedirectURI, req.CodeVerifier, s.getHTTPClient(30*time.Second))
@@ -256,12 +274,11 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 		tokens.ProviderSpecificData["projectId"] = projID
 	}
 
-	conn := s.createOAuthConnection(providerID, tokens)
+	conn := s.createOAuthConnection(providerID, tokens, req.Priority, req.Name)
 	if conn == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"connection": map[string]any{
@@ -341,6 +358,8 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 		CodeVerifier    string         `json:"codeVerifier"`
 		Nonce           string         `json:"nonce"`
 		MachineID       string         `json:"machineId"`
+		Name            string         `json:"name"`
+		Priority        *int           `json:"priority"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -380,13 +399,63 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 			if orgID != "" {
 				psd["organizationId"] = orgID
 			}
+			priority := 0
+			if req.Priority != nil {
+				priority = *req.Priority
+			}
+			accountName := name
+			if req.Name != "" {
+				accountName = req.Name
+			}
+			// Check if an existing connection for the same user already exists to update
+			existingConns, err := s.DB.ListConnectionsByProvider(providerID)
+			if err == nil {
+				for _, existing := range existingConns {
+					matchesEmail := email != "" && existing.Email == email
+					matchesUser := false
+					if existing.Data.ProviderSpecificData != nil {
+						if uid, _ := existing.Data.ProviderSpecificData["userId"].(string); uid != "" && uid == result.UserID {
+							matchesUser = true
+						}
+					}
+					if matchesEmail || matchesUser {
+						existing.Data.AccessToken = result.AccessToken
+						if result.RefreshToken != "" {
+							existing.Data.RefreshToken = result.RefreshToken
+						}
+						if expiresAt != "" {
+							existing.Data.ExpiresAt = expiresAt
+						}
+						existing.Data.TestStatus = "active"
+						existing.Data.ProviderSpecificData = psd
+						if req.Priority != nil {
+							existing.Priority = *req.Priority
+						}
+						if req.Name != "" {
+							existing.Name = req.Name
+						}
+						if err := s.DB.UpdateConnection(&existing); err == nil {
+							go s.syncConnectionModels(&existing)
+							writeJSON(w, http.StatusOK, map[string]any{
+								"success": true,
+								"connection": map[string]any{
+									"id":       existing.ID,
+									"provider": existing.Provider,
+									"email":    existing.Email,
+								},
+							})
+							return
+						}
+					}
+				}
+			}
 			conn := &model.ProviderConnection{
 				ID:       generateID(),
 				Provider: providerID,
 				AuthType: "oauth",
-				Name:     name,
+				Name:     accountName,
 				Email:    email,
-				Priority: 0,
+				Priority: priority,
 				IsActive: true,
 				Data: model.ConnectionData{
 					AccessToken:          result.AccessToken,
@@ -433,7 +502,7 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 	}
 
 	if result.Success && result.Tokens != nil {
-		conn := s.createOAuthConnection(providerID, result.Tokens)
+		conn := s.createOAuthConnection(providerID, result.Tokens, req.Priority, req.Name)
 		if conn == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 			return
@@ -469,6 +538,7 @@ func (s *Server) handleOAuthImport(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AccessToken string `json:"accessToken"`
 		Name        string `json:"name"`
+		Priority    *int   `json:"priority"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -486,17 +556,11 @@ func (s *Server) handleOAuthImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := s.createOAuthConnection(providerID, tokens)
+	conn := s.createOAuthConnection(providerID, tokens, req.Priority, req.Name)
 	if conn == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
 	}
-
-	if req.Name != "" {
-		conn.Name = req.Name
-		s.DB.UpdateConnection(conn)
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"connection": map[string]any{
@@ -629,7 +693,7 @@ func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 // createOAuthConnection creates a provider connection from OAuth token exchange results.
-func (s *Server) createOAuthConnection(providerID string, tokens *provider.TokenExchangeResult) *model.ProviderConnection {
+func (s *Server) createOAuthConnection(providerID string, tokens *provider.TokenExchangeResult, priority *int, customName string) *model.ProviderConnection {
 	authType := "oauth"
 	if tokens.RefreshToken == "" && tokens.ProviderSpecificData != nil {
 		if method, ok := tokens.ProviderSpecificData["authMethod"].(string); ok && method == "access_token" {
@@ -674,6 +738,12 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 						existing.Data.ProviderSpecificData[k] = v
 					}
 				}
+				if priority != nil {
+					existing.Priority = *priority
+				}
+				if customName != "" {
+					existing.Name = customName
+				}
 				if err := s.DB.UpdateConnection(&existing); err == nil {
 					slog.Info("OAuth updated existing connection credentials", slog.String("provider", providerID), slog.String("id", existing.ID), slog.String("email", existing.Email))
 					go s.syncConnectionModels(&existing)
@@ -683,13 +753,21 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 		}
 	}
 
+	p := 0
+	if priority != nil {
+		p = *priority
+	}
+	connName := tokens.DisplayName
+	if customName != "" {
+		connName = customName
+	}
 	conn := &model.ProviderConnection{
 		ID:       generateID(),
 		Provider: providerID,
 		AuthType: authType,
-		Name:     tokens.DisplayName,
+		Name:     connName,
 		Email:    tokens.Email,
-		Priority: 0,
+		Priority: p,
 		IsActive: true,
 		Data: model.ConnectionData{
 			AccessToken:          tokens.AccessToken,
@@ -699,7 +777,6 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 			ProviderSpecificData: tokens.ProviderSpecificData,
 		},
 	}
-
 	if conn.Name == "" {
 		if conn.Email != "" {
 			conn.Name = conn.Email

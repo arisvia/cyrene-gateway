@@ -329,12 +329,14 @@ const Providers: Component = () => {
     setTestedCreds(null)
     setTestingCreds(false)
     const defaultAuth = reg.authType === 'oauth' ? 'oauth' : 'api-key'
+    const existing = store.providers().filter(p => p.provider === reg.id)
+    const defaultPriority = existing.length > 0 ? String(existing[0].priority ?? 0) : '0'
     setForm({
       name: reg.name,
       authType: defaultAuth,
       apiKey: '',
       baseUrl: reg.baseUrl || '',
-      priority: String(reg.priority ?? 50),
+      priority: defaultPriority,
     })
     setWizardOpen(true)
   }
@@ -405,7 +407,9 @@ const Providers: Component = () => {
       // 2. 网页授权码 / PKCE 流（如 Antigravity, Claude, Google 等）
       if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
         const callbackUri = `${window.location.origin}/api/oauth/${reg.id}/callback`
-        const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}`)) as {
+        const pVal = Number(form().priority) || 0
+        const nVal = encodeURIComponent(form().name || reg.name)
+        const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}&priority=${pVal}&name=${nVal}`)) as {
           authorizeUrl: string
           state: string
         }
@@ -484,6 +488,8 @@ const Providers: Component = () => {
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
             extraData: res.extraData,
+            name: form().name || reg.name,
+            priority: Number(form().priority) || 0,
           }, { silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
           if (pollRes?.success) {
             clearInterval(wizardPollTimer)
@@ -528,8 +534,8 @@ const Providers: Component = () => {
       await apiPost(`/api/oauth/${reg.id}/import`, {
         accessToken: token,
         name: form().name || reg.name,
+        priority: Number(form().priority) || 0,
       }, { silent: true })
-      toast.success(t('toast.tokenImportSuccess', { name: reg.name }))
       cancelWizardOAuth()
       setWizardOpen(false)
       setActiveTab('connections')
@@ -564,6 +570,8 @@ const Providers: Component = () => {
         code,
         state,
         redirectUri: reg.id === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
+        name: form().name || reg.name,
+        priority: Number(form().priority) || 0,
       }, { silent: true })
       toast.success(t('toast.oauthSuccess', { name: reg.name }))
       cancelWizardOAuth()
@@ -816,9 +824,18 @@ const Providers: Component = () => {
                               {t('providers.accountsCount', { count: group.connections.length })}
                             </Badge>
                             <Show when={hasMultiple()}>
-                              <Badge tone="purple" class="text-[10px] px-1.5 py-0.5 shrink-0">
-                                {t('providers.fallbackReady')}
-                              </Badge>
+                              <Show
+                                when={group.connections.length > 1 && new Set(group.connections.map(c => c.priority ?? 0)).size === 1}
+                                fallback={
+                                  <Badge tone="purple" class="text-[10px] px-1.5 py-0.5 shrink-0">
+                                    {t('providers.priorityDispatch')}
+                                  </Badge>
+                                }
+                              >
+                                <Badge tone="blue" class="text-[10px] px-1.5 py-0.5 shrink-0">
+                                  {t('providers.loadBalancing')}
+                                </Badge>
+                              </Show>
                             </Show>
                           </div>
 

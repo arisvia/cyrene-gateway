@@ -354,10 +354,34 @@ func toInt(v any) int {
 	switch n := v.(type) {
 	case float64:
 		return int(n)
+	case float32:
+		return int(n)
 	case int:
 		return n
 	case int64:
 		return int(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i)
+		}
+	}
+	return 0
+}
+
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case json.Number:
+		if f, err := n.Float64(); err == nil {
+			return f
+		}
 	}
 	return 0
 }

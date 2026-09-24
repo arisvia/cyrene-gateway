@@ -50,14 +50,15 @@ type ModelMetaOverride struct {
 
 // ProviderModelItem represents a model in the provider detail response with its enabled and free status.
 type ProviderModelItem struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	ContextLength int    `json:"contextLength,omitempty"`
-	MaxOutput     int    `json:"maxOutputTokens,omitempty"`
-	Enabled       bool   `json:"enabled"`
-	IsFree        bool   `json:"isFree,omitempty"`
-	CanEdit       bool   `json:"canEdit"`
-	HasOverride   bool   `json:"hasOverride,omitempty"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	ContextLength int     `json:"contextLength,omitempty"`
+	MaxOutput     int     `json:"maxOutputTokens,omitempty"`
+	PriceFactor   float64 `json:"priceFactor,omitempty"`
+	Enabled       bool    `json:"enabled"`
+	IsFree        bool    `json:"isFree,omitempty"`
+	CanEdit       bool    `json:"canEdit"`
+	HasOverride   bool    `json:"hasOverride,omitempty"`
 }
 
 // handleGetProviderModels returns registry models + live synced models + custom models for a connection.
@@ -70,8 +71,8 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 	}
 	// 2. 获取实时同步抓取的 Live 缓存模型并合并
 	seen := make(map[string]bool)
+	cachedPriceFactors := make(map[string]float64)
 	var unifiedModels []provider.ModelRef
-
 	if raw, err := s.DB.KVGet("providerModelCache", conn.Provider); err == nil && raw != "" {
 		var cached model.CachedModels
 		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
@@ -85,6 +86,9 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 					name = model.FormatFallbackDisplayName(m.ID)
 				}
 				seen[m.ID] = true
+				if m.PriceFactor > 0 {
+					cachedPriceFactors[m.ID] = m.PriceFactor
+				}
 				unifiedModels = append(unifiedModels, provider.ModelRef{
 					ID:   m.ID,
 					Name: name,
@@ -92,7 +96,6 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-
 	// 如果缓存为空，但 ProviderInfo 中有预置静态模型，以此兜底
 	if len(unifiedModels) == 0 {
 		if pInfo, ok := provider.GetProvider(conn.Provider); ok && len(pInfo.Models) > 0 {
@@ -125,10 +128,11 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 	buildModelItem := func(id, name string) ProviderModelItem {
 		fullID := conn.Provider + "/" + id
 		item := ProviderModelItem{
-			ID:      id,
-			Name:    name,
-			Enabled: !isModelDisabled(id),
-			IsFree:  strings.HasSuffix(strings.ToLower(id), "-free") || strings.ToLower(id) == "big-pickle",
+			ID:          id,
+			Name:        name,
+			PriceFactor: cachedPriceFactors[id],
+			Enabled:     !isModelDisabled(id),
+			IsFree:      strings.HasSuffix(strings.ToLower(id), "-free") || strings.ToLower(id) == "big-pickle",
 		}
 
 		// 优先使用用户自定义设置的元数据覆盖

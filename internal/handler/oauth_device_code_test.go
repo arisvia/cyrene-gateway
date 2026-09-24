@@ -92,3 +92,77 @@ func TestOAuthDeviceCode_WireFormat(t *testing.T) {
 		t.Errorf("expected pending:true in snake fallback poll response, got: %s", pollSnakeW.Body.String())
 	}
 }
+func TestOAuthImport_PriorityAndNamePersistence(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Test POST /api/oauth/cursor/import with custom name and priority
+	reqBody := `{"accessToken":"eyJhbGciOiJub25lIn0.eyJzdWIiOiJjdXJzb3ItdXNlci0xIiwiZW1haWwiOiJjdXJzb3JAdGVzdC5jb20ifQ.","name":"My Second Cursor","priority":25}`
+	req := newLocalRequest("POST", "/api/oauth/cursor/import", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("import returned status %d, body: %s", w.Code, w.Body.String())
+	}
+
+	conns, err := database.ListConnectionsByProvider("cursor")
+	if err != nil || len(conns) == 0 {
+		t.Fatalf("expected cursor connection in db, got err=%v conns=%+v", err, conns)
+	}
+	conn := conns[0]
+	if conn.Priority != 25 {
+		t.Errorf("expected connection priority 25, got %d", conn.Priority)
+	}
+	if conn.Name != "My Second Cursor" {
+		t.Errorf("expected connection name 'My Second Cursor', got %q", conn.Name)
+	}
+}
+func TestOAuthDeviceCode_QoderPriorityAndName(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "poll") {
+			w.Write([]byte(`{"token":"dt-mock-123","refresh_token":"rt-mock-123","user_id":"u-999","expires_at":1800000000000}`))
+			return
+		}
+		if strings.Contains(r.URL.Path, "userinfo") {
+			w.Write([]byte(`{"code":0,"data":{"username":"qoder-dev","email":"qoder@test.com"}}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer ts.Close()
+
+	origPollURL := provider.QoderDeviceTokenURL
+	origUserinfoURL := provider.QoderUserinfoURL
+	provider.QoderDeviceTokenURL = ts.URL + "/poll"
+	provider.QoderUserinfoURL = ts.URL + "/userinfo"
+	defer func() {
+		provider.QoderDeviceTokenURL = origPollURL
+		provider.QoderUserinfoURL = origUserinfoURL
+	}()
+
+	reqBody := `{"nonce":"n1","codeVerifier":"cv1","machineId":"m1","name":"Qoder Secondary","priority":35}`
+	req := newLocalRequest("POST", "/api/oauth/qoder/device-code/poll", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("poll returned status %d, body: %s", w.Code, w.Body.String())
+	}
+
+	conns, err := database.ListConnectionsByProvider("qoder")
+	if err != nil || len(conns) == 0 {
+		t.Fatalf("expected qoder connection in db, got err=%v conns=%+v", err, conns)
+	}
+	conn := conns[0]
+	if conn.Priority != 35 {
+		t.Errorf("expected connection priority 35, got %d", conn.Priority)
+	}
+	if conn.Name != "Qoder Secondary" {
+		t.Errorf("expected connection name 'Qoder Secondary', got %q", conn.Name)
+	}
+}

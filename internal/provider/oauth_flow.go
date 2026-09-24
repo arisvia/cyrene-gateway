@@ -64,6 +64,8 @@ type OAuthSession struct {
 	PKCE        *PKCE
 	Provider    string
 	RedirectURI string
+	Priority    *int
+	Name        string
 }
 
 type oauthSessionStore struct {

@@ -9,6 +9,7 @@ type ModelMetadata struct {
 	DisplayName   string   `json:"display_name,omitempty"`
 	ContextLength int      `json:"context_length,omitempty"`
 	MaxOutput     int      `json:"max_output_tokens,omitempty"`
+	PriceFactor   float64  `json:"price_factor,omitempty"`
 	Capabilities  []string `json:"capabilities,omitempty"`
 	Modalities    []string `json:"modalities,omitempty"`
 	Family        string   `json:"family,omitempty"`

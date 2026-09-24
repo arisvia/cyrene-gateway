@@ -182,9 +182,11 @@ const ProviderDetail: Component = () => {
     const p = conn()?.provider
     if (!p) return
     const aType = newAccountAuthType()
+    const pVal = Number(newAccountPriority()) || 0
+    const nVal = newAccountName().trim() || t('providerDetail.accountIndex', { index: accounts().length + 1 })
     if (aType === 'oauth') {
       setAddAccountOpen(false)
-      await startDeviceFlow()
+      await startDeviceFlow(pVal, nVal)
       return
     }
     if (aType === 'api-key' && !newAccountApiKey().trim()) {
@@ -238,18 +240,21 @@ const ProviderDetail: Component = () => {
   const [isImportFlow, setIsImportFlow] = createSignal(false)
   const [importTokenText, setImportTokenText] = createSignal('')
   const [importingToken, setImportingToken] = createSignal(false)
+  const [deviceFlowMeta, setDeviceFlowMeta] = createSignal<{ priority: number; name: string }>({ priority: 0, name: '' })
   let pollTimer: number | undefined
 
   onCleanup(() => {
     clearInterval(pollTimer)
   })
 
-  async function startDeviceFlow() {
+  async function startDeviceFlow(targetPriority?: number, targetName?: string) {
     const p = conn()?.provider
     if (!p) return
+    const prio = targetPriority ?? deviceFlowMeta().priority ?? 0
+    const accName = targetName ?? deviceFlowMeta().name ?? ''
+    setDeviceFlowMeta({ priority: prio, name: accName })
     setDeviceError('')
     setDevicePolling(true)
-
     try {
       // 先查询该供应商真实支持的 OAuth 流类型
       const statusRes = (await api(`/api/oauth/${p}/status`)) as {
@@ -268,7 +273,7 @@ const ProviderDetail: Component = () => {
       // 2. 网页授权码 / PKCE 流（如 Antigravity, Claude 等）
       if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
         const callbackUri = `${window.location.origin}/api/oauth/${p}/callback`
-        const authRes = (await api(`/api/oauth/${p}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}`)) as {
+        const authRes = (await api(`/api/oauth/${p}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}&priority=${prio}&name=${encodeURIComponent(accName)}`)) as {
           authorizeUrl: string
           state: string
         }
@@ -345,6 +350,8 @@ const ProviderDetail: Component = () => {
             codeVerifier: res.codeVerifier,
             machineId: res.machineId,
             extraData: res.extraData,
+            name: accName || undefined,
+            priority: prio,
           }, { silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
           if (pollRes?.success) {
             clearInterval(pollTimer)
@@ -387,7 +394,8 @@ const ProviderDetail: Component = () => {
     try {
       await apiPost(`/api/oauth/${p}/import`, {
         accessToken: token,
-        name: name().trim() || undefined,
+        name: deviceFlowMeta().name || name().trim() || undefined,
+        priority: deviceFlowMeta().priority ?? 0,
       }, { silent: true })
       toast.success(t('toast.tokenImportSuccess', { name: providerDisplayName() }))
       cancelDeviceFlow()
@@ -437,6 +445,8 @@ const ProviderDetail: Component = () => {
         code,
         state,
         redirectUri: p === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
+        name: deviceFlowMeta().name || undefined,
+        priority: deviceFlowMeta().priority ?? 0,
       }, { silent: true })
       toast.success(t('toast.oauthSuccess', { name: providerDisplayName() }))
       cancelDeviceFlow()
@@ -1271,8 +1281,10 @@ const ProviderDetail: Component = () => {
                                 }`}>
                                   <span class={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${idx() === 0 ? 'bg-accent animate-pulse' : 'bg-faint'}`} />
                                   <span class="leading-none">{t('providerDetail.priorityValue', { value: acc.priority })}</span>
-                                  <span class="opacity-70 font-sans leading-none">{idx() === 0 ? t('providerDetail.primaryMark') : t('providerDetail.backupMark')}</span>
                                 </span>
+                                <Show when={accounts().filter(a => (a.priority ?? 0) === (acc.priority ?? 0)).length > 1}>
+                                  <span class="text-[10px] font-sans text-accent/80 font-medium">({t('providers.loadBalancing')})</span>
+                                </Show>
                                 <Show when={cooling()}>
                                   <Badge tone="amber" class="text-[10px] h-5">{t('providerDetail.coolingBadge')}</Badge>
                                 </Show>
@@ -1626,6 +1638,11 @@ const ProviderDetail: Component = () => {
                                     <Show when={m.isFree}>
                                       <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 shrink-0">
                                         {t('providerDetail.freeBadge')}
+                                      </span>
+                                    </Show>
+                                    <Show when={m.priceFactor !== undefined && m.priceFactor !== null && m.priceFactor > 0 && !m.isFree}>
+                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-accent/10 text-accent border border-accent/25 shrink-0" title={t('providerDetail.priceFactorTitle', { factor: m.priceFactor! })}>
+                                        {m.priceFactor}x
                                       </span>
                                     </Show>
                                     <Show when={m.enabled === false}>
@@ -1994,7 +2011,7 @@ const ProviderDetail: Component = () => {
                 <Button size="sm" variant="secondary" onClick={cancelDeviceFlow}>
                   {t('common.close')}
                 </Button>
-                <Button size="sm" variant="primary" onClick={startDeviceFlow}>
+                <Button size="sm" variant="primary" onClick={() => startDeviceFlow()}>
                   {t('common.retry')}
                 </Button>
               </div>

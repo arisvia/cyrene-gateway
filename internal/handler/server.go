@@ -1205,7 +1205,7 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Duplicate guard: one active connection per provider+authType
+	// Duplicate guard: prevent duplicate nameless accounts or duplicate identical credentials
 	existing, err := s.DB.ListConnectionsByProvider(req.Provider)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check existing connections"})
@@ -1213,8 +1213,10 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, c := range existing {
 		if c.AuthType == req.AuthType {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "connection for this provider already exists"})
-			return
+			if req.Name == "" || req.Name == c.Name || (connData.APIKey != "" && c.Data.APIKey == connData.APIKey) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "connection for this provider already exists"})
+				return
+			}
 		}
 	}
 	pc := &model.ProviderConnection{
