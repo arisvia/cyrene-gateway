@@ -81,7 +81,7 @@ func TestSaveUsageEntry(t *testing.T) {
 	}
 }
 
-func TestSaveUsageEntryDedup(t *testing.T) {
+func TestSaveUsageEntryEveryCallIsNewEvent(t *testing.T) {
 	d := setupTestDB(t)
 
 	entry := &UsageEntry{
@@ -96,14 +96,83 @@ func TestSaveUsageEntryDedup(t *testing.T) {
 	if err := d.SaveUsageEntry(entry); err != nil {
 		t.Fatal(err)
 	}
-	// Save same entry again — should be deduped
+	// Each call records a new request, even for the same object or a foreign ID.
+	entry.ID = 1
 	if err := d.SaveUsageEntry(entry); err != nil {
 		t.Fatal(err)
 	}
 
-	entries, _ := d.GetUsageHistory(UsageFilter{Limit: 10})
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry after dedup, got %d", len(entries))
+	entries, err := d.GetUsageHistory(UsageFilter{Limit: 10})
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("expected 2 events, got %d: %v", len(entries), err)
+	}
+	day, err := d.GetUsageDaily("2026-07-22")
+	if err != nil || day.Requests != 2 {
+		t.Fatalf("expected daily 2, got %+v: %v", day, err)
+	}
+	lifetime, err := d.GetTotalRequestsLifetime()
+	if err != nil || lifetime != 2 {
+		t.Fatalf("expected lifetime 2, got %d: %v", lifetime, err)
+	}
+}
+
+func TestSaveUsageEntrySameSecondDistinctDimensions(t *testing.T) {
+	d := setupTestDB(t)
+	for _, variant := range []struct{ key, endpoint, status string }{
+		{"key-a", "/v1/chat/completions", "ok"},
+		{"key-b", "/v1/chat/completions", "ok"},
+		{"key-a", "/v1/messages", "ok"},
+		{"key-a", "/v1/chat/completions", "error"},
+	} {
+		if err := d.SaveUsageEntry(&UsageEntry{
+			Timestamp: "2026-07-22T10:00:00Z", Provider: "openai", Model: "m", ConnectionID: "conn",
+			APIKey: variant.key, Endpoint: variant.endpoint, Status: variant.status,
+			PromptTokens: 10, CompletionTokens: 5, Cost: 0.25,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history, err := d.GetUsageHistory(UsageFilter{})
+	if err != nil || len(history) != 4 {
+		t.Fatalf("history = %d, want 4: %v", len(history), err)
+	}
+	if history[0].Status != "error" {
+		t.Fatalf("lost error event: %+v", history[0])
+	}
+	day, err := d.GetUsageDaily("2026-07-22")
+	if err != nil || day.Requests != 4 || day.PromptTokens != 40 || day.CompletionTokens != 20 || day.Cost != 1 || day.ByProvider["openai"].Requests != 4 || day.ByModel["m|openai"].Requests != 4 {
+		t.Fatalf("daily = %+v: %v", day, err)
+	}
+	lifetime, err := d.GetTotalRequestsLifetime()
+	if err != nil || lifetime != 4 {
+		t.Fatalf("lifetime = %d, want 4: %v", lifetime, err)
+	}
+	keys, endpoints, err := d.GetUsageDimensions("")
+	if err != nil || keys["key-a"].Requests != 3 || keys["key-b"].Requests != 1 || endpoints["/v1/chat/completions"].Requests != 3 || endpoints["/v1/messages"].Requests != 1 {
+		t.Fatalf("dimensions = %+v / %+v: %v", keys, endpoints, err)
+	}
+}
+
+func TestSaveUsageEntryDailyUsesUTC(t *testing.T) {
+	d := setupTestDB(t)
+	if err := d.SaveUsageEntry(&UsageEntry{
+		Timestamp: "2026-07-22T01:00:00+02:00", Provider: "p", Model: "m", PromptTokens: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	day, err := d.GetUsageDaily("2026-07-21")
+	if err != nil || day.Requests != 1 || day.PromptTokens != 10 {
+		t.Fatalf("UTC daily bucket not used: %+v: %v", day, err)
+	}
+}
+
+func TestGetUsageDimensionsPropagatesQueryErrors(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.conn.Exec(`DROP TABLE usageHistory`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := d.GetUsageDimensions(""); err == nil {
+		t.Fatal("query failure was reported as empty usage")
 	}
 }
 

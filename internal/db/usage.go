@@ -53,7 +53,8 @@ type DayData struct {
 	Cost             float64               `json:"cost"`
 }
 
-// SaveUsageEntry inserts a usage record and updates the daily aggregation in one transaction.
+// SaveUsageEntry records a new event on every call, regardless of e.ID or equal content.
+// History, daily aggregation and the lifetime counter are committed atomically.
 func (d *DB) SaveUsageEntry(e *UsageEntry) error {
 	if e.Timestamp == "" {
 		e.Timestamp = time.Now().UTC().Format(time.RFC3339)
@@ -80,26 +81,6 @@ func (d *DB) SaveUsageEntry(e *UsageEntry) error {
 	}
 	defer tx.Rollback()
 
-	// Dedup check: same timestamp+provider+model+connection+tokens
-	var existingID int64
-	err = tx.QueryRow(
-		`SELECT id FROM usageHistory
-		 WHERE timestamp = ? AND COALESCE(provider,'') = COALESCE(?,'')
-		   AND COALESCE(model,'') = COALESCE(?,'')
-		   AND COALESCE(connectionId,'') = COALESCE(?,'')
-		   AND promptTokens = ? AND completionTokens = ?
-		 ORDER BY id DESC LIMIT 1`,
-		e.Timestamp, e.Provider, e.Model, e.ConnectionID,
-		e.PromptTokens, e.CompletionTokens,
-	).Scan(&existingID)
-	if err == nil {
-		// Duplicate, skip
-		return nil
-	}
-	if err != sql.ErrNoRows {
-		return fmt.Errorf("dedup check: %w", err)
-	}
-
 	// Insert usage history
 	_, err = tx.Exec(
 		`INSERT INTO usageHistory (timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta)
@@ -117,53 +98,16 @@ func (d *DB) SaveUsageEntry(e *UsageEntry) error {
 	err = tx.QueryRow(`SELECT data FROM usageDaily WHERE dateKey = ?`, dateKey).Scan(&dayDataStr)
 
 	var day DayData
-	if err == sql.ErrNoRows {
-		day = DayData{
-			ByProvider: make(map[string]DayCounter),
-			ByModel:    make(map[string]DayCounter),
-		}
-	} else if err != nil {
+	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("query daily: %w", err)
-	} else {
+	}
+	if err == nil {
 		if jsonErr := json.Unmarshal([]byte(dayDataStr), &day); jsonErr != nil {
-			day = DayData{
-				ByProvider: make(map[string]DayCounter),
-				ByModel:    make(map[string]DayCounter),
-			}
-		}
-		if day.ByProvider == nil {
-			day.ByProvider = make(map[string]DayCounter)
-		}
-		if day.ByModel == nil {
-			day.ByModel = make(map[string]DayCounter)
+			day = DayData{}
 		}
 	}
 
-	// Aggregate
-	day.Requests++
-	day.PromptTokens += e.PromptTokens
-	day.CompletionTokens += e.CompletionTokens
-	day.Cost += e.Cost
-
-	if e.Provider != "" {
-		p := day.ByProvider[e.Provider]
-		p.Requests++
-		p.PromptTokens += e.PromptTokens
-		p.CompletionTokens += e.CompletionTokens
-		p.Cost += e.Cost
-		day.ByProvider[e.Provider] = p
-	}
-
-	modelKey := e.Model
-	if e.Provider != "" {
-		modelKey = e.Model + "|" + e.Provider
-	}
-	m := day.ByModel[modelKey]
-	m.Requests++
-	m.PromptTokens += e.PromptTokens
-	m.CompletionTokens += e.CompletionTokens
-	m.Cost += e.Cost
-	day.ByModel[modelKey] = m
+	addUsageToDay(&day, *e)
 
 	dayBytes, _ := json.Marshal(day)
 	_, err = tx.Exec(
@@ -187,10 +131,41 @@ func (d *DB) SaveUsageEntry(e *UsageEntry) error {
 	return tx.Commit()
 }
 
+func addUsageToDay(day *DayData, e UsageEntry) {
+	if day.ByProvider == nil {
+		day.ByProvider = make(map[string]DayCounter)
+	}
+	if day.ByModel == nil {
+		day.ByModel = make(map[string]DayCounter)
+	}
+	day.Requests++
+	day.PromptTokens += e.PromptTokens
+	day.CompletionTokens += e.CompletionTokens
+	day.Cost += e.Cost
+	if e.Provider != "" {
+		day.ByProvider[e.Provider] = addUsageToCounter(day.ByProvider[e.Provider], e)
+	}
+	modelKey := e.Model
+	if e.Provider != "" {
+		modelKey += "|" + e.Provider
+	}
+	day.ByModel[modelKey] = addUsageToCounter(day.ByModel[modelKey], e)
+}
+
+func addUsageToCounter(c DayCounter, e UsageEntry) DayCounter {
+	c.Requests++
+	c.PromptTokens += e.PromptTokens
+	c.CompletionTokens += e.CompletionTokens
+	c.Cost += e.Cost
+	return c
+}
+
+const usageHistoryColumns = `id, timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta`
+
 // GetUsageHistory returns usage records with optional filters.
 func (d *DB) GetUsageHistory(f UsageFilter) ([]UsageEntry, error) {
 	var query strings.Builder
-	query.WriteString(`SELECT id, timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta FROM usageHistory`)
+	query.WriteString(`SELECT ` + usageHistoryColumns + ` FROM usageHistory`)
 	var conds []string
 	var args []any
 
@@ -236,8 +211,11 @@ func (d *DB) GetUsageHistory(f UsageFilter) ([]UsageEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return scanUsageHistory(rows)
+}
 
+func scanUsageHistory(rows *sql.Rows) ([]UsageEntry, error) {
+	defer rows.Close()
 	var entries []UsageEntry
 	for rows.Next() {
 		var e UsageEntry
@@ -420,51 +398,85 @@ func (d *DB) GetConnectionUsageTokens(connectionID string, period string) (promp
 	return prompt, completion
 }
 
+// UsageSummary aggregates retained history without a pagination limit. Day counts
+// cover the entire first UTC day so callers can detect missing/pruned history.
+// They do not imply that the missing events fall inside a partial-day window.
+type UsageSummary struct {
+	DayData
+	ByKey         map[string]DayCounter
+	ByEndpoint    map[string]DayCounter
+	RequestsByDay map[string]int
+}
+
+func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
+	query := `SELECT timestamp, COALESCE(provider,''), COALESCE(model,''),
+		COALESCE(apiKey,''), COALESCE(endpoint,''), promptTokens, completionTokens, cost FROM usageHistory WHERE 1=1`
+	var args []any
+	var dayStart time.Time
+	if !start.IsZero() {
+		dayStart = start.UTC().Truncate(24 * time.Hour)
+		// SQLite date comparisons handle offsets. Widen by a second, then filter
+		// in Go so SQLite's millisecond rounding never decides exact boundaries.
+		query += ` AND julianday(timestamp) >= julianday(?)`
+		args = append(args, dayStart.Add(-time.Second).Format(time.RFC3339))
+	}
+	if !end.IsZero() {
+		query += ` AND julianday(timestamp) <= julianday(?)`
+		args = append(args, end.UTC().Add(time.Second).Format(time.RFC3339Nano))
+	}
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := &UsageSummary{
+		DayData: DayData{ByProvider: make(map[string]DayCounter), ByModel: make(map[string]DayCounter)},
+		ByKey:   make(map[string]DayCounter), ByEndpoint: make(map[string]DayCounter), RequestsByDay: make(map[string]int),
+	}
+	for rows.Next() {
+		var e UsageEntry
+		if err := rows.Scan(&e.Timestamp, &e.Provider, &e.Model, &e.APIKey, &e.Endpoint, &e.PromptTokens, &e.CompletionTokens, &e.Cost); err != nil {
+			return nil, err
+		}
+		ts, err := time.Parse(time.RFC3339, e.Timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("invalid usage timestamp %q: %w", e.Timestamp, err)
+		}
+		if (!dayStart.IsZero() && ts.Before(dayStart)) || (!end.IsZero() && ts.After(end)) {
+			continue
+		}
+		result.RequestsByDay[ts.UTC().Format("2006-01-02")]++
+		if !start.IsZero() && ts.Before(start) {
+			continue
+		}
+		addUsageToDay(&result.DayData, e)
+		key, endpoint := e.APIKey, e.Endpoint
+		if key == "" {
+			key = "default"
+		}
+		if endpoint == "" {
+			endpoint = "other"
+		}
+		result.ByKey[key] = addUsageToCounter(result.ByKey[key], e)
+		result.ByEndpoint[endpoint] = addUsageToCounter(result.ByEndpoint[endpoint], e)
+	}
+	return result, rows.Err()
+}
+
 // GetUsageDimensions returns aggregations by apiKey and by endpoint for records on or after cutoffTime.
 func (d *DB) GetUsageDimensions(cutoffTime string) (byKey map[string]DayCounter, byEndpoint map[string]DayCounter, err error) {
-	byKey = make(map[string]DayCounter)
-	byEndpoint = make(map[string]DayCounter)
-
-	var whereClause string
-	var args []any
+	var start time.Time
 	if cutoffTime != "" {
-		whereClause = "WHERE timestamp >= ?"
-		args = append(args, cutoffTime)
-	}
-
-	epQuery := fmt.Sprintf(`
-		SELECT COALESCE(NULLIF(endpoint, ''), 'other') AS ep,
-		       COUNT(*), COALESCE(SUM(promptTokens),0), COALESCE(SUM(completionTokens),0), COALESCE(SUM(cost),0)
-		FROM usageHistory %s GROUP BY ep`, whereClause)
-	epRows, err := d.conn.Query(epQuery, args...)
-	if err == nil {
-		defer epRows.Close()
-		for epRows.Next() {
-			var ep string
-			var c DayCounter
-			if scanErr := epRows.Scan(&ep, &c.Requests, &c.PromptTokens, &c.CompletionTokens, &c.Cost); scanErr == nil {
-				byEndpoint[ep] = c
-			}
+		start, err = time.Parse(time.RFC3339, cutoffTime)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
-
-	keyQuery := fmt.Sprintf(`
-		SELECT CASE WHEN apiKey IS NULL OR apiKey = '' THEN 'default' ELSE apiKey END AS k,
-		       COUNT(*), COALESCE(SUM(promptTokens),0), COALESCE(SUM(completionTokens),0), COALESCE(SUM(cost),0)
-		FROM usageHistory %s GROUP BY k`, whereClause)
-	keyRows, err := d.conn.Query(keyQuery, args...)
-	if err == nil {
-		defer keyRows.Close()
-		for keyRows.Next() {
-			var k string
-			var c DayCounter
-			if scanErr := keyRows.Scan(&k, &c.Requests, &c.PromptTokens, &c.CompletionTokens, &c.Cost); scanErr == nil {
-				byKey[k] = c
-			}
-		}
+	summary, err := d.GetUsageSummary(start, time.Time{})
+	if err != nil {
+		return nil, nil, err
 	}
-
-	return byKey, byEndpoint, nil
+	return summary.ByKey, summary.ByEndpoint, nil
 }
 
 func dateKeyFromTimestamp(ts string) string {
@@ -472,5 +484,5 @@ func dateKeyFromTimestamp(ts string) string {
 	if err != nil {
 		return time.Now().UTC().Format("2006-01-02")
 	}
-	return t.Format("2006-01-02")
+	return t.UTC().Format("2006-01-02")
 }

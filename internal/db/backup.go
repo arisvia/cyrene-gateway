@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -213,6 +214,16 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 			_ = tx.Rollback()
 		}
 	}()
+
+	// Plan usage before any writes. A shallow copy keeps the caller's backup reusable.
+	usage := payload.Data
+	var usageLifetime int64
+	if payload.IncludesUsage {
+		usage, usageLifetime, err = prepareUsageImport(tx, usage, mode == RestoreModeReplace)
+		if err != nil {
+			return err
+		}
+	}
 
 	// 1. Snapshot existing credentials to prevent sanitised backup imports from wiping real tokens
 	existingConns := make(map[string]model.ProviderConnection)
@@ -531,7 +542,7 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 
 	// 9. Restore Usage if included
 	if payload.IncludesUsage {
-		if len(payload.Data.UsageHistory) > 0 {
+		if len(usage.UsageHistory) > 0 {
 			stmtUsage, err := tx.Prepare(`
 				INSERT INTO usageHistory (timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -540,14 +551,14 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 				return fmt.Errorf("prepare usage insert: %w", err)
 			}
 			defer stmtUsage.Close()
-			for _, u := range payload.Data.UsageHistory {
+			for _, u := range usage.UsageHistory {
 				if _, err := stmtUsage.Exec(u.Timestamp, u.Provider, u.Model, u.ConnectionID, u.APIKey, u.Endpoint, u.PromptTokens, u.CompletionTokens, u.Cost, u.Status, u.Tokens, u.Meta); err != nil {
 					return fmt.Errorf("insert usage entry: %w", err)
 				}
 			}
 		}
 
-		if len(payload.Data.UsageDaily) > 0 {
+		if len(usage.UsageDaily) > 0 {
 			stmtDaily, err := tx.Prepare(`
 				INSERT INTO usageDaily (dateKey, data) VALUES (?, ?)
 				ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data
@@ -556,11 +567,16 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 				return fmt.Errorf("prepare usageDaily insert: %w", err)
 			}
 			defer stmtDaily.Close()
-			for _, dEntry := range payload.Data.UsageDaily {
+			for _, dEntry := range usage.UsageDaily {
 				if _, err := stmtDaily.Exec(dEntry.DateKey, dEntry.Data); err != nil {
 					return fmt.Errorf("insert usageDaily entry: %w", err)
 				}
 			}
+		}
+
+		if _, err := tx.Exec(`INSERT INTO _meta (key, value) VALUES ('totalRequestsLifetime', ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value`, fmt.Sprint(usageLifetime)); err != nil {
+			return fmt.Errorf("restore usage lifetime: %w", err)
 		}
 
 		if len(payload.Data.RequestDetails) > 0 {
@@ -593,4 +609,209 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 	tx = nil // disarm rollback in defer
 
 	return nil
+}
+
+// prepareUsageImport uses a multiset union of all persisted event fields, never IDs:
+// IDs are database-local, and equal legitimate events can occur more than once.
+// Aggregate-only overlaps have no provable identity; reject rather than guess.
+func prepareUsageImport(tx *sql.Tx, data ExportData, replace bool) (ExportData, int64, error) {
+	incomingHistory, err := usageDaysFromHistory(data.UsageHistory)
+	if err != nil {
+		return data, 0, err
+	}
+	if replace {
+		// Keep replace's verbatim rows, including legacy undercounted daily blobs.
+		// Lifetime includes pruned daily requests without dropping retained history.
+		for _, entry := range data.UsageDaily {
+			var day DayData
+			if err := json.Unmarshal([]byte(entry.Data), &day); err != nil {
+				return data, 0, fmt.Errorf("invalid usage daily data for %s: %w", entry.DateKey, err)
+			}
+			day.Requests = max(day.Requests, incomingHistory[entry.DateKey].Requests)
+			incomingHistory[entry.DateKey] = day
+		}
+		var lifetime int64
+		for _, day := range incomingHistory {
+			lifetime += int64(day.Requests)
+		}
+		return data, lifetime, nil
+	}
+	incomingDays, err := usageDaysForImport(data.UsageDaily, incomingHistory)
+	if err != nil {
+		return data, 0, err
+	}
+
+	rows, err := tx.Query(`SELECT ` + usageHistoryColumns + ` FROM usageHistory`)
+	if err != nil {
+		return data, 0, fmt.Errorf("read existing usage: %w", err)
+	}
+	localEntries, err := scanUsageHistory(rows)
+	if err != nil {
+		return data, 0, err
+	}
+	localHistory, err := usageDaysFromHistory(localEntries)
+	if err != nil {
+		return data, 0, err
+	}
+	rows, err = tx.Query(`SELECT dateKey, data FROM usageDaily`)
+	if err != nil {
+		return data, 0, err
+	}
+	var localDaily []DailyUsageEntry
+	for rows.Next() {
+		var day DailyUsageEntry
+		if err := rows.Scan(&day.DateKey, &day.Data); err != nil {
+			rows.Close()
+			return data, 0, err
+		}
+		localDaily = append(localDaily, day)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return data, 0, err
+	}
+	localDays, err := usageDaysForImport(localDaily, localHistory)
+	if err != nil {
+		return data, 0, err
+	}
+
+	counts := make(map[UsageEntry]int, len(localEntries))
+	for _, e := range localEntries {
+		e.ID = 0
+		counts[e]++
+	}
+	var additions []UsageEntry
+	addedByDay := make(map[string][]UsageEntry)
+	for _, e := range data.UsageHistory {
+		e.ID = 0
+		if counts[e] > 0 {
+			counts[e]--
+			continue
+		}
+		additions = append(additions, e)
+		date := dateKeyFromTimestamp(e.Timestamp)
+		addedByDay[date] = append(addedByDay[date], e)
+	}
+
+	var lifetime, recordedLifetime int64
+	for _, day := range localDays {
+		lifetime += int64(day.Requests)
+	}
+	err = tx.QueryRow(`SELECT CAST(value AS INTEGER) FROM _meta WHERE key = 'totalRequestsLifetime'`).Scan(&recordedLifetime)
+	if err != nil && err != sql.ErrNoRows {
+		return data, 0, err
+	}
+	// A previously pruned lifetime must never be reset to the remaining row count.
+	lifetime = max(lifetime, recordedLifetime)
+	var mergedDaily []DailyUsageEntry
+	for date, incoming := range incomingDays {
+		local := localDays[date]
+		merged := incoming
+		if local.Requests > 0 {
+			incomingComplete := usageDayCovers(incomingHistory[date], incoming)
+			localComplete := usageDayCovers(localHistory[date], local)
+			if !incomingComplete || (!localComplete && len(addedByDay[date]) > 0) {
+				return data, 0, fmt.Errorf("cannot merge usage for %s: overlapping aggregate-only data has missing history; use replace mode", date)
+			}
+			merged = local
+			for _, e := range addedByDay[date] {
+				addUsageToDay(&merged, e)
+			}
+		}
+		lifetime += int64(merged.Requests - local.Requests)
+		raw, err := json.Marshal(merged)
+		if err != nil {
+			return data, 0, err
+		}
+		mergedDaily = append(mergedDaily, DailyUsageEntry{DateKey: date, Data: string(raw)})
+	}
+	data.UsageHistory = additions
+	data.UsageDaily = mergedDaily
+	return data, lifetime, nil
+}
+
+func usageDaysFromHistory(entries []UsageEntry) (map[string]DayData, error) {
+	days := make(map[string]DayData)
+	for _, e := range entries {
+		if _, err := time.Parse(time.RFC3339, e.Timestamp); err != nil {
+			return nil, fmt.Errorf("invalid usage timestamp %q; use replace with a valid backup: %w", e.Timestamp, err)
+		}
+		date := dateKeyFromTimestamp(e.Timestamp)
+		day := days[date]
+		addUsageToDay(&day, e)
+		days[date] = day
+	}
+	return days, nil
+}
+
+// Missing daily rows can be reconstructed from history. Existing aggregates must
+// cover every retained history dimension; malformed or contradictory data fails closed.
+func usageDaysForImport(entries []DailyUsageEntry, history map[string]DayData) (map[string]DayData, error) {
+	days := make(map[string]DayData, len(history)+len(entries))
+	for date, day := range history {
+		days[date] = day
+	}
+	seen := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		var day DayData
+		_, dateErr := time.Parse("2006-01-02", entry.DateKey)
+		if err := json.Unmarshal([]byte(entry.Data), &day); err != nil || dateErr != nil || seen[entry.DateKey] {
+			return nil, fmt.Errorf("invalid or duplicate usage daily data for %s; use replace with a valid backup", entry.DateKey)
+		}
+		seen[entry.DateKey] = true
+		if !usageDayCovers(day, history[entry.DateKey]) || !validUsageDay(day) {
+			return nil, fmt.Errorf("inconsistent usage daily data for %s; use replace with a valid backup", entry.DateKey)
+		}
+		days[entry.DateKey] = day
+	}
+	return days, nil
+}
+
+func usageCounterCovers(a, b DayCounter) bool {
+	// Summation order changes during export/merge; allow only floating-point noise.
+	epsilon := 1e-12 * max(1, math.Abs(a.Cost), math.Abs(b.Cost))
+	return a.Requests >= b.Requests && a.PromptTokens >= b.PromptTokens &&
+		a.CompletionTokens >= b.CompletionTokens && a.Cost+epsilon >= b.Cost
+}
+
+func usageDayCovers(a, b DayData) bool {
+	if !usageCounterCovers(DayCounter{a.Requests, a.PromptTokens, a.CompletionTokens, a.Cost},
+		DayCounter{b.Requests, b.PromptTokens, b.CompletionTokens, b.Cost}) {
+		return false
+	}
+	for key, counter := range b.ByProvider {
+		if !usageCounterCovers(a.ByProvider[key], counter) {
+			return false
+		}
+	}
+	for key, counter := range b.ByModel {
+		if !usageCounterCovers(a.ByModel[key], counter) {
+			return false
+		}
+	}
+	return true
+}
+
+func validUsageDay(day DayData) bool {
+	total := DayCounter{day.Requests, day.PromptTokens, day.CompletionTokens, day.Cost}
+	if !usageCounterCovers(total, DayCounter{}) {
+		return false
+	}
+	for _, dimension := range []map[string]DayCounter{day.ByProvider, day.ByModel} {
+		var sum DayCounter
+		for _, c := range dimension {
+			if !usageCounterCovers(c, DayCounter{}) {
+				return false
+			}
+			sum.Requests += c.Requests
+			sum.PromptTokens += c.PromptTokens
+			sum.CompletionTokens += c.CompletionTokens
+			sum.Cost += c.Cost
+		}
+		if !usageCounterCovers(total, sum) {
+			return false
+		}
+	}
+	return true
 }
