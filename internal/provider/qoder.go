@@ -39,6 +39,11 @@ const (
 	QoderDeviceTokenURL = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
 	QoderUserinfoURL    = "https://openapi.qoder.sh/api/v1/userinfo"
 
+	QoderCnChatURL        = "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+	QoderCnLoginURL       = "https://qoder.com.cn/device/selectAccounts"
+	QoderCnDeviceTokenURL = "https://openapi.qoder.com.cn/api/v1/deviceToken/poll"
+	QoderCnUserinfoURL    = "https://openapi.qoder.com.cn/api/v1/userinfo"
+
 	qoderIDEVersion   = "1.26.0"
 	qoderClientType   = "5"
 	qoderDataPolicy   = "disagree"
@@ -159,6 +164,7 @@ func qoderComputeSigPath(requestURL string) string {
 
 // QoderCosyCreds holds the credentials needed for COSY signing.
 type QoderCosyCreds struct {
+	ProviderID   string
 	UserID       string
 	AuthToken    string
 	Name         string
@@ -255,6 +261,11 @@ type QoderDeviceFlow struct {
 
 // InitiateQoderDeviceFlow generates PKCE + nonce + machineId and returns
 func InitiateQoderDeviceFlow() *QoderDeviceFlow {
+	return InitiateQoderDeviceFlowFor("qoder")
+}
+
+// InitiateQoderDeviceFlowFor generates PKCE + nonce + machineId for a specific regional provider.
+func InitiateQoderDeviceFlowFor(providerID string) *QoderDeviceFlow {
 	pkce, err := GeneratePKCE()
 	if err != nil {
 		return nil
@@ -270,8 +281,13 @@ func InitiateQoderDeviceFlow() *QoderDeviceFlow {
 		"nonce":            {nonce},
 	}
 
+	loginURL := QoderLoginURL
+	if strings.Contains(providerID, "cn") {
+		loginURL = QoderCnLoginURL
+	}
+
 	return &QoderDeviceFlow{
-		VerificationURI: QoderLoginURL + "?" + params.Encode(),
+		VerificationURI: loginURL + "?" + params.Encode(),
 		CodeVerifier:    pkce.CodeVerifier,
 		Nonce:           nonce,
 		MachineID:       machineID,
@@ -331,6 +347,11 @@ func QoderParseExpiry(expiresAt any, expiresInSeconds any) int64 {
 // PollQoderDeviceToken performs a single poll attempt against Qoder's device
 // token endpoint. Returns a QoderPollResult with status "pending" or "ok".
 func PollQoderDeviceToken(nonce, codeVerifier string, client *http.Client) (*QoderPollResult, error) {
+	return PollQoderDeviceTokenFor("qoder", nonce, codeVerifier, client)
+}
+
+// PollQoderDeviceTokenFor performs a poll attempt for a specific regional provider.
+func PollQoderDeviceTokenFor(providerID, nonce, codeVerifier string, client *http.Client) (*QoderPollResult, error) {
 	if nonce == "" || codeVerifier == "" {
 		return nil, fmt.Errorf("pollQoderDeviceToken: missing nonce or code verifier")
 	}
@@ -338,12 +359,16 @@ func PollQoderDeviceToken(nonce, codeVerifier string, client *http.Client) (*Qod
 		client = SafeHTTPClient(15*time.Second, false)
 	}
 
+	deviceTokenURL := QoderDeviceTokenURL
+	if strings.Contains(providerID, "cn") {
+		deviceTokenURL = QoderCnDeviceTokenURL
+	}
+
 	pollURL := fmt.Sprintf("%s?nonce=%s&verifier=%s&challenge_method=S256",
-		QoderDeviceTokenURL,
+		deviceTokenURL,
 		url.QueryEscape(nonce),
 		url.QueryEscape(codeVerifier),
 	)
-
 	req, err := http.NewRequest("GET", pollURL, nil)
 	if err != nil {
 		return nil, err
@@ -403,10 +428,19 @@ func PollQoderDeviceToken(nonce, codeVerifier string, client *http.Client) (*Qod
 
 // FetchQoderUserInfo fetches profile info for a Qoder token (best-effort).
 func FetchQoderUserInfo(accessToken string, client *http.Client) (name, email string) {
+	return FetchQoderUserInfoFor("qoder", accessToken, client)
+}
+
+// FetchQoderUserInfoFor fetches profile info for a specific regional provider.
+func FetchQoderUserInfoFor(providerID, accessToken string, client *http.Client) (name, email string) {
 	if client == nil {
 		client = SafeHTTPClient(15*time.Second, false)
 	}
-	req, err := http.NewRequest("GET", QoderUserinfoURL, nil)
+	userInfoURL := QoderUserinfoURL
+	if strings.Contains(providerID, "cn") {
+		userInfoURL = QoderCnUserinfoURL
+	}
+	req, err := http.NewRequest("GET", userInfoURL, nil)
 	if err != nil {
 		return "", ""
 	}

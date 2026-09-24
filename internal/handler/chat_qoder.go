@@ -48,7 +48,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	// PAT (pt-...) → exchange for short-lived job token + resolve userId so
 	// COSY signing works (9router@9c9dd7b1, @d433c0b2). Device/job tokens
 	// pass through unchanged.
-	resolved, err := provider.ResolveQoderCredential(rawToken, userID, client)
+	resolved, err := provider.ResolveQoderCredentialFor(conn.Provider, rawToken, userID, client)
 	if err != nil {
 		slog.Warn("Qoder PAT exchange failed", slog.String("connection", conn.ID), "error", err)
 		writeJSON(w, http.StatusUnauthorized, map[string]string{
@@ -76,6 +76,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	creds := provider.QoderCosyCreds{
+		ProviderID:   conn.Provider,
 		UserID:       resolved.UserID,
 		AuthToken:    resolved.AccessToken,
 		Name:         conn.Name,
@@ -99,8 +100,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 
 	// jt- tokens are rejected by api3 ("Login expired" 403) — route them to
 	// api2.qoder.sh like the official qodercli.
-	chatURL := provider.QoderChatURLForToken(resolved.AccessToken)
-
+	chatURL := provider.QoderChatURLForToken(conn.Provider, resolved.AccessToken)
 	cosyHeaders, err := provider.BuildQoderCosyHeaders(encodedBody, chatURL, creds)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{

@@ -196,14 +196,14 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
 	default:
-		if conn.Provider == "qoder" {
+		if conn.Provider == "qoder" || conn.Provider == "qoder-cn" {
 			// For Qoder PAT, exchange and test via model list or userInfo
 			if provider.IsQoderPAT(creds.APIKey) {
-				resolved, err := provider.ResolveQoderCredential(creds.APIKey, "", client)
+				resolved, err := provider.ResolveQoderCredentialFor(conn.Provider, creds.APIKey, "", client)
 				if err != nil {
 					return testResult{OK: false, Error: "Qoder PAT 兑换失败: " + err.Error()}
 				}
-				targetURL = provider.QoderModelListURL(resolved.AccessToken)
+				targetURL = provider.QoderModelListURL(conn.Provider, resolved.AccessToken)
 			} else {
 				targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
 			}

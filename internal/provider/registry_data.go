@@ -440,14 +440,12 @@ func init() {
 		APIKeyURL: "https://openrouter.ai/settings/keys",
 	}
 	Registry["qoder"] = ProviderInfo{
-		ID: "qoder", Name: "Qoder",
+		ID: "qoder", Name: "Qoder (Intl)",
 		Alias: "qd", Aliases: []string{"qd"},
 		BaseURL: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
 		APIType: "openai", AuthType: "oauth",
-		// Phase 36 T5 (9router@9c9dd7b1): re-enabled OAuth + PAT (apikey)
-		// auth. PATs (pt-...) are exchanged for short-lived job tokens before
-		// COSY signing.
 		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
+		Brand: "Qoder", Region: "intl",
 		Color:         "#EC4899",
 		Website:       "https://qoder.com",
 		Icon:          "water_drop",
@@ -455,6 +453,21 @@ func init() {
 		AuthHint:      "Personal Access Token (pt-...) from https://qoder.com/account/integrations",
 		DeviceCodeURL: "https://openapi.qoder.sh/api/v1/deviceToken/poll",
 		LoginURL:      "https://qoder.com/device/selectAccounts",
+	}
+	Registry["qoder-cn"] = ProviderInfo{
+		ID: "qoder-cn", Name: "Qoder (CN)",
+		Alias: "qdcn", Aliases: []string{"qdcn"},
+		BaseURL: "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation",
+		APIType: "openai", AuthType: "oauth",
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
+		Brand: "Qoder", Region: "cn",
+		Color:         "#EC4899",
+		Website:       "https://qoder.com.cn",
+		Icon:          "water_drop",
+		HasFree:       true,
+		AuthHint:      "Personal Access Token (pt-...) from https://qoder.com.cn/account/integrations",
+		DeviceCodeURL: "https://openapi.qoder.com.cn/api/v1/deviceToken/poll",
+		LoginURL:      "https://qoder.com.cn/device/selectAccounts",
 	}
 	Registry["tencent"] = ProviderInfo{
 		ID: "tencent", Name: "Tencent Hunyuan",

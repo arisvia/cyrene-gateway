@@ -68,6 +68,7 @@ var quotaFetchers = map[string]QuotaFetcher{
 	"minimax":        fetchMiniMax,
 	"minimax-cn":     fetchMiniMax,
 	"qoder":          fetchQoder,
+	"qoder-cn":       fetchQoder,
 	"antigravity":    fetchAntigravity,
 	"codebuddy-cn":   fetchCodebuddy,
 	"codebuddy-intl": fetchCodebuddy,

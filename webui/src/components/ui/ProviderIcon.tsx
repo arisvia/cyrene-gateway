@@ -108,6 +108,7 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   github: getProviderAsset('github')!,
   openrouter: getProviderAsset('openrouter')!,
   qoder: getProviderAsset('qoder')!,
+  'qoder-cn': getProviderAsset('qoder')!,
   groq: getProviderAsset('groq')!,
   kimi: getProviderAsset('kimi')!,
   cerebras: getProviderAsset('cerebras')!,

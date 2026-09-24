@@ -1361,9 +1361,9 @@ const ProviderDetail: Component = () => {
                         }
                       >
                         <Field
-                          label={c().provider === 'qoder' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
+                          label={c().provider === 'qoder' || c().provider === 'qoder-cn' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
                           hint={
-                            c().provider === 'qoder'
+                            c().provider === 'qoder' || c().provider === 'qoder-cn'
                               ? t('providerDetail.qoderCredHint')
                               : c().data?.hasApiKey
                               ? t('providerDetail.credKeepHint')
@@ -1375,7 +1375,7 @@ const ProviderDetail: Component = () => {
                             value={apiKey()}
                             onInput={setApiKey}
                             placeholder={
-                              c().provider === 'qoder'
+                              c().provider === 'qoder' || c().provider === 'qoder-cn'
                                 ? 'pt-... (Personal Access Token)'
                                 : c().provider === 'opencode' || c().provider === 'opencode-go'
                                 ? t('providerDetail.opencodeKeyPlaceholder')
@@ -1911,7 +1911,7 @@ const ProviderDetail: Component = () => {
           </Show>
           <Show when={newAccountAuthType() === 'api-key'}>
             <Field
-              label={conn()?.provider === 'qoder' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
+              label={conn()?.provider === 'qoder' || conn()?.provider === 'qoder-cn' ? t('providerDetail.qoderCredLabel') : t('providerDetail.authCredential')}
               hint={t('providerDetail.credSecureHint')}
             >
               <div class="space-y-1.5">
@@ -1920,7 +1920,7 @@ const ProviderDetail: Component = () => {
                   value={newAccountApiKey()}
                   onInput={setNewAccountApiKey}
                   placeholder={
-                    conn()?.provider === 'qoder'
+                    conn()?.provider === 'qoder' || conn()?.provider === 'qoder-cn'
                       ? 'pt-... (Personal Access Token)'
                       : conn()?.provider === 'opencode' || conn()?.provider === 'opencode-go'
                       ? t('providerDetail.opencodeKeyPlaceholder')

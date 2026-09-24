@@ -284,8 +284,8 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Qoder uses a custom device-token flow (local PKCE + browser login + GET poll)
-	if providerID == "qoder" {
-		flow := provider.InitiateQoderDeviceFlow()
+	if providerID == "qoder" || providerID == "qoder-cn" {
+		flow := provider.InitiateQoderDeviceFlowFor(providerID)
 		if flow == nil {
 			slog.Warn("Failed to initiate Qoder device flow")
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to initiate Qoder device flow"})
@@ -350,14 +350,14 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 		req.DeviceCode = req.DeviceCodeSnake
 	}
 	// Qoder custom poll: GET with nonce + verifier
-	if providerID == "qoder" {
-		result, err := provider.PollQoderDeviceToken(req.Nonce, req.CodeVerifier, s.getHTTPClient(15*time.Second))
+	if providerID == "qoder" || providerID == "qoder-cn" {
+		result, err := provider.PollQoderDeviceTokenFor(providerID, req.Nonce, req.CodeVerifier, s.getHTTPClient(15*time.Second))
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
 		if result.Status == "ok" {
-			name, email := provider.FetchQoderUserInfo(result.AccessToken, s.getHTTPClient(15*time.Second))
+			name, email := provider.FetchQoderUserInfoFor(providerID, result.AccessToken, s.getHTTPClient(15*time.Second))
 			expiresAt := ""
 			if result.ExpiresAt > 0 {
 				expiresAt = time.UnixMilli(result.ExpiresAt).UTC().Format(time.RFC3339)

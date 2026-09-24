@@ -23,8 +23,10 @@ import (
 // Qoder PAT/job-token endpoints (9router shared/qoder/constants.js).
 // Vars (not consts) so tests can point them at a mock server.
 var (
-	QoderJobTokenExchangeURL = "https://openapi.qoder.sh/api/v1/jobToken/exchange"
-	QoderPATUserInfoURL      = QoderUserinfoURL
+	QoderJobTokenExchangeURL   = "https://openapi.qoder.sh/api/v1/jobToken/exchange"
+	QoderCnJobTokenExchangeURL = "https://openapi.qoder.com.cn/api/v1/jobToken/exchange"
+	QoderPATUserInfoURL        = QoderUserinfoURL
+	QoderCnPATUserInfoURL      = QoderCnUserinfoURL
 )
 
 const (
@@ -38,18 +40,24 @@ const (
 // QoderPATPrefix identifies Personal Access Tokens.
 const QoderPATPrefix = "pt-"
 
-// QoderModelListURL resolves the model list endpoint for a token: jt- tokens
-// must use api2.qoder.sh (api3 rejects them with 403 "Login expired").
-func QoderModelListURL(authToken string) string {
+// QoderModelListURL resolves the model list endpoint for a token and provider:
+// For qoder-cn, gateway.qoder.com.cn serves both.
+// For qoder (intl), jt- tokens must use api2.qoder.sh (api3 rejects them with 403 "Login expired").
+func QoderModelListURL(providerID, authToken string) string {
+	if strings.Contains(providerID, "cn") {
+		return "https://gateway.qoder.com.cn/algo/api/v2/model/list"
+	}
 	if strings.HasPrefix(authToken, "jt-") {
 		return QoderChatBaseAlt + "/algo/api/v2/model/list"
 	}
 	return "https://api3.qoder.sh/algo/api/v2/model/list"
 }
 
-// QoderChatURLForToken resolves the chat endpoint for a token (same api2/api3
-// split as the model list).
-func QoderChatURLForToken(authToken string) string {
+// QoderChatURLForToken resolves the chat endpoint for a token and provider.
+func QoderChatURLForToken(providerID, authToken string) string {
+	if strings.Contains(providerID, "cn") {
+		return "https://gateway.qoder.com.cn/algo" + QoderChatSigPath + "?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+	}
 	base := "https://api3.qoder.sh"
 	if strings.HasPrefix(authToken, "jt-") {
 		base = QoderChatBaseAlt
@@ -85,6 +93,11 @@ var (
 //     near-expiry (9router resolveQoderCredentials)
 //   - anything else → passthrough (token as-is, userId from psd)
 func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderResolvedCredential, error) {
+	return ResolveQoderCredentialFor("qoder", token, userID, client)
+}
+
+// ResolveQoderCredentialFor converts a regional qoder token into COSY-signable form.
+func ResolveQoderCredentialFor(providerID, token, userID string, client *http.Client) (*QoderResolvedCredential, error) {
 	if !IsQoderPAT(token) {
 		return &QoderResolvedCredential{AccessToken: token, UserID: userID}, nil
 	}
@@ -96,18 +109,20 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 		client = SafeHTTPClient(30*time.Second, false)
 	}
 
+	cacheKey := providerID + ":" + token
+
 	// Fast path: cached and not near expiry.
 	qoderPATMu.Lock()
-	if entry, ok := qoderPATCache[token]; ok && time.Until(entry.expires) > qoderPATRefreshBuffer {
+	if entry, ok := qoderPATCache[cacheKey]; ok && time.Until(entry.expires) > qoderPATRefreshBuffer {
 		copy := *entry.cred
 		qoderPATMu.Unlock()
 		return &copy, nil
 	}
 	// Serialize concurrent exchanges for the same PAT.
-	entry, ok := qoderPATCache[token]
+	entry, ok := qoderPATCache[cacheKey]
 	if !ok || entry.sharedMu == nil {
 		entry = &qoderPATCacheEntry{sharedMu: &sync.Mutex{}}
-		qoderPATCache[token] = entry
+		qoderPATCache[cacheKey] = entry
 	}
 	mu := entry.sharedMu
 	qoderPATMu.Unlock()
@@ -117,18 +132,18 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 
 	// Double-check after acquiring the per-PAT lock.
 	qoderPATMu.Lock()
-	if cached, ok := qoderPATCache[token]; ok && cached.cred != nil && time.Until(cached.expires) > qoderPATRefreshBuffer {
+	if cached, ok := qoderPATCache[cacheKey]; ok && cached.cred != nil && time.Until(cached.expires) > qoderPATRefreshBuffer {
 		copy := *cached.cred
 		qoderPATMu.Unlock()
 		return &copy, nil
 	}
 	qoderPATMu.Unlock()
 
-	jobToken, expiresAt, err := qoderExchangeJobToken(token, client)
+	jobToken, expiresAt, err := qoderExchangeJobToken(providerID, token, client)
 	if err != nil {
 		return nil, err
 	}
-	resolvedUserID := qoderFetchUserID(jobToken, client)
+	resolvedUserID := qoderFetchUserID(providerID, jobToken, client)
 
 	cred := &QoderResolvedCredential{
 		AccessToken: jobToken,
@@ -137,7 +152,7 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 	}
 
 	qoderPATMu.Lock()
-	qoderPATCache[token] = &qoderPATCacheEntry{cred: cred, expires: expiresAt, sharedMu: mu}
+	qoderPATCache[cacheKey] = &qoderPATCacheEntry{cred: cred, expires: expiresAt, sharedMu: mu}
 	qoderPATMu.Unlock()
 
 	copy := *cred
@@ -146,9 +161,13 @@ func ResolveQoderCredential(token, userID string, client *http.Client) (*QoderRe
 
 // qoderExchangeJobToken exchanges a PAT for a short-lived job token. This
 // endpoint is plain JSON POST — NOT COSY-signed (9router exchangeJobToken).
-func qoderExchangeJobToken(pat string, client *http.Client) (jobToken string, expiresAt time.Time, err error) {
+func qoderExchangeJobToken(providerID, pat string, client *http.Client) (jobToken string, expiresAt time.Time, err error) {
+	exchangeURL := QoderJobTokenExchangeURL
+	if strings.Contains(providerID, "cn") {
+		exchangeURL = QoderCnJobTokenExchangeURL
+	}
 	body, _ := json.Marshal(map[string]string{"personal_token": pat})
-	req, err := http.NewRequest("POST", QoderJobTokenExchangeURL, strings.NewReader(string(body)))
+	req, err := http.NewRequest("POST", exchangeURL, strings.NewReader(string(body)))
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -200,8 +219,12 @@ func qoderExchangeJobToken(pat string, client *http.Client) (jobToken string, ex
 // qoderFetchUserID resolves the userId for a job token (needed for COSY
 // signing). Returns "" on any failure — callers fall back to the stored
 // userId (9router fetchUserIdForJobToken).
-func qoderFetchUserID(jobToken string, client *http.Client) string {
-	req, err := http.NewRequest("GET", QoderPATUserInfoURL, nil)
+func qoderFetchUserID(providerID, jobToken string, client *http.Client) string {
+	userInfoURL := QoderPATUserInfoURL
+	if strings.Contains(providerID, "cn") {
+		userInfoURL = QoderCnPATUserInfoURL
+	}
+	req, err := http.NewRequest("GET", userInfoURL, nil)
 	if err != nil {
 		return ""
 	}
@@ -239,5 +262,7 @@ func qoderFetchUserID(jobToken string, client *http.Client) string {
 func InvalidateQoderPATCache(pat string) {
 	qoderPATMu.Lock()
 	delete(qoderPATCache, pat)
+	delete(qoderPATCache, "qoder:"+pat)
+	delete(qoderPATCache, "qoder-cn:"+pat)
 	qoderPATMu.Unlock()
 }

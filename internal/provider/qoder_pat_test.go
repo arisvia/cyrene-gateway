@@ -30,17 +30,32 @@ func TestIsQoderPAT(t *testing.T) {
 // Job-token traffic must hit api2 (api3 rejects jt- with 403); device tokens
 // stay on api3 (9router@d433c0b2).
 func TestQoderURLRoutingByToken(t *testing.T) {
-	if got := QoderChatURLForToken("jt-test"); !strings.Contains(got, "api2.qoder.sh") {
+	// Intl (qoder)
+	if got := QoderChatURLForToken("qoder", "jt-test"); !strings.Contains(got, "api2.qoder.sh") {
 		t.Errorf("jt- chat URL should use api2, got %q", got)
 	}
-	if got := QoderChatURLForToken("dt-test"); !strings.Contains(got, "api3.qoder.sh") {
+	if got := QoderChatURLForToken("qoder", "dt-test"); !strings.Contains(got, "api3.qoder.sh") {
 		t.Errorf("dt- chat URL should use api3, got %q", got)
 	}
-	if got := QoderModelListURL("jt-test"); !strings.Contains(got, "api2.qoder.sh") {
+	if got := QoderModelListURL("qoder", "jt-test"); !strings.Contains(got, "api2.qoder.sh") {
 		t.Errorf("jt- model list URL should use api2, got %q", got)
 	}
-	if got := QoderModelListURL("dt-test"); !strings.Contains(got, "api3.qoder.sh") {
+	if got := QoderModelListURL("qoder", "dt-test"); !strings.Contains(got, "api3.qoder.sh") {
 		t.Errorf("dt- model list URL should use api3, got %q", got)
+	}
+
+	// CN (qoder-cn)
+	if got := QoderChatURLForToken("qoder-cn", "jt-test"); !strings.Contains(got, "gateway.qoder.com.cn") {
+		t.Errorf("qoder-cn chat URL should use gateway.qoder.com.cn, got %q", got)
+	}
+	if got := QoderChatURLForToken("qoder-cn", "dt-test"); !strings.Contains(got, "gateway.qoder.com.cn") {
+		t.Errorf("qoder-cn chat URL should use gateway.qoder.com.cn, got %q", got)
+	}
+	if got := QoderModelListURL("qoder-cn", "jt-test"); !strings.Contains(got, "gateway.qoder.com.cn") {
+		t.Errorf("qoder-cn model list URL should use gateway.qoder.com.cn, got %q", got)
+	}
+	if got := QoderModelListURL("qoder-cn", "dt-test"); !strings.Contains(got, "gateway.qoder.com.cn") {
+		t.Errorf("qoder-cn model list URL should use gateway.qoder.com.cn, got %q", got)
 	}
 }
 

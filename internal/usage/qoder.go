@@ -16,16 +16,23 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
-const qoderQuotaUsageURL = "https://openapi.qoder.sh/api/v2/quota/usage"
+const (
+	qoderQuotaUsageURL   = "https://openapi.qoder.sh/api/v2/quota/usage"
+	qoderCnQuotaUsageURL = "https://openapi.qoder.com.cn/api/v2/quota/usage"
+)
 
-func qoderQuotaURL(baseURL string) string {
+func qoderQuotaURL(providerID, baseURL string) string {
+	defaultURL := qoderQuotaUsageURL
+	if strings.Contains(providerID, "cn") {
+		defaultURL = qoderCnQuotaUsageURL
+	}
 	if baseURL != "" {
 		lower := strings.ToLower(baseURL)
-		if strings.Contains(lower, "127.0.0.1") || strings.Contains(lower, "localhost") || strings.Contains(lower, "openapi.qoder.sh") {
-			return endpoint(qoderQuotaUsageURL, baseURL)
+		if strings.Contains(lower, "127.0.0.1") || strings.Contains(lower, "localhost") || strings.Contains(lower, "openapi.qoder") {
+			return endpoint(defaultURL, baseURL)
 		}
 	}
-	return qoderQuotaUsageURL
+	return defaultURL
 }
 
 func getQoderJSON(ctx context.Context, client *http.Client, url, token string) (int, map[string]any, string, error) {
@@ -61,7 +68,7 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 	accountID := ""
 	// PAT (pt-...) connections must be exchanged to a job token first.
 	if provider.IsQoderPAT(token) {
-		resolved, err := provider.ResolveQoderCredential(token, "", client)
+		resolved, err := provider.ResolveQoderCredentialFor(c.Provider, token, "", client)
 		if err != nil {
 			return QuotaResult{
 				Plan:    "Qoder",
@@ -72,7 +79,7 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		accountID = resolved.UserID
 	}
 
-	url := qoderQuotaURL(c.BaseURL)
+	url := qoderQuotaURL(c.Provider, c.BaseURL)
 	status, data, raw, err := getQoderJSON(ctx, client, url, token)
 	if err != nil {
 		return QuotaResult{Message: "Qoder connected. Unable to fetch usage: " + err.Error()}

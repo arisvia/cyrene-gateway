@@ -469,7 +469,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		s.tryRefreshToken(conn)
 
 		// Qoder and Antigravity use specialized protocols and executors
-		if modelInfo.Provider == "qoder" {
+		if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
 			slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
 			s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
 			return
@@ -632,7 +632,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	s.tryRefreshToken(conn)
 
 	// --- Special protocol paths: Qoder (COSY) & Antigravity (Cloud Code) ---
-	if modelInfo.Provider == "qoder" {
+	if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
 		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
 		return
 	}

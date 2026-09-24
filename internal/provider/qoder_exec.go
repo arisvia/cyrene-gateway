@@ -36,8 +36,11 @@ var (
 
 const qoderCatalogTTL = time.Hour
 
-func qoderCacheKey(userID string) string {
-	return "qoder:" + userID
+func qoderCacheKey(providerID, userID string) string {
+	if providerID == "" {
+		providerID = "qoder"
+	}
+	return "qoder:" + providerID + ":" + userID
 }
 
 // QoderModelConfig returns the server-published model_config for a model key,
@@ -70,8 +73,7 @@ func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client
 }
 
 func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) *qoderCatalogEntry {
-	key := qoderCacheKey(creds.UserID)
-
+	key := qoderCacheKey(creds.ProviderID, creds.UserID)
 	qoderCatalogMu.Lock()
 	if !force {
 		if entry, ok := qoderCatalogCache[key]; ok && time.Now().Before(entry.expiresAt) {
@@ -85,12 +87,10 @@ func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) 
 		client = SafeHTTPClient(15*time.Second, false)
 	}
 
-	// Fetch model list with COSY signing (empty body). jt- tokens must use
-	// api2.qoder.sh — api3 rejects them with "Login expired" (403).
-	modelListURL := QoderModelListURL(creds.AuthToken)
+	// Fetch model list with COSY signing (empty body).
+	modelListURL := QoderModelListURL(creds.ProviderID, creds.AuthToken)
 	headers, err := BuildQoderCosyHeaders(nil, modelListURL, creds)
 	if err != nil {
-		return nil
 	}
 
 	req, err := http.NewRequest("GET", modelListURL, nil)
@@ -148,7 +148,8 @@ func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) 
 // InvalidateQoderCatalog clears the cached catalog for a user.
 func InvalidateQoderCatalog(userID string) {
 	qoderCatalogMu.Lock()
-	delete(qoderCatalogCache, qoderCacheKey(userID))
+	delete(qoderCatalogCache, qoderCacheKey("qoder", userID))
+	delete(qoderCatalogCache, qoderCacheKey("qoder-cn", userID))
 	qoderCatalogMu.Unlock()
 }
 

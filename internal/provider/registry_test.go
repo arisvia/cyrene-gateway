@@ -16,9 +16,8 @@ func TestRegistryCompleteness(t *testing.T) {
 		"xai", "alicode-intl", "alicode",
 		// E2E-verified (4)
 		"deepseek", "cerebras", "groq", "nvidia",
-		// Brand pairs / quota-ported (4)
-		"codebuddy-cn", "minimax", "minimax-cn", "opencode-go",
-		// Generic custom providers (2)
+		// Brand pairs / quota-ported (5)
+		"codebuddy-cn", "minimax", "minimax-cn", "opencode-go", "qoder-cn",
 		"custom-openai", "custom-anthropic",
 	}
 	for _, id := range expectedProviders {
@@ -37,7 +36,7 @@ func TestRegistryCategories(t *testing.T) {
 
 	expectedCats := map[string]int{
 		"apikey":   14,
-		"oauth":    11,
+		"oauth":    12,
 		"freeTier": 4,
 		"custom":   2,
 	}
@@ -94,6 +93,7 @@ func TestRegistryBrandRegion(t *testing.T) {
 		"MiniMax":  {"minimax", "minimax-cn"},
 		"Alibaba":  {"alicode-intl", "alicode"},
 		"OpenCode": {"opencode", "opencode-go"},
+		"Qoder":    {"qoder", "qoder-cn"},
 	}
 	for brand, ids := range brands {
 		for _, id := range ids {
@@ -129,6 +129,8 @@ func TestRegistryOfficialNames(t *testing.T) {
 		"openrouter":     "OpenRouter",
 		"alicode":        "Alibaba (China)",
 		"alicode-intl":   "Alibaba (Intl)",
+		"qoder":          "Qoder (Intl)",
+		"qoder-cn":       "Qoder (CN)",
 	}
 	for id, want := range names {
 		p, ok := Registry[id]

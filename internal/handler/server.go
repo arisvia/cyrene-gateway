@@ -717,7 +717,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 	// Qoder: COSY-signed catalog (resolve PATs first) — its inference
 	// protocol has no standard /models endpoint.
 	var models []model.ModelMetadata
-	if providerID == "qoder" {
+	if strings.HasPrefix(providerID, "qoder") {
 		models = s.fetchQoderCatalog(&conn, client)
 		if models == nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "qoder model catalog fetch failed"})
@@ -805,7 +805,7 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 		return nil
 	}
 
-	resolved, err := provider.ResolveQoderCredential(token, userID, client)
+	resolved, err := provider.ResolveQoderCredentialFor(conn.Provider, token, userID, client)
 	if err != nil {
 		slog.Warn("Qoder PAT exchange failed during model refresh", "error", err)
 		return nil
@@ -818,11 +818,12 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 	}
 
 	creds := provider.QoderCosyCreds{
-		UserID:    resolved.UserID,
-		AuthToken: resolved.AccessToken,
-		Name:      conn.Name,
-		Email:     conn.Email,
-		MachineID: machineID,
+		ProviderID: conn.Provider,
+		UserID:     resolved.UserID,
+		AuthToken:  resolved.AccessToken,
+		Name:       conn.Name,
+		Email:      conn.Email,
+		MachineID:  machineID,
 	}
 	models := provider.QoderCatalogModels(creds, client, false)
 	if models == nil {
@@ -929,7 +930,7 @@ func (s *Server) syncAllActiveConnections() {
 		}
 		pInfo, _ := provider.GetProvider(target.providerID)
 		var models []model.ModelMetadata
-		if target.providerID == "qoder" && target.conn != nil {
+		if strings.HasPrefix(target.providerID, "qoder") && target.conn != nil {
 			models = s.fetchQoderCatalog(target.conn, client)
 		} else if target.providerID == "antigravity" && target.conn != nil {
 
@@ -982,7 +983,7 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 	client := s.getHTTPClient(30 * time.Second)
 	s.tryRefreshToken(conn)
 	var models []model.ModelMetadata
-	if conn.Provider == "qoder" {
+	if strings.HasPrefix(conn.Provider, "qoder") {
 		models = s.fetchQoderCatalog(conn, client)
 	} else if conn.Provider == "antigravity" {
 
