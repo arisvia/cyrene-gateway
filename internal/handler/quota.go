@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -99,20 +100,69 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 
 	s.tryRefreshToken(conn)
 	projectID := ""
+	orgName := ""
 	if conn.Provider == "antigravity" {
 		projectID, _ = s.EnsureAntigravityProject(r.Context(), conn, s.getHTTPClient(15*time.Second))
 	} else if conn.Data.ProviderSpecificData != nil {
 		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
 			projectID = pid
 		}
+		if org, ok := conn.Data.ProviderSpecificData["organizationName"].(string); ok && org != "" {
+			orgName = org
+		} else if org, ok := conn.Data.ProviderSpecificData["organization_name"].(string); ok && org != "" {
+			orgName = org
+		}
+	}
+
+	// Auto-repair missing profile info (mobile, username, organization) for Qoder and CodeBuddy
+	if (conn.Provider == "qoder" || conn.Provider == "qoder-cn") && conn.Data.AccessToken != "" {
+		if conn.Email == "" || orgName == "" || conn.Name == "" || conn.Name == conn.Email {
+			profile := provider.FetchQoderUserProfileFor(conn.Provider, conn.Data.AccessToken, s.getHTTPClient(15*time.Second))
+			if profile != nil {
+				changed := false
+				if conn.Email == "" && profile.EffectiveEmail() != "" {
+					conn.Email = profile.EffectiveEmail()
+					changed = true
+				}
+				if (conn.Name == "" || conn.Name == conn.Email) && profile.EffectiveName() != "" {
+					conn.Name = profile.EffectiveName()
+					changed = true
+				}
+				if orgName == "" && profile.OrganizationName != "" {
+					orgName = profile.OrganizationName
+					if conn.Data.ProviderSpecificData == nil {
+						conn.Data.ProviderSpecificData = make(map[string]any)
+					}
+					conn.Data.ProviderSpecificData["organizationName"] = orgName
+					changed = true
+				}
+				if changed {
+					_ = s.DB.UpdateConnection(conn)
+				}
+			}
+		}
+	} else if strings.HasPrefix(conn.Provider, "codebuddy") && conn.Data.AccessToken != "" {
+		if conn.Name == "" || conn.Name == conn.Email {
+			parts := strings.Split(conn.Data.AccessToken, ".")
+			if len(parts) >= 2 {
+				if payload, err := provider.DecodeJWTPayload(parts[1]); err == nil {
+					pref, _ := payload["preferred_username"].(string)
+					if pref != "" && pref != conn.Email {
+						conn.Name = pref
+						_ = s.DB.UpdateConnection(conn)
+					}
+				}
+			}
+		}
 	}
 
 	res := usage.FetchQuota(r.Context(), s.getHTTPClient(15*time.Second), usage.QuotaCredentials{
-		Provider:    conn.Provider,
-		APIKey:      conn.Data.APIKey,
-		AccessToken: conn.Data.AccessToken,
-		ProjectID:   projectID,
-		BaseURL:     conn.Data.BaseURL,
+		Provider:     conn.Provider,
+		APIKey:       conn.Data.APIKey,
+		AccessToken:  conn.Data.AccessToken,
+		ProjectID:    projectID,
+		Organization: orgName,
+		BaseURL:      conn.Data.BaseURL,
 	})
 	if res.AccountEmail == "" && conn.Email != "" {
 		res.AccountEmail = conn.Email

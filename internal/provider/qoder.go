@@ -37,12 +37,10 @@ const (
 	QoderChatURL        = "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
 	QoderLoginURL       = "https://qoder.com/device/selectAccounts"
 	QoderDeviceTokenURL = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
-	QoderUserinfoURL    = "https://openapi.qoder.sh/api/v1/userinfo"
 
 	QoderCnChatURL        = "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
 	QoderCnLoginURL       = "https://qoder.com.cn/device/selectAccounts"
 	QoderCnDeviceTokenURL = "https://openapi.qoder.com.cn/api/v1/deviceToken/poll"
-	QoderCnUserinfoURL    = "https://openapi.qoder.com.cn/api/v1/userinfo"
 
 	qoderIDEVersion   = "1.26.0"
 	qoderClientType   = "5"
@@ -50,6 +48,11 @@ const (
 	qoderLoginVersion = "v2"
 	qoderMachineOS    = "x86_64_windows"
 	qoderMachineType  = "5"
+)
+
+var (
+	QoderUserinfoURL   = "https://openapi.qoder.sh/api/v1/userinfo"
+	QoderCnUserinfoURL = "https://openapi.qoder.com.cn/api/v1/userinfo"
 )
 
 // RSA public key for COSY encryption (from Qoder IDE v0.9).
@@ -426,13 +429,46 @@ func PollQoderDeviceTokenFor(providerID, nonce, codeVerifier string, client *htt
 	}, nil
 }
 
-// FetchQoderUserInfo fetches profile info for a Qoder token (best-effort).
-func FetchQoderUserInfo(accessToken string, client *http.Client) (name, email string) {
-	return FetchQoderUserInfoFor("qoder", accessToken, client)
+// QoderUserProfile contains rich profile information for a Qoder user account.
+type QoderUserProfile struct {
+	Name             string `json:"name"`
+	Username         string `json:"username"`
+	Email            string `json:"email"`
+	SecurityMobile   string `json:"security_mobile"`
+	OrganizationID   string `json:"organization_id"`
+	OrganizationName string `json:"organization_name"`
 }
 
-// FetchQoderUserInfoFor fetches profile info for a specific regional provider.
-func FetchQoderUserInfoFor(providerID, accessToken string, client *http.Client) (name, email string) {
+// EffectiveEmail returns the best account identifier: email if present, else mobile, else username.
+func (p *QoderUserProfile) EffectiveEmail() string {
+	if p == nil {
+		return ""
+	}
+	if strings.TrimSpace(p.Email) != "" {
+		return strings.TrimSpace(p.Email)
+	}
+	if strings.TrimSpace(p.SecurityMobile) != "" {
+		return strings.TrimSpace(p.SecurityMobile)
+	}
+	return strings.TrimSpace(p.Username)
+}
+
+// EffectiveName returns the best display name: name if present, else username.
+func (p *QoderUserProfile) EffectiveName() string {
+	if p == nil {
+		return ""
+	}
+	if strings.TrimSpace(p.Name) != "" {
+		return strings.TrimSpace(p.Name)
+	}
+	return strings.TrimSpace(p.Username)
+}
+
+// FetchQoderUserProfileFor fetches full profile info for a specific regional provider.
+func FetchQoderUserProfileFor(providerID, accessToken string, client *http.Client) *QoderUserProfile {
+	if strings.TrimSpace(accessToken) == "" {
+		return nil
+	}
 	if client == nil {
 		client = SafeHTTPClient(15*time.Second, false)
 	}
@@ -442,7 +478,7 @@ func FetchQoderUserInfoFor(providerID, accessToken string, client *http.Client) 
 	}
 	req, err := http.NewRequest("GET", userInfoURL, nil)
 	if err != nil {
-		return "", ""
+		return nil
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
@@ -450,24 +486,53 @@ func FetchQoderUserInfoFor(providerID, accessToken string, client *http.Client) 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", ""
+		return nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", ""
+		return nil
 	}
 
 	var info struct {
-		Name     string `json:"name"`
-		Username string `json:"username"`
-		Email    string `json:"email"`
+		Name             string `json:"name"`
+		Username         string `json:"username"`
+		Email            string `json:"email"`
+		SecurityMobile   string `json:"security_mobile"`
+		Mobile           string `json:"mobile"`
+		Phone            string `json:"phone"`
+		OrganizationID   string `json:"organization_id"`
+		OrganizationName string `json:"organization_name"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil
+	}
+	secMobile := strings.TrimSpace(info.SecurityMobile)
+	if secMobile == "" {
+		secMobile = strings.TrimSpace(info.Mobile)
+	}
+	if secMobile == "" {
+		secMobile = strings.TrimSpace(info.Phone)
+	}
+	return &QoderUserProfile{
+		Name:             strings.TrimSpace(info.Name),
+		Username:         strings.TrimSpace(info.Username),
+		Email:            strings.TrimSpace(info.Email),
+		SecurityMobile:   secMobile,
+		OrganizationID:   strings.TrimSpace(info.OrganizationID),
+		OrganizationName: strings.TrimSpace(info.OrganizationName),
+	}
+}
+
+// FetchQoderUserInfo fetches profile info for a Qoder token (best-effort).
+func FetchQoderUserInfo(accessToken string, client *http.Client) (name, email string) {
+	return FetchQoderUserInfoFor("qoder", accessToken, client)
+}
+
+// FetchQoderUserInfoFor fetches profile info for a specific regional provider.
+func FetchQoderUserInfoFor(providerID, accessToken string, client *http.Client) (name, email string) {
+	profile := FetchQoderUserProfileFor(providerID, accessToken, client)
+	if profile == nil {
 		return "", ""
 	}
-	name = strings.TrimSpace(info.Name)
-	if name == "" {
-		name = strings.TrimSpace(info.Username)
-	}
-	return name, strings.TrimSpace(info.Email)
+	return profile.EffectiveName(), profile.EffectiveEmail()
 }

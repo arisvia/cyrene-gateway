@@ -116,7 +116,7 @@ func TestFetchQoder_AddOnQuotaAndDynamicBuckets(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected addOn quota to be unpacked, got %v", res.Quotas)
 	}
-	if addOn.Total != 100 || addOn.Remaining != 100 || addOn.RemainingPercentage != 100 {
+	if addOn.Total != 100 || addOn.Remaining != 100 || addOn.RemainingPercentage != 100 || addOn.DisplayName != "Add-on Credits" {
 		t.Errorf("unexpected addOn values: %+v", addOn)
 	}
 	if addOn.ResetAt != "" {
@@ -129,5 +129,89 @@ func TestFetchQoder_AddOnQuotaAndDynamicBuckets(t *testing.T) {
 	}
 	if campaign.Total != 500 || campaign.Remaining != 450 || campaign.DisplayName != "Campaign Quota" {
 		t.Errorf("unexpected campaign quota: %+v", campaign)
+	}
+}
+func TestFetchQoder_DisplayLabelsAndTeamsPlan(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"userId": "019e2443-99d9-7d40-8248-d5da53fb0cb5",
+			"userType": "teams",
+			"usageType": "credits",
+			"totalUsagePercentage": 0,
+			"isQuotaExceeded": true,
+			"expiresAt": 1790230166296,
+			"userQuota": {"total": 0, "used": 0, "remaining": 0, "percentage": 0, "unit": "credits"},
+			"dedicatedResourcePackages": [
+				{
+					"id": "01a0d1fb-5b2b-79b0-a014-c935b8d509c9",
+					"name": "act-20260923-154",
+					"description": "growth-campaign:act-20260923-154:grant:01a0d1fb-5b25-7a31-8ef6-02facff2e4e4",
+					"total": 4000,
+					"used": 0,
+					"remaining": 4000,
+					"percentage": 0,
+					"unit": "credits",
+					"expiresAt": 1790310599000,
+					"displayLabels": [
+						{
+							"dimension": "description",
+							"value": "sota model series description",
+							"valueI18n": {
+								"en-US": "SOTA Exclusive Credits: used first when you select the Sonus model.",
+								"zh-CN": "SOTA 专属积分：在模型选择器中选择 Sonus 模型时优先抵扣该积分。"
+							}
+						},
+						{
+							"dimension": "title",
+							"value": "sota model series",
+							"valueI18n": {
+								"en-US": "SOTA Exclusive Credits",
+								"zh-CN": "SOTA 专属积分"
+							}
+						}
+					]
+				}
+			],
+			"orgResourcePackage": {
+				"used": 0,
+				"remaining": 2000,
+				"percentage": 0,
+				"unit": "credits",
+				"cap": 2000,
+				"available": true
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+		Provider:     "qoder",
+		AccessToken:  "jt-test-token",
+		BaseURL:      srv.URL,
+		Organization: "麦穗通信",
+	})
+
+	if res.Plan != "Qoder (Teams)" {
+		t.Errorf("expected plan to remain Teams when remaining quota exists, got %q", res.Plan)
+	}
+
+	pkg, ok := res.Quotas["dedicatedResourcePackages_1"]
+	if !ok {
+		t.Fatalf("expected dedicated package to be extracted, got %v", res.Quotas)
+	}
+	if pkg.DisplayName != "SOTA 专属积分" {
+		t.Errorf("expected DisplayName to be SOTA 专属积分 from displayLabels, got %q", pkg.DisplayName)
+	}
+	if pkg.Remaining != 4000 || pkg.Total != 4000 {
+		t.Errorf("unexpected dedicated package values: %+v", pkg)
+	}
+
+	org, ok := res.Quotas["organization"]
+	if !ok {
+		t.Fatalf("expected organization quota to be extracted, got %v", res.Quotas)
+	}
+	if org.DisplayName != "麦穗通信" {
+		t.Errorf("expected organization DisplayName to be 麦穗通信, got %q", org.DisplayName)
 	}
 }

@@ -357,10 +357,28 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if result.Status == "ok" {
-			name, email := provider.FetchQoderUserInfoFor(providerID, result.AccessToken, s.getHTTPClient(15*time.Second))
+			profile := provider.FetchQoderUserProfileFor(providerID, result.AccessToken, s.getHTTPClient(15*time.Second))
+			name, email := "", ""
+			orgName, orgID := "", ""
+			if profile != nil {
+				name = profile.EffectiveName()
+				email = profile.EffectiveEmail()
+				orgName = profile.OrganizationName
+				orgID = profile.OrganizationID
+			}
 			expiresAt := ""
 			if result.ExpiresAt > 0 {
 				expiresAt = time.UnixMilli(result.ExpiresAt).UTC().Format(time.RFC3339)
+			}
+			psd := map[string]any{
+				"userId":    result.UserID,
+				"machineId": req.MachineID,
+			}
+			if orgName != "" {
+				psd["organizationName"] = orgName
+			}
+			if orgID != "" {
+				psd["organizationId"] = orgID
 			}
 			conn := &model.ProviderConnection{
 				ID:       generateID(),
@@ -371,14 +389,11 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 				Priority: 0,
 				IsActive: true,
 				Data: model.ConnectionData{
-					AccessToken:  result.AccessToken,
-					RefreshToken: result.RefreshToken,
-					ExpiresAt:    expiresAt,
-					TestStatus:   "active",
-					ProviderSpecificData: map[string]any{
-						"userId":    result.UserID,
-						"machineId": req.MachineID,
-					},
+					AccessToken:          result.AccessToken,
+					RefreshToken:         result.RefreshToken,
+					ExpiresAt:            expiresAt,
+					TestStatus:           "active",
+					ProviderSpecificData: psd,
 				},
 			}
 			if conn.Name == "" {

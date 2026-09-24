@@ -670,11 +670,21 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 						tokens.Email = email
 					} else if username, ok := payload["preferred_username"].(string); ok && username != "" {
 						tokens.Email = username
+					} else if secMobile, ok := payload["security_mobile"].(string); ok && secMobile != "" {
+						tokens.Email = secMobile
+					} else if mobile, ok := payload["mobile"].(string); ok && mobile != "" {
+						tokens.Email = mobile
+					} else if phone, ok := payload["phone"].(string); ok && phone != "" {
+						tokens.Email = phone
 					}
 					if name, ok := payload["name"].(string); ok && name != "" {
 						tokens.DisplayName = name
 					} else if nickname, ok := payload["nickname"].(string); ok && nickname != "" {
 						tokens.DisplayName = nickname
+					} else if pref, ok := payload["preferred_username"].(string); ok && pref != "" && pref != tokens.Email {
+						tokens.DisplayName = pref
+					} else if uname, ok := payload["username"].(string); ok && uname != "" && uname != tokens.Email {
+						tokens.DisplayName = uname
 					}
 				}
 			}
@@ -775,11 +785,21 @@ func ImportToken(providerID, accessToken string) (*TokenExchangeResult, error) {
 				}
 				if preferredUsername, ok := payload["preferred_username"].(string); ok && result.Email == "" {
 					result.Email = preferredUsername
+				} else if secMobile, ok := payload["security_mobile"].(string); ok && result.Email == "" {
+					result.Email = secMobile
+				} else if mobile, ok := payload["mobile"].(string); ok && result.Email == "" {
+					result.Email = mobile
+				} else if phone, ok := payload["phone"].(string); ok && phone != "" && result.Email == "" {
+					result.Email = phone
 				}
 				if name, ok := payload["name"].(string); ok && name != "" && result.DisplayName == "" {
 					result.DisplayName = name
 				} else if nickname, ok := payload["nickname"].(string); ok && nickname != "" && result.DisplayName == "" {
 					result.DisplayName = nickname
+				} else if pref, ok := payload["preferred_username"].(string); ok && pref != "" && pref != result.Email && result.DisplayName == "" {
+					result.DisplayName = pref
+				} else if uname, ok := payload["username"].(string); ok && uname != "" && uname != result.Email && result.DisplayName == "" {
+					result.DisplayName = uname
 				}
 				// OpenAI-specific claims
 				if auth, ok := payload["https://api.openai.com/auth"].(map[string]any); ok {
@@ -881,8 +901,8 @@ func mapTokenResponse(providerID string, raw map[string]any) *TokenExchangeResul
 	return result
 }
 
-// decodeJWTPayload decodes the payload (second part) of a JWT.
-func decodeJWTPayload(b64 string) (map[string]any, error) {
+// DecodeJWTPayload decodes the payload (second part) of a JWT.
+func DecodeJWTPayload(b64 string) (map[string]any, error) {
 	decoded, err := base64.RawURLEncoding.DecodeString(b64)
 	if err != nil {
 		decoded, err = base64.URLEncoding.DecodeString(b64)
@@ -895,6 +915,10 @@ func decodeJWTPayload(b64 string) (map[string]any, error) {
 		return nil, err
 	}
 	return payload, nil
+}
+
+func decodeJWTPayload(b64 string) (map[string]any, error) {
+	return DecodeJWTPayload(b64)
 }
 
 // generateDeviceID creates a random device ID for providers that need one.

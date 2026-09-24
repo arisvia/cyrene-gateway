@@ -38,10 +38,11 @@ type QuotaResult struct {
 
 // QuotaCredentials is the subset of connection data a quota fetcher needs.
 type QuotaCredentials struct {
-	Provider    string
-	APIKey      string
-	AccessToken string
-	ProjectID   string
+	Provider     string
+	APIKey       string
+	AccessToken  string
+	ProjectID    string
+	Organization string
 	// BaseURL optionally overrides the provider's upstream host. Used by tests
 	// to point fetchers at a mock server; empty means the real endpoint.
 	BaseURL string

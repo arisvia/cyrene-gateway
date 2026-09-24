@@ -360,6 +360,38 @@ func TestPollDeviceCode_CodeBuddy_JWTClaims(t *testing.T) {
 		t.Errorf("expected DisplayName Test Dev, got %q", res.Tokens.DisplayName)
 	}
 }
+func TestPollDeviceCode_CodeBuddy_PreferredUsernameFallback(t *testing.T) {
+	orig := Registry["codebuddy"]
+	defer func() { Registry["codebuddy"] = orig }()
+
+	// payload without name/nickname, but with preferred_username and email
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"miku@ai1s.onmicrosoft.com","preferred_username":"defurina"}`))
+	jwtToken := "eyJhbGciOiJub25lIn0." + payload + ".signature"
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fmt.Sprintf(`{"code":0,"msg":"ok","data":{"accessToken":"%s","refreshToken":"cb-ref-token","expiresIn":7200}}`, jwtToken)))
+	}))
+	defer ts.Close()
+
+	info := orig
+	info.TokenURL = ts.URL
+	Registry["codebuddy"] = info
+
+	res, err := PollDeviceCode("codebuddy", "cb-state-123", "", nil, ts.Client())
+	if err != nil {
+		t.Fatalf("poll failed: %v", err)
+	}
+	if !res.Success || res.Tokens == nil {
+		t.Fatalf("expected success with tokens, got %+v", res)
+	}
+	if res.Tokens.Email != "miku@ai1s.onmicrosoft.com" {
+		t.Errorf("expected Email miku@ai1s.onmicrosoft.com, got %q", res.Tokens.Email)
+	}
+	if res.Tokens.DisplayName != "defurina" {
+		t.Errorf("expected DisplayName defurina from preferred_username, got %q", res.Tokens.DisplayName)
+	}
+}
 
 func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
 	orig := Registry["codebuddy"]

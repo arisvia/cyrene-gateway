@@ -145,13 +145,7 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			remainingPct = 100
 		}
 
-		dispName := defaultDisplayName
-		if n, ok := q["name"].(string); ok && strings.TrimSpace(n) != "" {
-			dispName = strings.TrimSpace(n)
-		} else if t, ok := q["title"].(string); ok && strings.TrimSpace(t) != "" {
-			dispName = strings.TrimSpace(t)
-		}
-
+		dispName := extractQoderDisplayName(q, defaultDisplayName)
 		quotas[name] = Quota{
 			Used:                used,
 			Total:               total,
@@ -169,8 +163,12 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 	addOnQuota, _ := data["addOnQuota"].(map[string]any)
 
 	extractQuotaBucket("user", userQuota, "")
-	extractQuotaBucket("organization", orgQuota, "")
-	extractQuotaBucket("addOn", addOnQuota, "")
+	orgDefaultName := "Organization Credits"
+	if strings.TrimSpace(c.Organization) != "" {
+		orgDefaultName = strings.TrimSpace(c.Organization)
+	}
+	extractQuotaBucket("organization", orgQuota, orgDefaultName)
+	extractQuotaBucket("addOn", addOnQuota, "Add-on Credits")
 
 	// 2. Dynamically unpack any other quota or package structures in response
 	for k, v := range data {
@@ -223,7 +221,11 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		}
 		plan = fmt.Sprintf("Qoder (%.0f%% used)", pct)
 	}
-	if exceeded, _ := data["isQuotaExceeded"].(bool); exceeded {
+	totalRemaining := 0.0
+	for _, q := range quotas {
+		totalRemaining += q.Remaining
+	}
+	if exceeded, _ := data["isQuotaExceeded"].(bool); exceeded && totalRemaining <= 0 {
 		plan = "Qoder (Quota Exceeded)"
 	}
 	return QuotaResult{Plan: plan, Quotas: quotas, AccountID: accountID}
@@ -291,4 +293,82 @@ func formatBucketTitle(s string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+func extractQoderDisplayName(q map[string]any, defaultDisplayName string) string {
+	if q == nil {
+		return defaultDisplayName
+	}
+	// 1. Prioritize displayLabels / display_labels
+	var labels []any
+	if l, ok := q["displayLabels"].([]any); ok {
+		labels = l
+	} else if l, ok := q["display_labels"].([]any); ok {
+		labels = l
+	}
+	for _, item := range labels {
+		lm, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		dim, _ := lm["dimension"].(string)
+		if dim == "title" || dim == "name" {
+			if i18n, ok := lm["valueI18n"].(map[string]any); ok {
+				if s, ok := i18n["zh-CN"].(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s)
+				}
+				if s, ok := i18n["en-US"].(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s)
+				}
+			}
+			if i18n, ok := lm["value_i18n"].(map[string]any); ok {
+				if s, ok := i18n["zh-CN"].(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s)
+				}
+				if s, ok := i18n["en-US"].(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s)
+				}
+			}
+			if v, ok := lm["value"].(string); ok && strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		}
+	}
+	for _, item := range labels {
+		lm, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		dim, _ := lm["dimension"].(string)
+		if dim == "description" {
+			if i18n, ok := lm["valueI18n"].(map[string]any); ok {
+				if s, ok := i18n["zh-CN"].(string); ok && strings.TrimSpace(s) != "" {
+					return strings.TrimSpace(s)
+				}
+			}
+			if v, ok := lm["value"].(string); ok && strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		}
+	}
+
+	// 2. Check title / displayName / packageName
+	if t, ok := q["title"].(string); ok && strings.TrimSpace(t) != "" {
+		return strings.TrimSpace(t)
+	}
+	if dn, ok := q["displayName"].(string); ok && strings.TrimSpace(dn) != "" {
+		return strings.TrimSpace(dn)
+	}
+	if pn, ok := q["packageName"].(string); ok && strings.TrimSpace(pn) != "" {
+		return strings.TrimSpace(pn)
+	}
+
+	// 3. Check name (filter out internal generated IDs like act-*, growth-*, pkg-*)
+	if n, ok := q["name"].(string); ok && strings.TrimSpace(n) != "" {
+		trimmed := strings.TrimSpace(n)
+		if !strings.HasPrefix(trimmed, "act-") && !strings.HasPrefix(trimmed, "growth-") && !strings.HasPrefix(trimmed, "pkg-") {
+			return trimmed
+		}
+	}
+
+	return defaultDisplayName
 }
