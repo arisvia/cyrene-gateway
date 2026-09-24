@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -119,6 +121,12 @@ func PrepareUpstreamRequest(
 			}
 		}
 	}
+	if strings.HasPrefix(modelInfo.Provider, "codebuddy") {
+		sanitizeCodebuddyRequest(modelInfo.Provider, bodyMap)
+	}
+	if modelInfo.Provider == "github" {
+		sanitizeGithubRequest(modelInfo.Model, bodyMap)
+	}
 	ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
 	if applyTokenSaverFn != nil {
 		applyTokenSaverFn(bodyMap, "openai")
@@ -219,5 +227,110 @@ func ExecuteAttempt(
 		ModelInfo:      cand.ModelInfo,
 		Connection:     cand.Connection,
 		TargetFormat:   targetFormat,
+	}
+}
+
+var agentSystemPromptRegex = regexp.MustCompile(`(?i)you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>`)
+
+const neutralCodebuddyPrompt = "You are a helpful AI assistant that helps with software engineering tasks."
+
+func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
+	bodyMap["stream"] = true
+
+	if eff, ok := bodyMap["reasoning_effort"].(string); ok {
+		effLower := strings.ToLower(eff)
+		if effLower == "none" || effLower == "off" {
+			delete(bodyMap, "reasoning_effort")
+		} else if effLower != "" {
+			bodyMap["reasoning_summary"] = "auto"
+		}
+	}
+
+	rawMsgs, ok := bodyMap["messages"].([]any)
+	if !ok || len(rawMsgs) == 0 {
+		bodyMap["messages"] = []any{
+			map[string]any{"role": "system", "content": "You are CodeBuddy Code."},
+		}
+		return
+	}
+
+	if providerID == "codebuddy-intl" {
+		var filtered []any
+		filtered = append(filtered, map[string]any{"role": "system", "content": "You are CodeBuddy Code."})
+		for _, m := range rawMsgs {
+			msgMap, ok := m.(map[string]any)
+			if !ok {
+				continue
+			}
+			role, _ := msgMap["role"].(string)
+			if role == "system" || role == "developer" {
+				continue
+			}
+			if role == "user" {
+				if contentStr, ok := msgMap["content"].(string); ok {
+					newMsg := make(map[string]any, len(msgMap))
+					for k, v := range msgMap {
+						newMsg[k] = v
+					}
+					newMsg["content"] = []any{
+						map[string]any{"type": "text", "text": contentStr},
+					}
+					filtered = append(filtered, newMsg)
+					continue
+				}
+			}
+			filtered = append(filtered, msgMap)
+		}
+		bodyMap["messages"] = filtered
+	} else {
+		hasSystem := false
+		for _, m := range rawMsgs {
+			if msgMap, ok := m.(map[string]any); ok {
+				if role, _ := msgMap["role"].(string); role == "system" {
+					hasSystem = true
+					break
+				}
+			}
+		}
+		messages := rawMsgs
+		if !hasSystem {
+			messages = append([]any{map[string]any{"role": "system", "content": "You are CodeBuddy Code."}}, rawMsgs...)
+		}
+		var sanitized []any
+		for _, m := range messages {
+			msgMap, ok := m.(map[string]any)
+			if !ok {
+				sanitized = append(sanitized, m)
+				continue
+			}
+			role, _ := msgMap["role"].(string)
+			if role == "system" {
+				contentStr, _ := msgMap["content"].(string)
+				if len(contentStr) > 2000 || agentSystemPromptRegex.MatchString(contentStr) {
+					newMsg := make(map[string]any, len(msgMap))
+					for k, v := range msgMap {
+						newMsg[k] = v
+					}
+					newMsg["content"] = neutralCodebuddyPrompt
+					sanitized = append(sanitized, newMsg)
+					continue
+				}
+			}
+			sanitized = append(sanitized, msgMap)
+		}
+		bodyMap["messages"] = sanitized
+	}
+}
+
+func sanitizeGithubRequest(model string, bodyMap map[string]any) {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "gpt-5") || strings.Contains(m, "o1") || strings.Contains(m, "o3") || strings.Contains(m, "o4") {
+		if maxTokens, ok := bodyMap["max_tokens"]; ok {
+			bodyMap["max_completion_tokens"] = maxTokens
+			delete(bodyMap, "max_tokens")
+		}
+	}
+	if eff, ok := bodyMap["reasoning_effort"].(string); ok && strings.ToLower(eff) == "none" {
+		delete(bodyMap, "reasoning_effort")
 	}
 }

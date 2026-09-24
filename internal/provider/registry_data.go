@@ -11,6 +11,15 @@ var claudeCodeHeaders = map[string]string{
 	"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31",
 }
 
+// claudeOAuthHeaders provides headers required by Anthropic OAuth (/v1/messages with Bearer user tokens)
+var claudeOAuthHeaders = map[string]string{
+	"Anthropic-Version":                         "2023-06-01",
+	"Anthropic-Beta":                            "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
+	"Anthropic-Dangerous-Direct-Browser-Access": "true",
+	"User-Agent":                                "claude-cli/2.1.280 (external, sdk-cli)",
+	"X-App":                                     "cli",
+}
+
 func init() {
 	Registry = make(map[string]ProviderInfo, 40)
 
@@ -94,6 +103,8 @@ func init() {
 		TokenURL:     "https://api.anthropic.com/v1/oauth/token",
 		AuthorizeURL: "https://claude.ai/oauth/authorize",
 		ClientID:     "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+		URLSuffix:    "?beta=true",
+		Headers:      claudeOAuthHeaders,
 	}
 	Registry["codebuddy-cn"] = ProviderInfo{
 		ID: "codebuddy-cn", Name: "CodeBuddy (CN)",

@@ -486,3 +486,77 @@ func TestProtocolNativeStreamUsage(t *testing.T) {
 		})
 	}
 }
+
+func TestCodebuddyChatSanitization(t *testing.T) {
+	captured := make(chan map[string]any, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		captured <- body
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: "+`{"choices":[{"index":0,"delta":{"content":"Hi!"},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	origIntl := provider.Registry["codebuddy-intl"]
+	defer func() { provider.Registry["codebuddy-intl"] = origIntl }()
+
+	mockInfo := origIntl
+	mockInfo.BaseURL = upstream.URL
+	provider.Registry["codebuddy-intl"] = mockInfo
+
+	srv, database := setupTestServer(t)
+	defer database.Close()
+
+	conn := &model.ProviderConnection{
+		ID:       "cb-test-conn",
+		Provider: "codebuddy-intl",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "mock-cb-token",
+		},
+	}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Client sends regular OpenAI non-streaming request without system prompt
+	reqBody := `{"model":"codebuddy-intl/hy4-preview","messages":[{"role":"user","content":"Hello CodeBuddy"}],"stream":false}`
+	r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(reqBody))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case reqSent := <-captured:
+		if reqSent["stream"] != true {
+			t.Errorf("expected upstream stream=true, got %v", reqSent["stream"])
+		}
+		msgs, ok := reqSent["messages"].([]any)
+		if !ok || len(msgs) != 2 {
+			t.Fatalf("expected 2 messages sent to upstream, got %v", msgs)
+		}
+		m0 := msgs[0].(map[string]any)
+		if m0["role"] != "system" || m0["content"] != "You are CodeBuddy Code." {
+			t.Errorf("expected leading system message, got %+v", m0)
+		}
+		m1 := msgs[1].(map[string]any)
+		contentArr, ok := m1["content"].([]any)
+		if !ok || len(contentArr) != 1 {
+			t.Fatalf("expected content to be typed text block array, got %+v", m1["content"])
+		}
+		block := contentArr[0].(map[string]any)
+		if block["type"] != "text" || block["text"] != "Hello CodeBuddy" {
+			t.Errorf("unexpected block: %+v", block)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for upstream request")
+	}
+}
