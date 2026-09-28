@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js'
+import { createSignal, untrack } from 'solid-js'
 
 export type ToastKind = 'success' | 'error' | 'warning' | 'info'
 
@@ -43,40 +43,34 @@ export function clearToasts() {
 }
 
 function push(kind: ToastKind, message: string, opts?: ToastOptions | string): number {
-  const current = toasts()
-  // 1. Exact duplicate toast already visible: ignore to prevent stacking
-  const duplicate = current.find(t => t.kind === kind && t.message === message)
-  if (duplicate) {
-    return duplicate.id
-  }
-
-  // 2. Subsumption: if new toast message embeds an existing toast's message (e.g. "发起授权失败: " + msg),
-  // dismiss the older less-specific toast so only the rich message remains.
-  const subsumed = current.find(t => t.kind === kind && message.includes(t.message))
-  if (subsumed) {
-    dismiss(subsumed.id)
-  } else {
-    // If new toast is less specific and already covered by an existing message, ignore it
-    const superseding = current.find(t => t.kind === kind && t.message.includes(message))
-    if (superseding) {
-      return superseding.id
+  const sameKind = untrack(toasts).filter(t => t.kind === kind)
+  const duplicate = sameKind.find(t => t.message === message)
+  if (!duplicate) {
+    const subsumed = sameKind.find(t => message.includes(t.message))
+    if (subsumed) {
+      dismiss(subsumed.id)
+    } else {
+      const superseding = sameKind.find(t => t.message.includes(message))
+      if (superseding) return superseding.id
     }
   }
 
-  const id = ++nextId
+  const id = duplicate?.id ?? ++nextId
+  clearTimeout(timers.get(id))
+  timers.delete(id)
   const options: ToastOptions = typeof opts === 'string' ? { title: opts } : opts || {}
-  const duration = options.duration !== undefined ? options.duration : DEFAULT_DURATIONS[kind]
+  const duration = options.duration ?? duplicate?.duration ?? DEFAULT_DURATIONS[kind]
 
   const item: Toast = {
     id,
     kind,
     message,
-    title: options.title,
+    title: options.title ?? duplicate?.title,
     duration,
     createdAt: Date.now(),
   }
 
-  setToasts(t => [...t, item])
+  setToasts(t => duplicate ? t.map(existing => existing.id === id ? item : existing) : [...t, item])
   if (duration > 0) {
     const timer = setTimeout(() => {
       dismiss(id)

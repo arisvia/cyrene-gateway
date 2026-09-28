@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { createComputed, createRoot } from 'solid-js'
 import { toast, clearToasts, dismiss } from '../toast'
 
 describe('toast store', () => {
@@ -54,6 +55,45 @@ describe('toast store', () => {
     const list = toast.toasts()
     expect(list.length).toBe(1)
     expect(list[0].message).toBe('发起授权失败: device code request failed: EOF')
+  })
+
+  it('renews a duplicate notification near expiry without adding another item', () => {
+    const id = toast.success('Saved')
+    vi.advanceTimersByTime(3499)
+
+    expect(toast.success('Saved')).toBe(id)
+    vi.advanceTimersByTime(1)
+    expect(toast.toasts()).toHaveLength(1)
+    vi.advanceTimersByTime(3499)
+    expect(toast.toasts()).toHaveLength(0)
+  })
+
+  it('updates duplicate options and cancels its previous dismissal timer', () => {
+    const id = toast.info('Notice', { title: 'Old title', duration: 1000 })
+    vi.advanceTimersByTime(999)
+    expect(toast.info('Notice', { title: 'New title', duration: 0 })).toBe(id)
+    vi.advanceTimersByTime(10000)
+    expect(toast.toasts()).toMatchObject([{ id, title: 'New title', duration: 0 }])
+
+    toast.info('Notice', { duration: 500 })
+    vi.advanceTimersByTime(500)
+    expect(toast.toasts()).toHaveLength(0)
+  })
+
+  it('does not subscribe a notification caller to the toast list', () => {
+    let calls = 0
+    const dispose = createRoot(dispose => {
+      createComputed(() => {
+        if (++calls === 1) toast.info('Effect notification')
+      })
+      return dispose
+    })
+    try {
+      toast.warning('Unrelated notification')
+      expect(calls).toBe(1)
+    } finally {
+      dispose()
+    }
   })
 
   it('auto-dismisses after duration', () => {
