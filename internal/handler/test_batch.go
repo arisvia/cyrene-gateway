@@ -88,7 +88,7 @@ func (s *Server) handleTestBatch(w http.ResponseWriter, r *http.Request) {
 				name = conn.Provider
 			}
 
-			res := s.testConnection(r, conn)
+			res := s.testConnection(r, conn, s.getHTTPClient(30*time.Second))
 			results[idx] = result{
 				ID:      connID,
 				Name:    name,
@@ -125,8 +125,8 @@ type testResult struct {
 	OK        bool
 }
 
-// testConnection performs a single provider connection test (extracted from handleTestProvider).
-func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection) testResult {
+// testConnection performs a single provider connection test with the caller's transport.
+func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection, client *http.Client) testResult {
 	providerInfo, ok := provider.GetProvider(conn.Provider)
 	if !ok {
 		// Check if it is a pure media provider
@@ -170,7 +170,6 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	// Phase 30: resolve the provider transport and use it for both URL building
 	// and auth injection so connection tests exercise the real upstream path.
 	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
-	client := s.getHTTPClient(30 * time.Second)
 	creds := provider.Credentials{
 		APIKey:               conn.Data.APIKey,
 		AccessToken:          conn.Data.AccessToken,
@@ -182,6 +181,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 
 	var targetURL string
 	var testBody []byte
+	var qoderCredential *provider.QoderResolvedCredential
 	switch effectiveAPIType {
 	case "anthropic":
 		targetURL = provider.BuildTransportURL(transport, "claude-3-haiku-20240307", false)
@@ -203,6 +203,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 				if err != nil {
 					return testResult{OK: false, Error: "Qoder PAT 兑换失败: " + err.Error()}
 				}
+				qoderCredential = resolved
 				targetURL = provider.QoderModelListURL(conn.Provider, resolved.AccessToken)
 			} else {
 				targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
@@ -253,19 +254,17 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 	for k, v := range transport.Headers {
 		req.Header.Set(k, v)
 	}
-	if conn.Provider == "qoder" && provider.IsQoderPAT(creds.APIKey) {
-		resolved, err := provider.ResolveQoderCredential(creds.APIKey, "", client)
-		if err == nil {
-			cosyCreds := provider.QoderCosyCreds{
-				UserID:    resolved.UserID,
-				AuthToken: resolved.AccessToken,
-			}
-			headers, err := provider.BuildQoderCosyHeaders(nil, targetURL, cosyCreds)
-			if err == nil {
-				for k, v := range headers {
-					req.Header.Set(k, v)
-				}
-			}
+	if qoderCredential != nil {
+		headers, err := provider.BuildQoderCosyHeaders(nil, targetURL, provider.QoderCosyCreds{
+			ProviderID: conn.Provider,
+			UserID:     qoderCredential.UserID,
+			AuthToken:  qoderCredential.AccessToken,
+		})
+		if err != nil {
+			return testResult{OK: false, Error: "Qoder COSY signing failed: " + err.Error()}
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
 		}
 	} else {
 		provider.ApplyAuth(req, transport, creds)
@@ -304,25 +303,27 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection)
 			}
 			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode, Error: errMsg}
 		}
-		if resp.StatusCode < 500 {
-			provider.ResetAccountState(conn)
-			provider.ClearModelLocks(conn)
-			if conn.ID != "" {
-				conn.Data.TestStatus = "ok"
-				conn.Data.LastError = ""
-				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-			}
-			return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
-		}
 	}
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+	if (resp.StatusCode >= 200 && resp.StatusCode < 300) ||
+		((conn.Provider == "opencode" || conn.Provider == "opencode-go") && resp.StatusCode < 500) {
 		provider.ResetAccountState(conn)
+		lockPatch := make(map[string]any)
+		for key := range conn.Data.ProviderSpecificData {
+			if strings.HasPrefix(key, "modelLock_") {
+				lockPatch[key] = nil
+			}
+		}
 		provider.ClearModelLocks(conn)
 		if conn.ID != "" {
 			conn.Data.TestStatus = "ok"
 			conn.Data.LastError = ""
 			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			if len(lockPatch) > 0 {
+				if err := s.DB.UpdateConnectionProviderData(conn.ID, lockPatch); err != nil {
+					return testResult{Error: "failed to reset model locks"}
+				}
+			}
 		}
 		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: resp.StatusCode}
 	}

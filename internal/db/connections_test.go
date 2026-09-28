@@ -2,10 +2,96 @@ package db
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
+
+func TestConnectionProfileCompareAndSwap(t *testing.T) {
+	for _, field := range []string{"none", "name-only", "name-only-no-provider-data", "name", "email", "organizationName", "organization_name", "provider", "authType", "apiKey", "accessToken", "refreshToken", "deleted"} {
+		t.Run(field, func(t *testing.T) {
+			database, err := Open(":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			original := &model.ProviderConnection{
+				ID: "profile", Provider: "qoder-cn", AuthType: "oauth", IsActive: true,
+				Data: model.ConnectionData{AccessToken: "access", RefreshToken: "refresh", APIKey: "key", ProviderSpecificData: map[string]any{"nested": map[string]any{"keep": "value"}}},
+			}
+			if err := database.CreateConnection(original); err != nil {
+				t.Fatal(err)
+			}
+			admin, err := database.GetConnection(original.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			admin.Priority, admin.IsActive, admin.Data.QuotaLimit = 99, false, 123
+			admin.Data.BaseURL, admin.Data.TestStatus = "https://admin.example.test", "error"
+			admin.Data.ProviderSpecificData["proxyPoolId"] = "admin-pool"
+			switch field {
+			case "name-only-no-provider-data":
+				admin.Data.ProviderSpecificData = nil
+			case "name":
+				admin.Name = "admin"
+			case "email":
+				admin.Email = "admin@example.test"
+			case "organizationName", "organization_name":
+				admin.Data.ProviderSpecificData[field] = "Admin Org"
+			case "provider":
+				admin.Provider = "qoder"
+			case "authType":
+				admin.AuthType = "access_token"
+			case "apiKey":
+				admin.Data.APIKey = "replacement-key"
+			case "accessToken":
+				admin.Data.AccessToken = "replacement-access"
+			case "refreshToken":
+				admin.Data.RefreshToken = "replacement-refresh"
+			}
+			if err := database.UpdateConnection(admin); err != nil {
+				t.Fatal(err)
+			}
+			if field == "deleted" {
+				if err := database.DeleteConnection(original.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			organization := "Profile Org"
+			if field == "name-only" || field == "name-only-no-provider-data" {
+				organization = ""
+			}
+			err = database.UpdateConnectionProfile(original, "Profile Name", "profile@example.test", organization)
+			wantErr := ErrConnectionProfileChanged
+			if field == "none" || field == "name-only" || field == "name-only-no-provider-data" {
+				wantErr = nil
+				admin.Name, admin.Email = "Profile Name", "profile@example.test"
+				if organization != "" {
+					admin.Data.ProviderSpecificData["organizationName"] = "Profile Org"
+				}
+			} else if field == "deleted" {
+				wantErr = ErrNotFound
+			}
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("profile CAS error=%v, want %v", err, wantErr)
+			}
+			got, err := database.GetConnection(original.ID)
+			if field == "deleted" {
+				if !errors.Is(err, ErrNotFound) {
+					t.Errorf("enrichment recreated deleted connection: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Provider != admin.Provider || got.AuthType != admin.AuthType || got.Name != admin.Name || got.Email != admin.Email || got.Priority != admin.Priority || got.IsActive != admin.IsActive || !reflect.DeepEqual(got.Data, admin.Data) {
+				t.Errorf("profile CAS lost current connection state: got=%+v, want=%+v", got, admin)
+			}
+		})
+	}
+}
 
 func TestConnectionRuntimePartialUpdates(t *testing.T) {
 	database, err := Open(":memory:")

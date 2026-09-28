@@ -191,6 +191,48 @@ func (d *DB) UpdateConnectionTokens(id, oldAccessToken, oldRefreshToken string, 
 	return err
 }
 
+// ErrConnectionProfileChanged means enrichment raced with a profile or credential edit.
+var ErrConnectionProfileChanged = errors.New("connection profile or credentials changed")
+
+// UpdateConnectionProfile enriches only profile fields, provided the account and
+// original profile still match. An empty organizationName leaves provider data alone.
+func (d *DB) UpdateConnectionProfile(original *model.ProviderConnection, name, email, organizationName string) error {
+	profilePatch := map[string]any{}
+	if organizationName != "" {
+		profilePatch["providerSpecificData"] = map[string]any{"organizationName": organizationName}
+	}
+	patch, err := json.Marshal(profilePatch)
+	if err != nil {
+		return err
+	}
+	oldOrg, _ := original.Data.ProviderSpecificData["organizationName"].(string)
+	oldLegacyOrg, _ := original.Data.ProviderSpecificData["organization_name"].(string)
+	err = connectionUpdateResult(d.conn.Exec(
+		`UPDATE providerConnections SET name=?, email=?, data=json_patch(data, ?), updatedAt=?
+			WHERE id=? AND provider=? AND authType=?
+			AND COALESCE(json_extract(data, '$.accessToken'), '')=?
+			AND COALESCE(json_extract(data, '$.refreshToken'), '')=?
+			AND COALESCE(json_extract(data, '$.apiKey'), '')=?
+			AND COALESCE(name, '')=? AND COALESCE(email, '')=?
+			AND COALESCE(json_extract(data, '$.providerSpecificData.organizationName'), '')=?
+			AND COALESCE(json_extract(data, '$.providerSpecificData.organization_name'), '')=?`,
+		name, email, string(patch), time.Now().UTC().Format(time.RFC3339),
+		original.ID, original.Provider, original.AuthType, original.Data.AccessToken,
+		original.Data.RefreshToken, original.Data.APIKey, original.Name, original.Email, oldOrg, oldLegacyOrg,
+	))
+	if errors.Is(err, ErrNotFound) {
+		var exists int
+		if lookupErr := d.conn.QueryRow(`SELECT 1 FROM providerConnections WHERE id=?`, original.ID).Scan(&exists); lookupErr != nil {
+			if errors.Is(lookupErr, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return lookupErr
+		}
+		return ErrConnectionProfileChanged
+	}
+	return err
+}
+
 // UpdateConnectionProviderData merges discovered metadata without replacing
 // unrelated provider configuration. A nil value explicitly removes a key.
 func (d *DB) UpdateConnectionProviderData(id string, providerPatch map[string]any) error {

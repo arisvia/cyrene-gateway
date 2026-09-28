@@ -713,8 +713,7 @@ func (s *Server) createOAuthConnection(providerID string, tokens *provider.Token
 		for _, existing := range existingConns {
 			matchesEmail := tokens.Email != "" && existing.Email == tokens.Email
 			matchesName := tokens.DisplayName != "" && (existing.Name == tokens.DisplayName || existing.Email == tokens.DisplayName)
-			singleEmptyAccount := len(existingConns) == 1 && existing.Email == ""
-			if matchesEmail || matchesName || singleEmptyAccount {
+			if matchesEmail || matchesName {
 				if existing.Email == "" && tokens.Email != "" {
 					existing.Email = tokens.Email
 				}

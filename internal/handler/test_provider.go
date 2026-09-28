@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"log/slog"
 )
@@ -15,7 +16,7 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := s.testConnection(r, conn)
+	res := s.testConnection(r, conn, s.getHTTPClient(30*time.Second))
 
 	if res.OK {
 		slog.Info("Provider test passed",

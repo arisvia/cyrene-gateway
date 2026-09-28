@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
@@ -114,45 +116,48 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Auto-repair missing profile info (mobile, username, organization) for Qoder and CodeBuddy
+	// Keep the pre-fetch identity and profile intact for the compare-and-swap.
+	name, email, discoveredOrg := conn.Name, conn.Email, ""
+	missingName := conn.Name == "" || conn.Name == conn.Email
 	if (conn.Provider == "qoder" || conn.Provider == "qoder-cn") && conn.Data.AccessToken != "" {
-		if conn.Email == "" || orgName == "" || conn.Name == "" || conn.Name == conn.Email {
+		if conn.Email == "" || orgName == "" || missingName {
 			profile := provider.FetchQoderUserProfileFor(conn.Provider, conn.Data.AccessToken, s.getHTTPClient(15*time.Second))
 			if profile != nil {
-				changed := false
-				if conn.Email == "" && profile.EffectiveEmail() != "" {
-					conn.Email = profile.EffectiveEmail()
-					changed = true
+				if email == "" && profile.EffectiveEmail() != "" {
+					email = profile.EffectiveEmail()
 				}
-				if (conn.Name == "" || conn.Name == conn.Email) && profile.EffectiveName() != "" {
-					conn.Name = profile.EffectiveName()
-					changed = true
+				if missingName && profile.EffectiveName() != "" {
+					name = profile.EffectiveName()
 				}
-				if orgName == "" && profile.OrganizationName != "" {
-					orgName = profile.OrganizationName
-					if conn.Data.ProviderSpecificData == nil {
-						conn.Data.ProviderSpecificData = make(map[string]any)
-					}
-					conn.Data.ProviderSpecificData["organizationName"] = orgName
-					changed = true
-				}
-				if changed {
-					_ = s.DB.UpdateConnection(conn)
+				if orgName == "" {
+					discoveredOrg = profile.OrganizationName
 				}
 			}
 		}
-	} else if strings.HasPrefix(conn.Provider, "codebuddy") && conn.Data.AccessToken != "" {
-		if conn.Name == "" || conn.Name == conn.Email {
-			parts := strings.Split(conn.Data.AccessToken, ".")
-			if len(parts) >= 2 {
-				if payload, err := provider.DecodeJWTPayload(parts[1]); err == nil {
-					pref, _ := payload["preferred_username"].(string)
-					if pref != "" && pref != conn.Email {
-						conn.Name = pref
-						_ = s.DB.UpdateConnection(conn)
-					}
+	} else if strings.HasPrefix(conn.Provider, "codebuddy") && conn.Data.AccessToken != "" && missingName {
+		parts := strings.Split(conn.Data.AccessToken, ".")
+		if len(parts) >= 2 {
+			if payload, err := provider.DecodeJWTPayload(parts[1]); err == nil {
+				if pref, _ := payload["preferred_username"].(string); pref != "" && pref != conn.Email {
+					name = pref
 				}
 			}
+		}
+	}
+	if name != conn.Name || email != conn.Email || discoveredOrg != "" {
+		if err := s.DB.UpdateConnectionProfile(conn, name, email, discoveredOrg); err != nil {
+			status, message := http.StatusInternalServerError, "failed to persist connection profile"
+			if errors.Is(err, db.ErrNotFound) {
+				status, message = http.StatusNotFound, "connection no longer exists"
+			} else if errors.Is(err, db.ErrConnectionProfileChanged) {
+				status, message = http.StatusConflict, "connection changed during profile enrichment"
+			}
+			writeJSON(w, status, map[string]string{"error": message})
+			return
+		}
+		conn.Name, conn.Email = name, email
+		if discoveredOrg != "" {
+			orgName = discoveredOrg
 		}
 	}
 

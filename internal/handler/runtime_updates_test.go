@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -107,7 +108,7 @@ func TestRuntimeHealthPreservesInflightAdminEdit(t *testing.T) {
 				go func() {
 					defer close(done)
 					if mode == "test" {
-						srv.testConnection(req, conn)
+						srv.testConnection(req, conn, srv.getHTTPClient(30*time.Second))
 					} else {
 						srv.Router.ServeHTTP(rec, req)
 					}
@@ -242,6 +243,8 @@ func (tr runtimeRewriteTransport) RoundTrip(req *http.Request) (*http.Response, 
 	if err != nil {
 		return nil, err
 	}
+	local.Host = req.URL.Host
+	local.URL.RawQuery = req.URL.RawQuery
 	local.Header = req.Header.Clone()
 	return tr.base.RoundTrip(local)
 }
@@ -364,6 +367,255 @@ func TestRuntimeResetClearsOnlyHealthAndLocks(t *testing.T) {
 	}
 	if _, exists := got.Data.ProviderSpecificData["modelLock_gpt-4"]; exists {
 		t.Error("reset did not remove model lock")
+	}
+}
+
+func TestRuntimeProfileEnrichment(t *testing.T) {
+	for _, mode := range []string{"normal", "custom-name", "admin", "config-only", "name", "email", "organization", "legacy-organization", "access-token", "refresh-token", "deleted"} {
+		t.Run(mode, func(t *testing.T) {
+			srv, database := setupTestServer(t)
+			upstream, entered, release := blockedRuntimeUpstream(t, http.StatusOK, `{"name":"Profile Name","email":"profile@example.test","organization_name":"Profile Org","userQuota":{"total":100,"used":10}}`)
+			originalURL := provider.QoderCnUserinfoURL
+			provider.QoderCnUserinfoURL = upstream.URL + "/profile"
+			defer func() { provider.QoderCnUserinfoURL = originalURL }()
+			conn := &model.ProviderConnection{
+				ID: "profile", Provider: "qoder-cn", AuthType: "oauth", IsActive: true,
+				Data: model.ConnectionData{AccessToken: "old-access", RefreshToken: "old-refresh", ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), BaseURL: upstream.URL, ProviderSpecificData: map[string]any{"untouched": "old"}},
+			}
+			if mode == "custom-name" {
+				// A custom name matching the newly discovered email is not a generic name.
+				conn.Name = "profile@example.test"
+			}
+			if err := database.CreateConnection(conn); err != nil {
+				t.Fatal(err)
+			}
+			rec, done := httptest.NewRecorder(), make(chan struct{})
+			go func() {
+				defer close(done)
+				req := httptest.NewRequest("GET", "/api/providers/profile/usage", nil)
+				req.SetPathValue("id", conn.ID)
+				srv.handleConnectionUsage(rec, req)
+			}()
+			awaitRuntime(t, entered)
+			admin, err := database.GetConnection(conn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "admin":
+				editRuntimeConnection(t, database, conn.ID, true)
+			case "deleted":
+				if err := database.DeleteConnection(conn.ID); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				switch mode {
+				case "config-only":
+					admin.IsActive, admin.Priority, admin.Data.QuotaLimit = false, 99, 123
+					admin.Data.ProviderSpecificData["untouched"] = "admin-value"
+				case "name":
+					admin.Name = "admin name"
+				case "email":
+					admin.Email = "admin@example.test"
+				case "organization":
+					admin.Data.ProviderSpecificData["organizationName"] = "Admin Org"
+				case "legacy-organization":
+					admin.Data.ProviderSpecificData["organization_name"] = "Admin Org"
+				case "access-token":
+					admin.Data.AccessToken = "admin-access"
+				case "refresh-token":
+					admin.Data.RefreshToken = "admin-refresh"
+				}
+				if err := database.UpdateConnection(admin); err != nil {
+					t.Fatal(err)
+				}
+			}
+			release()
+			awaitRuntime(t, done)
+			if mode == "deleted" {
+				if rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "profile@example.test") {
+					t.Errorf("deleted connection returned old profile: %d %s", rec.Code, rec.Body.String())
+				}
+				return
+			}
+			got, err := database.GetConnection(conn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "normal" || mode == "custom-name" || mode == "config-only" {
+				wantName := "Profile Name"
+				if mode == "custom-name" {
+					wantName = "profile@example.test"
+				}
+				if rec.Code != http.StatusOK || got.Name != wantName || got.Email != "profile@example.test" || got.Data.ProviderSpecificData["organizationName"] != "Profile Org" {
+					t.Errorf("profile enrichment failed: status=%d connection=%+v", rec.Code, got)
+				}
+				if mode == "config-only" && (got.IsActive || got.Priority != 99 || got.Data.QuotaLimit != 123 || got.Data.ProviderSpecificData["untouched"] != "admin-value") {
+					t.Error("profile enrichment overwrote unrelated administrator configuration")
+				}
+				return
+			}
+			if mode == "admin" {
+				got = assertRuntimeConfig(t, database, conn.ID)
+				if got.Data.AccessToken != "admin-access" || got.Data.RefreshToken != "admin-refresh" {
+					t.Error("profile enrichment overwrote replacement credentials")
+				}
+			} else if got.Name != admin.Name || got.Email != admin.Email || got.Data.AccessToken != admin.Data.AccessToken || got.Data.RefreshToken != admin.Data.RefreshToken || got.Data.ProviderSpecificData["organizationName"] != admin.Data.ProviderSpecificData["organizationName"] || got.Data.ProviderSpecificData["organization_name"] != admin.Data.ProviderSpecificData["organization_name"] {
+				t.Errorf("stale enrichment changed administrator profile or credentials: %+v", got)
+			}
+			if rec.Code != http.StatusConflict || strings.Contains(rec.Body.String(), "profile@example.test") || strings.Contains(rec.Body.String(), "Profile Org") {
+				t.Errorf("stale profile must not be returned: %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestConnectionSuccessPersistsModelLockRemoval(t *testing.T) {
+	for _, pid := range []string{"openai", "opencode", "opencode-go"} {
+		t.Run(pid, func(t *testing.T) {
+			srv, database := setupTestServer(t)
+			upstream, entered, release := blockedRuntimeUpstream(t, http.StatusOK, `{}`)
+			conn := &model.ProviderConnection{
+				ID: "locked", Provider: pid, AuthType: "api-key", IsActive: true,
+				Data: model.ConnectionData{APIKey: "key", BaseURL: upstream.URL, ProviderSpecificData: map[string]any{
+					"modelLock_gpt-4": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+					"modelLock_other": time.Now().Add(time.Hour).UTC().Format(time.RFC3339), "proxyPoolId": "old-pool",
+				}},
+			}
+			if err := database.CreateConnection(conn); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan struct{})
+			var result testResult
+			go func() {
+				defer close(done)
+				result = srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, srv.getHTTPClient(30*time.Second))
+			}()
+			awaitRuntime(t, entered)
+			if err := database.UpdateConnectionProviderData(conn.ID, map[string]any{"proxyPoolId": "admin-pool", "extra": "keep"}); err != nil {
+				t.Fatal(err)
+			}
+			release()
+			awaitRuntime(t, done)
+			if !result.OK {
+				t.Fatalf("connection test failed: %+v", result)
+			}
+			got, err := database.GetConnection(conn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{"modelLock_gpt-4", "modelLock_other"} {
+				if _, exists := got.Data.ProviderSpecificData[key]; exists {
+					t.Errorf("successful test left persisted lock %s", key)
+				}
+			}
+			if got.Data.ProviderSpecificData["proxyPoolId"] != "admin-pool" || got.Data.ProviderSpecificData["extra"] != "keep" {
+				t.Error("lock removal overwrote unrelated provider configuration")
+			}
+		})
+	}
+}
+
+func TestQoderConnectionReportsSigningFailure(t *testing.T) {
+	for _, pid := range []string{"qoder", "qoder-cn"} {
+		t.Run(pid, func(t *testing.T) {
+			srv, _ := setupTestServer(t)
+			var exchanges atomic.Int32
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/exchange" {
+					exchanges.Add(1)
+					// Force any repeated resolution to exchange again instead of using the cache.
+					_, _ = io.WriteString(w, `{"token":"jt-regional-test","expires_in":1}`)
+					return
+				}
+				cancel()                       // An unsigned model request must not escape to the internet.
+				_, _ = io.WriteString(w, `{}`) // Missing user ID cannot be COSY-signed.
+			}))
+			defer upstream.Close()
+			oldExchange, oldCNExchange := provider.QoderJobTokenExchangeURL, provider.QoderCnJobTokenExchangeURL
+			oldUser, oldCNUser := provider.QoderPATUserInfoURL, provider.QoderCnPATUserInfoURL
+			provider.QoderJobTokenExchangeURL, provider.QoderCnJobTokenExchangeURL = upstream.URL+"/exchange", upstream.URL+"/exchange"
+			provider.QoderPATUserInfoURL, provider.QoderCnPATUserInfoURL = upstream.URL+"/userinfo", upstream.URL+"/userinfo"
+			defer func() {
+				provider.QoderJobTokenExchangeURL, provider.QoderCnJobTokenExchangeURL = oldExchange, oldCNExchange
+				provider.QoderPATUserInfoURL, provider.QoderCnPATUserInfoURL = oldUser, oldCNUser
+			}()
+			pat := "pt-signing-" + generateID()
+			defer provider.InvalidateQoderPATCache(pat)
+			conn := &model.ProviderConnection{Provider: pid, AuthType: "api-key", Data: model.ConnectionData{APIKey: pat}}
+			result := srv.testConnection(httptest.NewRequest("POST", "/test", nil).WithContext(ctx), conn, srv.getHTTPClient(30*time.Second))
+			if result.OK || !strings.Contains(result.Error, "cosy: user id is empty") {
+				t.Errorf("missing signing error: %+v", result)
+			}
+			if got := exchanges.Load(); got != 1 {
+				t.Errorf("PAT exchanged %d times, want once", got)
+			}
+		})
+	}
+}
+
+func TestQoderConnectionUsesRegionalCOSYCredential(t *testing.T) {
+	for _, tc := range []struct {
+		provider, apiHost, modelHost, token, user string
+	}{
+		{"qoder", "openapi.qoder.sh", "api2.qoder.sh", "jt-intl-fixture", "intl-user"},
+		{"qoder-cn", "openapi.qoder.com.cn", "gateway.qoder.com.cn", "jt-cn-fixture", "cn-user"},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			srv, _ := setupTestServer(t)
+			pat := "pt-regional-" + generateID()
+			defer provider.InvalidateQoderPATCache(pat)
+			var exchanges, models atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				wantHost := tc.apiHost
+				if r.URL.Path == "/algo/api/v2/model/list" {
+					wantHost = tc.modelHost
+				}
+				if r.Host != wantHost {
+					t.Errorf("request escaped region: host=%q, want %q", r.Host, wantHost)
+					http.Error(w, "wrong region", http.StatusBadRequest)
+					return
+				}
+				switch r.URL.Path {
+				case "/api/v1/jobToken/exchange":
+					exchanges.Add(1)
+					var body struct {
+						PersonalToken string `json:"personal_token"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil || r.Method != http.MethodPost || body.PersonalToken != pat {
+						t.Errorf("incorrect PAT exchange: method=%s body=%+v err=%v", r.Method, body, err)
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"token": tc.token, "expires_in": 1})
+				case "/api/v1/userinfo":
+					if r.Header.Get("Authorization") != "Bearer "+tc.token {
+						t.Error("profile lookup did not use the regional job token")
+					}
+					_ = json.NewEncoder(w).Encode(map[string]string{"id": tc.user})
+				case "/algo/api/v2/model/list":
+					models.Add(1)
+					if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer COSY.") || r.Header.Get("Cosy-User") != tc.user || r.Header.Get("Cosy-Key") == "" || r.Header.Get("Cosy-Date") == "" || r.Header.Get("Cosy-Sigpath") != "/api/v2/model/list" || r.Header.Get("Cosy-Bodyhash") != "d41d8cd98f00b204e9800998ecf8427e" {
+						t.Errorf("model request lacks regional COSY authentication: %v", r.Header)
+						http.Error(w, "missing COSY authentication", http.StatusUnauthorized)
+						return
+					}
+					_, _ = io.WriteString(w, `{"data":[]}`)
+				default:
+					t.Errorf("unexpected upstream path %q", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer upstream.Close()
+			client := upstream.Client()
+			client.Transport = runtimeRewriteTransport{base: client.Transport, destination: upstream.URL}
+			conn := &model.ProviderConnection{Provider: tc.provider, AuthType: "api-key", Data: model.ConnectionData{APIKey: pat}}
+			result := srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, client)
+			if !result.OK || exchanges.Load() != 1 || models.Load() != 1 {
+				t.Errorf("regional test result=%+v, exchanges=%d models=%d", result, exchanges.Load(), models.Load())
+			}
+		})
 	}
 }
 

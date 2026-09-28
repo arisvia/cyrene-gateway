@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -57,7 +58,7 @@ func (s *Server) handleTestCredentials(w http.ResponseWriter, r *http.Request) {
 		conn.AuthType = "none"
 	}
 
-	res := s.testConnection(r, conn)
+	res := s.testConnection(r, conn, s.getHTTPClient(30*time.Second))
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":        res.OK,

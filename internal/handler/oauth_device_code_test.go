@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
@@ -92,6 +93,37 @@ func TestOAuthDeviceCode_WireFormat(t *testing.T) {
 		t.Errorf("expected pending:true in snake fallback poll response, got: %s", pollSnakeW.Body.String())
 	}
 }
+func TestOAuthImportDoesNotReplaceSoleAccountWithoutEmail(t *testing.T) {
+	srv, database := setupTestServer(t)
+	original := &model.ProviderConnection{
+		ID: "account-a", Provider: "cursor", AuthType: "oauth", Name: "Account A", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "tokenA", RefreshToken: "refreshA"},
+	}
+	if err := database.CreateConnection(original); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"accessToken":"eyJhbGciOiJub25lIn0.eyJzdWIiOiJjdXJzb3ItdXNlci0xIiwiZW1haWwiOiJjdXJzb3JAdGVzdC5jb20ifQ.","name":"Account B"}`
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, newLocalRequest("POST", "/api/oauth/cursor/import", strings.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import failed: %d %s", rec.Code, rec.Body.String())
+	}
+	conns, err := database.ListConnections()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conns) != 2 {
+		t.Errorf("import merged unrelated accounts: got %d connections, want 2", len(conns))
+	}
+	got, err := database.GetConnection(original.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Account A" || got.Email != "" || got.Data.AccessToken != "tokenA" || got.Data.RefreshToken != "refreshA" {
+		t.Errorf("import replaced account A: %+v", got)
+	}
+}
+
 func TestOAuthImport_PriorityAndNamePersistence(t *testing.T) {
 	srv, database := setupTestServer(t)
 
