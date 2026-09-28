@@ -10,6 +10,7 @@ type ModelMetadata struct {
 	ContextLength int      `json:"context_length,omitempty"`
 	MaxOutput     int      `json:"max_output_tokens,omitempty"`
 	PriceFactor   float64  `json:"price_factor,omitempty"`
+	IsFree        bool     `json:"is_free,omitempty"`
 	Capabilities  []string `json:"capabilities,omitempty"`
 	Modalities    []string `json:"modalities,omitempty"`
 	Family        string   `json:"family,omitempty"`

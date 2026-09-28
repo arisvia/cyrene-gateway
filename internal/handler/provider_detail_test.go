@@ -580,6 +580,59 @@ func TestGetProviderModels_CodeBuddy_EmptyCache(t *testing.T) {
 		t.Fatalf("expected 0 fallback registry models for dynamic codebuddy-cn, got %d", len(resp.RegistryModels))
 	}
 }
+func TestGetProviderModels_UpstreamFreeFlag(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	conn := &model.ProviderConnection{
+		ID:       "qoder-conn-free",
+		Provider: "qoder",
+		AuthType: "oauth",
+		IsActive: true,
+		Data:     model.ConnectionData{AccessToken: "dt-mock"},
+	}
+	database.CreateConnection(conn)
+
+	// Qoder's live catalog sends an explicit price_factor 0 for free models, which
+	// omitempty erases; the parser records that as a free flag instead.
+	database.KVSet("providerModelCache", "qoder", `{"fetchedAt":"2026-09-28T00:00:00Z","models":[`+
+		`{"id":"qfmodel","display_name":"Qwen3.8-Flash","price_factor":0,"is_free":true},`+
+		`{"id":"cmodel","display_name":"Cantus","price_factor":4}]}`)
+
+	req := newLocalRequest("GET", "/api/providers/qoder-conn-free/models", nil)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		RegistryModels []ProviderModelItem `json:"registryModels"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	free, paid := ProviderModelItem{ID: "unset"}, ProviderModelItem{ID: "unset"}
+	for _, m := range resp.RegistryModels {
+		switch m.ID {
+		case "qfmodel":
+			free = m
+		case "cmodel":
+			paid = m
+		}
+	}
+	if !free.IsFree {
+		t.Errorf("model with explicit upstream price_factor 0 must be free: %+v", free)
+	}
+	if paid.IsFree {
+		t.Errorf("priced model must not be marked free: %+v", paid)
+	}
+	if paid.PriceFactor != 4 {
+		t.Errorf("expected paid PriceFactor 4, got %f", paid.PriceFactor)
+	}
+}
+
 func TestGetProviderModels_CachedPriceFactor(t *testing.T) {
 	srv, database := setupTestServer(t)
 

@@ -72,6 +72,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 	// 2. 获取实时同步抓取的 Live 缓存模型并合并
 	seen := make(map[string]bool)
 	cachedPriceFactors := make(map[string]float64)
+	cachedFree := make(map[string]bool)
 	var unifiedModels []provider.ModelRef
 	if raw, err := s.DB.KVGet("providerModelCache", conn.Provider); err == nil && raw != "" {
 		var cached model.CachedModels
@@ -89,6 +90,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 				if m.PriceFactor > 0 {
 					cachedPriceFactors[m.ID] = m.PriceFactor
 				}
+				cachedFree[m.ID] = m.IsFree
 				unifiedModels = append(unifiedModels, provider.ModelRef{
 					ID:   m.ID,
 					Name: name,
@@ -132,7 +134,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			Name:        name,
 			PriceFactor: cachedPriceFactors[id],
 			Enabled:     !isModelDisabled(id),
-			IsFree:      strings.HasSuffix(strings.ToLower(id), "-free") || strings.ToLower(id) == "big-pickle",
+			IsFree:      cachedFree[id] || strings.HasSuffix(strings.ToLower(id), "-free") || strings.ToLower(id) == "big-pickle",
 		}
 
 		// 优先使用用户自定义设置的元数据覆盖

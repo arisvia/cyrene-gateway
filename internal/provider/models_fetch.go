@@ -65,8 +65,13 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 		} else if ctxLen = toInt(raw["max_context_length"]); ctxLen > 0 {
 			m.ContextLength = ctxLen
 		}
-		if pf := toFloat(raw["price_factor"]); pf > 0 {
-			m.PriceFactor = pf
+		// A present price_factor of 0 means free, but omitempty erases it later.
+		if rawPF := raw["price_factor"]; rawPF != nil {
+			if pf := toFloat(rawPF); pf > 0 {
+				m.PriceFactor = pf
+			} else {
+				m.IsFree = true
+			}
 		}
 		m.Capabilities = []string{"chat"}
 		m.Modalities = []string{"text"}
