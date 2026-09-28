@@ -106,7 +106,7 @@ func TestInjectTerminationPrompt_OpenAI(t *testing.T) {
 			map[string]any{"role": "user", "content": "Hi"},
 		},
 	}
-	InjectTerminationPrompt(body, "openai")
+	InjectTerminationPrompt(body)
 
 	msgs := body["messages"].([]any)
 	sys := msgs[0].(map[string]any)
@@ -116,7 +116,7 @@ func TestInjectTerminationPrompt_OpenAI(t *testing.T) {
 	}
 
 	// Idempotency: inject again should not duplicate
-	InjectTerminationPrompt(body, "openai")
+	InjectTerminationPrompt(body)
 	sys = body["messages"].([]any)[0].(map[string]any)
 	content = sys["content"].(string)
 	count := 0
@@ -130,40 +130,13 @@ func TestInjectTerminationPrompt_OpenAI(t *testing.T) {
 	}
 }
 
-func TestInjectTerminationPrompt_Anthropic(t *testing.T) {
-	body := map[string]any{
-		"system": "You are Claude.",
-	}
-	InjectTerminationPrompt(body, "anthropic")
-	sys := body["system"].(string)
-	if !strings.Contains(sys, TerminationPrompt) {
-		t.Error("expected termination prompt in anthropic system field")
-	}
-}
-
-func TestInjectTerminationPrompt_Gemini(t *testing.T) {
-	body := map[string]any{}
-	InjectTerminationPrompt(body, "gemini")
-	sys, ok := body["systemInstruction"].(map[string]any)
-	if !ok {
-		t.Fatal("expected systemInstruction to be created")
-	}
-	parts := sys["parts"].([]any)
-	if len(parts) != 1 {
-		t.Fatalf("expected 1 part, got %d", len(parts))
-	}
-	if parts[0].(map[string]any)["text"] != TerminationPrompt {
-		t.Error("expected termination prompt in gemini systemInstruction")
-	}
-}
-
 func TestInjectLoopHint_NoSystemMessage(t *testing.T) {
 	body := map[string]any{
 		"messages": []any{
 			map[string]any{"role": "user", "content": "Hi"},
 		},
 	}
-	InjectLoopHint(body, "openai", "STOP looping")
+	InjectLoopHint(body, "STOP looping")
 	msgs := body["messages"].([]any)
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages after injection, got %d", len(msgs))

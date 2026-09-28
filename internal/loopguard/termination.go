@@ -8,37 +8,21 @@ const TerminationPrompt = `When you have gathered sufficient information to answ
 
 const sep = "\n\n"
 
-// InjectTerminationPrompt injects the termination contract into the request body's system message.
-// Supports OpenAI (messages array), Anthropic (system field), and Gemini (systemInstruction) formats.
-func InjectTerminationPrompt(body map[string]any, format string) {
+// InjectTerminationPrompt injects the termination contract into the OpenAI-shaped
+// request body's system message. Only this shape is proxied through the executor.
+func InjectTerminationPrompt(body map[string]any) {
 	if body == nil {
 		return
 	}
-
-	switch format {
-	case "anthropic":
-		injectClaudeSystem(body, TerminationPrompt)
-	case "gemini":
-		injectGeminiSystem(body, TerminationPrompt)
-	default:
-		injectMessagesSystem(body, TerminationPrompt)
-	}
+	injectMessagesSystem(body, TerminationPrompt)
 }
 
-// InjectLoopHint injects a loop detection hint into the request body as an additional system message.
-func InjectLoopHint(body map[string]any, format string, hint string) {
+// InjectLoopHint injects a loop detection hint as an additional system message.
+func InjectLoopHint(body map[string]any, hint string) {
 	if body == nil || hint == "" {
 		return
 	}
-
-	switch format {
-	case "anthropic":
-		injectClaudeSystem(body, hint)
-	case "gemini":
-		injectGeminiSystem(body, hint)
-	default:
-		injectMessagesSystem(body, hint)
-	}
+	injectMessagesSystem(body, hint)
 }
 
 func injectMessagesSystem(body map[string]any, prompt string) {
@@ -106,57 +90,4 @@ func appendToMessage(msg map[string]any, prompt string) {
 	default:
 		msg["content"] = prompt
 	}
-}
-
-func injectClaudeSystem(body map[string]any, prompt string) {
-	system := body["system"]
-	switch s := system.(type) {
-	case string:
-		if strings.Contains(s, prompt) {
-			return
-		}
-		if s != "" {
-			body["system"] = s + sep + prompt
-		} else {
-			body["system"] = prompt
-		}
-	case []any:
-		for _, part := range s {
-			if p, ok := part.(map[string]any); ok {
-				if p["text"] == prompt {
-					return
-				}
-			}
-		}
-		body["system"] = append(s, map[string]any{"type": "text", "text": prompt})
-	default:
-		body["system"] = prompt
-	}
-}
-
-func injectGeminiSystem(body map[string]any, prompt string) {
-	// Check for systemInstruction
-	sys, ok := body["systemInstruction"].(map[string]any)
-	if !ok {
-		body["systemInstruction"] = map[string]any{
-			"parts": []any{map[string]any{"text": prompt}},
-		}
-		return
-	}
-
-	parts, ok := sys["parts"].([]any)
-	if !ok {
-		sys["parts"] = []any{map[string]any{"text": prompt}}
-		return
-	}
-
-	// Check idempotency
-	for _, p := range parts {
-		if pm, ok := p.(map[string]any); ok {
-			if pm["text"] == prompt {
-				return
-			}
-		}
-	}
-	sys["parts"] = append(parts, map[string]any{"text": prompt})
 }

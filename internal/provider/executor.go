@@ -103,10 +103,10 @@ func PrepareUpstreamRequest(
 		return nil, "", fmt.Errorf("invalid messages: %w", err)
 	}
 	if result := loopguard.DetectLoop(history.Messages); result.Detected {
-		loopguard.InjectLoopHint(bodyMap, "openai", result.Hint)
+		loopguard.InjectLoopHint(bodyMap, result.Hint)
 	}
 	if req.HasTools {
-		loopguard.InjectTerminationPrompt(bodyMap, "openai")
+		loopguard.InjectTerminationPrompt(bodyMap)
 	}
 	if modelInfo.Provider == "codex" {
 		if tools, ok := bodyMap["tools"].([]any); ok {
