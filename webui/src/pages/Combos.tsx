@@ -1,7 +1,7 @@
 import { type Component, For, Show, createSignal, createMemo, createResource } from 'solid-js'
 import { A } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { api } from '@/lib/api'
+import { reloadModels } from '@/lib/models'
 import { useI18n } from '@/i18n'
 import type { Combo } from '@/types/domain'
 import { Card, Badge, Button, IconButton, Input, Select, Modal, Field, Empty, PageHeader, IconClose, IconLayers, IconExternalLink, Skeleton, LoadState, confirm } from '@/components/ui'
@@ -19,23 +19,14 @@ const Combos: Component = () => {
   const [form, setForm] = createSignal<{ name: string; kind: string; models: string[] }>({ name: '', kind: 'fallback', models: [] })
   const [modelPick, setModelPick] = createSignal('')
 
-  // 可用模型来自网关统一模型表
-  // 可用模型来自网关统一模型表（含 display_name 与 id）
-  const [available, { refetch }] = createResource(async () => {
-    try {
-      const r = await api('/v1/models') as { data?: Array<{ id: string; display_name?: string }> } | null
-      return (r?.data ?? []).map(m => ({
-        id: m.id,
-        name: m.display_name || m.id,
-      }))
-    } catch { return [] as Array<{ id: string; name: string }> }
-  })
+  // 可用模型来自网关统一模型表（含 display_name 与 id），入口刷新时强制回填共享缓存
+  const [available, { refetch }] = createResource(reloadModels)
 
   // 模型 ID 到友好展示名称的映射字典
   const modelNames = createMemo(() => {
     const map: Record<string, string> = {}
     for (const m of available() ?? []) {
-      map[m.id] = m.name
+      map[m.id] = m.display_name?.trim() || m.id
     }
     return map
   })
@@ -209,10 +200,10 @@ const Combos: Component = () => {
                 value={modelPick()}
                 options={[
                   { value: '', label: t('combos.selectModel') },
-                  ...(available() ?? []).map(m => ({
-                    value: m.id,
-                    label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
-                  })),
+                  ...(available() ?? []).map(m => {
+                    const name = m.display_name?.trim() || m.id
+                    return { value: m.id, label: name !== m.id ? `${name} (${m.id})` : m.id }
+                  }),
                 ]}
                 onChange={setModelPick}
               />

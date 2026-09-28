@@ -12,7 +12,7 @@ interface RequestDetailModalProps {
 
 export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   const [activeTab, setActiveTab] = createSignal<'overview' | 'payload' | 'raw'>('overview')
-  const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
+  const [modelNameMap] = createResource(fetchModelDisplayNameMap)
   const { t } = useI18n()
   const timeUnits = () => timeUnitsFor(t)
 
@@ -32,7 +32,6 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   )
 
   const detail = () => fullDetail() || props.item
-  fetchModelDisplayNameMap().then(setModelNameMap)
   // 清洗并提取对话内容（过滤冗长思考过程 <thinking> ... </thinking>）
   const cleanPayload = () => {
     const raw = detail()

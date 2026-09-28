@@ -1,5 +1,5 @@
 import { type Component, For, Show, createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js'
-import { api } from '@/lib/api'
+import { reloadModels, type GatewayModel } from '@/lib/models'
 import {
   Card,
   Input,
@@ -34,15 +34,6 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-interface ModelEntry {
-  id: string
-  object: string
-  owned_by: string
-  display_name?: string
-  context_length?: number
-  max_output_tokens?: number
-}
-
 interface Metrics {
   ttftMs?: number
   totalMs?: number
@@ -129,7 +120,7 @@ const Playground: Component = () => {
 
   // 模式：单模型 (single) / 双模型对比 (compare)
   const [mode, setMode] = createSignal<'single' | 'compare'>('single')
-  const [models, setModels] = createSignal<ModelEntry[]>([])
+  const [models, setModels] = createSignal<GatewayModel[]>([])
   const [loadingModels, setLoadingModels] = createSignal(false)
 
   // 模型选择
@@ -298,23 +289,17 @@ const Playground: Component = () => {
 
   async function loadModels() {
     setLoadingModels(true)
-    try {
-      const res = (await api('/v1/models')) as { data?: ModelEntry[] }
-      const list = res?.data || []
-      setModels(list)
-      if (list.length > 0) {
-        if (!modelA() || !list.some(m => m.id === modelA())) {
-          setModelA(list[0].id)
-        }
-        if (!modelB() || !list.some(m => m.id === modelB())) {
-          setModelB(list[1]?.id || list[0].id)
-        }
+    const list = await reloadModels()
+    setModels(list)
+    if (list.length > 0) {
+      if (!modelA() || !list.some(m => m.id === modelA())) {
+        setModelA(list[0].id)
       }
-    } catch {
-      // Error is automatically surfaced by api.ts
-    } finally {
-      setLoadingModels(false)
+      if (!modelB() || !list.some(m => m.id === modelB())) {
+        setModelB(list[1]?.id || list[0].id)
+      }
     }
+    setLoadingModels(false)
   }
 
   const store = useGatewayStore()

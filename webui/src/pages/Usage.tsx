@@ -1,4 +1,4 @@
-import { type Component, For, Show, Switch, Match, createSignal, createMemo, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createMemo, createResource, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
 import { Card, Badge, Button, IconButton, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
@@ -26,7 +26,7 @@ const Usage: Component = () => {
   const [live, setLive] = createSignal(false)
   const [realtimeEvents, setRealtimeEvents] = createSignal<LiveUsageEvent[]>([])
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
-  const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
+  const [modelNameMap] = createResource(fetchModelDisplayNameMap)
   let es: EventSource | null = null
   const timeUnits = () => timeUnitsFor(t)
 
@@ -50,7 +50,6 @@ const Usage: Component = () => {
         })))
       }
     })
-    fetchModelDisplayNameMap().then(setModelNameMap)
     toggleLive()
   })
   onCleanup(() => { es?.close(); es = null })
