@@ -211,15 +211,6 @@ export const IconKey: Component<IconProps> = props => {
     </svg>
   )
 }
-// 盾牌/安全防护 (Shield)
-export const IconShield: Component<IconProps> = props => {
-  const [local, others] = splitProps(props, ['size', 'class'])
-  return (
-    <svg {...baseAttrs(local)} class={local.class} {...others}>
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  )
-}
 // 编辑/修改 (Edit)
 export const IconEdit: Component<IconProps> = props => {
   const [local, others] = splitProps(props, ['size', 'class'])
@@ -302,16 +293,6 @@ export const IconChevronLeft: Component<IconProps> = props => {
   return (
     <svg {...baseAttrs(local)} class={local.class} {...others}>
       <polyline points="15 18 9 12 15 6" />
-    </svg>
-  )
-}
-// 右箭头 (ArrowRight / →)
-export const IconArrowRight: Component<IconProps> = props => {
-  const [local, others] = splitProps(props, ['size', 'class'])
-  return (
-    <svg {...baseAttrs(local)} class={local.class} {...others}>
-      <line x1="5" y1="12" x2="19" y2="12" />
-      <polyline points="12 5 19 12 12 19" />
     </svg>
   )
 }
