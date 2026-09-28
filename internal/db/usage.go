@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -240,7 +241,7 @@ func scanUsageHistory(rows *sql.Rows) ([]UsageEntry, error) {
 func (d *DB) GetUsageDaily(dateKey string) (*DayData, error) {
 	var data string
 	err := d.conn.QueryRow(`SELECT data FROM usageDaily WHERE dateKey = ?`, dateKey).Scan(&data)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
@@ -339,7 +340,7 @@ func (d *DB) GetUsageLast10Minutes() ([]map[string]any, error) {
 func (d *DB) GetTotalRequestsLifetime() (int64, error) {
 	var val string
 	err := d.conn.QueryRow(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`).Scan(&val)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -231,7 +232,7 @@ func (d *DB) GetRequestDetails(f RequestDetailFilter) (*RequestDetailResult, err
 func (d *DB) GetRequestDetailByID(id string) (json.RawMessage, error) {
 	var data string
 	err := d.conn.QueryRow(`SELECT data FROM requestDetails WHERE id = ?`, id).Scan(&data)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
