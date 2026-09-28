@@ -230,26 +230,32 @@ func (t *safeTransport) dialContext(ctx context.Context, network, _ string) (net
 	if !ok {
 		return nil, errors.New("missing validated target dial plan")
 	}
-	// net/http detaches DialContext cancellation to allow connection reuse. Link
-	// the original request explicitly so cancelled proxy handshakes cannot linger.
-	ctx, cancel := context.WithTimeout(ctx, safeConnectTimeout)
+	// net/http detaches request cancellation and deadlines when dialing for reuse.
+	deadline := time.Now().Add(safeConnectTimeout)
+	if requestDeadline, ok := plan.requestContext.Deadline(); ok && requestDeadline.Before(deadline) {
+		deadline = requestDeadline
+	}
+	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	stop := context.AfterFunc(plan.requestContext, cancel)
 	defer stop()
+	deadline, _ = ctx.Deadline()
 	var err error
-	for _, address := range plan.addresses {
+	for i, address := range plan.addresses {
 		if plan.requestContext.Err() != nil {
 			return nil, plan.requestContext.Err()
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		attemptCtx, cancelAttempt := context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(plan.addresses)-i))
 		var conn net.Conn
 		if plan.proxy == nil {
-			conn, err = safeDialer(t.allowPrivate).DialContext(ctx, network, address)
+			conn, err = safeDialer(t.allowPrivate).DialContext(attemptCtx, network, address)
 		} else {
-			conn, err = t.dialProxyTunnel(ctx, network, plan.proxy, address)
+			conn, err = t.dialProxyTunnel(attemptCtx, network, plan.proxy, address)
 		}
+		cancelAttempt()
 		if err == nil {
 			return conn, nil
 		}

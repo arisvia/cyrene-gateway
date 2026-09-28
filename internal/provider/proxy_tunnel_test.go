@@ -336,6 +336,128 @@ func TestSafeTunnelNoProxyHasNoEndpointExemption(t *testing.T) {
 	}
 }
 
+func TestSafeTunnelFallsBackAfterStalledCONNECT(t *testing.T) {
+	seen := make(chan string, 2)
+	firstClosed := make(chan error, 1)
+	addr := startTunnelTestListener(t, func(conn net.Conn) {
+		reader := bufio.NewReader(conn)
+		r, err := http.ReadRequest(reader)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer r.Body.Close()
+		if r.Method != http.MethodConnect {
+			t.Errorf("expected CONNECT, got %s", r.Method)
+			return
+		}
+		seen <- r.RequestURI
+		switch r.RequestURI {
+		case "93.184.216.34:443":
+			_, err := io.Copy(io.Discard, reader)
+			firstClosed <- err
+		case "93.184.216.35:443":
+			if _, err := io.WriteString(conn, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+				t.Error(err)
+				return
+			}
+			var ping [4]byte
+			if _, err := io.ReadFull(reader, ping[:]); err != nil {
+				t.Error(err)
+				return
+			}
+			if string(ping[:]) != "ping" {
+				t.Errorf("tunnel payload = %q", ping)
+				return
+			}
+			if _, err := io.WriteString(conn, "pong"); err != nil {
+				t.Error(err)
+			}
+		default:
+			t.Errorf("unexpected CONNECT target: %s", r.RequestURI)
+		}
+	})
+	proxyURL, err := url.Parse("http://" + addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	plan := &safeDialPlan{
+		requestContext: ctx,
+		addresses:      []string{"93.184.216.34:443", "93.184.216.35:443"},
+		proxy:          proxyURL,
+	}
+	transport := newSafeTransport(false, proxyURL)
+	defer transport.CloseIdleConnections()
+	dialCtx := context.WithValue(context.WithoutCancel(ctx), safeDialPlanKey{}, plan)
+	conn, err := transport.dialContext(dialCtx, "tcp", "public.example:443")
+	if err != nil {
+		t.Fatalf("reachable second address was starved by stalled CONNECT: %v", err)
+	}
+	defer conn.Close()
+	for _, want := range plan.addresses {
+		select {
+		case got := <-seen:
+			if got != want {
+				t.Errorf("CONNECT target = %q, want %q", got, want)
+			}
+		default:
+			t.Fatalf("missing CONNECT to %s", want)
+		}
+	}
+	select {
+	case err := <-firstClosed:
+		if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+			t.Errorf("stalled connection leaked until server timeout: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stalled CONNECT connection was not closed")
+	}
+	if err := conn.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(conn, "ping"); err != nil {
+		t.Fatalf("successful tunnel did not survive attempt cancellation: %v", err)
+	}
+	var pong [4]byte
+	if _, err := io.ReadFull(conn, pong[:]); err != nil {
+		t.Fatalf("read through successful tunnel: %v", err)
+	}
+	if string(pong[:]) != "pong" {
+		t.Errorf("tunnel response = %q", pong)
+	}
+}
+
+func TestSafeTunnelAlreadyCanceledRequest(t *testing.T) {
+	addr := startTunnelTestListener(t, func(net.Conn) {
+		t.Error("already-canceled request connected to proxy")
+	})
+	proxyURL, err := url.Parse("http://" + addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	plan := &safeDialPlan{
+		requestContext: requestCtx,
+		addresses:      []string{"93.184.216.34:443", "93.184.216.35:443"},
+		proxy:          proxyURL,
+	}
+	ctx, cancelDial := context.WithTimeout(context.Background(), time.Second)
+	defer cancelDial()
+	transport := newSafeTransport(false, proxyURL)
+	defer transport.CloseIdleConnections()
+	conn, err := transport.dialContext(context.WithValue(ctx, safeDialPlanKey{}, plan), "tcp", "public.example:443")
+	if conn != nil {
+		conn.Close()
+		t.Error("already-canceled request returned a connection")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected original request cancellation, got %v", err)
+	}
+}
+
 func TestSafeTunnelCancelAndRejectCloseConnections(t *testing.T) {
 	for _, mode := range []string{"http-cancel", "http-reject", "socks5-cancel", "socks5-reject", "https-cancel"} {
 		t.Run(mode, func(t *testing.T) {
