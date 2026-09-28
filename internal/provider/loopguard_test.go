@@ -42,10 +42,6 @@ func marshalBody(t *testing.T, body map[string]any) string {
 	return string(data)
 }
 
-func countOf(haystack, needle string) int {
-	return strings.Count(haystack, needle)
-}
-
 func TestApplyLoopGuardLeavesBodyUntouchedWithoutLoopOrTools(t *testing.T) {
 	body := decodeBody(t, plainRawBody)
 	before := decodeBody(t, plainRawBody)
@@ -73,10 +69,10 @@ func TestApplyLoopGuardOpenAIAppendsInDetectOrder(t *testing.T) {
 
 	ApplyLoopGuard(body, []byte(loopingRawBody), "openai", true)
 	reapplied, _ := body["messages"].([]any)[0].(map[string]any)["content"].(string)
-	if n := countOf(reapplied, want); n != 1 {
+	if n := strings.Count(reapplied, want); n != 1 {
 		t.Errorf("loop hint duplicated: %d occurrences", n)
 	}
-	if n := countOf(reapplied, loopguard.TerminationPrompt); n != 1 {
+	if n := strings.Count(reapplied, loopguard.TerminationPrompt); n != 1 {
 		t.Errorf("termination contract duplicated: %d occurrences", n)
 	}
 }
@@ -270,6 +266,50 @@ func TestPrepareUpstreamRequestLoopGuardSurvivesProviderSanitizers(t *testing.T)
 	}
 	if !bytes.Contains(body, []byte(hintMarker)) {
 		t.Errorf("loop hint never reached the codebuddy body: %s", body)
+	}
+}
+
+// Chat Completions traffic is re-serialised for Anthropic and Gemini upstreams,
+// so the guard text has to survive that translation as well.
+func TestPrepareUpstreamRequestLoopGuardAcrossTargetFormats(t *testing.T) {
+	for _, tc := range []struct{ providerID, wantField string }{
+		{"anthropic", "system"},
+		{"gemini", "systemInstruction"},
+	} {
+		t.Run(tc.providerID, func(t *testing.T) {
+			cand := ExecutionCandidate{
+				Connection: &model.ProviderConnection{
+					ID: tc.providerID + "-guard", Provider: tc.providerID, AuthType: "api-key",
+					Data: model.ConnectionData{APIKey: "sk-test", BaseURL: "https://upstream.invalid/v1"},
+				},
+				ModelInfo:    model.ModelInfo{Provider: tc.providerID, Model: "test-model"},
+				ModelStr:     tc.providerID + "/test-model",
+				ProviderInfo: Registry[tc.providerID],
+			}
+			req, _, err := PrepareUpstreamRequest(context.Background(),
+				ExecutionRequest{RawBody: []byte(loopingRawBody), Stream: false, HasTools: true, LoopGuardEnabled: true},
+				cand, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var parsed map[string]any
+			if err := json.Unmarshal(body, &parsed); err != nil {
+				t.Fatalf("body is not json: %v\n%s", err, body)
+			}
+			if _, ok := parsed[tc.wantField]; !ok {
+				t.Fatalf("the %s body lost its %q field: %s", tc.providerID, tc.wantField, body)
+			}
+			if !bytes.Contains(body, []byte(loopguard.TerminationPrompt)) {
+				t.Errorf("termination contract lost while translating to %s: %s", tc.providerID, body)
+			}
+			if !bytes.Contains(body, []byte(hintMarker)) {
+				t.Errorf("loop hint lost while translating to %s: %s", tc.providerID, body)
+			}
+		})
 	}
 }
 
