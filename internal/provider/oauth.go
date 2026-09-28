@@ -205,34 +205,25 @@ func kimiRefreshHeaders(conn *model.ProviderConnection) map[string]string {
 
 // --- xAI OIDC Discovery ---
 
-var (
-	xaiDiscoveryOnce sync.Once
-	xaiTokenURL      string
-)
-
-func discoverXaiTokenURL() string {
-	xaiDiscoveryOnce.Do(func() {
-		xaiTokenURL = "https://auth.x.ai/oauth2/token" // static fallback
-		client := SafeHTTPClient(10*time.Second, false)
-		resp, err := client.Get("https://auth.x.ai/.well-known/openid-configuration")
-		if err != nil {
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return
-		}
-		var data struct {
-			TokenEndpoint string `json:"token_endpoint"`
-		}
-		if json.NewDecoder(resp.Body).Decode(&data) == nil && data.TokenEndpoint != "" {
-			if strings.Contains(data.TokenEndpoint, "x.ai") {
-				xaiTokenURL = data.TokenEndpoint
-			}
-		}
-	})
-	return xaiTokenURL
-}
+// xaiTokenURL memoizes OIDC discovery; a transient failure pins the static
+// fallback for the process lifetime, as the previous sync.Once did.
+var xaiTokenURL = sync.OnceValue(func() string {
+	fallback := "https://auth.x.ai/oauth2/token"
+	client := SafeHTTPClient(10*time.Second, false)
+	resp, err := client.Get("https://auth.x.ai/.well-known/openid-configuration")
+	if err != nil {
+		return fallback
+	}
+	defer resp.Body.Close()
+	var data struct {
+		TokenEndpoint string `json:"token_endpoint"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&data) != nil ||
+		!strings.Contains(data.TokenEndpoint, "x.ai") {
+		return fallback
+	}
+	return data.TokenEndpoint
+})
 
 // --- Core Refresh Engine ---
 
@@ -270,7 +261,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 		tokenURL = info.TokenURL
 	}
 	if providerID == "xai" || providerID == "grok-cli" {
-		tokenURL = discoverXaiTokenURL()
+		tokenURL = xaiTokenURL()
 	}
 	if tokenURL == "" {
 		return nil, fmt.Errorf("no token URL configured for provider: %s", providerID)
