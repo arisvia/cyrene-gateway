@@ -74,7 +74,7 @@ type FallbackResult struct {
 func GetQuotaCooldown(backoffLevel int) time.Duration {
 	level := max(backoffLevel-1, 0)
 	cooldown := BackoffBase
-	for i := 0; i < level; i++ {
+	for range level {
 		cooldown *= 2
 		if cooldown >= BackoffMax {
 			return BackoffMax

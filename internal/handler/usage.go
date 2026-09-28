@@ -224,7 +224,7 @@ func (s *Server) handleUsageChart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buckets := make([]map[string]any, bucketCount)
-	for i := 0; i < bucketCount; i++ {
+	for i := range bucketCount {
 		d := now.AddDate(0, 0, -(bucketCount - 1 - i))
 		dateKey := d.Format("2006-01-02")
 		label := d.Format("Jan 02")

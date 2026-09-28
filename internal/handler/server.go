@@ -289,7 +289,8 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 				delete(set, k)
 			}
 		}
-		for k := range set {
+		// Kinds missing from the display order would otherwise come out in map order.
+		for _, k := range slices.Sorted(maps.Keys(set)) {
 			caps = append(caps, k)
 		}
 		return caps
