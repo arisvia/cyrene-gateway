@@ -1,3 +1,5 @@
+import type { t as translate } from '@/i18n'
+
 export function formatNumber(n: number | undefined | null): string {
   if (n == null || isNaN(n)) return '0'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -25,6 +27,17 @@ export type TimeAgoUnits = {
   minutesAgo: (m: number) => string
   hoursAgo: (h: number) => string
   daysAgo: (d: number) => string
+}
+
+// Keep the caller's `() => timeUnitsFor(t)` shape: reading `t` eagerly would
+// freeze the strings against the locale that was active at setup.
+export function timeUnitsFor(t: typeof translate): TimeAgoUnits {
+  return {
+    justNow: t('time.justNow'),
+    minutesAgo: m => t('time.minutesAgo', { m }),
+    hoursAgo: h => t('time.hoursAgo', { h }),
+    daysAgo: d => t('time.daysAgo', { d }),
+  }
 }
 
 const DEFAULT_TIME_AGO: TimeAgoUnits = {

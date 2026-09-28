@@ -2,7 +2,7 @@ import { type Component, Show, createSignal, createResource } from 'solid-js'
 import { Modal, Badge, Button, ProviderAvatar, Spinner, SegmentedControl, IconMessageSquare, IconSparkles } from '@/components/ui'
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
-import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime } from '@/lib/format'
+import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor } from '@/lib/format'
 import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail } from '@/types/domain'
 interface RequestDetailModalProps {
@@ -14,12 +14,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   const [activeTab, setActiveTab] = createSignal<'overview' | 'payload' | 'raw'>('overview')
   const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
   const { t } = useI18n()
-  const timeUnits = () => ({
-    justNow: t('time.justNow'),
-    minutesAgo: (m: number) => t('time.minutesAgo', { m }),
-    hoursAgo: (h: number) => t('time.hoursAgo', { h }),
-    daysAgo: (d: number) => t('time.daysAgo', { d }),
-  })
+  const timeUnits = () => timeUnitsFor(t)
 
 
   // 若 item 存在 id，尝试从后端获取更详细的持久化请求数据

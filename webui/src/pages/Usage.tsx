@@ -5,7 +5,7 @@ import { Card, Badge, Button, IconButton, Select, Empty, Skeleton, LoadState, St
 import { ProviderAvatar } from '@/components/ui/ProviderIcon'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
-import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, maskKey } from '@/lib/format'
+import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor, maskKey } from '@/lib/format'
 import { getStoredSessionToken } from '@/lib/api'
 import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
@@ -28,12 +28,7 @@ const Usage: Component = () => {
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
   const [modelNameMap, setModelNameMap] = createSignal<Record<string, string>>({})
   let es: EventSource | null = null
-  const timeUnits = () => ({
-    justNow: t('time.justNow'),
-    minutesAgo: (m: number) => t('time.minutesAgo', { m }),
-    hoursAgo: (h: number) => t('time.hoursAgo', { h }),
-    daysAgo: (d: number) => t('time.daysAgo', { d }),
-  })
+  const timeUnits = () => timeUnitsFor(t)
 
   function load() {
     setHoveredPoint(null)
