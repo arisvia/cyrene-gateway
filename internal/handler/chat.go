@@ -18,7 +18,6 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/db"
-	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/metrics"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -247,34 +246,6 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Single model path
 	s.handleSingleModelChat(w, r, req, rawBody)
-}
-
-// runLoopGuard analyzes messages for loop patterns and returns a hint if detected.
-func runLoopGuard(messages []Message) string {
-	if len(messages) == 0 {
-		return ""
-	}
-	// Convert handler messages to loopguard messages
-	lgMsgs := make([]loopguard.Message, 0, len(messages))
-	for _, m := range messages {
-		lgMsg := loopguard.Message{
-			Role:    m.Role,
-			Content: m.Content,
-		}
-		if m.ToolCalls != nil {
-			var tcs []loopguard.ToolCall
-			if err := json.Unmarshal(m.ToolCalls, &tcs); err == nil {
-				lgMsg.ToolCalls = tcs
-			}
-		}
-		lgMsgs = append(lgMsgs, lgMsg)
-	}
-	result := loopguard.DetectLoop(lgMsgs)
-	if result.Detected {
-		slog.Warn("Loop detected in conversation", slog.String("hint", result.Hint[:min(60, len(result.Hint))]))
-		return result.Hint
-	}
-	return ""
 }
 
 // getHTTPClient returns an HTTP client, using proxy rotation if available.
