@@ -127,13 +127,12 @@ const Quota: Component = () => {
     }
     setCountdown(REFRESH_INTERVAL_SECS)
     const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          load(false)
-          return REFRESH_INTERVAL_SECS
-        }
-        return prev - 1
-      })
+      if (countdown() <= 1) {
+        load(false)
+        setCountdown(REFRESH_INTERVAL_SECS)
+        return
+      }
+      setCountdown(countdown() - 1)
     }, 1000)
     onCleanup(() => clearInterval(timer))
   })

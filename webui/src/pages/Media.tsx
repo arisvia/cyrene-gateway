@@ -229,7 +229,7 @@ const Media: Component = () => {
                           <div class="flex items-center gap-1.5 shrink-0">
                             <StatusPulse status={p.hasConnection ? 'active' : 'idle'} size="xs" />
                             <span class="text-[11px] text-faint">
-                              {p.hasConnection ? t('media.accountsCount', { count: p.activeConnections ?? 0 }) : t('media.notConnected')}
+                              {p.hasConnection ? t('media.accountsCount', { count: p.activeConnections }) : t('media.notConnected')}
                             </span>
                           </div>
                         </div>

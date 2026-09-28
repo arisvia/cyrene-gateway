@@ -1,4 +1,4 @@
-import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, createUniqueId, onMount, onCleanup, splitProps } from 'solid-js'
+import { type Component, type JSX, For, Show, createSignal, createMemo, createEffect, createUniqueId, on, onMount, onCleanup, splitProps } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { useToast, dismiss } from '@/lib/toast'
 import { useI18n } from '@/i18n'
@@ -1464,13 +1464,9 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
   const [outgoingSnapshot, setOutgoingSnapshot] = createSignal<{ dir: 'forward' | 'backward'; el: HTMLElement } | null>(null)
   let incomingRef: HTMLDivElement | undefined
   let timer: number | undefined
-  let prevVal = props.value
 
-  createEffect(() => {
-    const newVal = props.value
-    const oldVal = prevVal
+  createEffect(on(() => props.value, (newVal, oldVal = newVal) => {
     if (newVal === oldVal) return
-    prevVal = newVal
 
     if (timer) clearTimeout(timer)
     timer = undefined
@@ -1503,7 +1499,7 @@ export function TabTransition<T extends string = string>(props: TabTransitionPro
       setIsTransitioning(false)
       timer = undefined
     }, 160)
-  })
+  }))
 
   onCleanup(() => {
     if (timer) clearTimeout(timer)
