@@ -40,6 +40,7 @@ type Settings struct {
 	RTKEnabled           bool `json:"rtkEnabled"`
 	CavemanEnabled       bool `json:"cavemanEnabled"`
 	PonytailEnabled      bool `json:"ponytailEnabled"`
+	LoopGuardEnabled     bool `json:"loopGuardEnabled"`
 	ResponseCacheEnabled bool `json:"responseCacheEnabled"`
 	ResponseCacheAll     bool `json:"responseCacheAll,omitempty"`
 }
@@ -51,6 +52,7 @@ func DefaultSettings() *Settings {
 		ComboStrategy:    "fallback",
 		CavemanLevel:     "lite",
 		PonytailLevel:    "lite",
+		LoopGuardEnabled: true,
 		ResponseCacheTTL: 3600,
 	}
 }

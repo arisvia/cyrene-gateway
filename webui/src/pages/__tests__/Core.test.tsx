@@ -174,7 +174,7 @@ describe('Settings 页', () => {
         return Promise.resolve({
           requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
           comboStrategy: 'fallback', rtkEnabled: true, cavemanEnabled: true, cavemanLevel: 'lite',
-          ponytailEnabled: true, ponytailLevel: 'lite',
+          ponytailEnabled: true, ponytailLevel: 'lite', loopGuardEnabled: true,
           responseCacheEnabled: true, responseCacheTTL: 3600, responseCacheAll: false,
           tokenSaverExclude: ['deepseek'],
         })
@@ -203,6 +203,10 @@ describe('Settings 页', () => {
     expect(text).toContain('RTK 压缩')
     expect(text).toContain('Caveman 极简表达')
     expect(text).toContain('Ponytail 极简代码')
+    expect(text).toContain('循环守卫')
+    expect(text).toContain('默认开启')
+    const loopGuardSwitch = document.querySelector('[role="switch"][aria-label="循环守卫"]')
+    expect(loopGuardSwitch?.getAttribute('aria-checked')).toBe('true')
     expect(text).toContain('排除提供商名单')
     expect(text).toContain('deepseek')
     expect(text).toContain('全部已保存')

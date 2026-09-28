@@ -831,6 +831,17 @@ const Settings: Component = () => {
                 </div>
               </Show>
             </div>
+            {/* 循环守卫 */}
+            <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
+              <Field label={t('settings.tokenSaver.loopGuardTitle')} hint={t('settings.tokenSaver.loopGuardHint')}>
+                <span />
+              </Field>
+              <Toggle
+                ariaLabel={t('settings.tokenSaver.loopGuardTitle')}
+                checked={!!local().loopGuardEnabled}
+                onChange={v => set('loopGuardEnabled', v)}
+              />
+            </div>
           </div>
 
           {/* 排除名单模块 */}

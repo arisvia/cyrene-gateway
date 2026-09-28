@@ -144,7 +144,7 @@ func injectGeminiSystem(body map[string]any, prompt string) {
 	}
 
 	if sys, ok := target[key].(map[string]any); ok {
-		if parts, ok := sys["parts"].([]any); ok {
+		if parts, ok := geminiParts(sys["parts"]); ok {
 			for _, p := range parts {
 				if pm, ok := p.(map[string]any); ok {
 					if t, ok := pm["text"].(string); ok && t == prompt {
@@ -157,4 +157,20 @@ func injectGeminiSystem(body map[string]any, prompt string) {
 		}
 	}
 	target[key] = map[string]any{"parts": []any{map[string]any{"text": prompt}}}
+}
+
+// geminiParts accepts the typed slices an envelope built in memory carries, not
+// only the []any a decoded JSON body carries, so the existing parts survive.
+func geminiParts(v any) ([]any, bool) {
+	switch parts := v.(type) {
+	case []any:
+		return parts, true
+	case []map[string]any:
+		normalized := make([]any, len(parts))
+		for i, part := range parts {
+			normalized[i] = part
+		}
+		return normalized, true
+	}
+	return nil, false
 }

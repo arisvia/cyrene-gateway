@@ -56,3 +56,23 @@ func TestInjectSystemPromptEmptyStringContent(t *testing.T) {
 		t.Errorf("an empty system message must receive the prompt alone, got %q", got)
 	}
 }
+
+// An envelope assembled in memory carries typed part slices instead of []any.
+func TestInjectGeminiSystemKeepsTypedParts(t *testing.T) {
+	body := map[string]any{"systemInstruction": map[string]any{
+		"parts": []map[string]any{{"text": "base"}},
+	}}
+	InjectSystemPrompt(body, "gemini", "injected")
+	InjectSystemPrompt(body, "gemini", "injected")
+
+	parts, ok := body["systemInstruction"].(map[string]any)["parts"].([]any)
+	if !ok {
+		t.Fatalf("parts must normalize to []any, got %T", body["systemInstruction"])
+	}
+	if len(parts) != 2 || parts[0].(map[string]any)["text"] != "base" {
+		t.Fatalf("existing parts were replaced: %v", parts)
+	}
+	if parts[1].(map[string]any)["text"] != "injected" {
+		t.Errorf("prompt was not appended: %v", parts)
+	}
+}

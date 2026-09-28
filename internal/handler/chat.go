@@ -388,6 +388,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		slog.Int("models", len(models)),
 	)
 	start := time.Now()
+	loopGuard := s.loopGuardEnabled()
 
 	// Try each model in order with fallback
 	var lastStatus int
@@ -453,7 +454,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 
 		upstreamStream := req.Stream || providerInfo.ForceStream
 		upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
-			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil},
+			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
 			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
 			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
 		)
@@ -613,8 +614,9 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	}
 
 	upstreamStream := req.Stream || providerInfo.ForceStream
+	loopGuard := s.loopGuardEnabled()
 	upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
-		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil},
+		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
 		provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
 		func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
 	)
@@ -667,7 +669,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			}
 
 			retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
-				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil},
+				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
 				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
 				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
 			)
@@ -1298,6 +1300,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	s.applyLoopGuard(reqBody, bodyBytes, "anthropic", reqBody["tools"] != nil)
 	translatedBody, _ := json.Marshal(reqBody)
 
 	// Phase 30: resolve transport for URL building + auth injection.
@@ -1833,6 +1836,22 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 		}
 		rtk.InjectPonytail(bodyMap, format, level)
 	}
+}
+
+// loopGuardEnabled resolves the settings switch once so every upstream path
+// composes the same guard prompts, or none at all.
+func (s *Server) loopGuardEnabled() bool {
+	settings, err := s.DB.GetSettings()
+	return err == nil && settings.LoopGuardEnabled
+}
+
+// applyLoopGuard composes the loop guard prompts into a prepared upstream body.
+// Format selects the shape being rewritten, exactly as the token saver does.
+func (s *Server) applyLoopGuard(bodyMap map[string]any, rawBody []byte, format string, hasTools bool) {
+	if !s.loopGuardEnabled() {
+		return
+	}
+	provider.ApplyLoopGuard(bodyMap, rawBody, format, hasTools)
 }
 
 // recordUsage persists a usage entry to the database and publishes a real-time event.

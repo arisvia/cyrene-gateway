@@ -99,86 +99,6 @@ func TestDetectLoop_ArgKeyOrderInsensitive(t *testing.T) {
 	}
 }
 
-func TestInjectTerminationPrompt_OpenAI(t *testing.T) {
-	body := map[string]any{
-		"messages": []any{
-			map[string]any{"role": "system", "content": "You are helpful."},
-			map[string]any{"role": "user", "content": "Hi"},
-		},
-	}
-	InjectTerminationPrompt(body)
-
-	msgs := body["messages"].([]any)
-	sys := msgs[0].(map[string]any)
-	content := sys["content"].(string)
-	if !strings.Contains(content, TerminationPrompt) {
-		t.Error("expected termination prompt in system message")
-	}
-
-	// Idempotency: inject again should not duplicate
-	InjectTerminationPrompt(body)
-	sys = body["messages"].([]any)[0].(map[string]any)
-	content = sys["content"].(string)
-	count := 0
-	for i := 0; i < len(content)-len(TerminationPrompt)+1; i++ {
-		if content[i:i+len(TerminationPrompt)] == TerminationPrompt {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("expected exactly 1 injection, got %d", count)
-	}
-}
-
-func TestInjectTerminationPrompt_EmptySystemContent(t *testing.T) {
-	body := map[string]any{
-		"messages": []any{
-			map[string]any{"role": "system", "content": ""},
-			map[string]any{"role": "user", "content": "Hi"},
-		},
-	}
-	InjectTerminationPrompt(body)
-
-	content := body["messages"].([]any)[0].(map[string]any)["content"].(string)
-	if content != TerminationPrompt {
-		t.Errorf("an empty system message must receive the prompt alone, got %d bytes starting %q",
-			len(content), content[:min(len(content), 8)])
-	}
-}
-
-func TestInjectTerminationPrompt_ResponsesInputShape(t *testing.T) {
-	body := map[string]any{"input": []any{
-		map[string]any{"role": "developer", "content": []any{map[string]any{"type": "input_text", "text": "base"}}},
-	}}
-	InjectTerminationPrompt(body)
-
-	parts := body["input"].([]any)[0].(map[string]any)["content"].([]any)
-	last := parts[len(parts)-1].(map[string]any)
-	if last["text"] != TerminationPrompt {
-		t.Fatalf("expected the termination contract to be appended, got %v", last["text"])
-	}
-	if last["type"] != "input_text" {
-		t.Errorf("Responses input parts must use input_text, got %v", last["type"])
-	}
-}
-
-func TestInjectLoopHint_NoSystemMessage(t *testing.T) {
-	body := map[string]any{
-		"messages": []any{
-			map[string]any{"role": "user", "content": "Hi"},
-		},
-	}
-	InjectLoopHint(body, "STOP looping")
-	msgs := body["messages"].([]any)
-	if len(msgs) != 2 {
-		t.Fatalf("expected 2 messages after injection, got %d", len(msgs))
-	}
-	sys := msgs[0].(map[string]any)
-	if sys["role"] != "system" || sys["content"] != "STOP looping" {
-		t.Error("expected prepended system message with loop hint")
-	}
-}
-
 // legacySequenceRepeat is the pre-optimization oracle. Keep its inputs small.
 func legacySequenceRepeat(seq []string) bool {
 	n := len(seq)
@@ -202,6 +122,27 @@ func legacySequenceRepeat(seq []string) bool {
 		}
 	}
 	return false
+}
+
+func TestDetectLoopAnthropicToolUseBlocks(t *testing.T) {
+	var repeating, varying []Message
+	for i := range 3 {
+		repeating = append(repeating, Message{
+			Role:    "assistant",
+			Content: json.RawMessage(`[{"type":"tool_use","name":"read_file","input":{"path":"a.go"}}]`),
+		})
+		varying = append(varying, Message{
+			Role:    "assistant",
+			Content: json.RawMessage(fmt.Sprintf(`[{"type":"tool_use","name":"read_file","input":{"path":"f%d.go"}}]`, i)),
+		})
+	}
+
+	if !DetectLoop(repeating).Detected {
+		t.Error("three identical Anthropic tool_use blocks must be reported as a loop")
+	}
+	if DetectLoop(varying).Detected {
+		t.Error("distinct tool arguments must not be reported as a loop")
+	}
 }
 
 func TestSequenceRepeatSemantics(t *testing.T) {

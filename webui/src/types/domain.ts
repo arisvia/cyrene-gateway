@@ -187,6 +187,7 @@ export interface GatewaySettings {
   cavemanLevel?: string
   ponytailEnabled?: boolean
   ponytailLevel?: string
+  loopGuardEnabled?: boolean
   tokenSaverExclude?: string[]
   responseCacheEnabled?: boolean
   responseCacheTTL?: number

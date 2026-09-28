@@ -13,6 +13,7 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/rtk"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 )
 
@@ -32,6 +33,27 @@ type ExecutionRequest struct {
 	Stream     bool
 	HasTools   bool
 	SaveTokens bool
+	// LoopGuardEnabled mirrors db.Settings.LoopGuardEnabled; the executor has no
+	// settings access, so the caller resolves the switch once per request.
+	LoopGuardEnabled bool
+}
+
+// ApplyLoopGuard composes the repetition hint and the termination contract into a
+// prepared upstream body of any supported shape. Detection lives in loopguard; the
+// rewriting is shared with the token-saver injections through rtk.
+func ApplyLoopGuard(body map[string]any, rawBody []byte, format string, hasTools bool) {
+	var history struct {
+		Messages []loopguard.Message `json:"messages"`
+	}
+	if err := json.Unmarshal(rawBody, &history); err != nil {
+		return
+	}
+	if result := loopguard.DetectLoop(history.Messages); result.Detected {
+		rtk.InjectSystemPrompt(body, format, result.Hint)
+	}
+	if hasTools {
+		rtk.InjectSystemPrompt(body, format, loopguard.TerminationPrompt)
+	}
 }
 
 // ExecutionResult is the outcome of executing against an upstream provider.
@@ -96,17 +118,8 @@ func PrepareUpstreamRequest(
 		bodyMap["stream_options"] = options
 	}
 
-	var history struct {
-		Messages []loopguard.Message `json:"messages"`
-	}
-	if err := json.Unmarshal(req.RawBody, &history); err != nil {
-		return nil, "", fmt.Errorf("invalid messages: %w", err)
-	}
-	if result := loopguard.DetectLoop(history.Messages); result.Detected {
-		loopguard.InjectLoopHint(bodyMap, result.Hint)
-	}
-	if req.HasTools {
-		loopguard.InjectTerminationPrompt(bodyMap)
+	if req.LoopGuardEnabled {
+		ApplyLoopGuard(bodyMap, req.RawBody, "openai", req.HasTools)
 	}
 	if modelInfo.Provider == "codex" {
 		if tools, ok := bodyMap["tools"].([]any); ok {

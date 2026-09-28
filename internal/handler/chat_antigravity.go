@@ -115,6 +115,7 @@ func (s *Server) handleAntigravityChat(
 	targetModel, tier, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
 
 	if !isImage {
+		s.applyLoopGuard(innerRequest, rawBody, "gemini", req.Tools != nil)
 		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider)
 	}
 	if isImage {

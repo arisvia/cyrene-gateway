@@ -325,6 +325,8 @@ export const zhCN = {
         full: '阶梯原则 (full)',
         ultra: '极致极简 (ultra)',
       },
+      loopGuardTitle: '循环守卫',
+      loopGuardHint: '识别重复的工具调用与复读式自述，并在全部上游路径注入循环提示与终止契约（默认开启）',
       exclusionsTitle: '排除提供商名单',
       exclusionsHint: '针对特定服务商（如擅长代码补全的特定专有通道）保持原始输出，不注入提示词',
     },

@@ -327,6 +327,8 @@ export const enUS: TranslationDict = {
         full: 'Step-by-step Standard (full)',
         ultra: 'Ultra Single-line (ultra)',
       },
+      loopGuardTitle: 'Loop Guard',
+      loopGuardHint: 'Detects repeated tool calls and echoing self-talk, then injects the loop hint and termination contract on every upstream path (on by default)',
       exclusionsTitle: 'Excluded Providers',
       exclusionsHint: 'Keep raw output without prompt injection for specific providers (e.g. specialized code completion channels)',
     },

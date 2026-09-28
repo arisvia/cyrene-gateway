@@ -99,13 +99,34 @@ func toolCallHash(tc ToolCall) string {
 	return name + "::" + args
 }
 
-// extractToolCallSequence extracts all tool_call hashes from conversation history in order.
+// extractToolCallSequence extracts all tool call hashes from conversation history in order.
 func extractToolCallSequence(messages []Message) []string {
 	var seq []string
 	for _, msg := range messages {
-		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-			for _, tc := range msg.ToolCalls {
-				seq = append(seq, toolCallHash(tc))
+		if msg.Role != "assistant" {
+			continue
+		}
+		for _, tc := range msg.ToolCalls {
+			seq = append(seq, toolCallHash(tc))
+		}
+		if len(msg.ToolCalls) > 0 || len(msg.Content) == 0 {
+			continue
+		}
+		// Anthropic-shaped history carries calls as content blocks instead.
+		var blocks []struct {
+			Type  string          `json:"type"`
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
+		}
+		if json.Unmarshal(msg.Content, &blocks) != nil {
+			continue
+		}
+		for _, b := range blocks {
+			if b.Type == "tool_use" && b.Name != "" {
+				seq = append(seq, toolCallHash(ToolCall{Function: ToolCallFunction{
+					Name:      b.Name,
+					Arguments: string(b.Input),
+				}}))
 			}
 		}
 	}
