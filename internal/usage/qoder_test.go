@@ -19,6 +19,13 @@ func TestFetchQoder(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer jt-test-token" {
 			t.Errorf("expected Bearer jt-test-token, got %q", got)
 		}
+		for header, want := range map[string]string{
+			"User-Agent": "qodercli/1.0.0", "Cosy-Version": "1.26.0", "Cosy-ClientType": "5", "Accept": "application/json",
+		} {
+			if got := r.Header.Get(header); got != want {
+				t.Errorf("expected %s: %q, got %q", header, want, got)
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
 			"userQuota": {"total": 2000, "used": 500, "remaining": 1500, "unit": "credits"},

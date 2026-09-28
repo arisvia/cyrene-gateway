@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -35,25 +34,13 @@ func qoderQuotaURL(providerID, baseURL string) string {
 	return defaultURL
 }
 
+// getQoderJSON adds the COSY client identification Qoder's quota endpoint expects.
 func getQoderJSON(ctx context.Context, client *http.Client, url, token string) (int, map[string]any, string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, nil, "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "qodercli/1.0.0")
-	req.Header.Set("Cosy-Version", "1.26.0")
-	req.Header.Set("Cosy-ClientType", "5")
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, nil, "", err
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	var out map[string]any
-	_ = json.Unmarshal(raw, &out)
-	return resp.StatusCode, out, string(raw), nil
+	headers := bearer(token)
+	headers["User-Agent"] = "qodercli/1.0.0"
+	headers["Cosy-Version"] = "1.26.0"
+	headers["Cosy-ClientType"] = "5"
+	return getJSON(ctx, client, url, headers)
 }
 
 func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) QuotaResult {

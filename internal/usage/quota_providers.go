@@ -62,14 +62,21 @@ func num(v any) float64 {
 	return 0
 }
 
-// getJSON performs a GET with Bearer auth and decodes the JSON body.
-func getJSON(ctx context.Context, client *http.Client, url, token string) (int, map[string]any, string, error) {
+// bearer builds the Authorization header shared by every quota endpoint here.
+func bearer(token string) map[string]string {
+	return map[string]string{"Authorization": "Bearer " + token}
+}
+
+// getJSON performs a GET with the given headers and decodes the JSON body.
+func getJSON(ctx context.Context, client *http.Client, url string, headers map[string]string) (int, map[string]any, string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return 0, nil, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, "", err
@@ -105,7 +112,7 @@ func fetchDeepseek(ctx context.Context, client *http.Client, c QuotaCredentials)
 	if strings.TrimSpace(c.APIKey) == "" {
 		return QuotaResult{Message: "DeepSeek API key not available. Add a key to view usage."}
 	}
-	status, data, _, err := getJSON(ctx, client, endpoint(deepseekBalanceURL, c.BaseURL), strings.TrimSpace(c.APIKey))
+	status, data, _, err := getJSON(ctx, client, endpoint(deepseekBalanceURL, c.BaseURL), bearer(strings.TrimSpace(c.APIKey)))
 	if err != nil {
 		return QuotaResult{Message: "DeepSeek error: " + err.Error()}
 	}
@@ -173,7 +180,7 @@ func fetchGLM(ctx context.Context, client *http.Client, c QuotaCredentials) Quot
 	if !ok {
 		url = glmQuotaURLs["glm"]
 	}
-	status, data, _, err := getJSON(ctx, client, endpoint(url, c.BaseURL), c.APIKey)
+	status, data, _, err := getJSON(ctx, client, endpoint(url, c.BaseURL), bearer(c.APIKey))
 	if err != nil {
 		return QuotaResult{Message: "GLM error: " + err.Error()}
 	}
@@ -240,7 +247,7 @@ func fetchMiniMax(ctx context.Context, client *http.Client, c QuotaCredentials) 
 	lastErr := ""
 	for i, url := range urls {
 		canFallback := i < len(urls)-1
-		status, payload, raw, err := getJSON(ctx, client, endpoint(url, c.BaseURL), c.APIKey)
+		status, payload, raw, err := getJSON(ctx, client, endpoint(url, c.BaseURL), bearer(c.APIKey))
 		if err != nil {
 			lastErr = err.Error()
 			if !canFallback {
