@@ -39,46 +39,49 @@ func injectMessagesSystem(body map[string]any, prompt string) {
 		return
 	}
 
-	// Find messages array
-	messages, ok := body["messages"].([]any)
-	if !ok {
-		// Try "input" field
-		if input, ok := body["input"].([]any); ok {
-			messages = input
-		} else {
-			return
-		}
+	// The array source decides both the write-back key and the part type.
+	key, arr, blockType := "messages", []any(nil), "text"
+	if messages, ok := body["messages"].([]any); ok {
+		arr = messages
+	} else if input, ok := body["input"].([]any); ok {
+		key, arr, blockType = "input", input, "input_text"
+	} else {
+		return
 	}
 
 	// Find existing system/developer message
-	for i, msgRaw := range messages {
+	for i, msgRaw := range arr {
 		msg, ok := msgRaw.(map[string]any)
 		if !ok {
 			continue
 		}
 		role, _ := msg["role"].(string)
 		if role == "system" || role == "developer" {
-			appendToMessage(msg, prompt)
-			messages[i] = msg
+			appendToMessage(msg, prompt, blockType)
+			arr[i] = msg
 			return
 		}
 	}
 
 	// No system message found, prepend one
 	newMsg := map[string]any{"role": "system", "content": prompt}
-	body["messages"] = append([]any{newMsg}, messages...)
+	body[key] = append([]any{newMsg}, arr...)
 }
 
-func appendToMessage(msg map[string]any, prompt string) {
+func appendToMessage(msg map[string]any, prompt, blockType string) {
 	content := msg["content"]
 	switch c := content.(type) {
 	case string:
 		if strings.Contains(c, prompt) {
 			return
 		}
-		msg["content"] = c + sep + prompt
+		if c != "" {
+			msg["content"] = c + sep + prompt
+		} else {
+			msg["content"] = prompt
+		}
 	case []any:
-		// Check if already injected
+		// Blocks are appended whole, so an exact match is the right dedup rule.
 		for _, part := range c {
 			if p, ok := part.(map[string]any); ok {
 				if p["text"] == prompt {
@@ -86,7 +89,7 @@ func appendToMessage(msg map[string]any, prompt string) {
 				}
 			}
 		}
-		msg["content"] = append(c, map[string]any{"type": "text", "text": prompt})
+		msg["content"] = append(c, map[string]any{"type": blockType, "text": prompt})
 	default:
 		msg["content"] = prompt
 	}

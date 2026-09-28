@@ -130,6 +130,38 @@ func TestInjectTerminationPrompt_OpenAI(t *testing.T) {
 	}
 }
 
+func TestInjectTerminationPrompt_EmptySystemContent(t *testing.T) {
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": ""},
+			map[string]any{"role": "user", "content": "Hi"},
+		},
+	}
+	InjectTerminationPrompt(body)
+
+	content := body["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if content != TerminationPrompt {
+		t.Errorf("an empty system message must receive the prompt alone, got %d bytes starting %q",
+			len(content), content[:min(len(content), 8)])
+	}
+}
+
+func TestInjectTerminationPrompt_ResponsesInputShape(t *testing.T) {
+	body := map[string]any{"input": []any{
+		map[string]any{"role": "developer", "content": []any{map[string]any{"type": "input_text", "text": "base"}}},
+	}}
+	InjectTerminationPrompt(body)
+
+	parts := body["input"].([]any)[0].(map[string]any)["content"].([]any)
+	last := parts[len(parts)-1].(map[string]any)
+	if last["text"] != TerminationPrompt {
+		t.Fatalf("expected the termination contract to be appended, got %v", last["text"])
+	}
+	if last["type"] != "input_text" {
+		t.Errorf("Responses input parts must use input_text, got %v", last["type"])
+	}
+}
+
 func TestInjectLoopHint_NoSystemMessage(t *testing.T) {
 	body := map[string]any{
 		"messages": []any{
