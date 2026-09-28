@@ -1,4 +1,4 @@
-import { batch, createSignal, createRoot } from 'solid-js'
+import { batch, createSignal, createRoot, createMemo } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized, setStoredSessionToken } from '@/lib/api'
 import { useToast } from '@/lib/toast'
@@ -147,9 +147,9 @@ function createGatewayStore() {
     return request
   }
 
-  const registryList = () =>
-    registryCategories().flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name))
-  const activeConnections = () => providers().filter(p => p.isActive).length
+  const registryList = createMemo(() =>
+    registryCategories().flatMap(c => c.providers).sort((a, b) => a.name.localeCompare(b.name)))
+  const activeConnections = createMemo(() => providers().filter(p => p.isActive).length)
 
   // ── loaders ──
   async function loadCore() {
