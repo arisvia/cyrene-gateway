@@ -1341,12 +1341,7 @@ func (s *Server) handleResetProviderStatus(w http.ResponseWriter, r *http.Reques
 	}
 
 	provider.ResetAccountState(conn)
-	lockPatch := make(map[string]any)
-	for key := range conn.Data.ProviderSpecificData {
-		if strings.HasPrefix(key, "modelLock_") {
-			lockPatch[key] = nil
-		}
-	}
+	lockPatch := provider.ModelLockRemovalPatch(conn.Data.ProviderSpecificData)
 	provider.ClearModelLocks(conn)
 
 	if err := s.DB.UpdateConnectionHealth(conn.ID, conn.Data); err != nil {

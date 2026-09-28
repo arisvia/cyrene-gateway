@@ -1,12 +1,20 @@
 package provider
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
+)
+
+// Model locks are stored in providerSpecificData under modelLock_<model>; the
+// account-wide sentinel is modelLock___all.
+const (
+	modelLockPrefix = "modelLock_"
+	allModelsSuffix = "__all"
 )
 
 // Backoff configuration for rate limits (mirrors 9router errorConfig.js)
@@ -138,31 +146,19 @@ func IsAccountUnavailable(rateLimitedUntil string) bool {
 	return until.After(time.Now())
 }
 
-// IsModelLockActive checks if a model-specific lock is still active.
+// IsModelLockActive checks if a model-specific or account-wide lock is still active.
 func IsModelLockActive(conn *model.ProviderConnection, modelName string) bool {
-	if conn.Data.ProviderSpecificData == nil {
+	data := conn.Data.ProviderSpecificData
+	return lockBlocks(data, modelLockPrefix+modelName) || lockBlocks(data, modelLockPrefix+allModelsSuffix)
+}
+
+func lockBlocks(data map[string]any, key string) bool {
+	expiryStr, ok := data[key].(string)
+	if !ok || expiryStr == "" {
 		return false
 	}
-
-	key := "modelLock_" + modelName
-	if expiry, ok := conn.Data.ProviderSpecificData[key]; ok {
-		if expiryStr, ok := expiry.(string); ok && expiryStr != "" {
-			if t, err := time.Parse(time.RFC3339, expiryStr); err == nil && t.After(time.Now()) {
-				return true
-			}
-		}
-	}
-
-	// Check account-level lock
-	if expiry, ok := conn.Data.ProviderSpecificData["modelLock___all"]; ok {
-		if expiryStr, ok := expiry.(string); ok && expiryStr != "" {
-			if t, err := time.Parse(time.RFC3339, expiryStr); err == nil && t.After(time.Now()) {
-				return true
-			}
-		}
-	}
-
-	return false
+	t, err := time.Parse(time.RFC3339, expiryStr)
+	return err == nil && t.After(time.Now())
 }
 
 // QuotaChecker is a function that returns the current usage count for a connection
@@ -264,19 +260,41 @@ func SetModelLock(conn *model.ProviderConnection, modelName string, cooldown tim
 	if conn.Data.ProviderSpecificData == nil {
 		conn.Data.ProviderSpecificData = make(map[string]any)
 	}
-	key := "modelLock_" + modelName
+	key := modelLockPrefix + modelName
 	conn.Data.ProviderSpecificData[key] = time.Now().Add(cooldown).UTC().Format(time.RFC3339)
+}
+
+// ModelLockKeys lists every stored model lock key in deterministic order.
+func ModelLockKeys(data map[string]any) []string {
+	var keys []string
+	for key := range data {
+		if strings.HasPrefix(key, modelLockPrefix) {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// ModelLockRemovalPatch maps each model lock to nil so a targeted provider-data
+// update deletes exactly those keys. Nil means the connection holds no locks.
+func ModelLockRemovalPatch(data map[string]any) map[string]any {
+	keys := ModelLockKeys(data)
+	if len(keys) == 0 {
+		return nil
+	}
+	patch := make(map[string]any, len(keys))
+	for _, key := range keys {
+		patch[key] = nil
+	}
+	return patch
 }
 
 // ClearModelLocks removes all model locks from a connection.
 func ClearModelLocks(conn *model.ProviderConnection) {
-	if conn.Data.ProviderSpecificData == nil {
-		return
-	}
-	for key := range conn.Data.ProviderSpecificData {
-		if strings.HasPrefix(key, "modelLock_") {
-			delete(conn.Data.ProviderSpecificData, key)
-		}
+	data := conn.Data.ProviderSpecificData
+	for _, key := range ModelLockKeys(data) {
+		delete(data, key)
 	}
 }
 

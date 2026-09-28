@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"maps"
+	"slices"
 	"testing"
 	"time"
 
@@ -164,6 +166,68 @@ func TestSelectCredentialWithModelLock(t *testing.T) {
 	}
 	if selected.ID != "conn-1" {
 		t.Errorf("expected conn-1 for different model, got %s", selected.ID)
+	}
+}
+
+func TestIsModelLockActive(t *testing.T) {
+	future := time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339)
+	expired := time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339)
+
+	tests := []struct {
+		name  string
+		locks map[string]any
+		model string
+		want  bool
+	}{
+		{"live model lock blocks its model", map[string]any{"modelLock_gpt": future}, "gpt", true},
+		{"live model lock ignores other models", map[string]any{"modelLock_gpt": future}, "gemini", false},
+		{"expired model lock unblocks", map[string]any{"modelLock_gpt": expired}, "gpt", false},
+		{"account-wide lock blocks every model", map[string]any{"modelLock___all": future}, "gemini", true},
+		{"expired account-wide lock unblocks", map[string]any{"modelLock___all": expired}, "gemini", false},
+		{"malformed expiry is ignored", map[string]any{"modelLock_gpt": "not-a-time"}, "gpt", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn := &model.ProviderConnection{Data: model.ConnectionData{ProviderSpecificData: tt.locks}}
+			if got := IsModelLockActive(conn, tt.model); got != tt.want {
+				t.Errorf("IsModelLockActive(%q) = %v, want %v", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestModelLockRemovalPatchTargetsOnlyLocks(t *testing.T) {
+	data := map[string]any{
+		"modelLock_gpt":   "2027-01-01T00:00:00Z",
+		"modelLock___all": "2027-01-01T00:00:00Z",
+		"projectId":       "keep-me",
+		"ideVersion":      "1.0",
+	}
+
+	patch := ModelLockRemovalPatch(data)
+	if keys := slices.Sorted(maps.Keys(patch)); len(keys) != 2 || keys[0] != "modelLock___all" || keys[1] != "modelLock_gpt" {
+		t.Errorf("patch keys = %v, want both lock keys", keys)
+	}
+	for key, value := range patch {
+		if value != nil {
+			t.Errorf("patch[%q] = %v, want nil so the targeted update deletes the key", key, value)
+		}
+	}
+
+	conn := &model.ProviderConnection{Data: model.ConnectionData{ProviderSpecificData: data}}
+	ClearModelLocks(conn)
+	if _, ok := conn.Data.ProviderSpecificData["projectId"]; !ok {
+		t.Error("unrelated provider data must survive lock clearing")
+	}
+	if _, ok := conn.Data.ProviderSpecificData["modelLock_gpt"]; ok {
+		t.Error("lock key must be cleared in memory")
+	}
+
+	if ModelLockRemovalPatch(map[string]any{"projectId": "x"}) != nil {
+		t.Error("a connection without locks must yield a nil patch so callers can skip the update")
+	}
+	if ModelLockRemovalPatch(nil) != nil {
+		t.Error("nil provider data must yield a nil patch")
 	}
 }
 

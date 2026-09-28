@@ -308,12 +308,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 	if (resp.StatusCode >= 200 && resp.StatusCode < 300) ||
 		((conn.Provider == "opencode" || conn.Provider == "opencode-go") && resp.StatusCode < 500) {
 		provider.ResetAccountState(conn)
-		lockPatch := make(map[string]any)
-		for key := range conn.Data.ProviderSpecificData {
-			if strings.HasPrefix(key, "modelLock_") {
-				lockPatch[key] = nil
-			}
-		}
+		lockPatch := provider.ModelLockRemovalPatch(conn.Data.ProviderSpecificData)
 		provider.ClearModelLocks(conn)
 		if conn.ID != "" {
 			conn.Data.TestStatus = "ok"
