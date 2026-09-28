@@ -89,9 +89,7 @@ func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) 
 
 	// Fetch model list with COSY signing (empty body).
 	modelListURL := QoderModelListURL(creds.ProviderID, creds.AuthToken)
-	headers, err := BuildQoderCosyHeaders(nil, modelListURL, creds)
-	if err != nil {
-	}
+	headers, _ := BuildQoderCosyHeaders(nil, modelListURL, creds)
 
 	req, err := http.NewRequest("GET", modelListURL, nil)
 	if err != nil {
@@ -424,9 +422,6 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 		statusVal = http.StatusOK
 	}
 	inner := strings.TrimSpace(envelope.Body)
-	if isQoderBillingBlock(inner) {
-		return terminalError(http.StatusForbidden, inner)
-	}
 	if statusVal != http.StatusOK {
 		if inner == "" {
 			inner = fmt.Sprintf("upstream status %d", statusVal)
@@ -443,18 +438,34 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 	if err := json.Unmarshal([]byte(inner), &chunk); err != nil || chunk == nil {
 		return terminalError(http.StatusBadGateway, "invalid qoder SSE chunk")
 	}
+	if isQoderBillingBlock(chunk) {
+		return terminalError(http.StatusForbidden, inner)
+	}
 
 	// Strip embedded newlines so the SSE frame stays a single event.
 	sanitized := strings.NewReplacer("\r\n", "", "\n", "", "\r", "").Replace(inner)
 	return sanitized, len(chunk["error"]) > 0 && string(chunk["error"]) != "null"
 }
 
-func isQoderBillingBlock(inner string) bool {
-	lower := strings.ToLower(inner)
-	return strings.Contains(lower, "pricingurl") ||
-		strings.Contains(lower, `"code":"110"`) ||
-		strings.Contains(lower, `"code":"112"`) ||
-		strings.Contains(lower, `"code":"10605"`) ||
-		strings.Contains(lower, "insufficient") ||
-		strings.Contains(lower, "arrears")
+func isQoderBillingBlock(chunk map[string]json.RawMessage) bool {
+	if len(chunk["choices"]) > 0 {
+		return false
+	}
+	var upstreamError map[string]json.RawMessage
+	if json.Unmarshal(chunk["error"], &upstreamError) == nil && upstreamError != nil {
+		chunk = upstreamError
+	}
+	var code string
+	if json.Unmarshal(chunk["code"], &code) != nil {
+		code = string(chunk["code"])
+	}
+	switch code {
+	case "110", "112", "10605":
+		return true
+	}
+	var pricingURL, message string
+	_ = json.Unmarshal(chunk["pricingUrl"], &pricingURL)
+	_ = json.Unmarshal(chunk["message"], &message)
+	lower := strings.ToLower(message)
+	return pricingURL != "" || strings.Contains(lower, "insufficient") || strings.Contains(lower, "arrears")
 }
