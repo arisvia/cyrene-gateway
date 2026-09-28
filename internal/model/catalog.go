@@ -219,11 +219,11 @@ func LookupCatalog(identifiers ...string) *ModelMetadata {
 		if raw == "" {
 			continue
 		}
-		lower := toLower(raw)
+		lower := strings.ToLower(raw)
 		lowerDashed := strings.ReplaceAll(lower, " ", "-")
 		for i := range StaticCatalog {
-			pat := toLower(StaticCatalog[i].Pattern)
-			if containsStr(lower, pat) || containsStr(lowerDashed, pat) {
+			pat := strings.ToLower(StaticCatalog[i].Pattern)
+			if strings.Contains(lower, pat) || strings.Contains(lowerDashed, pat) {
 				e := &StaticCatalog[i]
 				name := e.DisplayName
 				if name == "" {
@@ -309,31 +309,4 @@ func FormatFallbackDisplayName(modelID string) string {
 		return modelID
 	}
 	return strings.Join(titleParts, " ")
-}
-
-func toLower(s string) string {
-	b := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
-}
-
-func containsStr(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
-	}
-	if len(substr) > len(s) {
-		return false
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

@@ -638,19 +638,19 @@ func parseModalities(s string) []string {
 }
 
 func inferCapabilities(modelID string, modalities []string) []string {
-	lower := toLower(modelID)
+	lower := strings.ToLower(modelID)
 	caps := []string{"chat"}
-	if containsStr(lower, "embed") {
+	if strings.Contains(lower, "embed") {
 		return []string{"embeddings"}
 	}
-	if containsStr(lower, "image") || containsStr(lower, "flux") || containsStr(lower, "dall") {
+	if strings.Contains(lower, "image") || strings.Contains(lower, "flux") || strings.Contains(lower, "dall") {
 		caps = append(caps, "image-generation")
 	}
-	if containsStr(lower, "reason") || containsStr(lower, "thinking") {
+	if strings.Contains(lower, "reason") || strings.Contains(lower, "thinking") {
 		caps = append(caps, "reasoning")
 	}
 	for _, m := range modalities {
-		if m == "image" && !containsStr(lower, "image") {
+		if m == "image" && !strings.Contains(lower, "image") {
 			caps = append(caps, "vision")
 			break
 		}
