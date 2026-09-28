@@ -1,5 +1,18 @@
 import type { t as translate } from '@/i18n'
 
+// Keep the caller's `() => uptimeUnitsFor(t)` shape: reading `t` eagerly would
+// freeze the strings against the locale that was active at setup.
+export function uptimeUnitsFor(t: typeof translate): UptimeUnits {
+  return {
+    s: t('units.second'),
+    m: t('units.minuteShort'),
+    h: t('units.hourShort'),
+    d: t('units.day'),
+    mLong: t('units.minute'),
+    hLong: t('units.hour'),
+  }
+}
+
 export function formatNumber(n: number | undefined | null): string {
   if (n == null || isNaN(n)) return '0'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
