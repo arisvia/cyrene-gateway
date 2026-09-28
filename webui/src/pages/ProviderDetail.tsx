@@ -8,6 +8,18 @@ import { useI18n } from '@/i18n'
 import type { Provider, ProviderModel } from '@/types/domain'
 import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconClipboard, IconZap, confirm, TabTransition } from '@/components/ui'
 
+interface ProviderModelsPayload {
+  registryModels?: ProviderModel[]
+  customModels?: ProviderModel[]
+  isFreeMode?: boolean
+  authType?: string
+  authModes?: string[]
+  defaultHeaders?: Record<string, string>
+  hasApiKey?: boolean
+}
+
+const EMPTY_MODELS: ProviderModelsPayload = {}
+
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -548,42 +560,23 @@ const ProviderDetail: Component = () => {
     }
   })
 
-  const [modelsData, setModelsData] = createSignal<{
-    registryModels?: ProviderModel[]
-    customModels?: ProviderModel[]
-    isFreeMode?: boolean
-    authType?: string
-    authModes?: string[]
-    defaultHeaders?: Record<string, string>
-    hasApiKey?: boolean
-  }>({})
-
-  const [models, { refetch: refetchModels }] = createResource(
+  const [models, { refetch: refetchModels, mutate: mutateModels }] = createResource(
     () => params.id,
-    async id => {
+    async (id): Promise<ProviderModelsPayload> => {
       try {
-        const r = await api(`/api/providers/${id}/models`) as {
-          registryModels?: ProviderModel[]
-          customModels?: ProviderModel[]
-          isFreeMode?: boolean
-          authType?: string
-          authModes?: string[]
-          defaultHeaders?: Record<string, string>
-          hasApiKey?: boolean
-        }
-        setModelsData(r)
-        return r
+        return await api(`/api/providers/${id}/models`) as ProviderModelsPayload
       } catch {
-        const fallback = { registryModels: [], customModels: [] }
-        setModelsData(fallback)
-        return fallback
+        return { registryModels: [], customModels: [] }
       }
     },
   )
 
+  // 资源尚未就绪时以空对象占位，读侧只需一层 ?? []
+  const payload = (): ProviderModelsPayload => models() ?? EMPTY_MODELS
+
   const activeModels = () =>
-    (modelsData().registryModels ?? models()?.registryModels ?? [])
-      .concat(modelsData().customModels ?? models()?.customModels ?? [])
+    (payload().registryModels ?? [])
+      .concat(payload().customModels ?? [])
       .filter(m => Boolean(m.id) && m.enabled !== false)
 
   async function toggleModel(modelId: string, currentEnabled: boolean) {
@@ -592,13 +585,13 @@ const ProviderDetail: Component = () => {
     const nextState = !currentEnabled
 
     // 立即乐观更新本地响应式状态
-    setModelsData(prev => {
+    mutateModels(prev => {
       const updateList = (list?: ProviderModel[]) =>
         (list ?? []).map(m => (m.id === modelId || m.name === modelId ? { ...m, enabled: nextState } : m))
       return {
         ...prev,
-        registryModels: updateList(prev.registryModels),
-        customModels: updateList(prev.customModels),
+        registryModels: updateList(prev?.registryModels),
+        customModels: updateList(prev?.customModels),
       }
     })
 
@@ -614,7 +607,7 @@ const ProviderDetail: Component = () => {
   const [testingAll, setTestingAll] = createSignal(false)
   const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
   const [showCustomModels, setShowCustomModels] = createSignal(false)
-  const customCount = () => (modelsData().customModels ?? models()?.customModels ?? []).length
+  const customCount = () => (payload().customModels ?? []).length
   createEffect(() => {
     if (customCount() > 0) {
       setShowCustomModels(true)
@@ -622,12 +615,12 @@ const ProviderDetail: Component = () => {
   })
 
   const allDisplayModels = () =>
-    (modelsData().registryModels ?? models()?.registryModels ?? [])
-      .concat(modelsData().customModels ?? models()?.customModels ?? [])
+    (payload().registryModels ?? [])
+      .concat(payload().customModels ?? [])
   const enabledModelsCount = () => allDisplayModels().filter(m => m.enabled !== false).length
   const disabledModelsCount = () => allDisplayModels().filter(m => m.enabled === false).length
   const sortedRegistryModels = createMemo<ProviderModel[]>(() => {
-    const list: ProviderModel[] = modelsData().registryModels ?? models()?.registryModels ?? []
+    const list: ProviderModel[] = payload().registryModels ?? []
     return list.slice().sort((a, b) => {
       const aEnabled = a.enabled !== false
       const bEnabled = b.enabled !== false
@@ -639,7 +632,7 @@ const ProviderDetail: Component = () => {
   })
 
   const sortedCustomModels = createMemo<ProviderModel[]>(() => {
-    const list: ProviderModel[] = modelsData().customModels ?? models()?.customModels ?? []
+    const list: ProviderModel[] = payload().customModels ?? []
     return list.slice().sort((a, b) => {
       const aEnabled = a.enabled !== false
       const bEnabled = b.enabled !== false
@@ -688,10 +681,10 @@ const ProviderDetail: Component = () => {
     }
     const modelKeys = toEnable.map(m => `${p}/${m.id || m.name}`)
     setBatchBusy(true)
-    setModelsData(prev => ({
+    mutateModels(prev => ({
       ...prev,
-      registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: true })),
-      customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: true })),
+      registryModels: (prev?.registryModels ?? []).map(m => ({ ...m, enabled: true })),
+      customModels: (prev?.customModels ?? []).map(m => ({ ...m, enabled: true })),
     }))
     try {
       await store.batchSetModelsDisabled(modelKeys, false)
@@ -714,10 +707,10 @@ const ProviderDetail: Component = () => {
     if (!await confirm(t('providerDetail.confirmDisableAll', { count: toDisable.length }))) return
     const modelKeys = toDisable.map(m => `${p}/${m.id || m.name}`)
     setBatchBusy(true)
-    setModelsData(prev => ({
+    mutateModels(prev => ({
       ...prev,
-      registryModels: (prev.registryModels ?? []).map(m => ({ ...m, enabled: false })),
-      customModels: (prev.customModels ?? []).map(m => ({ ...m, enabled: false })),
+      registryModels: (prev?.registryModels ?? []).map(m => ({ ...m, enabled: false })),
+      customModels: (prev?.customModels ?? []).map(m => ({ ...m, enabled: false })),
     }))
     try {
       await store.batchSetModelsDisabled(modelKeys, true)
@@ -811,10 +804,10 @@ const ProviderDetail: Component = () => {
     const failedIds = new Set(failedList.map(m => m.id || m.name).filter((id): id is string => Boolean(id)))
     const modelKeys = failedList.map(m => `${p}/${m.id || m.name}`)
     setBatchBusy(true)
-    setModelsData(prev => ({
+    mutateModels(prev => ({
       ...prev,
-      registryModels: (prev.registryModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
-      customModels: (prev.customModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
+      registryModels: (prev?.registryModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
+      customModels: (prev?.customModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
     }))
     try {
       await store.batchSetModelsDisabled(modelKeys, true)
@@ -1016,7 +1009,7 @@ const ProviderDetail: Component = () => {
                 onChange={setTab}
                 options={[
                   { value: 'overview', label: t('providerDetail.tabs.overview') },
-                  { value: 'models', label: `${t('providerDetail.tabs.models')} (${(modelsData().registryModels ?? models()?.registryModels ?? []).length})` },
+                  { value: 'models', label: `${t('providerDetail.tabs.models')} (${(payload().registryModels ?? []).length})` },
                   { value: 'chat', label: t('providerDetail.tabs.chat') },
                 ]}
               />
@@ -1380,7 +1373,7 @@ const ProviderDetail: Component = () => {
                       <Show
                         when={
                           c().authType !== 'oauth' ||
-                          (modelsData().authModes?.includes('api-key') && c().authType !== 'oauth')
+                          (payload().authModes?.includes('api-key') && c().authType !== 'oauth')
                         }
                         fallback={
                           <div class="p-3.5 rounded-control bg-accent/10 border border-accent/30 space-y-2 text-xs">
@@ -1458,11 +1451,11 @@ const ProviderDetail: Component = () => {
 
                         <Show when={showAdvanced()}>
                           <div class="mt-3 p-3.5 rounded-control bg-bg-elevated/50 border border-subtle/70 space-y-3 text-xs">
-                            <Show when={modelsData().defaultHeaders && Object.keys(modelsData().defaultHeaders!).length > 0}>
+                            <Show when={payload().defaultHeaders && Object.keys(payload().defaultHeaders!).length > 0}>
                               <div>
                                 <div class="text-faint mb-1.5 font-medium">{t('providerDetail.defaultHeaderHint')}</div>
                                 <div class="bg-bg/80 p-2 rounded border border-subtle font-mono text-[11px] space-y-1">
-                                  <For each={Object.entries(modelsData().defaultHeaders!)}>
+                                  <For each={Object.entries(payload().defaultHeaders!)}>
                                     {([k, v]) => (
                                       <div class="flex gap-2">
                                         <span class="text-accent">{k}:</span>
@@ -1619,25 +1612,25 @@ const ProviderDetail: Component = () => {
                       <h3 class="text-sm font-semibold text-foreground">{t('providerDetail.availableModels')}</h3>
                       <span>
                         {t('providerDetail.modelsCountSummary', {
-                          total: (modelsData().registryModels ?? models()?.registryModels ?? []).length,
-                          enabled: (modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => m.enabled !== false).length,
+                          total: (payload().registryModels ?? []).length,
+                          enabled: (payload().registryModels ?? []).filter(m => m.enabled !== false).length,
                         })}
                       </span>
                     </div>
                     <Show when={modelSearch().trim()}>
                       <span class="text-accent font-mono">
                         {(() => {
-                          const count = (modelsData().registryModels ?? models()?.registryModels ?? []).filter(m => {
+                          const count = (payload().registryModels ?? []).filter(m => {
                             const q = modelSearch().trim().toLowerCase()
                             return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
                           }).length
-                          return `${count} / ${(modelsData().registryModels ?? models()?.registryModels ?? []).length}`
+                          return `${count} / ${(payload().registryModels ?? []).length}`
                         })()}
                       </span>
                     </Show>
                   </div>
                   <Show
-                    when={(modelsData().registryModels ?? models()?.registryModels ?? []).length > 0}
+                    when={(payload().registryModels ?? []).length > 0}
                     fallback={<Empty message={t('providerDetail.noModels')} />}
                   >
                     <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">

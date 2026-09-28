@@ -24,6 +24,9 @@ let flowType: string
 let oauthReplies: Map<string, Promise<Response>[]>
 let oauthRequests: Array<{ path: string; signal: AbortSignal | null | undefined; body: unknown }>
 let providerLoads: number
+let modelsPayload: unknown = { registryModels: [], customModels: [], authModes: [] }
+let disableBodies: unknown[] = []
+let disableReply: Promise<Response> = Promise.resolve(json({ ok: true }))
 
 // Deliberately ignore abort: an already-arriving response must still be fenced off by the page.
 function deferOAuth(endpoint: string) {
@@ -41,6 +44,9 @@ beforeEach(() => {
   oauthReplies = new Map()
   oauthRequests = []
   providerLoads = 0
+  modelsPayload = { registryModels: [], customModels: [], authModes: [] }
+  disableBodies = []
+  disableReply = Promise.resolve(json({ ok: true }))
   registry = {
     id: 'github', name: 'GitHub', category: 'oauth', authType: 'oauth',
     authModes: ['api-key', 'oauth'], priority: 77, capabilities: ['llm'], apiType: 'openai',
@@ -72,7 +78,11 @@ beforeEach(() => {
     }
     if (path === '/api/registry') return json({ categories: [{ category: 'oauth', count: 1, providers: [registry] }], total: 1 })
     if (path === '/api/providers/test-credentials') return json({ ok: true, latency: '10ms' })
-    if (path.endsWith('/models')) return json({ registryModels: [], customModels: [], authModes: registry.authModes })
+    if (path === '/api/models/disabled') {
+      disableBodies.push(JSON.parse(String(init?.body)))
+      return disableReply
+    }
+    if (path.endsWith('/models')) return json(modelsPayload)
     if (path.startsWith('/api/providers/')) return json(connections.find(c => path === `/api/providers/${c.id}`) ?? connections[0])
     if (path.endsWith('/device-code/poll')) {
       pollBodies.push(JSON.parse(String(init?.body)))
@@ -433,5 +443,46 @@ describe('ProviderDetail account flow metadata', () => {
     resolveAdd(json({ ...connections[1], id: 'added' }))
     await flush()
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+describe('ProviderDetail model switch optimistic state', () => {
+  async function openModelsTab() {
+    modelsPayload = {
+      registryModels: [{ id: 'gpt-test', name: 'gpt-test', enabled: true }],
+      customModels: [],
+      authModes: registry.authModes,
+    }
+    await useGatewayStore().loadCore()
+    const history = createMemoryHistory()
+    history.set({ value: '/providers/selected' })
+    const view = render(() => (
+      <MemoryRouter history={history}>
+        <Route path="/providers" component={Providers} />
+        <Route path="/providers/:id" component={ProviderDetail} />
+      </MemoryRouter>
+    ))
+    await flush()
+    fireEvent.click(view.getByRole('tab', { name: new RegExp(t('providerDetail.tabs.models')) }))
+    await flush()
+    return view
+  }
+
+  it('greys the model out before the batch request settles', async () => {
+    let settle!: (response: Response) => void
+    disableReply = new Promise<Response>(resolve => { settle = resolve })
+
+    const view = await openModelsTab()
+    const toggle = view.getByRole('switch', { name: /gpt-test/ })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.click(toggle)
+    await flush()
+    expect(disableBodies).toEqual([{ models: ['github/gpt-test'], disabled: true }])
+    expect(view.getByRole('switch', { name: /gpt-test/ }).getAttribute('aria-checked')).toBe('false')
+
+    settle(json({ ok: true }))
+    await flush()
+    expect(view.getByRole('switch', { name: /gpt-test/ }).getAttribute('aria-checked')).toBe('false')
   })
 })
