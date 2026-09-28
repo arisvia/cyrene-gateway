@@ -49,14 +49,13 @@ func injectMessagesSystem(body map[string]any, prompt string) {
 		return
 	}
 
-	// messages or input array
-	var arr []any
+	// The array source decides both the write-back key and the part type.
+	key, arr, blockType := "messages", []any(nil), "text"
 	if msgs, ok := body["messages"].([]any); ok {
 		arr = msgs
 	} else if input, ok := body["input"].([]any); ok {
-		arr = input
-	}
-	if arr == nil {
+		key, arr, blockType = "input", input, "input_text"
+	} else {
 		return
 	}
 
@@ -68,22 +67,18 @@ func injectMessagesSystem(body map[string]any, prompt string) {
 		}
 		role, _ := msg["role"].(string)
 		if role == "system" || role == "developer" {
-			appendToMessage(msg, prompt)
-			_ = i
+			appendToMessage(msg, prompt, blockType)
+			arr[i] = msg
 			return
 		}
 	}
 
 	// No system message found, prepend one
 	newMsg := map[string]any{"role": "system", "content": prompt}
-	if msgs, ok := body["messages"].([]any); ok {
-		body["messages"] = append([]any{newMsg}, msgs...)
-	} else if input, ok := body["input"].([]any); ok {
-		body["input"] = append([]any{newMsg}, input...)
-	}
+	body[key] = append([]any{newMsg}, arr...)
 }
 
-func appendToMessage(msg map[string]any, prompt string) {
+func appendToMessage(msg map[string]any, prompt, blockType string) {
 	switch content := msg["content"].(type) {
 	case string:
 		if strings.Contains(content, prompt) {
@@ -95,14 +90,15 @@ func appendToMessage(msg map[string]any, prompt string) {
 			msg["content"] = prompt
 		}
 	case []any:
+		// Blocks are appended whole, so an exact match is the right dedup rule.
 		for _, b := range content {
 			if bm, ok := b.(map[string]any); ok {
-				if t, ok := bm["text"].(string); ok && strings.Contains(t, prompt) {
+				if t, ok := bm["text"].(string); ok && t == prompt {
 					return
 				}
 			}
 		}
-		msg["content"] = append(content, map[string]any{"type": "input_text", "text": prompt})
+		msg["content"] = append(content, map[string]any{"type": blockType, "text": prompt})
 	default:
 		msg["content"] = prompt
 	}
@@ -122,7 +118,7 @@ func injectClaudeSystem(body map[string]any, prompt string) {
 	case []any:
 		for _, b := range sys {
 			if bm, ok := b.(map[string]any); ok {
-				if t, ok := bm["text"].(string); ok && strings.Contains(t, prompt) {
+				if t, ok := bm["text"].(string); ok && t == prompt {
 					return
 				}
 			}
@@ -151,7 +147,7 @@ func injectGeminiSystem(body map[string]any, prompt string) {
 		if parts, ok := sys["parts"].([]any); ok {
 			for _, p := range parts {
 				if pm, ok := p.(map[string]any); ok {
-					if t, ok := pm["text"].(string); ok && strings.Contains(t, prompt) {
+					if t, ok := pm["text"].(string); ok && t == prompt {
 						return
 					}
 				}
@@ -161,16 +157,4 @@ func injectGeminiSystem(body map[string]any, prompt string) {
 		}
 	}
 	target[key] = map[string]any{"parts": []any{map[string]any{"text": prompt}}}
-}
-
-// FormatFromAPIType maps provider API type to format string for injection.
-func FormatFromAPIType(apiType string) string {
-	switch strings.ToLower(apiType) {
-	case "anthropic":
-		return "anthropic"
-	case "gemini":
-		return "gemini"
-	default:
-		return "openai"
-	}
 }
