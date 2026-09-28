@@ -30,11 +30,15 @@ import {
   IconClose,
   Alert,
 } from '@/components/ui'
-import {api, apiPost} from '@/lib/api'
+import {api, apiPost, ApiError} from '@/lib/api'
 import {useToast} from '@/lib/toast'
 import {copyToClipboard} from '@/lib/clipboard'
 import type {BadgeTone, Provider, RegistryProvider} from '@/types/domain'
 
+function wizardPriority(value: string): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
 
 const Providers: Component = () => {
   const store = useGatewayStore()
@@ -305,14 +309,20 @@ const Providers: Component = () => {
   const [wizardImportToken, setWizardImportToken] = createSignal('')
   const [wizardImporting, setWizardImporting] = createSignal(false)
   let wizardPollTimer: number | undefined
+  let wizardOAuthController: AbortController | undefined
 
-  onCleanup(() => {
-    clearInterval(wizardPollTimer)
-  })
-
-  function cancelWizardOAuth() {
+  function abortWizardOAuth() {
+    wizardOAuthController?.abort()
+    wizardOAuthController = undefined
     clearInterval(wizardPollTimer)
     wizardPollTimer = undefined
+  }
+
+  onCleanup(abortWizardOAuth)
+
+  function cancelWizardOAuth() {
+    abortWizardOAuth()
+    setWizardImporting(false)
     setWizardOAuthPolling(false)
     setWizardOAuthFlow(null)
     setWizardOAuthError('')
@@ -385,15 +395,19 @@ const Providers: Component = () => {
   async function startWizardOAuth() {
     const reg = selectedReg()
     if (!reg) return
+    cancelWizardOAuth()
+    wizardOAuthController = new AbortController()
+    const { signal } = wizardOAuthController
     setWizardOAuthError('')
     setWizardOAuthPolling(true)
 
     try {
       // 先查询该供应商真实支持的 OAuth 流类型
-      const statusRes = (await api(`/api/oauth/${reg.id}/status`)) as {
+      const statusRes = (await api(`/api/oauth/${reg.id}/status`, { signal, silent: true })) as {
         flowType?: string
         connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
       }
+      if (signal.aborted) return
       const flowType = statusRes?.flowType
       const initialConnMap = new Map((statusRes?.connections || []).map(c => [c.id, `${c.expiresAt || ''}:${c.updatedAt || ''}`]))
 
@@ -407,12 +421,13 @@ const Providers: Component = () => {
       // 2. 网页授权码 / PKCE 流（如 Antigravity, Claude, Google 等）
       if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
         const callbackUri = `${window.location.origin}/api/oauth/${reg.id}/callback`
-        const pVal = Number(form().priority) || 0
+        const pVal = wizardPriority(form().priority)
         const nVal = encodeURIComponent(form().name || reg.name)
-        const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}&priority=${pVal}&name=${nVal}`)) as {
+        const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}&priority=${pVal}&name=${nVal}`, { signal, silent: true })) as {
           authorizeUrl: string
           state: string
         }
+        if (signal.aborted) return
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
           toast.info(t('toast.oauthWindowOpened', { name: reg.name }))
@@ -429,9 +444,10 @@ const Providers: Component = () => {
         if (wizardPollTimer) clearInterval(wizardPollTimer)
         wizardPollTimer = window.setInterval(async () => {
           try {
-            const pollStatus = (await api(`/api/oauth/${reg.id}/status`)) as {
+            const pollStatus = (await api(`/api/oauth/${reg.id}/status`, { signal, silent: true })) as {
               connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
             }
+            if (signal.aborted) return
             const currentConns = pollStatus?.connections || []
             const isFinished = currentConns.some(c => {
               if (!initialConnMap.has(c.id)) return true
@@ -440,23 +456,22 @@ const Providers: Component = () => {
               return curSnap !== oldSnap
             })
             if (isFinished) {
-              clearInterval(wizardPollTimer)
-              wizardPollTimer = undefined
-              setWizardOAuthPolling(false)
+              cancelWizardOAuth()
               toast.success(t('toast.oauthSuccess', { name: reg.name }))
               setWizardOpen(false)
               setActiveTab('connections')
               await store.loadProvidersOnly()
             }
           } catch {
-            // 忽略轮询网络偶发错误
+            // 忽略轮询偶发网络错误与被中止的请求
           }
         }, 2500)
         return
       }
 
       // 3. 设备码流（Device Code Flow，如 GitHub, Kimi, CodeBuddy, Qoder, Grok CLI 等）
-      const raw = (await apiPost(`/api/oauth/${reg.id}/device-code`, undefined, { silent: true })) as Record<string, unknown>
+      const raw = (await apiPost(`/api/oauth/${reg.id}/device-code`, undefined, { signal, silent: true })) as Record<string, unknown>
+      if (signal.aborted) return
       const res = {
         verificationUri: ((raw.verificationUri || raw.verification_uri || '') as string),
         verificationUriComplete: ((raw.verificationUriComplete || raw.verification_uri_complete || '') as string),
@@ -489,13 +504,11 @@ const Providers: Component = () => {
             machineId: res.machineId,
             extraData: res.extraData,
             name: form().name || reg.name,
-            priority: Number(form().priority) || 0,
-          }, { silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
+            priority: wizardPriority(form().priority),
+          }, { signal, silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
+          if (signal.aborted) return
           if (pollRes?.success) {
-            clearInterval(wizardPollTimer)
-            wizardPollTimer = undefined
-            setWizardOAuthPolling(false)
-            setWizardOAuthFlow(null)
+            cancelWizardOAuth()
             toast.success(t('toast.oauthSuccess', { name: reg.name }))
             setWizardOpen(false)
             setActiveTab('connections')
@@ -506,13 +519,20 @@ const Providers: Component = () => {
             setWizardOAuthPolling(false)
             setWizardOAuthError(pollRes.error)
           }
-        } catch {
-          // 忽略轮询偶发错误
+        } catch (e: unknown) {
+          if (signal.aborted) return
+          if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) {
+            clearInterval(wizardPollTimer)
+            wizardPollTimer = undefined
+            setWizardOAuthPolling(false)
+            setWizardOAuthError(e.message)
+          }
         } finally {
           inFlight = false
         }
       }, intervalMs)
     } catch (e: unknown) {
+      if (signal.aborted) return
       setWizardOAuthPolling(false)
       const msg = e instanceof Error ? e.message : String(e)
       setWizardOAuthError(msg)
@@ -529,29 +549,33 @@ const Providers: Component = () => {
       toast.error(t('toast.tokenRequired'))
       return
     }
+    const signal = wizardOAuthController?.signal
     setWizardImporting(true)
     try {
       await apiPost(`/api/oauth/${reg.id}/import`, {
         accessToken: token,
         name: form().name || reg.name,
-        priority: Number(form().priority) || 0,
-      }, { silent: true })
+        priority: wizardPriority(form().priority),
+      }, { signal, silent: true })
+      if (signal?.aborted) return
       cancelWizardOAuth()
       setWizardOpen(false)
       setActiveTab('connections')
       await store.loadProvidersOnly()
     } catch (e: unknown) {
+      if (signal?.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
       setWizardOAuthError(msg)
       toast.error(t('toast.tokenImportFailed', { error: msg }))
     } finally {
-      setWizardImporting(false)
+      if (!signal?.aborted) setWizardImporting(false)
     }
   }
   async function handleWizardManualSubmit() {
     const raw = wizardManualCode().trim()
     const reg = selectedReg()
     if (!raw || !reg) return
+    const signal = wizardOAuthController?.signal
     setWizardExchanging(true)
     setWizardOAuthError('')
     try {
@@ -571,19 +595,21 @@ const Providers: Component = () => {
         state,
         redirectUri: reg.id === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
         name: form().name || reg.name,
-        priority: Number(form().priority) || 0,
-      }, { silent: true })
+        priority: wizardPriority(form().priority),
+      }, { signal, silent: true })
+      if (signal?.aborted) return
       toast.success(t('toast.oauthSuccess', { name: reg.name }))
       cancelWizardOAuth()
       setWizardOpen(false)
       setActiveTab('connections')
       await store.loadProvidersOnly()
     } catch (e: unknown) {
+      if (signal?.aborted) return
       const msg = e instanceof Error ? e.message : String(e)
       setWizardOAuthError(msg)
       toast.error(msg)
     } finally {
-      setWizardExchanging(false)
+      if (!signal?.aborted) setWizardExchanging(false)
     }
   }
 
@@ -624,7 +650,7 @@ const Providers: Component = () => {
         provider: reg.id,
         authType: normAuth,
         name: f.name || reg.name,
-        priority: Number(f.priority) || reg.priority || 50,
+        priority: wizardPriority(f.priority),
         data: {
           apiKey: f.apiKey.trim() || undefined,
           baseUrl: f.baseUrl.trim() || undefined,
@@ -1362,7 +1388,7 @@ const Providers: Component = () => {
                             <div class="text-[11px] text-faint break-all bg-bg/80 p-2 rounded border border-subtle">
                               {flow().verificationUriComplete || flow().verificationUri}
                             </div>
-                            <Show when={!flow().isManualPaste}>
+                            <Show when={!flow().isManualPaste && wizardOAuthPolling()}>
                               <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
                                 <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
                                 <span>{t('providers.oauthWaitingAuth')}</span>
