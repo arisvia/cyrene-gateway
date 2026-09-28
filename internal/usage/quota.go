@@ -17,15 +17,16 @@ import (
 // Quota is a single quota bucket (e.g. "Balance (CNY)", "M-series (5h)").
 // Field semantics mirror 9router usage handlers so the panel renders identically.
 type Quota struct {
-	Used                float64 `json:"used"`
-	Total               float64 `json:"total"`
-	Remaining           float64 `json:"remaining,omitempty"`
-	RemainingPercentage float64 `json:"remainingPercentage"`
-	ResetAt             string  `json:"resetAt,omitempty"`
-	ResetSoon           bool    `json:"resetSoon,omitempty"`
-	Unlimited           bool    `json:"unlimited,omitempty"`
-	Unit                string  `json:"unit,omitempty"`
-	DisplayName         string  `json:"displayName,omitempty"`
+	Used                float64           `json:"used"`
+	Total               float64           `json:"total"`
+	Remaining           float64           `json:"remaining,omitempty"`
+	RemainingPercentage float64           `json:"remainingPercentage"`
+	ResetAt             string            `json:"resetAt,omitempty"`
+	ResetSoon           bool              `json:"resetSoon,omitempty"`
+	Unlimited           bool              `json:"unlimited,omitempty"`
+	Unit                string            `json:"unit,omitempty"`
+	DisplayName         string            `json:"displayName,omitempty"`
+	DisplayNameI18n     map[string]string `json:"displayNameI18n,omitempty"`
 }
 
 type QuotaResult struct {

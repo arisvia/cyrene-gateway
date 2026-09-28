@@ -2,8 +2,10 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -69,6 +71,148 @@ func TestFetchQoder_FractionUsagePercentage(t *testing.T) {
 	}
 }
 
+func TestFetchQoder_BucketPercentageUsesBalances(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		bucket        string
+		wantRemaining float64
+		wantPct       float64
+	}{
+		{
+			name: "one_percent_used", bucket: `{"total":100,"used":1,"remaining":99,"percentage":1}`,
+			wantRemaining: 99, wantPct: 99,
+		},
+		{
+			name: "half_percent_used", bucket: `{"total":100,"used":0.5,"remaining":99.5,"percentage":0.5}`,
+			wantRemaining: 99.5, wantPct: 99.5,
+		},
+		{
+			name: "explicit_zero_remaining", bucket: `{"total":100,"used":1,"remaining":0,"percentage":0.5}`,
+			wantRemaining: 0, wantPct: 0,
+		},
+		{
+			name: "absent_remaining", bucket: `{"total":100,"used":1,"percentage":1}`,
+			wantRemaining: 99, wantPct: 99,
+		},
+		{
+			name: "absent_remaining_zero_used", bucket: `{"total":100,"used":0,"percentage":0.5}`,
+			wantRemaining: 100, wantPct: 100,
+		},
+		{
+			name: "cap_with_absent_remaining", bucket: `{"cap":100,"used":0.5,"percentage":0.5}`,
+			wantRemaining: 99.5, wantPct: 99.5,
+		},
+		{
+			name: "fraction_percentage_fallback", bucket: `{"total":100,"percentage":0.5}`,
+			wantRemaining: 0, wantPct: 50,
+		},
+		{
+			name: "whole_percentage_fallback", bucket: `{"total":100,"percentage":25}`,
+			wantRemaining: 0, wantPct: 75,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"userQuota":` + tt.bucket + `}`))
+			}))
+			defer srv.Close()
+
+			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
+			})
+			q, ok := res.Quotas["user"]
+			if !ok {
+				t.Fatalf("expected user quota, got %+v", res)
+			}
+			if q.Remaining != tt.wantRemaining || q.RemainingPercentage != tt.wantPct {
+				t.Errorf("remaining = %v (%v%%), want %v (%v%%)", q.Remaining, q.RemainingPercentage, tt.wantRemaining, tt.wantPct)
+			}
+		})
+	}
+}
+
+func TestFetchQoder_ExceededUsesGenerallyAvailableBalances(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		buckets       string
+		wantPlan      string
+		wantRemaining map[string]float64
+	}{
+		{
+			name: "dedicated_only_positive",
+			buckets: `"userQuota":{"total":100,"used":100,"remaining":0},
+				"dedicatedResourcePackages":[{"total":4000,"used":0,"remaining":4000}]`,
+			wantPlan:      "Qoder (Quota Exceeded)",
+			wantRemaining: map[string]float64{"user": 0, "dedicatedResourcePackages_1": 4000},
+		},
+		{
+			name:          "unavailable_organization",
+			buckets:       `"orgResourcePackage":{"cap":2000,"used":0,"remaining":2000,"available":false}`,
+			wantPlan:      "Qoder (Quota Exceeded)",
+			wantRemaining: map[string]float64{"organization": 2000},
+		},
+		{
+			name:          "available_organization",
+			buckets:       `"orgResourcePackage":{"cap":2000,"used":0,"remaining":2000,"available":true}`,
+			wantPlan:      "Qoder (Teams)",
+			wantRemaining: map[string]float64{"organization": 2000},
+		},
+		{
+			name:          "organization_availability_unspecified",
+			buckets:       `"orgResourcePackage":{"cap":2000,"used":0,"remaining":2000}`,
+			wantPlan:      "Qoder (Teams)",
+			wantRemaining: map[string]float64{"organization": 2000},
+		},
+		{
+			name: "exhausted_global_balances",
+			buckets: `"userQuota":{"total":100,"used":100,"remaining":0},
+				"addOnQuota":{"total":100,"used":100,"remaining":0},
+				"orgResourcePackage":{"cap":2000,"used":2000,"remaining":0,"available":true}`,
+			wantPlan:      "Qoder (Quota Exceeded)",
+			wantRemaining: map[string]float64{"user": 0, "addOn": 0, "organization": 0},
+		},
+		{
+			name:          "available_user",
+			buckets:       `"userQuota":{"total":100,"used":1,"remaining":99}`,
+			wantPlan:      "Qoder (Teams)",
+			wantRemaining: map[string]float64{"user": 99},
+		},
+		{
+			name:          "available_add_on",
+			buckets:       `"addOnQuota":{"total":100,"used":1,"remaining":99}`,
+			wantPlan:      "Qoder (Teams)",
+			wantRemaining: map[string]float64{"addOn": 99},
+		},
+		{
+			name:          "unrecognized_promotional_balance",
+			buckets:       `"campaignQuota":{"total":500,"used":50,"remaining":450}`,
+			wantPlan:      "Qoder (Quota Exceeded)",
+			wantRemaining: map[string]float64{"campaignQuota": 450},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"userType":"teams","isQuotaExceeded":true,` + tt.buckets + `}`))
+			}))
+			defer srv.Close()
+
+			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
+			})
+			if res.Plan != tt.wantPlan {
+				t.Errorf("plan = %q, want %q", res.Plan, tt.wantPlan)
+			}
+			for key, want := range tt.wantRemaining {
+				if q, ok := res.Quotas[key]; !ok || q.Remaining != want {
+					t.Errorf("quota %q = %+v (present: %v), want remaining %v", key, q, ok, want)
+				}
+			}
+		})
+	}
+}
+
 func TestFetchQoderNoToken(t *testing.T) {
 	res := FetchQuota(context.Background(), nil, QuotaCredentials{Provider: "qoder"})
 	if !strings.Contains(res.Message, "no access token") {
@@ -116,7 +260,7 @@ func TestFetchQoder_AddOnQuotaAndDynamicBuckets(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected addOn quota to be unpacked, got %v", res.Quotas)
 	}
-	if addOn.Total != 100 || addOn.Remaining != 100 || addOn.RemainingPercentage != 100 || addOn.DisplayName != "Add-on Credits" {
+	if addOn.Total != 100 || addOn.Remaining != 100 || addOn.RemainingPercentage != 100 || addOn.DisplayName != "" {
 		t.Errorf("unexpected addOn values: %+v", addOn)
 	}
 	if addOn.ResetAt != "" {
@@ -200,9 +344,10 @@ func TestFetchQoder_DisplayLabelsAndTeamsPlan(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected dedicated package to be extracted, got %v", res.Quotas)
 	}
-	if pkg.DisplayName != "SOTA 专属积分" {
-		t.Errorf("expected DisplayName to be SOTA 专属积分 from displayLabels, got %q", pkg.DisplayName)
-	}
+	assertQoderLabelJSON(t, pkg, "sota model series", map[string]string{
+		"en-US": "SOTA Exclusive Credits",
+		"zh-CN": "SOTA 专属积分",
+	})
 	if pkg.Remaining != 4000 || pkg.Total != 4000 {
 		t.Errorf("unexpected dedicated package values: %+v", pkg)
 	}
@@ -213,5 +358,131 @@ func TestFetchQoder_DisplayLabelsAndTeamsPlan(t *testing.T) {
 	}
 	if org.DisplayName != "麦穗通信" {
 		t.Errorf("expected organization DisplayName to be 麦穗通信, got %q", org.DisplayName)
+	}
+}
+
+func assertQoderLabelJSON(t *testing.T, q Quota, wantName string, wantI18n map[string]string) {
+	t.Helper()
+	raw, err := json.Marshal(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		DisplayName     string            `json:"displayName"`
+		DisplayNameI18n map[string]string `json:"displayNameI18n"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.DisplayName != wantName || !reflect.DeepEqual(payload.DisplayNameI18n, wantI18n) {
+		t.Errorf("serialized label = %s, want displayName %q and translations %v", raw, wantName, wantI18n)
+	}
+	if wantI18n == nil && strings.Contains(string(raw), `"displayNameI18n"`) {
+		t.Errorf("absent translations should be omitted: %s", raw)
+	}
+}
+
+func TestFetchQoder_StandardBucketLabels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"userQuota":{"total":100,"remaining":100},
+			"orgResourcePackage":{"cap":100,"remaining":100},
+			"addOnQuota":{"total":100,"remaining":100}
+		}`))
+	}))
+	defer srv.Close()
+
+	for _, tt := range []struct {
+		organization string
+		wantName     string
+	}{
+		{organization: "   ", wantName: ""},
+		{organization: "  麦穗通信  ", wantName: "麦穗通信"},
+	} {
+		t.Run(tt.organization, func(t *testing.T) {
+			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL, Organization: tt.organization,
+			})
+			for key, want := range map[string]string{"user": "", "organization": tt.wantName, "addOn": ""} {
+				q, ok := res.Quotas[key]
+				if !ok {
+					t.Fatalf("missing quota %q: %+v", key, res)
+				}
+				assertQoderLabelJSON(t, q, want, nil)
+			}
+		})
+	}
+}
+
+func TestFetchQoder_LocalizedLabels(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		fields   string
+		wantName string
+		wantI18n map[string]string
+	}{
+		{
+			name: "camel_title_before_description",
+			fields: `"displayLabels":[
+				{"dimension":"description","value":"Description","valueI18n":{"en-US":"Details","zh-CN":"说明"}},
+				{"dimension":"title","value":"  Raw title  ","valueI18n":{"en-US":"  Exclusive credits  ","zh-CN":" 专属积分 ","fr-FR":"Crédits exclusifs","empty":"  ","invalid":42}}
+			],"name":"act-internal"`,
+			wantName: "Raw title", wantI18n: map[string]string{"en-US": "Exclusive credits", "zh-CN": "专属积分", "fr-FR": "Crédits exclusifs"},
+		},
+		{
+			name: "snake_name_before_description",
+			fields: `"display_labels":[
+				{"dimension":"description","value":"Description","value_i18n":{"en-US":"Details"}},
+				{"dimension":"name","value":"Raw name","value_i18n":{"en-US":"Named credits","zh-CN":"命名积分"}}
+			]`,
+			wantName: "Raw name", wantI18n: map[string]string{"en-US": "Named credits", "zh-CN": "命名积分"},
+		},
+		{
+			name:     "camel_description",
+			fields:   `"displayLabels":[{"dimension":"description","value":"Raw description","valueI18n":{"en-US":"Credit details","zh-CN":"积分说明"}}]`,
+			wantName: "Raw description", wantI18n: map[string]string{"en-US": "Credit details", "zh-CN": "积分说明"},
+		},
+		{
+			name:     "snake_description_without_raw_value",
+			fields:   `"display_labels":[{"dimension":"description","value_i18n":{"en-US":"Credit details","zh-CN":"积分说明"}}],"title":"  Custom title  "`,
+			wantName: "Custom title", wantI18n: map[string]string{"en-US": "Credit details", "zh-CN": "积分说明"},
+		},
+		{
+			name: "localized_title_keeps_priority_without_raw_value",
+			fields: `"displayLabels":[
+				{"dimension":"description","value":"Description","valueI18n":{"en-US":"Details"}},
+				{"dimension":"title","valueI18n":{"zh-CN":"专属积分"}}
+			],"displayName":"Custom display name"`,
+			wantName: "Custom display name", wantI18n: map[string]string{"zh-CN": "专属积分"},
+		},
+		{
+			name:     "internal_label_value_uses_package_name",
+			fields:   `"displayLabels":[{"dimension":"title","value":"pkg-internal","valueI18n":{"en-US":"Exclusive credits"}}],"packageName":"Custom package"`,
+			wantName: "Custom package", wantI18n: map[string]string{"en-US": "Exclusive credits"},
+		},
+		{name: "raw_title", fields: `"title":"Custom title","displayName":"Lower priority"`, wantName: "Custom title"},
+		{name: "raw_display_name", fields: `"displayName":"Custom display name"`, wantName: "Custom display name"},
+		{name: "raw_package_name", fields: `"packageName":"Custom package"`, wantName: "Custom package"},
+		{name: "custom_name", fields: `"name":"  My credits  "`, wantName: "My credits"},
+		{name: "internal_act_name", fields: `"name":"act-internal"`},
+		{name: "internal_growth_name", fields: `"name":"growth-internal"`},
+		{name: "internal_package_name", fields: `"name":"pkg-internal"`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"userQuota":{"total":100,"remaining":100,` + tt.fields + `}}`))
+			}))
+			defer srv.Close()
+			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
+				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
+			})
+			q, ok := res.Quotas["user"]
+			if !ok {
+				t.Fatalf("missing user quota: %+v", res)
+			}
+			assertQoderLabelJSON(t, q, tt.wantName, tt.wantI18n)
+		})
 	}
 }

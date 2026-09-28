@@ -1,6 +1,6 @@
 import { type Component, For, Show, batch, createSignal, createMemo, createEffect, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
-import { useI18n } from '@/i18n'
+import { useI18n, type I18nKey, type Locale } from '@/i18n'
 import { api } from '@/lib/api'
 import { Card, Badge, AuthBadge, Button, Alert, Empty, Skeleton, Toggle, ProviderAvatar, IconSettings, Select, Input, IconChevronLeft, IconChevronRight, IconZap, IconClock, PageHeader } from '@/components/ui'
 import { formatNumber } from '@/lib/format'
@@ -16,6 +16,7 @@ interface QuotaBucket {
   resetSoon?: boolean
   unit: string
   displayName?: string
+  displayNameI18n?: Partial<Record<Locale, string>>
 }
 
 interface ConnQuota {
@@ -23,8 +24,15 @@ interface ConnQuota {
   quotas?: Record<string, QuotaBucket>
   message?: string
 }
+
+const BUCKET_FALLBACK_LABELS: Record<string, I18nKey | undefined> = {
+  user: 'quota.bucketUser',
+  organization: 'quota.bucketOrg',
+  addOn: 'quota.bucketAddOn',
+}
+
 const Quota: Component = () => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const store = useGatewayStore()
   const REFRESH_INTERVAL_SECS = 60
   const [rows, setRows] = createSignal<ProviderUsage[]>([])
@@ -309,7 +317,8 @@ const Quota: Component = () => {
           <For each={currentKeys()}>
             {k => {
               const b = () => props.quotasObj[k]
-              const label = () => b().displayName || (k === 'user' ? t('quota.bucketUser') : k === 'organization' ? t('quota.bucketOrg') : k === 'addOn' ? t('quota.bucketAddOn') : k)
+              const fallbackLabelKey = BUCKET_FALLBACK_LABELS[k]
+              const label = () => b().displayNameI18n?.[locale()] || b().displayName || (fallbackLabelKey ? t(fallbackLabelKey) : k)
               return <QuotaItem name={label()} quota={b()} />
             }}
           </For>

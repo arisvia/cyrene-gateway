@@ -118,7 +118,12 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			total = num(q["cap"])
 		}
 		used := num(q["used"])
+		_, hasUsed := q["used"]
 		remaining := num(q["remaining"])
+		_, hasRemaining := q["remaining"]
+		if !hasRemaining && hasUsed && total > 0 {
+			remaining = total - used
+		}
 		if total <= 0 && remaining > 0 {
 			total = used + remaining
 		}
@@ -130,13 +135,14 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			unit = "credits"
 		}
 		remainingPct := 0.0
-		if pct := num(q["percentage"]); pct > 0 {
+		// Exact balances take precedence over ambiguous fractional percentages.
+		if total > 0 && (hasRemaining || hasUsed) {
+			remainingPct = remaining / total * 100
+		} else if pct := num(q["percentage"]); pct > 0 {
 			remainingPct = 100 - pct
 			if pct <= 1.0 {
 				remainingPct = (1.0 - pct) * 100
 			}
-		} else if total > 0 {
-			remainingPct = remaining / total * 100
 		}
 		if remainingPct < 0 {
 			remainingPct = 0
@@ -145,7 +151,7 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			remainingPct = 100
 		}
 
-		dispName := extractQoderDisplayName(q, defaultDisplayName)
+		dispName, dispNameI18n := extractQoderDisplayName(q, defaultDisplayName)
 		quotas[name] = Quota{
 			Used:                used,
 			Total:               total,
@@ -154,6 +160,7 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 			ResetAt:             parseBucketReset(q, resetAt),
 			Unit:                unit,
 			DisplayName:         dispName,
+			DisplayNameI18n:     dispNameI18n,
 		}
 	}
 
@@ -163,12 +170,8 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 	addOnQuota, _ := data["addOnQuota"].(map[string]any)
 
 	extractQuotaBucket("user", userQuota, "")
-	orgDefaultName := "Organization Credits"
-	if strings.TrimSpace(c.Organization) != "" {
-		orgDefaultName = strings.TrimSpace(c.Organization)
-	}
-	extractQuotaBucket("organization", orgQuota, orgDefaultName)
-	extractQuotaBucket("addOn", addOnQuota, "Add-on Credits")
+	extractQuotaBucket("organization", orgQuota, strings.TrimSpace(c.Organization))
+	extractQuotaBucket("addOn", addOnQuota, "")
 
 	// 2. Dynamically unpack any other quota or package structures in response
 	for k, v := range data {
@@ -221,11 +224,12 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		}
 		plan = fmt.Sprintf("Qoder (%.0f%% used)", pct)
 	}
-	totalRemaining := 0.0
-	for _, q := range quotas {
-		totalRemaining += q.Remaining
+	// Dedicated/promotional credits do not establish general quota availability.
+	hasAvailableQuota := quotas["user"].Remaining > 0 || quotas["addOn"].Remaining > 0
+	if available, ok := orgQuota["available"].(bool); !ok || available {
+		hasAvailableQuota = hasAvailableQuota || quotas["organization"].Remaining > 0
 	}
-	if exceeded, _ := data["isQuotaExceeded"].(bool); exceeded && totalRemaining <= 0 {
+	if exceeded, _ := data["isQuotaExceeded"].(bool); exceeded && !hasAvailableQuota {
 		plan = "Qoder (Quota Exceeded)"
 	}
 	return QuotaResult{Plan: plan, Quotas: quotas, AccountID: accountID}
@@ -294,81 +298,43 @@ func formatBucketTitle(s string) string {
 	}
 	return strings.Join(words, " ")
 }
-func extractQoderDisplayName(q map[string]any, defaultDisplayName string) string {
-	if q == nil {
-		return defaultDisplayName
-	}
-	// 1. Prioritize displayLabels / display_labels
-	var labels []any
-	if l, ok := q["displayLabels"].([]any); ok {
-		labels = l
-	} else if l, ok := q["display_labels"].([]any); ok {
-		labels = l
-	}
-	for _, item := range labels {
-		lm, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		dim, _ := lm["dimension"].(string)
-		if dim == "title" || dim == "name" {
-			if i18n, ok := lm["valueI18n"].(map[string]any); ok {
-				if s, ok := i18n["zh-CN"].(string); ok && strings.TrimSpace(s) != "" {
-					return strings.TrimSpace(s)
-				}
-				if s, ok := i18n["en-US"].(string); ok && strings.TrimSpace(s) != "" {
-					return strings.TrimSpace(s)
+func extractQoderDisplayName(q map[string]any, defaultDisplayName string) (string, map[string]string) {
+	labels, _ := orSlice(q, "displayLabels", "display_labels")
+
+	var labelValue string
+	var translations map[string]string
+	// Select one label: title, then name, then description. Keep its translations
+	// together so the UI can switch locales without mixing titles and descriptions.
+labelSearch:
+	for _, dimension := range []string{"title", "name", "description"} {
+		for _, item := range labels {
+			label, ok := item.(map[string]any)
+			if !ok || label["dimension"] != dimension {
+				continue
+			}
+			i18n, _ := orMap(label, "valueI18n", "value_i18n")
+			for locale, value := range i18n {
+				if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+					if translations == nil {
+						translations = make(map[string]string)
+					}
+					translations[locale] = strings.TrimSpace(text)
 				}
 			}
-			if i18n, ok := lm["value_i18n"].(map[string]any); ok {
-				if s, ok := i18n["zh-CN"].(string); ok && strings.TrimSpace(s) != "" {
-					return strings.TrimSpace(s)
-				}
-				if s, ok := i18n["en-US"].(string); ok && strings.TrimSpace(s) != "" {
-					return strings.TrimSpace(s)
-				}
-			}
-			if v, ok := lm["value"].(string); ok && strings.TrimSpace(v) != "" {
-				return strings.TrimSpace(v)
-			}
-		}
-	}
-	for _, item := range labels {
-		lm, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		dim, _ := lm["dimension"].(string)
-		if dim == "description" {
-			if i18n, ok := lm["valueI18n"].(map[string]any); ok {
-				if s, ok := i18n["zh-CN"].(string); ok && strings.TrimSpace(s) != "" {
-					return strings.TrimSpace(s)
-				}
-			}
-			if v, ok := lm["value"].(string); ok && strings.TrimSpace(v) != "" {
-				return strings.TrimSpace(v)
+			labelValue, _ = label["value"].(string)
+			if strings.TrimSpace(labelValue) != "" || len(translations) > 0 {
+				break labelSearch
 			}
 		}
 	}
 
-	// 2. Check title / displayName / packageName
-	if t, ok := q["title"].(string); ok && strings.TrimSpace(t) != "" {
-		return strings.TrimSpace(t)
-	}
-	if dn, ok := q["displayName"].(string); ok && strings.TrimSpace(dn) != "" {
-		return strings.TrimSpace(dn)
-	}
-	if pn, ok := q["packageName"].(string); ok && strings.TrimSpace(pn) != "" {
-		return strings.TrimSpace(pn)
-	}
-
-	// 3. Check name (filter out internal generated IDs like act-*, growth-*, pkg-*)
-	if n, ok := q["name"].(string); ok && strings.TrimSpace(n) != "" {
-		trimmed := strings.TrimSpace(n)
-		if !strings.HasPrefix(trimmed, "act-") && !strings.HasPrefix(trimmed, "growth-") && !strings.HasPrefix(trimmed, "pkg-") {
-			return trimmed
+	// Keep a locale-neutral fallback, excluding internal generated identifiers.
+	for _, value := range []any{labelValue, q["title"], q["displayName"], q["packageName"], q["name"]} {
+		name, _ := value.(string)
+		name = strings.TrimSpace(name)
+		if name != "" && !strings.HasPrefix(name, "act-") && !strings.HasPrefix(name, "growth-") && !strings.HasPrefix(name, "pkg-") {
+			return name, translations
 		}
 	}
-
-	return defaultDisplayName
+	return defaultDisplayName, translations
 }

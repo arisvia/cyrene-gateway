@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@solidjs/testing-library'
 import { render } from 'solid-js/web'
 import type { JSX } from 'solid-js'
 import { api, type RequestOptions } from '@/lib/api'
-import { t } from '@/i18n'
+import { locale, setLocale, t } from '@/i18n'
 import { useGatewayStore } from '@/stores/gateway'
 import type { Provider } from '@/types/domain'
 import Quota from '@/pages/Quota'
@@ -273,5 +273,93 @@ describe('Quota slow-network regressions', () => {
     const columns = [...skeletons(card('first'))].filter(element => element.classList.contains('h-3'))
     expect(columns).toHaveLength(12)
     expect(columns.every(element => element.classList.contains('min-w-0') && !element.classList.contains('shrink-0'))).toBe(true)
+  })
+})
+
+describe('Quota bucket localization', () => {
+  let originalLocale: ReturnType<typeof locale>
+
+  beforeEach(() => {
+    originalLocale = locale()
+    setLocale('zh-CN')
+    useGatewayStore().setProviders(connections.map(conn => ({ ...conn, provider: 'qoder' })))
+  })
+
+  afterEach(() => setLocale(originalLocale))
+
+  it('switches upstream labels on the same quota data without refetching', async () => {
+    await mount()
+    request(quotaPath('first')).resolve({
+      quotas: {
+        dedicatedResourcePackages_1: {
+          ...quota().quotas.user,
+          displayName: 'sota model series',
+          displayNameI18n: { 'zh-CN': 'SOTA 专属积分', 'en-US': 'SOTA Exclusive Credits' },
+        },
+      },
+    })
+    await flush()
+    const label = within(card('first')).getByText('SOTA 专属积分')
+    expect(label.title).toBe('SOTA 专属积分')
+    expect(card('first').textContent).not.toContain('sota model series')
+    const requestCount = vi.mocked(api).mock.calls.length
+
+    setLocale('en-US')
+    await flush()
+    expect(within(card('first')).getByText('SOTA Exclusive Credits')).toBe(label)
+    expect(label.title).toBe('SOTA Exclusive Credits')
+    expect(card('first').textContent).not.toContain('SOTA 专属积分')
+
+    setLocale('zh-CN')
+    await flush()
+    expect(within(card('first')).getByText('SOTA 专属积分')).toBe(label)
+    expect(vi.mocked(api).mock.calls.length).toBe(requestCount)
+  })
+
+  it('translates standard buckets while keeping custom organization and package names', async () => {
+    await mount()
+    const bucket = quota().quotas.user
+    request(quotaPath('first')).resolve({ quotas: { user: bucket, organization: bucket, addOn: bucket } })
+    request(quotaPath('second')).resolve({
+      quotas: {
+        organization: { ...bucket, displayName: '麦穗通信' },
+        dedicatedResourcePackages_1: { ...bucket, displayName: 'My credits' },
+      },
+    })
+    await flush()
+    for (const name of ['用户个人额度', '组织共享包', '附加额度']) {
+      expect(within(card('first')).getByText(name)).toBeTruthy()
+    }
+    const organization = within(card('second')).getByText('麦穗通信')
+    const customName = within(card('second')).getByText('My credits')
+
+    setLocale('en-US')
+    await flush()
+    for (const name of ['Personal quota', 'Organization pool', 'Add-on Credits']) {
+      expect(within(card('first')).getByText(name)).toBeTruthy()
+    }
+    expect(within(card('second')).getByText('麦穗通信')).toBe(organization)
+    expect(within(card('second')).getByText('My credits')).toBe(customName)
+  })
+
+  it('falls back to raw names or bucket translations when the current locale is missing', async () => {
+    setLocale('en-US')
+    await mount()
+    const bucket = quota().quotas.user
+    request(quotaPath('first')).resolve({
+      quotas: {
+        dedicatedResourcePackages_1: { ...bucket, displayName: 'Raw credits', displayNameI18n: { 'zh-CN': '专属积分' } },
+        organization: { ...bucket, displayNameI18n: { 'zh-CN': '团队积分' } },
+      },
+    })
+    await flush()
+    expect(within(card('first')).getByText('Raw credits')).toBeTruthy()
+    expect(within(card('first')).getByText('Organization pool')).toBeTruthy()
+
+    setLocale('zh-CN')
+    await flush()
+    expect(within(card('first')).getByText('专属积分')).toBeTruthy()
+    expect(within(card('first')).getByText('团队积分')).toBeTruthy()
+    expect(card('first').textContent).not.toContain('Raw credits')
   })
 })
