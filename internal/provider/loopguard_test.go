@@ -1,12 +1,16 @@
 package provider
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
+	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
 // loopingRawBody trips the text-repeat detector via three identical assistant turns.
@@ -233,6 +237,39 @@ func TestApplyLoopGuardDetectOrderWithoutTools(t *testing.T) {
 	}
 	if strings.Contains(encoded, loopguard.TerminationPrompt) {
 		t.Error("termination contract requires tools")
+	}
+}
+
+// Provider sanitizers rewrite the system message, so the guard has to compose
+// after them or its text never reaches the upstream.
+func TestPrepareUpstreamRequestLoopGuardSurvivesProviderSanitizers(t *testing.T) {
+	cand := ExecutionCandidate{
+		Connection: &model.ProviderConnection{
+			ID: "cb-guard", Provider: "codebuddy", AuthType: "oauth",
+			Data: model.ConnectionData{AccessToken: "cb-test-token"},
+		},
+		ModelInfo:    model.ModelInfo{Provider: "codebuddy", Model: "hy4-preview"},
+		ProviderInfo: Registry["codebuddy"],
+	}
+
+	req, _, err := PrepareUpstreamRequest(
+		context.Background(),
+		ExecutionRequest{RawBody: []byte(loopingRawBody), Stream: false, HasTools: true, LoopGuardEnabled: true},
+		cand,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(body, []byte(loopguard.TerminationPrompt)) {
+		t.Errorf("termination contract never reached the codebuddy body: %s", body)
+	}
+	if !bytes.Contains(body, []byte(hintMarker)) {
+		t.Errorf("loop hint never reached the codebuddy body: %s", body)
 	}
 }
 

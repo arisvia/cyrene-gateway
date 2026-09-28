@@ -118,9 +118,6 @@ func PrepareUpstreamRequest(
 		bodyMap["stream_options"] = options
 	}
 
-	if req.LoopGuardEnabled {
-		ApplyLoopGuard(bodyMap, req.RawBody, "openai", req.HasTools)
-	}
 	if modelInfo.Provider == "codex" {
 		if tools, ok := bodyMap["tools"].([]any); ok {
 			for _, tool := range tools {
@@ -141,6 +138,11 @@ func PrepareUpstreamRequest(
 		sanitizeGithubRequest(modelInfo.Model, bodyMap)
 	}
 	ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
+	// The sanitizers above may replace the system message, so the guard text is
+	// composed after them and reaches the upstream in the surviving shape.
+	if req.LoopGuardEnabled {
+		ApplyLoopGuard(bodyMap, req.RawBody, "openai", req.HasTools)
+	}
 	if applyTokenSaverFn != nil {
 		applyTokenSaverFn(bodyMap, "openai")
 	}
