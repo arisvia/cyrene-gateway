@@ -4,9 +4,91 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
+
+func TestConnectionReadsNormalizeNullableColumns(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	// name, email and priority are nullable columns, so rows written before those
+	// fields were populated arrive as NULL and must read back as zero values.
+	if _, err := database.conn.Exec(`INSERT INTO providerConnections
+		(id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt)
+		VALUES ('nulls', 'qoder', 'api-key', NULL, NULL, NULL, 0, '{}', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "active", Provider: "qoder", AuthType: "oauth", Name: "Five", Email: "five@example.test",
+		Priority: 5, IsActive: true, Data: model.ConnectionData{AccessToken: "access"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := database.ListConnections()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ID != "nulls" || list[1].ID != "active" {
+		t.Fatalf("expected NULL priority first, got %v", idsOf(list))
+	}
+	nulls := list[0]
+	if nulls.Name != "" || nulls.Email != "" || nulls.Priority != 0 || nulls.IsActive {
+		t.Errorf("NULL columns must normalize to zero values, got %+v", nulls)
+	}
+	if nulls.CreatedAt.Year() != 2026 || nulls.CreatedAt.Month() != time.January || nulls.CreatedAt.Day() != 1 {
+		t.Errorf("expected createdAt parsed, got %v", nulls.CreatedAt)
+	}
+	if nulls.UpdatedAt.IsZero() {
+		t.Error("expected updatedAt parsed")
+	}
+	if list[1].Priority != 5 || !list[1].IsActive || list[1].Data.AccessToken != "access" {
+		t.Errorf("populated row must round-trip, got %+v", list[1])
+	}
+
+	active, err := database.ListConnectionsByProvider("qoder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 || active[0].ID != "active" {
+		t.Errorf("expected only the active connection, got %v", idsOf(active))
+	}
+
+	single, err := database.GetConnection("nulls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if single.Name != "" || single.Priority != 0 || single.IsActive {
+		t.Errorf("GetConnection must normalize NULL columns identically, got %+v", single)
+	}
+
+	if _, err := database.GetConnection("absent"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+
+	if _, err := database.conn.Exec(`UPDATE providerConnections SET data = 'not-json' WHERE id = 'active'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetConnection("active"); err == nil {
+		t.Error("expected a corrupt data blob to surface as an error")
+	}
+	if _, err := database.ListConnections(); err == nil {
+		t.Error("expected a corrupt data blob to abort the list query")
+	}
+}
+
+func idsOf(list []model.ProviderConnection) []string {
+	ids := make([]string, len(list))
+	for i, c := range list {
+		ids[i] = c.ID
+	}
+	return ids
+}
 
 func TestConnectionProfileCompareAndSwap(t *testing.T) {
 	for _, field := range []string{"none", "name-only", "name-only-no-provider-data", "name", "email", "organizationName", "organization_name", "provider", "authType", "apiKey", "accessToken", "refreshToken", "deleted"} {

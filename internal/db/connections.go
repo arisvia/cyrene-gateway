@@ -9,38 +9,39 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
-// Provider Connections repository
+// connectionColumns is the single read projection for providerConnections; every
+// connection query scans it through readConnection so the columns cannot drift.
+const connectionColumns = `id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt`
 
-func (d *DB) ListConnections() ([]model.ProviderConnection, error) {
-	rows, err := d.conn.Query(
-		`SELECT id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt FROM providerConnections ORDER BY priority ASC`,
-	)
-	if err != nil {
-		return nil, err
+// readConnection maps one scanned row, normalizing the nullable name, email and
+// priority columns to zero values.
+func readConnection(scan func(dest ...any) error) (model.ProviderConnection, error) {
+	var c model.ProviderConnection
+	var data, createdAt, updatedAt string
+	var name, email sql.NullString
+	var priority sql.NullInt64
+	var isActive int
+
+	if err := scan(&c.ID, &c.Provider, &c.AuthType, &name, &email, &priority, &isActive, &data, &createdAt, &updatedAt); err != nil {
+		return model.ProviderConnection{}, err
 	}
-	defer rows.Close()
+	c.Name, c.Email = name.String, email.String
+	c.Priority = int(priority.Int64)
+	c.IsActive = isActive == 1
+	c.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	c.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	if err := json.Unmarshal([]byte(data), &c.Data); err != nil {
+		return model.ProviderConnection{}, err
+	}
+	return c, nil
+}
 
+func collectConnections(rows *sql.Rows) ([]model.ProviderConnection, error) {
+	defer rows.Close()
 	conns := []model.ProviderConnection{}
 	for rows.Next() {
-		var c model.ProviderConnection
-		var data string
-		var name, email sql.NullString
-		var priority sql.NullInt64
-		var isActive int
-		var createdAt, updatedAt string
-
-		if err := rows.Scan(&c.ID, &c.Provider, &c.AuthType, &name, &email, &priority, &isActive, &data, &createdAt, &updatedAt); err != nil {
-			return nil, err
-		}
-
-		c.Name = name.String
-		c.Email = email.String
-		c.Priority = int(priority.Int64)
-		c.IsActive = isActive == 1
-		c.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-		c.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
-
-		if err := json.Unmarshal([]byte(data), &c.Data); err != nil {
+		c, err := readConnection(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
 		conns = append(conns, c)
@@ -48,70 +49,35 @@ func (d *DB) ListConnections() ([]model.ProviderConnection, error) {
 	return conns, rows.Err()
 }
 
+func (d *DB) ListConnections() ([]model.ProviderConnection, error) {
+	rows, err := d.conn.Query(
+		`SELECT ` + connectionColumns + ` FROM providerConnections ORDER BY priority ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return collectConnections(rows)
+}
+
 func (d *DB) ListConnectionsByProvider(provider string) ([]model.ProviderConnection, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt FROM providerConnections WHERE provider = ? AND isActive = 1 ORDER BY priority ASC`,
+		`SELECT `+connectionColumns+` FROM providerConnections WHERE provider = ? AND isActive = 1 ORDER BY priority ASC`,
 		provider,
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	conns := []model.ProviderConnection{}
-	for rows.Next() {
-		var c model.ProviderConnection
-		var data string
-		var name, email sql.NullString
-		var priority sql.NullInt64
-		var isActive int
-		var createdAt, updatedAt string
-
-		if err := rows.Scan(&c.ID, &c.Provider, &c.AuthType, &name, &email, &priority, &isActive, &data, &createdAt, &updatedAt); err != nil {
-			return nil, err
-		}
-
-		c.Name = name.String
-		c.Email = email.String
-		c.Priority = int(priority.Int64)
-		c.IsActive = isActive == 1
-		c.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-		c.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
-
-		if err := json.Unmarshal([]byte(data), &c.Data); err != nil {
-			return nil, err
-		}
-		conns = append(conns, c)
-	}
-	return conns, rows.Err()
+	return collectConnections(rows)
 }
 
 func (d *DB) GetConnection(id string) (*model.ProviderConnection, error) {
-	var c model.ProviderConnection
-	var data string
-	var name, email sql.NullString
-	var priority sql.NullInt64
-	var isActive int
-	var createdAt, updatedAt string
-
-	err := d.conn.QueryRow(
-		`SELECT id, provider, authType, name, email, priority, isActive, data, createdAt, updatedAt FROM providerConnections WHERE id = ?`, id,
-	).Scan(&c.ID, &c.Provider, &c.AuthType, &name, &email, &priority, &isActive, &data, &createdAt, &updatedAt)
+	c, err := readConnection(d.conn.QueryRow(
+		`SELECT `+connectionColumns+` FROM providerConnections WHERE id = ?`, id,
+	).Scan)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
-	}
-
-	c.Name = name.String
-	c.Email = email.String
-	c.Priority = int(priority.Int64)
-	c.IsActive = isActive == 1
-	c.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-	c.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
-
-	if err := json.Unmarshal([]byte(data), &c.Data); err != nil {
 		return nil, err
 	}
 	return &c, nil
