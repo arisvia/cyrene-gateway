@@ -163,11 +163,11 @@ async function reopenOAuth(page: Page) {
 function submitOAuthCredential(mode: 'import' | 'exchange') {
   // OAuth 面板两处共用同一套文案，市场向导与详情页不再有各自的键位
   const placeholder = mode === 'exchange'
-    ? t('providers.oauthPasteCallbackPlaceholder')
+    ? t('providerDetail.oauthPasteCallbackPlaceholder')
     : t('providerDetail.tokenPastePlaceholder')
   fireEvent.input(dialog().getByPlaceholderText(placeholder), { target: { value: 'test-credential' } })
   const submit = dialog().getByRole('button', { name: mode === 'exchange'
-    ? t('providers.confirmAndConnect')
+    ? t('providerDetail.confirmAndConnect')
     : t('providerDetail.importAndSave') }) as HTMLButtonElement
   submit.click()
   return submit

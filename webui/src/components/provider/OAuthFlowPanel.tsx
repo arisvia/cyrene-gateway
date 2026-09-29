@@ -97,13 +97,13 @@ const OAuthFlowPanel: Component<OAuthFlowPanelProps> = props => {
                 fallback={
                   <div class="space-y-3 py-1 text-left">
                     <p class="text-xs text-faint leading-relaxed">
-                      {t('providers.oauthPasteCallbackHelp')}
+                      {t('providerDetail.oauthPasteCallbackHelp')}
                     </p>
                     <div class="space-y-1.5">
                       <Input
                         value={manualCode()}
                         onInput={v => setManualCode(v)}
-                        placeholder={t('providers.oauthPasteCallbackPlaceholder')}
+                        placeholder={t('providerDetail.oauthPasteCallbackPlaceholder')}
                         class="font-mono text-xs"
                       />
                     </div>
@@ -125,7 +125,7 @@ const OAuthFlowPanel: Component<OAuthFlowPanelProps> = props => {
                         disabled={!manualCode().trim()}
                         onClick={handleManualSubmit}
                       >
-                        {t('providers.confirmAndConnect')}
+                        {t('providerDetail.confirmAndConnect')}
                       </Button>
                     </div>
                   </div>
