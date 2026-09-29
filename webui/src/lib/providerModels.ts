@@ -30,7 +30,11 @@ export interface ProviderModelsDeps {
   providerId: () => string | undefined
 }
 
-const modelKeyOf = (m: ProviderModel) => m.id || m.name || ''
+/** 模型在本连接内的唯一键：自定义模型可能只有 name。视图侧索引探测结果时也必须用它。 */
+export const modelKeyOf = (m: ProviderModel) => m.id || m.name || ''
+
+/** 未显式停用的都算启用，两条清单共用同一判定。 */
+const filterEnabled = (list: ProviderModel[]) => list.filter(m => m.enabled !== false)
 
 /** 启用者优先、再按模型 ID 自然序，注册表与自定义清单共用同一套排序。 */
 function sortModels(list: ProviderModel[]): ProviderModel[] {
@@ -70,14 +74,17 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     (payload().registryModels ?? []).concat(payload().customModels ?? [])
   const activeModels = () => allDisplayModels().filter(m => Boolean(m.id) && m.enabled !== false)
 
-  const enabledModelsCount = createMemo(() => allDisplayModels().filter(m => m.enabled !== false).length)
+  const enabledModelsCount = createMemo(() => filterEnabled(allDisplayModels()).length)
   const disabledModelsCount = () => allDisplayModels().length - enabledModelsCount()
 
   const sortedRegistryModels = createMemo(() => sortModels(payload().registryModels ?? []))
   const sortedCustomModels = createMemo(() => sortModels(payload().customModels ?? []))
-  const customCount = () => (payload().customModels ?? []).length
+  const registryCount = createMemo(() => sortedRegistryModels().length)
+  const registryEnabledCount = createMemo(() => filterEnabled(sortedRegistryModels()).length)
+  const customCount = createMemo(() => sortedCustomModels().length)
 
   const [modelSearch, setModelSearch] = createSignal('')
+  const [newCustomModelId, setNewCustomModelId] = createSignal('')
   const [showCustomModels, setShowCustomModels] = createSignal(false)
   const [syncingModels, setSyncingModels] = createSignal(false)
   const [batchBusy, setBatchBusy] = createSignal(false)
@@ -86,14 +93,22 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   const [testingAll, setTestingAll] = createSignal(false)
   const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
 
+  // 探测是异步的：请求已经在路上时切账号，回来那份结果属于上一个连接。
+  // 每次复位自增，写状态前先比对，过期的直接丢弃，既不弹旧汇总也不给新连接挂徽标。
+  let generation = 0
+
+  // 有自定义模型的连接默认展开该区。直接跟着 payload 走：换账号后新清单到货时再判一次，
+  // 否则复位折叠的状态会一直挂着，B 明明有自定义模型却只显示一个"+ 添加"按钮。
   createEffect(() => {
-    if (customCount() > 0) setShowCustomModels(true)
+    if ((payload().customModels ?? []).length > 0) setShowCustomModels(true)
   })
 
   // 切换账号：清掉只属于上一个连接的视图状态，否则 A 的搜索词会继续隐藏 B 的行，
-  // A 的探测结果徽标也会挂到同名的 B 模型上。
+  // A 的探测结果徽标也会挂到同名的 B 模型上，A 未提交的自定义模型草稿也会被加进 B。
   createEffect(on(deps.connectionId, () => {
+    generation++
     setModelSearch('')
+    setNewCustomModelId('')
     setModelTestResults({})
     setTestingModels({})
     setShowCustomModels(false)
@@ -101,6 +116,13 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     setTestingAll(false)
     setTestAllProgress(null)
   }))
+
+  const filteredRegistryModels = createMemo(() => {
+    const q = modelSearch().trim().toLowerCase()
+    if (!q) return sortedRegistryModels()
+    return sortedRegistryModels().filter(m =>
+      (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q))
+  })
 
   /** 把一批模型的 enabled 落成目标值。 */
   function mutateEnabled(targets: Set<string>, enabled: boolean) {
@@ -205,18 +227,22 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   async function probeModel(modelId: string, fallbackError = t('providerDetail.testRequestError')): Promise<boolean | undefined> {
     const p = deps.providerId()
     if (!p) return undefined
+    const gen = generation
     setTestingModels(prev => ({ ...prev, [modelId]: true }))
     try {
       const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
       const res = await store.testModel(fullModel, deps.connectionId())
+      if (gen !== generation) return undefined
       setModelTestResults(prev => ({ ...prev, [modelId]: { ok: res.ok, latency: res.latency, error: res.error } }))
       return res.ok
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : fallbackError
-      setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
+      if (gen === generation) {
+        setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
+      }
       return undefined
     } finally {
-      setTestingModels(prev => ({ ...prev, [modelId]: false }))
+      if (gen === generation) setTestingModels(prev => ({ ...prev, [modelId]: false }))
     }
   }
 
@@ -246,6 +272,7 @@ export function useProviderModels(deps: ProviderModelsDeps) {
       return
     }
     setTestingAll(true)
+    const gen = generation
     setTestAllProgress({ current: 0, total: targetList.length })
 
     let completed = 0
@@ -255,17 +282,20 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     // 三条并发，避免对上游造成突发压力
     const worker = async () => {
       while (index < targetList.length) {
+        if (gen !== generation) return
         const cur = targetList[index++]
         const modelId = modelKeyOf(cur)
         if (!modelId) continue
         if (await probeModel(modelId, t('providerDetail.testUnexpected'))) passed++
         else failed++
+        if (gen !== generation) return
         completed++
         setTestAllProgress({ current: completed, total: targetList.length })
       }
     }
     await Promise.all(Array.from({ length: Math.min(3, targetList.length) }, worker))
 
+    if (gen !== generation) return
     setTestingAll(false)
     setTestAllProgress(null)
     toast.success(t('toast.testAllDone', { passed, failed }))
@@ -362,8 +392,10 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   return {
     payload,
     activeModels, allDisplayModels, enabledModelsCount, disabledModelsCount,
-    sortedRegistryModels, sortedCustomModels, customCount,
+    sortedRegistryModels, sortedCustomModels, filteredRegistryModels,
+    registryCount, registryEnabledCount, customCount,
     showCustomModels, setShowCustomModels, modelSearch, setModelSearch,
+    newCustomModelId, setNewCustomModelId,
     syncingModels, handleSyncModels, batchBusy,
     testingModels, modelTestResults, testingAll, testAllProgress,
     toggleModel, testSingleModel, handleTestAll, failedModelsList,

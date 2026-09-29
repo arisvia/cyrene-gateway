@@ -1,18 +1,21 @@
-import { type Component, For, Show, createSignal } from 'solid-js'
+import { type Component, For, Show } from 'solid-js'
 import { useI18n } from '@/i18n'
-import type { ProviderModelsApi } from '@/lib/providerModels'
+import { modelKeyOf, type ProviderModelsApi } from '@/lib/providerModels'
 import { Badge, Button, Card, Empty, IconButton, IconCheck, IconClose, IconEdit, IconLock, IconZap, Input, Toggle } from '@/components/ui'
 
 const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
   const { t } = useI18n()
   const {
-    payload,
-    sortedRegistryModels,
+    filteredRegistryModels,
+    registryCount,
+    registryEnabledCount,
     sortedCustomModels,
     customCount,
     showCustomModels,
     setShowCustomModels,
     modelSearch,
+    newCustomModelId,
+    setNewCustomModelId,
     testingModels,
     modelTestResults,
     toggleModel,
@@ -22,7 +25,12 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
     startEditModel
   } = props.models
 
-  const [newCustomModelId, setNewCustomModelId] = createSignal('')
+  function submitCustomModel() {
+    const val = newCustomModelId().trim()
+    if (!val) return
+    addCustomModel(val, '')
+    setNewCustomModelId('')
+  }
 
 
   return (
@@ -56,8 +64,7 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
               onKeyDown={e => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  const val = newCustomModelId().trim()
-                  if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
+                  submitCustomModel()
                 }
               }}
             />
@@ -65,10 +72,7 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
               size="sm"
               variant="secondary"
               disabled={!newCustomModelId().trim()}
-              onClick={() => {
-                const val = newCustomModelId().trim()
-                if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
-              }}
+              onClick={submitCustomModel}
             >
               {t('common.add')}
             </Button>
@@ -94,9 +98,9 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
                     <Toggle
                       ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
                       checked={m.enabled !== false}
-                      onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
+                      onChange={() => toggleModel(modelKeyOf(m), m.enabled !== false)}
                     />
-                    <IconButton size="sm" variant="ghost" class="text-faint hover:text-danger ml-0.5" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></IconButton>
+                    <IconButton size="sm" variant="ghost" class="text-faint hover:text-danger ml-0.5" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(modelKeyOf(m))}><IconClose size={12} /></IconButton>
                   </span>
                 )}
               </For>
@@ -112,154 +116,144 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
           <h3 class="text-sm font-semibold text-foreground">{t('providerDetail.availableModels')}</h3>
           <span>
             {t('providerDetail.modelsCountSummary', {
-              total: (payload().registryModels ?? []).length,
-              enabled: (payload().registryModels ?? []).filter(m => m.enabled !== false).length,
+              total: registryCount(),
+              enabled: registryEnabledCount(),
             })}
           </span>
         </div>
         <Show when={modelSearch().trim()}>
           <span class="text-accent font-mono">
-            {(() => {
-              const count = (payload().registryModels ?? []).filter(m => {
-                const q = modelSearch().trim().toLowerCase()
-                return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
-              }).length
-              return `${count} / ${(payload().registryModels ?? []).length}`
-            })()}
+            {filteredRegistryModels().length} / {registryCount()}
           </span>
         </Show>
       </div>
       <Show
-        when={(payload().registryModels ?? []).length > 0}
+        when={registryCount() > 0}
         fallback={<Empty message={t('providerDetail.noModels')} />}
       >
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            <For each={sortedRegistryModels().filter(m => {
-              const q = modelSearch().trim().toLowerCase()
-              if (!q) return true
-              return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
-            })}>
-              {m => (
-                <div
-                  class={`flex flex-col justify-between p-3 rounded-control border transition-all ${
-                    m.enabled !== false
-                      ? 'border-subtle bg-bg-elevated/70 hover:border-accent/40 shadow-sm'
-                      : 'border-subtle/30 bg-bg-elevated/25 opacity-55 hover:opacity-80'
-                  }`}
-                >
-                  <div class="flex flex-wrap items-start justify-between gap-2">
-                    <div class="min-w-0 flex-1 pr-1">
-                      <div class="flex items-center gap-1.5 flex-wrap">
-                        <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
-                          {m.name || m.id}
+          <For each={filteredRegistryModels()}>
+            {m => (
+              <div
+                class={`flex flex-col justify-between p-3 rounded-control border transition-all ${
+                  m.enabled !== false
+                    ? 'border-subtle bg-bg-elevated/70 hover:border-accent/40 shadow-sm'
+                    : 'border-subtle/30 bg-bg-elevated/25 opacity-55 hover:opacity-80'
+                }`}
+              >
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1 pr-1">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
+                        {m.name || m.id}
+                      </span>
+                      <Show when={m.isFree}>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 shrink-0">
+                          {t('providerDetail.freeBadge')}
                         </span>
-                        <Show when={m.isFree}>
-                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 shrink-0">
-                            {t('providerDetail.freeBadge')}
-                          </span>
-                        </Show>
-                        <Show when={m.priceFactor !== undefined && m.priceFactor !== null && m.priceFactor > 0 && !m.isFree}>
-                          <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-accent/10 text-accent border border-accent/25 shrink-0" title={t('providerDetail.priceFactorTitle', { factor: m.priceFactor! })}>
-                            {m.priceFactor}x
-                          </span>
-                        </Show>
-                        <Show when={m.enabled === false}>
-                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-control text-muted border border-subtle shrink-0">
-                            {t('providerDetail.chipDisabled')}
-                          </span>
-                        </Show>
-                        <Show when={m.hasOverride}>
-                          <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title={t('providerDetail.customMetaChipTitle')}>
-                            {t('providerDetail.chipCustom')}
-                          </span>
-                        </Show>
-                      </div>
-                      <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
+                      </Show>
+                      <Show when={m.priceFactor !== undefined && m.priceFactor !== null && m.priceFactor > 0 && !m.isFree}>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-accent/10 text-accent border border-accent/25 shrink-0" title={t('providerDetail.priceFactorTitle', { factor: m.priceFactor! })}>
+                          {m.priceFactor}x
+                        </span>
+                      </Show>
+                      <Show when={m.enabled === false}>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-control text-muted border border-subtle shrink-0">
+                          {t('providerDetail.chipDisabled')}
+                        </span>
+                      </Show>
+                      <Show when={m.hasOverride}>
+                        <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title={t('providerDetail.customMetaChipTitle')}>
+                          {t('providerDetail.chipCustom')}
+                        </span>
+                      </Show>
                     </div>
-                    <div class="shrink-0 flex items-center gap-1">
+                    <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
+                  </div>
+                  <div class="shrink-0 flex items-center gap-1">
+                    <IconButton size="sm" variant="ghost"
+                      type="button"
+                      class={`transition-colors ${testingModels()[modelKeyOf(m)] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
+                      title={t('providerDetail.testSingleTitle')}
+                      disabled={testingModels()[modelKeyOf(m)]}
+                      onClick={() => testSingleModel(modelKeyOf(m))}
+                    >
+                      <IconZap size={12} />
+                    </IconButton>
+                    <Show
+                      when={m.canEdit !== false}
+                      fallback={
+                        <span
+                          class="text-faint px-1 text-[11px] cursor-not-allowed opacity-50"
+                          title={t('providerDetail.lockedMetaTitle')}
+                        >
+                          <IconLock size={12} />
+                        </span>
+                      }
+                    >
                       <IconButton size="sm" variant="ghost"
                         type="button"
-                        class={`transition-colors ${testingModels()[m.id || m.name || ''] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
-                        title={t('providerDetail.testSingleTitle')}
-                        disabled={testingModels()[m.id || m.name || '']}
-                        onClick={() => testSingleModel(m.id || m.name || '')}
+                        class="text-faint hover:text-accent"
+                        title={t('providerDetail.editModelMetaLongTitle')}
+                        onClick={() => startEditModel(m)}
                       >
-                        <IconZap size={12} />
+                        <IconEdit size={12} />
                       </IconButton>
+                    </Show>
+                    <div title={m.enabled !== false ? t('providerDetail.toggleOffHint') : t('providerDetail.toggleOnHint')}>
+                      <Toggle
+                        ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
+                        checked={m.enabled !== false}
+                        onChange={() => toggleModel(modelKeyOf(m), m.enabled !== false)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 元数据 Badge 栏 */}
+                <div class="mt-2 pt-2 border-t border-subtle/40 flex items-center gap-1.5 flex-wrap text-[10px] text-faint">
+                  <Show when={modelTestResults()[modelKeyOf(m)]}>
+                    {res => (
                       <Show
-                        when={m.canEdit !== false}
+                        when={res().ok}
                         fallback={
                           <span
-                            class="text-faint px-1 text-[11px] cursor-not-allowed opacity-50"
-                            title={t('providerDetail.lockedMetaTitle')}
+                            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger/12 text-danger border border-danger/30 cursor-help"
+                            title={res().error || t('providerDetail.testNotPassed')}
                           >
-                            <IconLock size={12} />
+                            <IconClose size={10} class="shrink-0" />
+                            <span>{res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : t('common.failed')}</span>
                           </span>
                         }
                       >
-                        <IconButton size="sm" variant="ghost"
-                          type="button"
-                          class="text-faint hover:text-accent"
-                          title={t('providerDetail.editModelMetaLongTitle')}
-                          onClick={() => startEditModel(m)}
+                        <span
+                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 font-mono"
+                          title={t('providerDetail.testPassedLatency', { latency: res().latency || t('providerDetail.normal') })}
                         >
-                          <IconEdit size={12} />
-                        </IconButton>
+                          <IconCheck size={10} class="shrink-0" />
+                          <span>{res().latency || t('providerDetail.connected')}</span>
+                        </span>
                       </Show>
-                      <div title={m.enabled !== false ? t('providerDetail.toggleOffHint') : t('providerDetail.toggleOnHint')}>
-                        <Toggle
-                          ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
-                          checked={m.enabled !== false}
-                          onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 元数据 Badge 栏 */}
-                  <div class="mt-2 pt-2 border-t border-subtle/40 flex items-center gap-1.5 flex-wrap text-[10px] text-faint">
-                    <Show when={modelTestResults()[m.id || m.name || '']}>
-                      {res => (
-                        <Show
-                          when={res().ok}
-                          fallback={
-                            <span
-                              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger/12 text-danger border border-danger/30 cursor-help"
-                              title={res().error || t('providerDetail.testNotPassed')}
-                            >
-                              <IconClose size={10} class="shrink-0" />
-                              <span>{res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : t('common.failed')}</span>
-                            </span>
-                          }
-                        >
-                          <span
-                            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 font-mono"
-                            title={t('providerDetail.testPassedLatency', { latency: res().latency || t('providerDetail.normal') })}
-                          >
-                            <IconCheck size={10} class="shrink-0" />
-                            <span>{res().latency || t('providerDetail.connected')}</span>
-                          </span>
-                        </Show>
-                      )}
-                    </Show>
-                    <Show when={m.contextLength && m.contextLength > 0}>
-                      <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
-                        {t('providerDetail.contextLength', { length: m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength! })}
-                      </span>
-                    </Show>
-                    <Show when={m.maxOutputTokens && m.maxOutputTokens > 0}>
-                      <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
-                        {t('providerDetail.outputLength', { length: m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens! })}
-                      </span>
-                    </Show>
-                    <Show when={!m.contextLength && !m.maxOutputTokens}>
-                      <span class="italic text-[10px] opacity-60">{t('providerDetail.noContext')}</span>
-                    </Show>
-                  </div>
+                    )}
+                  </Show>
+                  <Show when={m.contextLength && m.contextLength > 0}>
+                    <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
+                      {t('providerDetail.contextLength', { length: m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength! })}
+                    </span>
+                  </Show>
+                  <Show when={m.maxOutputTokens && m.maxOutputTokens > 0}>
+                    <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
+                      {t('providerDetail.outputLength', { length: m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens! })}
+                    </span>
+                  </Show>
+                  <Show when={!m.contextLength && !m.maxOutputTokens}>
+                    <span class="italic text-[10px] opacity-60">{t('providerDetail.noContext')}</span>
+                  </Show>
                 </div>
-              )}
-            </For>
-          </div>
+              </div>
+            )}
+          </For>
+        </div>
       </Show>
     </Card>
   </div>

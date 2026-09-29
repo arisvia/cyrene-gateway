@@ -199,3 +199,116 @@ describe('ProviderDetail 模型提示与撞名边界', () => {
   })
 })
 
+describe('ProviderDetail 自定义模型草稿归属', () => {
+  const draftInput = (view: ReturnType<typeof render>) =>
+    view.getByPlaceholderText(t('providerDetail.customModelPlaceholder')) as HTMLInputElement
+  const addButton = (view: ReturnType<typeof render>) =>
+    [...view.getAllByRole('button')].find(b => (b.textContent || '').trim() === t('common.add')) as HTMLButtonElement
+
+  // Solid 的受控输入要先走原生 value setter，事件处理器读到的才是新值
+  function writeDraft(view: ReturnType<typeof render>, value: string) {
+    const input = draftInput(view)
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    setValue.call(input, value)
+    fireEvent.input(input)
+  }
+
+  it('标签页会销毁视图，草稿状态必须活在钩子里', async () => {
+    const view = await openModelsTab()
+    writeDraft(view, 'my-finetune-v1')
+    await tick()
+    fireEvent.click(view.getByRole('tab', { name: new RegExp(t('providerDetail.tabs.overview')) }))
+    await tick()
+    fireEvent.click(view.getByRole('tab', { name: new RegExp(t('providerDetail.tabs.models')) }))
+    await tick()
+    expect(draftInput(view).value).toBe('my-finetune-v1')
+    expect(addButton(view).disabled).toBe(false)
+  })
+
+  it('切换账号清空上一个连接未提交的草稿，避免把它加进新连接', async () => {
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      const provider = { provider: 'github', name: 'Primary', authType: 'api-key', priority: 0, isActive: true }
+      if (path === '/api/providers') return [
+        { ...provider, id: 'selected' },
+        { ...provider, id: 'other', name: 'Secondary', isActive: false },
+      ]
+      if (path === '/api/registry') return { categories: [{ category: 'oauth', count: 1, providers: [{ id: 'github', name: 'GitHub', category: 'oauth', authType: 'api-key', apiType: 'openai', baseUrl: '', capabilities: ['llm'] }] }], total: 1 }
+      if (path === '/api/providers/selected') return { ...provider, id: 'selected' }
+      if (path === '/api/providers/other') return { ...provider, id: 'other', name: 'Secondary', isActive: false }
+      if (path.endsWith('/models')) return { registryModels, customModels, authModes: ['api-key'], hasApiKey: true }
+      return null
+    })
+    await useGatewayStore().loadCore()
+    const history = createMemoryHistory()
+    history.set({ value: '/providers/selected' })
+    const view = render(() => (
+      <MemoryRouter history={history}>
+        <Route path="/providers/:id" component={ProviderDetail} />
+      </MemoryRouter>
+    ))
+    await tick()
+    fireEvent.click(view.getByRole('tab', { name: new RegExp(t('providerDetail.tabs.models')) }))
+    await tick()
+    writeDraft(view, 'draft-for-primary')
+    await tick()
+    expect(draftInput(view).value).toBe('draft-for-primary')
+
+    history.set({ value: '/providers/other' })
+    await tick()
+    await tick()
+    // 连接名渲染在输入框里，只能用请求序列证明真的换了账号
+    expect(vi.mocked(api).mock.calls.map(c => c[0])).toContain('/api/providers/other')
+    expect(draftInput(view).value).toBe('')
+    expect(addButton(view).disabled).toBe(true)
+  })
+})
+
+describe('ProviderDetail 跨账号探测竞态', () => {
+  it('切账号后旧连接的在途探测既不落新连接，也不再续跑', async () => {
+    registryModels = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'].map(id => ({ id, enabled: true }))
+    customModels = []
+    vi.mocked(api).mockImplementation(async (path: string) => {
+      const provider = { provider: 'github', authType: 'api-key', priority: 0, isActive: true }
+      if (path === '/api/providers') return [
+        { ...provider, id: 'selected', name: 'Primary' },
+        { ...provider, id: 'other', name: 'Secondary', isActive: false },
+      ]
+      if (path === '/api/registry') return { categories: [{ category: 'oauth', count: 1, providers: [{ id: 'github', name: 'GitHub', category: 'oauth', authType: 'api-key', apiType: 'openai', baseUrl: '', capabilities: ['llm'] }] }], total: 1 }
+      if (path === '/api/providers/selected') return { ...provider, id: 'selected', name: 'Primary' }
+      if (path === '/api/providers/other') return { ...provider, id: 'other', name: 'Secondary', isActive: false }
+      if (path.endsWith('/models')) return { registryModels, customModels, authModes: ['api-key'], hasApiKey: true }
+      return null
+    })
+    await useGatewayStore().loadCore()
+    const history = createMemoryHistory()
+    history.set({ value: '/providers/selected' })
+    const view = render(() => (
+      <MemoryRouter history={history}>
+        <Route path="/providers/:id" component={ProviderDetail} />
+      </MemoryRouter>
+    ))
+    await tick()
+    fireEvent.click(view.getByRole('tab', { name: new RegExp(t('providerDetail.tabs.models')) }))
+    await tick()
+
+    // 六条模型、三条并发：切账号时只有第一批真的发了出去
+    let settle!: (v: unknown) => void
+    testReply = new Promise(r => { settle = r })
+    const probesBefore = vi.mocked(apiPost).mock.calls.length
+    fireEvent.click(buttonByText(view, t('providerDetail.testAllModels'))!)
+    await tick()
+    expect(vi.mocked(apiPost).mock.calls.length - probesBefore).toBe(3)
+
+    history.set({ value: '/providers/other' })
+    await tick()
+    settle({ ok: false, error: 'boom' })
+    await tick()
+    await tick()
+
+    expect(vi.mocked(apiPost).mock.calls.length - probesBefore).toBe(3)
+    // 旧连接的"检测完成"汇总与失败徽标都不能出现在新连接上
+    expect(toastSpy.success).not.toHaveBeenCalled()
+    expect(view.baseElement.textContent).not.toContain('boom')
+  })
+})
+
