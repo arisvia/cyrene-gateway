@@ -2,6 +2,7 @@ import {type Component, createMemo, createSignal, For, onMount, Show, Switch, Ma
 import {A} from '@solidjs/router'
 import {useGatewayStore} from '@/stores/gateway'
 import {useOAuthFlow} from '@/lib/oauthFlow'
+import OAuthFlowPanel from '@/components/provider/OAuthFlowPanel'
 import {useI18n} from '@/i18n'
 import {
   Badge,
@@ -10,7 +11,6 @@ import {
   Empty,
   Field,
   Input,
-  Textarea,
   Modal,
   PageHeader,
   ProviderAvatar,
@@ -29,11 +29,9 @@ import {
   IconPlug,
   IconCheck,
   IconClose,
-  Alert,
 } from '@/components/ui'
 import {apiPost} from '@/lib/api'
 import {useToast} from '@/lib/toast'
-import {copyToClipboard} from '@/lib/clipboard'
 import type {BadgeTone, Provider, RegistryProvider} from '@/types/domain'
 
 function wizardPriority(value: string): number {
@@ -301,17 +299,10 @@ const Providers: Component = () => {
   })
   const {
     deviceFlow: wizardOAuthFlow,
-    manualCode: wizardManualCode, setManualCode: setWizardManualCode,
-    manualExchanging: wizardExchanging,
     devicePolling: wizardOAuthPolling,
-    deviceError: wizardOAuthError, clearDeviceError: clearWizardOAuthError,
-    copiedCode: wizardOAuthCopied, setCopiedCode: setWizardOAuthCopied,
+    deviceError: wizardOAuthError,
     isImportFlow: wizardIsImport,
-    importTokenText: wizardImportToken, setImportTokenText: setWizardImportToken,
-    importingToken: wizardImporting,
     cancelDeviceFlow: cancelWizardOAuth,
-    handleImportToken: handleWizardImportSubmit,
-    handleManualSubmit: handleWizardManualSubmit,
   } = flowApi
 
   const startWizardOAuth = () => flowApi.startDeviceFlow(
@@ -999,179 +990,24 @@ const Providers: Component = () => {
                 {/* OAuth 模式说明与直接授权发起 */}
                 <Show when={form().authType === 'oauth'}>
                   <div class="space-y-3">
-                    {/* 错误提示始终渲染在外层，杜绝静默吞错 */}
-                    <Show when={wizardOAuthError()}>
-                      <Alert
-                        variant="danger"
-                        title={t('providers.authProblemTitle')}
-                        closable
-                        onClose={clearWizardOAuthError}
-                      >
-                        {wizardOAuthError()}
-                      </Alert>
-                    </Show>
-
-                    {/* 令牌导入界面 (如 Cursor) */}
-                    <Show when={wizardIsImport()}>
-                      <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3">
-                        <div class="text-xs font-semibold text-accent flex items-center gap-1.5">
-                          <span>{t('providers.tokenImportMode')}</span>
-                        </div>
-                        <p class="text-xs text-faint leading-relaxed">
-                          {t('providers.tokenImportHint')}
-                        </p>
-                        <div class="space-y-1.5">
-                          <Textarea
-                            rows={3}
-                            value={wizardImportToken()}
-                            onInput={setWizardImportToken}
-                            placeholder={t('providers.tokenPastePlaceholder')}
-                            class="px-3 py-2 text-xs font-mono"
-                          />
-                        </div>
-                        <div class="flex items-center justify-end gap-2 pt-1">
-                          <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
-                            {t('common.cancel')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            loading={wizardImporting()}
-                            disabled={!wizardImportToken().trim()}
-                            onClick={handleWizardImportSubmit}
-                          >
-                            {t('providers.importAndConnect')}
-                          </Button>
-                        </div>
-                      </div>
-                    </Show>
-
-                    {/* 设备码 / 网页流卡片 */}
-                    <Show when={!wizardIsImport()}>
-                      <Show
-                        when={wizardOAuthFlow()}
-                        fallback={
-                          <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
-                            <div class="font-medium text-accent flex items-center gap-1.5">
-                              <IconCheck size={14} /> {t('providers.oauthQuickModeSelected')}
-                            </div>
-                            <p class="text-faint leading-relaxed">
-                              {t('providers.oauthNotice')}
-                            </p>
+                    {/* 未发起授权时只说明会发生什么；一旦有流程/导入/错误，交给共用的授权面板 */}
+                    <Show
+                      when={wizardOAuthFlow() || wizardOAuthPolling() || wizardIsImport() || !!wizardOAuthError()}
+                      fallback={
+                        <div class="p-4 rounded-xl border border-accent/30 bg-accent/10 text-xs text-foreground space-y-2.5 shadow-sm">
+                          <div class="font-medium text-accent flex items-center gap-1.5">
+                            <IconCheck size={14} /> {t('providers.oauthQuickModeSelected')}
                           </div>
-                        }
-                      >
-                        {flow => (
-                          <div class="p-4 rounded-xl bg-bg-elevated border border-accent/40 shadow-glass-hover space-y-3 text-center">
-                            <div class="text-xs font-semibold text-accent">{t('providers.oauthInProgress')}</div>
-
-                            <Show
-                              when={!flow().isManualPaste}
-                              fallback={
-                                <div class="space-y-2.5 py-1 text-left">
-                                  <p class="text-xs text-faint leading-relaxed">
-                                    {t('providers.oauthPasteCallbackHelp')}
-                                  </p>
-                                  <div class="space-y-1.5">
-                                    <Input
-                                      value={wizardManualCode()}
-                                      onInput={v => setWizardManualCode(v)}
-                                      placeholder={t('providers.oauthPasteCallbackPlaceholder')}
-                                      class="font-mono text-xs"
-                                    />
-                                  </div>
-                                  <div class="flex items-center justify-between gap-2 pt-1">
-                                    <Button
-                                      size="sm"
-                                      variant="secondary"
-                                      onClick={() => {
-                                        const url = flow().verificationUriComplete || flow().verificationUri
-                                        if (url) window.open(url, '_blank')
-                                      }}
-                                    >
-                                      {t('providers.openAuthPage')}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="primary"
-                                      loading={wizardExchanging()}
-                                      disabled={!wizardManualCode().trim()}
-                                      onClick={handleWizardManualSubmit}
-                                    >
-                                      {t('providers.confirmAndConnect')}
-                                    </Button>
-                                  </div>
-                                </div>
-                              }
-                            >
-                              {/* 有 UserCode 时展示验证码；无 UserCode 时展示网页跳转指引 */}
-                              <Show
-                                when={flow().userCode}
-                                fallback={
-                                  <div class="space-y-2 py-1">
-                                    <div class="text-xs text-faint">{t('providers.oauthBrowserOpened')}</div>
-                                    <div class="flex items-center justify-center gap-2">
-                                      <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={() => {
-                                          const url = flow().verificationUriComplete || flow().verificationUri
-                                          if (url) window.open(url, '_blank')
-                                        }}
-                                      >
-                                        {t('providers.openAuthPage')}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                }
-                              >
-                                <div class="text-xs text-faint">{t('providers.oauthEnterCode')}</div>
-                                <div class="flex items-center justify-center gap-2">
-                                  <span class="font-mono text-xl font-bold tracking-widest px-3 py-1 bg-accent/10 text-accent rounded border border-accent/30 select-all">
-                                    {flow().userCode}
-                                  </span>
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={async () => {
-                                      if (flow().userCode) {
-                                        const ok = await copyToClipboard(flow().userCode!)
-                                        if (ok) {
-                                          setWizardOAuthCopied(true)
-                                          setTimeout(() => setWizardOAuthCopied(false), 2000)
-                                        } else {
-                                          toast.info(flow().userCode!)
-                                        }
-                                      }
-                                    }}
-                                  >
-                                    {wizardOAuthCopied() ? t('providers.copied') : t('providers.copyCode')}
-                                  </Button>
-                                </div>
-                              </Show>
-                            </Show>
-
-                            <div class="text-[11px] text-faint break-all bg-bg/80 p-2 rounded border border-subtle">
-                              {flow().verificationUriComplete || flow().verificationUri}
-                            </div>
-                            <Show when={!flow().isManualPaste && wizardOAuthPolling()}>
-                              <div class="flex items-center justify-center gap-2 text-xs text-muted pt-1">
-                                <span class="animate-spin inline-block w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full" />
-                                <span>{t('providers.oauthWaitingAuth')}</span>
-                              </div>
-                            </Show>
-                            <div class="pt-2 flex justify-center">
-                              <Button size="sm" variant="secondary" onClick={cancelWizardOAuth}>
-                                {t('providers.cancelAuth')}
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </Show>
+                          <p class="text-faint leading-relaxed">
+                            {t('providers.oauthNotice')}
+                          </p>
+                        </div>
+                      }
+                    >
+                      <OAuthFlowPanel flow={flowApi} />
                     </Show>
                   </div>
                 </Show>
-
 
                 <Show when={reg().category === 'custom' || reg().id.startsWith('custom-')} fallback={
                   <Field label={t('providerDetail.priorityLabel')} hint={t('providers.priorityHint')}>

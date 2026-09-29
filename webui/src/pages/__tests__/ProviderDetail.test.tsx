@@ -160,14 +160,15 @@ async function reopenOAuth(page: Page) {
   await beginOAuth(page)
 }
 
-function submitOAuthCredential(page: Page, mode: 'import' | 'exchange') {
+function submitOAuthCredential(mode: 'import' | 'exchange') {
+  // OAuth 面板两处共用同一套文案，市场向导与详情页不再有各自的键位
   const placeholder = mode === 'exchange'
     ? t('providers.oauthPasteCallbackPlaceholder')
-    : t(page === 'catalog' ? 'providers.tokenPastePlaceholder' : 'providerDetail.tokenPastePlaceholder')
+    : t('providerDetail.tokenPastePlaceholder')
   fireEvent.input(dialog().getByPlaceholderText(placeholder), { target: { value: 'test-credential' } })
   const submit = dialog().getByRole('button', { name: mode === 'exchange'
     ? t('providers.confirmAndConnect')
-    : t(page === 'catalog' ? 'providers.importAndConnect' : 'providerDetail.importAndSave') }) as HTMLButtonElement
+    : t('providerDetail.importAndSave') }) as HTMLButtonElement
   submit.click()
   return submit
 }
@@ -211,7 +212,7 @@ describe.each<Page>(['catalog', 'detail'])('%s provider connection regressions',
     await startOAuth(page)
     await vi.advanceTimersByTimeAsync(1000)
     expect.soft(dialog().queryByRole('alert')?.textContent).toContain('expired_token')
-    expect.soft(dialog().queryByRole('alert')?.textContent).toContain(t(page === 'catalog' ? 'providers.authProblemTitle' : 'providerDetail.authProblemTitle'))
+    expect.soft(dialog().queryByRole('alert')?.textContent).toContain(t('providerDetail.authProblemTitle'))
     expect.soft(screen.getByRole('dialog').querySelector('.animate-spin')).toBeNull()
     await vi.advanceTimersByTimeAsync(5000)
     expect(pollBodies).toHaveLength(1)
@@ -358,7 +359,7 @@ describe.each<Page>(['catalog', 'detail'])('%s OAuth lifetime ownership', page =
     await openPage(page)
     await beginOAuth(page)
     const stale = deferOAuth(mode)
-    const firstSubmit = submitOAuthCredential(page, mode)
+    const firstSubmit = submitOAuthCredential(mode)
     await flush()
     expect(firstSubmit.disabled).toBe(true)
     const firstRequest = oauthRequests.at(-1)
@@ -366,7 +367,7 @@ describe.each<Page>(['catalog', 'detail'])('%s OAuth lifetime ownership', page =
     await closeOAuth()
     await reopenOAuth(page)
     const next = deferOAuth(mode)
-    const nextSubmit = submitOAuthCredential(page, mode)
+    const nextSubmit = submitOAuthCredential(mode)
     await flush()
     const nextSignal = oauthRequests.at(-1)?.signal
     expect(nextSubmit.disabled).toBe(true)
