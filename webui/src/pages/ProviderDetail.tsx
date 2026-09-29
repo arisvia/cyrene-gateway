@@ -5,10 +5,13 @@ import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { useOAuthFlow } from '@/lib/oauthFlow'
 import { useProviderModels } from '@/lib/providerModels'
+import ModelsToolbar from '@/components/provider/ModelsToolbar'
+import ModelsPanel from '@/components/provider/ModelsPanel'
+import ModelMetaModal from '@/components/provider/ModelMetaModal'
 import OAuthFlowModal from '@/components/provider/OAuthFlowModal'
 import { useI18n } from '@/i18n'
 import type { Provider } from '@/types/domain'
-import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconZap, confirm, TabTransition } from '@/components/ui'
+import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, confirm, TabTransition } from '@/components/ui'
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -28,7 +31,7 @@ const ProviderDetail: Component = () => {
   const [chatBusy, setChatBusy] = createSignal(false)
   const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string; servedModel?: string }>>([])
   const [chatErr, setChatErr] = createSignal('')
-  const [newCustomModelId, setNewCustomModelId] = createSignal('')
+
   let chatBoxRef: HTMLDivElement | undefined
 
   createEffect(() => {
@@ -273,19 +276,12 @@ const ProviderDetail: Component = () => {
     }
   })
 
-  const {
-    payload, activeModels, allDisplayModels, enabledModelsCount, disabledModelsCount,
-    sortedRegistryModels, sortedCustomModels, customCount, showCustomModels, setShowCustomModels,
-    modelSearch, setModelSearch, syncingModels, handleSyncModels, batchBusy,
-    testingModels, modelTestResults, testingAll, testAllProgress, failedModelsList,
-    toggleModel, testSingleModel, handleTestAll, handleEnableAll, handleDisableAll, handleDisableFailed,
-    addCustomModel, removeCustomModel,
-    editingModel, setEditingModel, editDisplayName, setEditDisplayName, editContextLength, setEditContextLength,
-    editMaxOutput, setEditMaxOutput, savingMeta, startEditModel, handleSaveModelMeta, handleResetModelMeta,
-  } = useProviderModels({
+  const modelsApi = useProviderModels({
     connectionId: () => params.id,
     providerId: () => conn()?.provider,
   })
+
+  const { payload, activeModels } = modelsApi
   const [, { refetch: refetchOAuth }] = createResource(
     () => conn()?.provider,
     async p => {
@@ -415,113 +411,7 @@ const ProviderDetail: Component = () => {
 
               {/* 仅在 models 视图下激活的快捷操作工具组 */}
               <Show when={tab() === 'models'}>
-                <div class="animate-slide-up flex flex-wrap items-center gap-2 text-xs">
-                  <div class="flex flex-wrap items-center gap-2 min-w-0">
-                    <Input
-                      class="w-40 sm:w-52!"
-                      size="sm"
-                      value={modelSearch()}
-                      onInput={setModelSearch}
-                      placeholder={t('providerDetail.modelSearchPlaceholder')}
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={syncingModels()}
-                      onClick={handleSyncModels}
-                      title={t('providerDetail.syncModelsTitle')}
-                    >
-                      {t('providerDetail.syncUpstreamModels')}
-                    </Button>
-                  </div>
-                  <div class="hidden xl:block h-3.5 w-px bg-subtle/60 mx-0.5" />
-                  <div class="flex items-center gap-1.5 flex-wrap">
-                    {/* 实时状态指示徽章 */}
-                    <span
-                      class={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-mono border transition-colors ${
-                        enabledModelsCount() === allDisplayModels().length
-                          ? 'bg-success/10 text-success border-success/30'
-                          : (enabledModelsCount() === 0
-                              ? 'bg-surface-inset text-faint border-subtle'
-                              : 'bg-accent/10 text-accent border-accent/30')
-                      }`}
-                      title={t('providerDetail.modelsCountSummary', { total: allDisplayModels().length, enabled: enabledModelsCount() })}
-                    >
-                      <span class={`w-1.5 h-1.5 rounded-full ${
-                        enabledModelsCount() === allDisplayModels().length
-                          ? 'bg-success'
-                          : (enabledModelsCount() === 0 ? 'bg-faint' : 'bg-accent animate-pulse')
-                      }`} />
-                      <span>{enabledModelsCount()}/{allDisplayModels().length}</span>
-                    </span>
-
-                    {/* 状态联动批量启停控制器（带实时数字反馈与状态色） */}
-                    <div class="inline-flex flex-wrap rounded-lg p-0.5 bg-surface-inset border border-subtle text-xs select-none">
-                      <Button size="sm" variant="ghost"
-                        type="button"
-                        class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
-                          disabledModelsCount() === 0 || batchBusy()
-                            ? 'opacity-40 cursor-not-allowed text-faint'
-                            : 'text-foreground hover:text-success hover:bg-success/10 cursor-pointer'
-                        }`}
-                        disabled={disabledModelsCount() === 0 || batchBusy()}
-                        onClick={handleEnableAll}
-                        title={disabledModelsCount() === 0 ? t('toast.allModelsEnabled') : t('providerDetail.tooltipEnableAll')}
-                      >
-                        <span class={`w-1.5 h-1.5 rounded-full ${disabledModelsCount() === 0 ? 'bg-success' : 'bg-accent'}`} />
-                        <span>{t('providerDetail.enableAllModels')}</span>
-                        <Show when={disabledModelsCount() > 0}>
-                          <span class="font-mono text-[10px] opacity-75">({disabledModelsCount()})</span>
-                        </Show>
-                      </Button>
-                      <Button size="sm" variant="ghost"
-                        type="button"
-                        class={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1 font-medium ${
-                          enabledModelsCount() === 0 || batchBusy()
-                            ? 'opacity-40 cursor-not-allowed text-faint'
-                            : 'text-faint hover:text-danger hover:bg-danger/10 cursor-pointer'
-                        }`}
-                        disabled={enabledModelsCount() === 0 || batchBusy()}
-                        onClick={handleDisableAll}
-                        title={enabledModelsCount() === 0 ? t('toast.allModelsDisabled') : t('providerDetail.tooltipDisableAll')}
-                      >
-                        <span class={`w-1.5 h-1.5 rounded-full ${enabledModelsCount() === 0 ? 'bg-faint' : 'bg-danger/70'}`} />
-                        <span>{t('providerDetail.disableAllModels')}</span>
-                        <Show when={enabledModelsCount() > 0 && disabledModelsCount() > 0}>
-                          <span class="font-mono text-[10px] opacity-75">({enabledModelsCount()})</span>
-                        </Show>
-                      </Button>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={testingAll()}
-                      onClick={handleTestAll}
-                      title={t('providerDetail.tooltipTestAll')}
-                    >
-                      <IconZap size={12} class="mr-1 inline" />
-                      {t('providerDetail.testAllModels')}
-                    </Button>
-                    <Show when={testAllProgress()}>
-                      {prog => (
-                        <span class="text-[11px] text-faint font-mono">
-                          {t('providerDetail.progress', { current: prog().current, total: prog().total })}
-                        </span>
-                      )}
-                    </Show>
-                    <Show when={failedModelsList().length > 0}>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={batchBusy()}
-                        onClick={handleDisableFailed}
-                        title={t('providerDetail.tooltipDisableFailed')}
-                      >
-                        {t('providerDetail.disableFailedModels')} ({failedModelsList().length})
-                      </Button>
-                    </Show>
-                  </div>
-                </div>
+                <ModelsToolbar models={modelsApi} />
               </Show>
 
               {/* 在 overview 视图下：右侧展示轻量指示 */}
@@ -925,243 +815,7 @@ const ProviderDetail: Component = () => {
               </div>
             </Match>
             <Match when={currentTab === 'models'}>
-              <div class="flex flex-col gap-3.5">
-                <Card class="p-3.5 sm:p-4">
-                  <div class="flex items-center justify-between gap-3">
-                    <div class="flex items-center gap-2 flex-wrap min-w-0">
-                      <h3 class="text-sm font-semibold whitespace-nowrap">{t('providerDetail.customModelsTitle')}</h3>
-                      <Badge tone="gray" class="text-[10px] font-mono px-1.5 py-0.2 shrink-0">
-                        {customCount()}
-                      </Badge>
-                      <span class="text-xs text-faint truncate hidden sm:inline">{t('providerDetail.customModelsDesc')}</span>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      class="text-xs shrink-0"
-                      onClick={() => setShowCustomModels(s => !s)}
-                    >
-                      {showCustomModels() ? t('common.collapse') : (customCount() > 0 ? t('common.expand') : `+ ${t('common.add')}`)}
-                    </Button>
-                  </div>
-                  <Show when={showCustomModels()}>
-                    <div class="pt-3 border-t border-subtle/50 mt-2.5 space-y-2.5 animate-fade-in">
-                      <div class="flex gap-2">
-                        <Input
-                          value={newCustomModelId()}
-                          onInput={setNewCustomModelId}
-                          placeholder={t('providerDetail.customModelPlaceholder')}
-                          size="sm"
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              const val = newCustomModelId().trim()
-                              if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
-                            }
-                          }}
-                        />
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          disabled={!newCustomModelId().trim()}
-                          onClick={() => {
-                            const val = newCustomModelId().trim()
-                            if (val) { addCustomModel(val, ''); setNewCustomModelId('') }
-                          }}
-                        >
-                          {t('common.add')}
-                        </Button>
-                      </div>
-                      <div class="flex flex-wrap gap-2">
-                        <Show when={customCount() > 0} fallback={
-                          <span class="text-xs text-faint">{t('providerDetail.noCustomModels')}</span>
-                        }>
-                          <For each={sortedCustomModels()}>
-                            {m => (
-                              <span class={`inline-flex flex-wrap max-w-full min-w-0 items-center gap-2 px-2.5 py-1 rounded-control border text-xs wrap-anywhere transition-colors ${
-                                m.enabled !== false ? 'bg-control border-subtle text-foreground' : 'bg-surface-inset border-subtle/50 text-faint opacity-60'
-                              }`}>
-                                <span class={`font-mono ${m.enabled === false ? 'line-through' : ''}`}>{m.name || m.id}</span>
-                                <IconButton size="sm" variant="ghost"
-                                  type="button"
-                                  class="text-faint hover:text-accent"
-                                  title={t('providerDetail.editModelMetaTitle')}
-                                  onClick={() => startEditModel(m)}
-                                >
-                                  <IconEdit size={12} />
-                                </IconButton>
-                                <Toggle
-                                  ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
-                                  checked={m.enabled !== false}
-                                  onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
-                                />
-                                <IconButton size="sm" variant="ghost" class="text-faint hover:text-danger ml-0.5" title={t('providerDetail.deleteModelTitle2')} onClick={() => removeCustomModel(m.id || m.name)}><IconClose size={12} /></IconButton>
-                              </span>
-                            )}
-                          </For>
-                        </Show>
-                      </div>
-                    </div>
-                  </Show>
-                </Card>
-
-                <Card class="p-4 sm:p-4.5 space-y-3">
-                  <div class="flex items-center justify-between gap-2 flex-wrap text-xs text-faint">
-                    <div class="flex flex-wrap items-center gap-2 min-w-0">
-                      <h3 class="text-sm font-semibold text-foreground">{t('providerDetail.availableModels')}</h3>
-                      <span>
-                        {t('providerDetail.modelsCountSummary', {
-                          total: (payload().registryModels ?? []).length,
-                          enabled: (payload().registryModels ?? []).filter(m => m.enabled !== false).length,
-                        })}
-                      </span>
-                    </div>
-                    <Show when={modelSearch().trim()}>
-                      <span class="text-accent font-mono">
-                        {(() => {
-                          const count = (payload().registryModels ?? []).filter(m => {
-                            const q = modelSearch().trim().toLowerCase()
-                            return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
-                          }).length
-                          return `${count} / ${(payload().registryModels ?? []).length}`
-                        })()}
-                      </span>
-                    </Show>
-                  </div>
-                  <Show
-                    when={(payload().registryModels ?? []).length > 0}
-                    fallback={<Empty message={t('providerDetail.noModels')} />}
-                  >
-                    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                        <For each={sortedRegistryModels().filter(m => {
-                          const q = modelSearch().trim().toLowerCase()
-                          if (!q) return true
-                          return (m.name || '').toLowerCase().includes(q) || (m.id || '').toLowerCase().includes(q)
-                        })}>
-                          {m => (
-                            <div
-                              class={`flex flex-col justify-between p-3 rounded-control border transition-all ${
-                                m.enabled !== false
-                                  ? 'border-subtle bg-bg-elevated/70 hover:border-accent/40 shadow-sm'
-                                  : 'border-subtle/30 bg-bg-elevated/25 opacity-55 hover:opacity-80'
-                              }`}
-                            >
-                              <div class="flex flex-wrap items-start justify-between gap-2">
-                                <div class="min-w-0 flex-1 pr-1">
-                                  <div class="flex items-center gap-1.5 flex-wrap">
-                                    <span class={`text-xs truncate font-medium ${m.enabled !== false ? 'text-foreground' : 'text-faint line-through'}`}>
-                                      {m.name || m.id}
-                                    </span>
-                                    <Show when={m.isFree}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 shrink-0">
-                                        {t('providerDetail.freeBadge')}
-                                      </span>
-                                    </Show>
-                                    <Show when={m.priceFactor !== undefined && m.priceFactor !== null && m.priceFactor > 0 && !m.isFree}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium bg-accent/10 text-accent border border-accent/25 shrink-0" title={t('providerDetail.priceFactorTitle', { factor: m.priceFactor! })}>
-                                        {m.priceFactor}x
-                                      </span>
-                                    </Show>
-                                    <Show when={m.enabled === false}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-control text-muted border border-subtle shrink-0">
-                                        {t('providerDetail.chipDisabled')}
-                                      </span>
-                                    </Show>
-                                    <Show when={m.hasOverride}>
-                                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/15 text-accent border border-accent/30 shrink-0" title={t('providerDetail.customMetaChipTitle')}>
-                                        {t('providerDetail.chipCustom')}
-                                      </span>
-                                    </Show>
-                                  </div>
-                                  <div class="text-[11px] text-faint font-mono truncate mt-0.5">{m.id || m.name}</div>
-                                </div>
-                                <div class="shrink-0 flex items-center gap-1">
-                                  <IconButton size="sm" variant="ghost"
-                                    type="button"
-                                    class={`transition-colors ${testingModels()[m.id || m.name || ''] ? 'text-accent animate-spin cursor-wait' : 'text-faint hover:text-accent cursor-pointer'}`}
-                                    title={t('providerDetail.testSingleTitle')}
-                                    disabled={testingModels()[m.id || m.name || '']}
-                                    onClick={() => testSingleModel(m.id || m.name || '')}
-                                  >
-                                    <IconZap size={12} />
-                                  </IconButton>
-                                  <Show
-                                    when={m.canEdit !== false}
-                                    fallback={
-                                      <span
-                                        class="text-faint px-1 text-[11px] cursor-not-allowed opacity-50"
-                                        title={t('providerDetail.lockedMetaTitle')}
-                                      >
-                                        <IconLock size={12} />
-                                      </span>
-                                    }
-                                  >
-                                    <IconButton size="sm" variant="ghost"
-                                      type="button"
-                                      class="text-faint hover:text-accent"
-                                      title={t('providerDetail.editModelMetaLongTitle')}
-                                      onClick={() => startEditModel(m)}
-                                    >
-                                      <IconEdit size={12} />
-                                    </IconButton>
-                                  </Show>
-                                  <div title={m.enabled !== false ? t('providerDetail.toggleOffHint') : t('providerDetail.toggleOnHint')}>
-                                    <Toggle
-                                      ariaLabel={`${t('common.enabled')}: ${m.name || m.id}`}
-                                      checked={m.enabled !== false}
-                                      onChange={() => toggleModel(m.id || m.name, m.enabled !== false)}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* 元数据 Badge 栏 */}
-                              <div class="mt-2 pt-2 border-t border-subtle/40 flex items-center gap-1.5 flex-wrap text-[10px] text-faint">
-                                <Show when={modelTestResults()[m.id || m.name || '']}>
-                                  {res => (
-                                    <Show
-                                      when={res().ok}
-                                      fallback={
-                                        <span
-                                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-danger/12 text-danger border border-danger/30 cursor-help"
-                                          title={res().error || t('providerDetail.testNotPassed')}
-                                        >
-                                          <IconClose size={10} class="shrink-0" />
-                                          <span>{res().error ? (res().error!.length > 12 ? res().error!.slice(0, 10) + '…' : res().error) : t('common.failed')}</span>
-                                        </span>
-                                      }
-                                    >
-                                      <span
-                                        class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-success/12 text-success border border-success/30 font-mono"
-                                        title={t('providerDetail.testPassedLatency', { latency: res().latency || t('providerDetail.normal') })}
-                                      >
-                                        <IconCheck size={10} class="shrink-0" />
-                                        <span>{res().latency || t('providerDetail.connected')}</span>
-                                      </span>
-                                    </Show>
-                                  )}
-                                </Show>
-                                <Show when={m.contextLength && m.contextLength > 0}>
-                                  <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
-                                    {t('providerDetail.contextLength', { length: m.contextLength! >= 1024 ? `${Math.round(m.contextLength! / 1024)}k` : m.contextLength! })}
-                                  </span>
-                                </Show>
-                                <Show when={m.maxOutputTokens && m.maxOutputTokens > 0}>
-                                  <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
-                                    {t('providerDetail.outputLength', { length: m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens! })}
-                                  </span>
-                                </Show>
-                                <Show when={!m.contextLength && !m.maxOutputTokens}>
-                                  <span class="italic text-[10px] opacity-60">{t('providerDetail.noContext')}</span>
-                                </Show>
-                              </div>
-                            </div>
-                          )}
-                        </For>
-                      </div>
-                  </Show>
-                </Card>
-              </div>
+              <ModelsPanel models={modelsApi} />
             </Match>
             <Match when={currentTab === 'chat'}>
               <div class="space-y-4">
@@ -1268,61 +922,7 @@ const ProviderDetail: Component = () => {
         )}
       </Show>
 
-      {/* 模型元数据编辑弹窗 */}
-      <Modal
-        open={Boolean(editingModel())}
-        title={t('providerDetail.editModelMeta', { id: editingModel()?.id || '' })}
-        onClose={() => setEditingModel(null)}
-      >
-        <div class="space-y-4">
-          <Field label={t('providerDetail.modelIdLabel')} hint={t('providerDetail.modelIdHint')}>
-            <Input value={editingModel()?.id || ''} disabled class="bg-hover font-mono opacity-80" />
-          </Field>
-          <Field label={t('providerDetail.displayNameLabel')} hint={t('providerDetail.displayNameHint')}>
-            <Input value={editDisplayName()} onInput={setEditDisplayName} placeholder={t('providerDetail.displayNamePlaceholder')} />
-          </Field>
-          <div class="grid grid-cols-2 gap-3">
-            <Field label={t('providerDetail.contextLengthLabel')} hint={t('providerDetail.contextLengthHint')}>
-              <Input
-                type="number"
-                value={editContextLength()}
-                onInput={setEditContextLength}
-                placeholder="128000"
-              />
-            </Field>
-            <Field label={t('providerDetail.maxOutputLabel')} hint={t('providerDetail.maxOutputHint')}>
-              <Input
-                type="number"
-                value={editMaxOutput()}
-                onInput={setEditMaxOutput}
-                placeholder="8192"
-              />
-            </Field>
-          </div>
-          <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-subtle">
-            <div>
-              <Show when={editingModel()?.hasOverride}>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  loading={savingMeta()}
-                  onClick={handleResetModelMeta}
-                >
-                  {t('providerDetail.restoreOfficialDefault')}
-                </Button>
-              </Show>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 min-w-0">
-              <Button size="sm" variant="secondary" onClick={() => setEditingModel(null)}>
-                {t('common.cancel')}
-              </Button>
-              <Button size="sm" variant="primary" loading={savingMeta()} onClick={handleSaveModelMeta}>
-                {t('providerDetail.saveMetadata')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Modal>
+      <ModelMetaModal models={modelsApi} />
 
       {/* 添加新账号 / 凭证弹窗 */}
       <Modal
