@@ -1,5 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal } from 'solid-js'
-import { api, apiPost } from './api'
+import { createEffect, createMemo, createResource, createSignal, on } from 'solid-js'
 import { confirm } from './confirm'
 import { t } from '@/i18n'
 import { useToast } from './toast'
@@ -45,7 +44,9 @@ function sortModels(list: ProviderModel[]): ProviderModel[] {
 
 /**
  * 一个供应商连接的模型清单：读取、启停、连通性探测与元数据覆写。
- * 由 ProviderDetail 在自身作用域内创建，切换账号即随路由重建。
+ *
+ * 由 ProviderDetail 在自己的作用域内创建。注意 /providers/:id 是非 keyed 路由，
+ * 切换账号不会重建组件，所以连接 id 变化时必须自己复位视图状态（见下方 createEffect）。
  */
 export function useProviderModels(deps: ProviderModelsDeps) {
   const store = useGatewayStore()
@@ -55,7 +56,7 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     deps.connectionId,
     async (id): Promise<ProviderModelsPayload> => {
       try {
-        return await api(`/api/providers/${id}/models`) as ProviderModelsPayload
+        return await store.loadProviderModels(id) as ProviderModelsPayload
       } catch {
         return { registryModels: [], customModels: [] }
       }
@@ -89,10 +90,22 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     if (customCount() > 0) setShowCustomModels(true)
   })
 
-  /** 把一批模型的 enabled 落成目标值；targets 为 null 表示整张清单。 */
-  function mutateEnabled(targets: Set<string> | null, enabled: boolean) {
+  // 切换账号：清掉只属于上一个连接的视图状态，否则 A 的搜索词会继续隐藏 B 的行，
+  // A 的探测结果徽标也会挂到同名的 B 模型上。
+  createEffect(on(deps.connectionId, () => {
+    setModelSearch('')
+    setModelTestResults({})
+    setTestingModels({})
+    setShowCustomModels(false)
+    setEditingModel(null)
+    setTestingAll(false)
+    setTestAllProgress(null)
+  }))
+
+  /** 把一批模型的 enabled 落成目标值。 */
+  function mutateEnabled(targets: Set<string>, enabled: boolean) {
     const apply = (list?: ProviderModel[]) =>
-      (list ?? []).map(m => (targets === null || targets.has(modelKeyOf(m)) ? { ...m, enabled } : m))
+      (list ?? []).map(m => (targets.has(modelKeyOf(m)) ? { ...m, enabled } : m))
     mutateModels(prev => ({
       ...prev,
       registryModels: apply(prev?.registryModels),
@@ -189,9 +202,9 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   }
 
   /** 探测单个模型并记录结果；单点测试与批量测试共用，仅失败兜底文案不同。 */
-  async function probeModel(modelId: string, fallbackError = t('providerDetail.testRequestError')) {
+  async function probeModel(modelId: string, fallbackError = t('providerDetail.testRequestError')): Promise<boolean | undefined> {
     const p = deps.providerId()
-    if (!p) return
+    if (!p) return undefined
     setTestingModels(prev => ({ ...prev, [modelId]: true }))
     try {
       const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
@@ -201,17 +214,18 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : fallbackError
       setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
-      return false
+      return undefined
     } finally {
       setTestingModels(prev => ({ ...prev, [modelId]: false }))
     }
   }
 
   async function testSingleModel(modelId: string) {
-    if (testingModels()[modelId]) return
-    const ok = await probeModel(modelId)
+    if (!deps.providerId() || testingModels()[modelId]) return
+    const outcome = await probeModel(modelId)
+    if (outcome === undefined) return
     const result = modelTestResults()[modelId]
-    if (ok) {
+    if (outcome) {
       toast.success(t('toast.modelTestPassed', { id: modelId, latency: result?.latency || 'ok' }))
     } else {
       toast.error(t('toast.modelTestFailed', { id: modelId, error: result?.error || 'unavailable' }))
@@ -219,7 +233,7 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   }
 
   async function handleTestAll() {
-    if (testingAll()) return
+    if (!deps.providerId() || testingAll()) return
     const seen = new Set<string>()
     const targetList = allDisplayModels().filter(m => {
       const k = modelKeyOf(m)
@@ -262,7 +276,7 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     if (!p) return
     setSyncingModels(true)
     try {
-      await apiPost(`/api/providers/${p}/refresh-models`)
+      await store.refreshModels(p)
       toast.success(t('toast.syncModelsSuccess'))
       await refetchModels()
     } catch {
@@ -346,7 +360,7 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   }
 
   return {
-    models, payload, refetchModels,
+    payload,
     activeModels, allDisplayModels, enabledModelsCount, disabledModelsCount,
     sortedRegistryModels, sortedCustomModels, customCount,
     showCustomModels, setShowCustomModels, modelSearch, setModelSearch,

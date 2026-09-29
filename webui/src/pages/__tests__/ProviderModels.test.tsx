@@ -9,10 +9,10 @@ import ProviderDetail from '@/pages/ProviderDetail'
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(), setOnUnauthorized: vi.fn(),
 }))
-vi.mock('@/lib/toast', () => {
-  const noop = vi.fn()
-  return { toast: { toasts: () => [], success: noop, error: noop, warning: noop, info: noop, dismiss: noop, clear: noop }, useToast: () => ({ toasts: () => [], success: noop, error: noop, warning: noop, info: noop, dismiss: noop, clear: noop }) }
-})
+const toastSpy = vi.hoisted(() => ({
+  toasts: () => [], success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), dismiss: vi.fn(), clear: vi.fn(),
+}))
+vi.mock('@/lib/toast', () => ({ toast: toastSpy, useToast: () => toastSpy }))
 const confirmMock = vi.hoisted(() => vi.fn(async () => true))
 vi.mock('@/lib/confirm', () => ({ confirm: confirmMock, alert: vi.fn(async () => true) }))
 
@@ -36,6 +36,7 @@ beforeEach(() => {
   disableReply = Promise.resolve({ ok: true })
   testReply = { ok: false, error: 'boom' }
   confirmMock.mockClear()
+  for (const fn of [toastSpy.success, toastSpy.error, toastSpy.info, toastSpy.warning]) fn.mockClear()
   vi.mocked(api).mockImplementation(async (path: string) => {
     if (path === '/api/providers') return [{ id: 'selected', provider: 'github', name: 'Primary', authType: 'api-key', priority: 0, isActive: true }]
     if (path === '/api/registry') return { categories: [{ category: 'oauth', count: 1, providers: [{ id: 'github', name: 'GitHub', category: 'oauth', authType: 'api-key', apiType: 'openai', baseUrl: '', capabilities: ['llm'] }] }], total: 1 }
@@ -160,3 +161,41 @@ describe('ProviderDetail 模型运维基线（重构前后必须等价）', () =
     expect(disabledCalls).toEqual([])
   })
 })
+
+describe('ProviderDetail 模型提示与撞名边界', () => {
+  // 页头还有一个"启用整个连接"的开关，模型行的开关必须按行可访问名取
+  const rowSwitches = (view: ReturnType<typeof render>) =>
+    view.getAllByRole('switch').filter(s => !/GitHub/.test(s.getAttribute('aria-label') || ''))
+  const testButtons = (view: ReturnType<typeof render>) =>
+    [...view.baseElement.querySelectorAll(`button[title="${t('providerDetail.testSingleTitle')}"]`)] as HTMLButtonElement[]
+
+  it('单点探测请求异常时只由 api 层弹一次错误，不再补一条', async () => {
+    const view = await openModelsTab()
+    vi.mocked(apiPost).mockImplementationOnce(async () => { throw new Error('connection reset') })
+    fireEvent.click(testButtons(view)[0])
+    await tick()
+    expect(toastSpy.error).not.toHaveBeenCalled()
+    expect(disabledCalls).toEqual([])
+  })
+
+  it('上游明确返回失败时才提示模型测试未通过', async () => {
+    const view = await openModelsTab()
+    testReply = { ok: false, error: 'upstream refused' }
+    fireEvent.click(testButtons(view)[0])
+    await tick()
+    expect(toastSpy.error).toHaveBeenCalledTimes(1)
+    expect(toastSpy.error.mock.calls[0][0]).toContain('upstream refused')
+  })
+
+  it('一行开关只翻转它自己：另一行的 name 与本行 id 撞名也不牵连', async () => {
+    registryModels = [{ id: 'dup', enabled: true }, { id: 'other', name: 'dup', enabled: true }]
+    customModels = []
+    const view = await openModelsTab()
+    expect(view.getByText('2/2')).toBeTruthy()
+    fireEvent.click(rowSwitches(view)[0])
+    await tick()
+    expect(disabledCalls).toEqual([{ models: ['github/dup'], disabled: true }])
+    expect(view.getByText('1/2')).toBeTruthy()
+  })
+})
+
