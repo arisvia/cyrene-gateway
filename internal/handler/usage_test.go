@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -147,4 +148,43 @@ func TestUsageStatsRollingWindowFractionalAndOffsetTimestamps(t *testing.T) {
 			t.Fatalf("rolling range not precise: %s", w.Body.String())
 		}
 	})
+}
+
+// Usage rows are written with the canonical provider id, so an alias typed into
+// a filter would otherwise match nothing and read as "no traffic for that
+// provider" rather than as an unknown id.
+func TestUsageHistoryFilterAcceptsProviderAlias(t *testing.T) {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	srv := &Server{DB: database}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if err := database.SaveUsageEntry(&db.UsageEntry{
+		Timestamp: now, Provider: "claude", Model: "sonnet", APIKey: "k", Endpoint: "/v1/messages",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	history := func(query string) string {
+		t.Helper()
+		w := httptest.NewRecorder()
+		srv.handleUsageHistory(w, httptest.NewRequest("GET", "/api/usage/history?"+query, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", w.Code, w.Body.String())
+		}
+		return w.Body.String()
+	}
+
+	if got := history("provider=claude"); !strings.Contains(got, "\"sonnet\"") {
+		t.Fatalf("canonical filter lost its own row: %s", got)
+	}
+	if got := history("provider=cc"); !strings.Contains(got, "\"sonnet\"") {
+		t.Errorf("alias filter matched nothing: %s", got)
+	}
+	if canonical, viaAlias := history("provider=claude"), history("provider=cc"); canonical != viaAlias {
+		t.Errorf("alias filter diverged from canonical: alias=%s canonical=%s", viaAlias, canonical)
+	}
 }

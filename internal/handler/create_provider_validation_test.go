@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // TestHandleCreateProviderValidation covers the server-side hardening of
@@ -152,5 +154,55 @@ func TestProviderReadBoundaryCanonicalizesAlias(t *testing.T) {
 	}
 	if byAlias.Body.String() != byID.Body.String() {
 		t.Errorf("alias read diverged from canonical: alias=%s id=%s", byAlias.Body.String(), byID.Body.String())
+	}
+}
+
+// The explicit provider override is compared against the model prefix, so an
+// alias in one field and the canonical id in the other must still collapse to
+// the bare model instead of forwarding "openai/text-emb-3" upstream.
+func TestEmbeddingsOverrideTrimsCanonicalPrefix(t *testing.T) {
+	var gotModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		gotModel, _ = body["model"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1]}],"usage":{"prompt_tokens":1,"total_tokens":1}}`))
+	}))
+	defer upstream.Close()
+
+	srv, database := setupTestServer(t)
+	defer database.Close()
+
+	orig, hasOrig := provider.Registry["openai"]
+	info := orig
+	info.BaseURL = upstream.URL
+	provider.Registry["openai"] = info
+	defer func() {
+		if hasOrig {
+			provider.Registry["openai"] = orig
+		} else {
+			delete(provider.Registry, "openai")
+		}
+	}()
+
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "oai-embed", Provider: "openai", AuthType: "api-key",
+		Name: "Embed Test", IsActive: true,
+		Data: model.ConnectionData{APIKey: "sk-test"},
+	}); err != nil {
+		t.Fatalf("preseed connection: %v", err)
+	}
+
+	req := newLocalRequest(http.MethodPost, "/v1/embeddings",
+		strings.NewReader(`{"provider":"oai","model":"openai/text-emb-3","input":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if gotModel != "text-emb-3" {
+		t.Errorf("upstream model = %q, want the prefix trimmed to the bare model", gotModel)
 	}
 }

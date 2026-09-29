@@ -1626,11 +1626,16 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 
 	if req.Provider != "" {
 		// The explicit override has to land on the same canonical id that
-		// connections, credentials and usage rows are keyed by.
-		modelInfo.Provider = provider.ResolveProviderAlias(req.Provider)
+		// connections, credentials and usage rows are keyed by. The model may
+		// carry either spelling as its prefix, so trim whichever one matches.
+		canonical := provider.ResolveProviderAlias(req.Provider)
+		modelInfo.Provider = canonical
 		modelInfo.Model = req.Model
-		if strings.HasPrefix(modelInfo.Model, req.Provider+"/") {
-			modelInfo.Model = strings.TrimPrefix(modelInfo.Model, req.Provider+"/")
+		for _, prefix := range [2]string{req.Provider + "/", canonical + "/"} {
+			if trimmed, ok := strings.CutPrefix(modelInfo.Model, prefix); ok {
+				modelInfo.Model = trimmed
+				break
+			}
 		}
 	}
 	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {

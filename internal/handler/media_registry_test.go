@@ -756,3 +756,28 @@ func TestMediaExplicitProviderCannotBypassWhitelist(t *testing.T) {
 		})
 	}
 }
+
+// Media routing reads the body's provider field for SupportsKind, credential
+// lookup and provider-specific branches, so a shorthand has to resolve — while
+// the body forwarded upstream keeps the client's own spelling.
+func TestExtractRoutingFieldsCanonicalizesProviderID(t *testing.T) {
+	cleanBody, _, model, providerName, err := extractRoutingFields([]byte(`{"provider":"ag","model":"antigravity/gemini-2.5-flash"}`))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if providerName != "antigravity" {
+		t.Errorf("routing provider = %q, want the canonical id", providerName)
+	}
+	if model != "antigravity/gemini-2.5-flash" {
+		t.Errorf("model = %q, want it untouched", model)
+	}
+	var forwarded struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.Unmarshal(cleanBody, &forwarded); err != nil {
+		t.Fatalf("forwarded body: %v", err)
+	}
+	if forwarded.Provider != "ag" {
+		t.Errorf("forwarded body provider = %q, want the client's own spelling", forwarded.Provider)
+	}
+}
