@@ -28,10 +28,11 @@ import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
-import { buildRequestPayload, generateCodeSnippet, type CodeLang, type SamplingParams } from '@/lib/playgroundRequest'
+import { buildRequestPayload, generateCodeSnippet, protocolBadgeTone, protocolLabel, type CodeLang, type SamplingParams } from '@/lib/playgroundRequest'
 import ParamsPanel from '@/components/playground/ParamsPanel'
 import ExportCodeModal from '@/components/playground/ExportCodeModal'
 import RawJsonModal from '@/components/playground/RawJsonModal'
+import ResponseCard from '@/components/playground/ResponseCard'
 import { useI18n } from '@/i18n'
 
 
@@ -693,37 +694,6 @@ const Playground: Component = () => {
     }
   }
 
-  // 生成代码片段
-  function getProtocolBadgeTone(proto?: ProtocolType): 'green' | 'purple' | 'amber' | 'blue' | 'gray' {
-    switch (proto) {
-      case 'responses':
-        return 'purple'
-      case 'anthropic':
-        return 'amber'
-      case 'gemini':
-        return 'blue'
-      case 'openai':
-        return 'green'
-      default:
-        return 'gray'
-    }
-  }
-
-  function getProtocolLabel(proto?: ProtocolType): string {
-    switch (proto) {
-      case 'responses':
-        return 'Responses'
-      case 'anthropic':
-        return 'Messages'
-      case 'gemini':
-        return 'Gemini'
-      case 'openai':
-        return 'Chat'
-      default:
-        return 'Chat'
-    }
-  }
-
 
   return (
     <div class="flex flex-col h-auto min-h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-9rem)] lg:min-h-[36rem] min-w-0 max-w-7xl mx-auto gap-3 stagger">
@@ -900,8 +870,8 @@ const Playground: Component = () => {
                                   <span class="text-xs text-faint truncate max-w-[180px]">
                                     {getResponseProvider(turn.a)}
                                   </span>
-                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
-                                    {getProtocolLabel(turn.a.protocol)}
+                                  <Badge tone={protocolBadgeTone(turn.a.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
+                                    {protocolLabel(turn.a.protocol)}
                                   </Badge>
                                 </div>
                               </div>
@@ -978,150 +948,40 @@ const Playground: Component = () => {
                       {/* 双模型并排横评展示 (Side-by-Side) */}
                       <div class="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-3">
                         {/* 左侧：模型 A */}
-                        <Card class="min-w-0 p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-info/60">
-                          <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5 shrink-0">
-                            <div class="flex flex-wrap items-center gap-2 min-w-0">
-                              <span class="w-5 h-5 rounded-md text-xs font-bold flex items-center justify-center shrink-0 bg-info/10 text-info border border-info/25">
-                                A
-                              </span>
-                              <ProviderAvatar provider={getTurnProvider(turn.a)} size="sm" />
-                              <div class="flex flex-col min-w-0 leading-tight">
-                                <span class="text-xs font-semibold text-text truncate max-w-[150px] sm:max-w-[180px]" title={turn.a.servedModel ? `${turn.a.targetModel} (served: ${turn.a.servedModel})` : turn.a.targetModel}>
-                                  {getResponseModelLabel(turn.a)}
-                                </span>
-                                <div class="flex items-center gap-1 mt-0.5">
-                                  <span class="text-xs text-faint truncate max-w-[100px]">
-                                    {getResponseProvider(turn.a)}
-                                  </span>
-                                  <Badge tone={getProtocolBadgeTone(turn.a.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
-                                    {getProtocolLabel(turn.a.protocol)}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <Show when={turn.a.busy}>
-                                <span class="text-xs text-info animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
-                              </Show>
-                            </div>
-                            <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted min-w-0">
-                              <Show when={turn.a.metrics?.ttftMs !== undefined}>
-                                <span>{turn.a.metrics!.ttftMs}ms</span>
-                              </Show>
-                              <Show when={turn.a.metrics?.speed && turn.a.metrics!.speed > 0}>
-                                <span class="text-accent">{turn.a.metrics!.speed} t/s</span>
-                              </Show>
-                              <Show when={turn.a.rawRequest}>
-                                <IconButton
-                                  size="sm"
-                                  title={t('playground.viewRawJson')}
-                                  aria-label={t('playground.viewRawJson')}
-                                  onClick={() =>
-                                    setRawJsonModal({
-                                      title: `${t('playground.modelA')} · ${getResponseModelLabel(turn.a)} (${turn.a.targetModel})`,
-                                      request: turn.a.rawRequest,
-                                      response: turn.a.rawResponse,
-                                    })
-                                  }
-                                >
-                                  <IconCode size={14} />
-                                </IconButton>
-                              </Show>
-                              <IconButton
-                                size="sm"
-                                title={t('playground.copyModelA')}
-                                aria-label={t('playground.copyModelA')}
-                                onClick={() => copyText(turn.a.content, t('playground.copyModelA'))}
-                              >
-                                <IconClipboard size={14} />
-                              </IconButton>
-                            </div>
-                          </div>
-
-                          <Show
-                            when={!turn.a.error}
-                            fallback={
-                              <div class="min-w-0 p-3 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                                {turn.a.error}
-                              </div>
-                            }
-                          >
-                            <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text min-h-[60px]">
-                              {turn.a.content || (turn.a.busy ? '...' : t('playground.emptyResponse'))}
-                            </div>
-                          </Show>
-                        </Card>
+                        <ResponseCard
+                          response={turn.a}
+                          tag="A"
+                          tone="info"
+                          displayName={getResponseModelLabel(turn.a)}
+                          providerName={getResponseProvider(turn.a)}
+                          providerId={getTurnProvider(turn.a)}
+                          copyLabel={t('playground.copyModelA')}
+                          onViewRaw={() => setRawJsonModal({
+                            title: `${t('playground.modelA')} · ${getResponseModelLabel(turn.a)} (${turn.a.targetModel})`,
+                            request: turn.a.rawRequest,
+                            response: turn.a.rawResponse,
+                          })}
+                          onCopy={() => copyText(turn.a.content, t('playground.copyModelA'))}
+                        />
 
                         {/* 右侧：模型 B */}
-                        <Card class="min-w-0 p-3.5 flex flex-col space-y-2.5 border-t-2 border-t-accent-2/60">
-                          <div class="flex items-center justify-between border-b border-subtle/40 pb-2 flex-wrap gap-1.5 shrink-0">
-                            <div class="flex flex-wrap items-center gap-2 min-w-0">
-                              <span class="w-5 h-5 rounded-md text-xs font-bold flex items-center justify-center shrink-0 bg-accent-2/10 text-accent-2 border border-accent-2/25">
-                                B
-                              </span>
-                              <ProviderAvatar provider={getTurnProvider(turn.b)} size="sm" />
-                              <div class="flex flex-col min-w-0 leading-tight">
-                                <span class="text-xs font-semibold text-text truncate max-w-[150px] sm:max-w-[180px]" title={turn.b?.servedModel ? `${turn.b?.targetModel} (served: ${turn.b?.servedModel})` : turn.b?.targetModel}>
-                                  {getResponseModelLabel(turn.b)}
-                                </span>
-                                <div class="flex items-center gap-1 mt-0.5">
-                                  <span class="text-xs text-faint truncate max-w-[100px]">
-                                    {getResponseProvider(turn.b)}
-                                  </span>
-                                  <Badge tone={getProtocolBadgeTone(turn.b?.protocol)} class="text-xs font-mono px-1 py-0 uppercase">
-                                    {getProtocolLabel(turn.b?.protocol)}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <Show when={turn.b?.busy}>
-                                <span class="text-xs text-info animate-pulse ml-1 shrink-0">{t('playground.generating')}</span>
-                              </Show>
-                            </div>
-                            <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-muted min-w-0">
-                              <Show when={turn.b?.metrics?.ttftMs !== undefined}>
-                                <span>{turn.b!.metrics!.ttftMs}ms</span>
-                              </Show>
-                              <Show when={turn.b?.metrics?.speed && turn.b!.metrics!.speed > 0}>
-                                <span class="text-accent">{turn.b!.metrics!.speed} t/s</span>
-                              </Show>
-                              <Show when={turn.b?.rawRequest}>
-                                <IconButton
-                                  size="sm"
-                                  title={t('playground.viewRawJson')}
-                                  aria-label={t('playground.viewRawJson')}
-                                  onClick={() =>
-                                    setRawJsonModal({
-                                      title: `${t('playground.modelB')} · ${getResponseModelLabel(turn.b)} (${turn.b?.targetModel})`,
-                                      request: turn.b?.rawRequest,
-                                      response: turn.b?.rawResponse,
-                                    })
-                                  }
-                                >
-                                  <IconCode size={14} />
-                                </IconButton>
-                              </Show>
-                              <IconButton
-                                size="sm"
-                                title={t('playground.copyModelB')}
-                                aria-label={t('playground.copyModelB')}
-                                onClick={() => copyText(turn.b?.content || '', t('playground.copyModelB'))}
-                              >
-                                <IconClipboard size={14} />
-                              </IconButton>
-                            </div>
-                          </div>
-
-                          <Show
-                            when={!turn.b?.error}
-                            fallback={
-                              <div class="min-w-0 p-3 bg-danger/10 border border-danger/25 rounded-lg text-danger text-xs font-mono whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                                {turn.b?.error}
-                              </div>
-                            }
-                          >
-                            <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text min-h-[60px]">
-                              {turn.b?.content || (turn.b?.busy ? '...' : t('playground.emptyResponse'))}
-                            </div>
-                          </Show>
-                        </Card>
+                        <Show when={turn.b}>{b => (
+                          <ResponseCard
+                            response={b()}
+                            tag="B"
+                            tone="accent2"
+                            displayName={getResponseModelLabel(b())}
+                            providerName={getResponseProvider(b())}
+                            providerId={getTurnProvider(b())}
+                            copyLabel={t('playground.copyModelB')}
+                            onViewRaw={() => setRawJsonModal({
+                              title: `${t('playground.modelB')} · ${getResponseModelLabel(b())} (${b()?.targetModel})`,
+                              request: b()?.rawRequest,
+                              response: b()?.rawResponse,
+                            })}
+                            onCopy={() => copyText(b()?.content || '', t('playground.copyModelB'))}
+                          />
+                        )}</Show>
                       </div>
                     </Show>
                   </div>

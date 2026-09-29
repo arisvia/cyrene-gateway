@@ -1,7 +1,39 @@
 import { t } from '@/i18n'
 import type { ProtocolType } from '@/stores/playground'
 
-/** 演练场请求的采样参数：与协议无关，构造请求体时按各家规范落位。 */
+/** 协议徽章色调，未知协议（历史轮次）落灰。 */
+export function protocolBadgeTone(proto?: ProtocolType): 'green' | 'purple' | 'amber' | 'blue' | 'gray' {
+  switch (proto) {
+    case 'responses':
+      return 'purple'
+    case 'anthropic':
+      return 'amber'
+    case 'gemini':
+      return 'blue'
+    case 'openai':
+      return 'green'
+    default:
+      return 'gray'
+  }
+}
+
+/** 协议在 UI 上的规范名称，与各厂商对外叫法一致。 */
+export function protocolLabel(proto?: ProtocolType): string {
+  switch (proto) {
+    case 'responses':
+      return 'Responses'
+    case 'anthropic':
+      return 'Messages'
+    case 'gemini':
+      return 'Gemini'
+    case 'openai':
+      return 'Chat'
+    default:
+      return 'Chat'
+  }
+}
+
+/** 采样参数由调用方给出：与协议无关，构造请求体时按各家规范落位。 */
 export interface SamplingParams {
   systemPrompt: string
   temperature: number

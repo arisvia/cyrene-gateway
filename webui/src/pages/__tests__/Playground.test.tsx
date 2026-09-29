@@ -138,6 +138,87 @@ describe('Playground 导出代码弹窗', () => {
   })
 })
 
+describe('Playground 轮次回答区（拆卡前先钉住）', () => {
+  const singleTurn = (over: Record<string, unknown> = {}) => ({
+    id: 't1',
+    user: '提问正文',
+    mode: 'single' as const,
+    a: {
+      targetModel: 'qd/gemini-2.5-flash',
+      content: '回答正文',
+      busy: false,
+      servedModel: 'qd/gemini-2.5-flash',
+      protocol: 'openai' as const,
+      metrics: { ttftMs: 123, totalMs: 1200, speed: 42 },
+      ...over,
+    },
+  })
+
+  it('单模型卡片渲染模型名、协议徽章与三项指标', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn()])
+    const view = await mount()
+    await tick()
+    const text = view.baseElement.textContent || ''
+    expect(text).toContain('提问正文')
+    expect(text).toContain('Gemini 2.5 Flash')
+    expect(text).toContain('TTFT')
+    expect(text).toContain('123ms')
+    expect(text).toContain('42 t/s')
+    expect(text).toContain(t('playground.totalTime'))
+  })
+
+  it('调用失败时整块换成错误提示，不再显示正文', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn({ content: '', error: 'upstream 503' })])
+    const view = await mount()
+    await tick()
+    const text = view.baseElement.textContent || ''
+    expect(text).toContain(t('playground.callFailed'))
+    expect(text).toContain('upstream 503')
+    expect(text).not.toContain('回答正文')
+  })
+
+  it('既无正文又不在生成中时给出空返回占位', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn({ content: '' })])
+    const view = await mount()
+    await tick()
+    expect(view.baseElement.textContent).toContain(t('playground.emptyResponse'))
+  })
+
+  it('对比模式一次渲染 A 与 B 两张卡，各自带自己的模型与状态', async () => {
+    const store = usePlaygroundStore()
+    store.setMode('compare')
+    store.setTurnsAll([{
+      id: 'c1',
+      user: '对比提问',
+      mode: 'compare',
+      a: { targetModel: 'qd/model-a', content: 'A 的回答', busy: false, protocol: 'openai', metrics: { ttftMs: 11 }, rawRequest: { marker: 'A-REQ' } },
+      b: { targetModel: 'qd/model-b', content: 'B 的回答', busy: true, protocol: 'anthropic', metrics: { ttftMs: 22 }, rawRequest: { marker: 'B-REQ' } },
+    }])
+    const view = await mount()
+    await tick()
+    const text = view.baseElement.textContent || ''
+    expect(text).toContain('A 的回答')
+    expect(text).toContain('B 的回答')
+    expect(text).toContain('model-a')
+    expect(text).toContain('model-b')
+    // B 仍在生成中，A 已完成
+    expect(text).toContain(t('playground.generating'))
+    // 两张卡各自带一个原始报文入口与一个按槽位命名的复制按钮
+    expect(view.getAllByTitle(t('playground.viewRawJson')).length).toBe(2)
+    expect(view.getByTitle(t('playground.copyModelA'))).toBeTruthy()
+    expect(view.getByTitle(t('playground.copyModelB'))).toBeTruthy()
+  })
+
+  it('单模型卡的复制按钮写出该卡正文', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn()])
+    const view = await mount()
+    await tick()
+    fireEvent.click(view.getByTitle(t('playground.copyContent')))
+    await tick()
+    expect(copyToClipboard).toHaveBeenCalledWith('回答正文')
+  })
+})
+
 describe('Playground 原始报文弹窗', () => {
   it('按轮次打开请求/响应 JSON，标题带上模型名', async () => {
     const store = usePlaygroundStore()
