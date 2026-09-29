@@ -1,5 +1,7 @@
 import { type Component, For, Show, createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js'
 import { reloadModels, type GatewayModel } from '@/lib/models'
+import { asArray, dig, num, str } from '@/lib/json'
+import { usePlaygroundStore, type AssistantResponse, type Metrics, type ProtocolOption, type ProtocolType, type Turn } from '@/stores/playground'
 import {
   Card,
   Input,
@@ -34,74 +36,15 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-interface Metrics {
-  ttftMs?: number
-  totalMs?: number
-  tokens?: number
-  speed?: number
-}
-export type ProtocolType = 'openai' | 'responses' | 'anthropic' | 'gemini'
-
-export interface ProtocolOption {
-  value: ProtocolType
-  label: string
-  endpoint: string
-  badgeTone: 'green' | 'purple' | 'amber' | 'blue'
-  shortLabel: string
-}
-
-interface AssistantResponse {
-  targetModel: string
-  content: string
-  busy: boolean
-  error?: string
-  servedModel?: string
-  protocol?: ProtocolType
-  metrics?: Metrics
-  rawRequest?: unknown
-  rawResponse?: unknown
-}
-interface Turn {
-  id: string
-  user: string
-  mode: 'single' | 'compare'
-  a: AssistantResponse
-  b?: AssistantResponse
-}
 
 
-// JSON 安全窄化助手（AGENTS.md §1：前端禁 any，统一 unknown + 类型守卫）。
-// 跨协议响应/SSE 解析共用，置于组件外避免每次渲染重建。
-function asRecord(v: unknown): Record<string, unknown> | null {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
-}
-function asArray(v: unknown): unknown[] | null {
-  return Array.isArray(v) ? v : null
-}
-function str(v: unknown): string | null {
-  return typeof v === 'string' ? v : null
-}
-function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null
-}
-// 沿对象/数组路径安全取值：dig(obj, 'choices', 0, 'message', 'content')
-function dig(v: unknown, ...path: (string | number)[]): unknown {
-  let cur: unknown = v
-  for (const step of path) {
-    if (typeof step === 'number') {
-      const arr = asArray(cur)
-      if (!arr) return null
-      cur = arr[step]
-    } else {
-      const rec = asRecord(cur)
-      if (!rec) return null
-      cur = rec[step]
-    }
-  }
-  return cur
-}
 
 const Playground: Component = () => {
+  const {
+    mode, setMode, protocol, setProtocol, modelA, setModelA, modelB, setModelB,
+    systemPrompt, setSystemPrompt, temperature, setTemperature, topP, setTopP,
+    maxTokens, setMaxTokens, stream, setStream, turnsAll, setTurnsAll, turns, setTurns,
+  } = usePlaygroundStore()
   const { t } = useI18n()
   const toast = useToast()
   const systemPresets = () => [
@@ -118,17 +61,10 @@ const Playground: Component = () => {
     t('playground.quickPrompts.p4'),
   ]
 
-  // 模式：单模型 (single) / 双模型对比 (compare)
-  const [mode, setMode] = createSignal<'single' | 'compare'>('single')
   const [models, setModels] = createSignal<GatewayModel[]>([])
   const [loadingModels, setLoadingModels] = createSignal(false)
 
-  // 模型选择
-  const [modelA, setModelA] = createSignal('')
-  const [modelB, setModelB] = createSignal('')
 
-  // 协议端点选择
-  const [protocol, setProtocol] = createSignal<ProtocolType>('openai')
 
   const protocolOptions = createMemo((): ProtocolOption[] => [
     {
@@ -166,21 +102,10 @@ const Playground: Component = () => {
     return protocolOptions().find(p => p.value === proto) || protocolOptions()[0]
   })
   // 参数配置
-  const [systemPrompt, setSystemPrompt] = createSignal('')
-  const [temperature, setTemperature] = createSignal(0.7)
-  const [topP, setTopP] = createSignal(0.95)
-  const [maxTokens, setMaxTokens] = createSignal(2048)
-  const [stream, setStream] = createSignal(true)
 
   // 参数抽屉显示状态（桌面端默认展开，移动端默认收起）
   const [showParams, setShowParams] = createSignal(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true)
 
-  // 对话历史：按模式隔离（单模型测试与双模型对比各自保持独立消息流与上下文，切换模式不串流）
-  const [turnsAll, setTurnsAll] = createSignal<Turn[]>([])
-  const turns = () => turnsAll().filter(t => t.mode === mode())
-  const setTurns = (updater: Turn[] | ((prev: Turn[]) => Turn[])) => {
-    setTurnsAll(updater)
-  }
 
   const [inputPrompt, setInputPrompt] = createSignal('')
   let chatContainerRef: HTMLDivElement | undefined
@@ -231,61 +156,10 @@ const Playground: Component = () => {
   const [rawJsonModal, setRawJsonModal] = createSignal<{ title: string; request: unknown; response: unknown } | null>(null)
   const [copiedCode, setCopiedCode] = createSignal(false)
 
-  // 加载本地持久化配置
   onMount(async () => {
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage) {
-        const saved = localStorage.getItem('cyrene_playground_config')
-        if (saved) {
-          const parsed: unknown = JSON.parse(saved)
-          const proto = str(dig(parsed, 'protocol'))
-          if (proto === 'openai' || proto === 'responses' || proto === 'anthropic' || proto === 'gemini') setProtocol(proto)
-          const savedMode = str(dig(parsed, 'mode'))
-          if (savedMode === 'single' || savedMode === 'compare') setMode(savedMode)
-          const savedModelA = str(dig(parsed, 'modelA'))
-          if (savedModelA) setModelA(savedModelA)
-          const savedModelB = str(dig(parsed, 'modelB'))
-          if (savedModelB) setModelB(savedModelB)
-          const savedSys = str(dig(parsed, 'systemPrompt'))
-          if (savedSys !== null) setSystemPrompt(savedSys)
-          const savedTemp = num(dig(parsed, 'temperature'))
-          if (savedTemp !== null) setTemperature(savedTemp)
-          const savedTopP = num(dig(parsed, 'topP'))
-          if (savedTopP !== null) setTopP(savedTopP)
-          const savedMaxTokens = num(dig(parsed, 'maxTokens'))
-          if (savedMaxTokens !== null) setMaxTokens(savedMaxTokens)
-          const savedStream = dig(parsed, 'stream')
-          if (typeof savedStream === 'boolean') setStream(savedStream)
-        }
-      }
-    } catch {
-      // ignore
-    }
-
     await loadModels()
   })
 
-  // 持久化设置
-  createEffect(() => {
-    const config = {
-      protocol: protocol(),
-      mode: mode(),
-      modelA: modelA(),
-      modelB: modelB(),
-      systemPrompt: systemPrompt(),
-      temperature: temperature(),
-      topP: topP(),
-      maxTokens: maxTokens(),
-      stream: stream(),
-    }
-    try {
-      if (typeof localStorage !== 'undefined' && localStorage) {
-        localStorage.setItem('cyrene_playground_config', JSON.stringify(config))
-      }
-    } catch {
-      // ignore
-    }
-  })
 
   async function loadModels() {
     setLoadingModels(true)
