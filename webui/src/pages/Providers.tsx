@@ -1,6 +1,7 @@
-import {type Component, createMemo, createSignal, For, onCleanup, onMount, Show, Switch, Match} from 'solid-js'
+import {type Component, createMemo, createSignal, For, onMount, Show, Switch, Match} from 'solid-js'
 import {A} from '@solidjs/router'
 import {useGatewayStore} from '@/stores/gateway'
+import {useOAuthFlow} from '@/lib/oauthFlow'
 import {useI18n} from '@/i18n'
 import {
   Badge,
@@ -30,7 +31,7 @@ import {
   IconClose,
   Alert,
 } from '@/components/ui'
-import {api, apiPost, ApiError} from '@/lib/api'
+import {apiPost} from '@/lib/api'
 import {useToast} from '@/lib/toast'
 import {copyToClipboard} from '@/lib/clipboard'
 import type {BadgeTone, Provider, RegistryProvider} from '@/types/domain'
@@ -286,51 +287,37 @@ const Providers: Component = () => {
   const [testingCreds, setTestingCreds] = createSignal(false)
   const [testedCreds, setTestedCreds] = createSignal<{ ok: boolean; msg: string } | null>(null)
 
-  // 向导直连 OAuth 流程状态
-  const [wizardOAuthFlow, setWizardOAuthFlow] = createSignal<{
-    verificationUri: string
-    verificationUriComplete?: string
-    userCode?: string
-    deviceCode?: string
-    nonce?: string
-    codeVerifier?: string
-    machineId?: string
-    expiresIn?: number
-    interval?: number
-    state?: string
-    isManualPaste?: boolean
-  } | null>(null)
-  const [wizardManualCode, setWizardManualCode] = createSignal('')
-  const [wizardExchanging, setWizardExchanging] = createSignal(false)
-  const [wizardOAuthPolling, setWizardOAuthPolling] = createSignal(false)
-  const [wizardOAuthError, setWizardOAuthError] = createSignal('')
-  const [wizardOAuthCopied, setWizardOAuthCopied] = createSignal(false)
-  const [wizardIsImport, setWizardIsImport] = createSignal(false)
-  const [wizardImportToken, setWizardImportToken] = createSignal('')
-  const [wizardImporting, setWizardImporting] = createSignal(false)
-  let wizardPollTimer: number | undefined
-  let wizardOAuthController: AbortController | undefined
+  // 向导直连 OAuth 流程：与账号详情页共用同一套设备码 / 授权码 / 令牌导入生命周期
+  const flowApi = useOAuthFlow({
+    providerId: () => selectedReg()?.id,
+    account: () => null,
+    accountName: () => form().name,
+    displayName: () => selectedReg()?.name ?? '',
+    onAuthorized: async () => {
+      setWizardOpen(false)
+      setActiveTab('connections')
+      await store.loadProvidersOnly()
+    },
+  })
+  const {
+    deviceFlow: wizardOAuthFlow,
+    manualCode: wizardManualCode, setManualCode: setWizardManualCode,
+    manualExchanging: wizardExchanging,
+    devicePolling: wizardOAuthPolling,
+    deviceError: wizardOAuthError, clearDeviceError: clearWizardOAuthError,
+    copiedCode: wizardOAuthCopied, setCopiedCode: setWizardOAuthCopied,
+    isImportFlow: wizardIsImport,
+    importTokenText: wizardImportToken, setImportTokenText: setWizardImportToken,
+    importingToken: wizardImporting,
+    cancelDeviceFlow: cancelWizardOAuth,
+    handleImportToken: handleWizardImportSubmit,
+    handleManualSubmit: handleWizardManualSubmit,
+  } = flowApi
 
-  function abortWizardOAuth() {
-    wizardOAuthController?.abort()
-    wizardOAuthController = undefined
-    clearInterval(wizardPollTimer)
-    wizardPollTimer = undefined
-  }
-
-  onCleanup(abortWizardOAuth)
-
-  function cancelWizardOAuth() {
-    abortWizardOAuth()
-    setWizardImporting(false)
-    setWizardOAuthPolling(false)
-    setWizardOAuthFlow(null)
-    setWizardOAuthError('')
-    setWizardIsImport(false)
-    setWizardImportToken('')
-    setWizardManualCode('')
-    setWizardExchanging(false)
-  }
+  const startWizardOAuth = () => flowApi.startDeviceFlow(
+    wizardPriority(form().priority),
+    form().name || selectedReg()?.name || '',
+  )
 
   // 打开添加向导
   function openWizard(reg: RegistryProvider) {
@@ -391,227 +378,6 @@ const Providers: Component = () => {
     }
   }
 
-  // 启动向导中的直接 OAuth 授权流程（根据供应商支持的流类型智能分流）
-  async function startWizardOAuth() {
-    const reg = selectedReg()
-    if (!reg) return
-    cancelWizardOAuth()
-    wizardOAuthController = new AbortController()
-    const { signal } = wizardOAuthController
-    setWizardOAuthError('')
-    setWizardOAuthPolling(true)
-
-    try {
-      // 先查询该供应商真实支持的 OAuth 流类型
-      const statusRes = (await api(`/api/oauth/${reg.id}/status`, { signal, silent: true })) as {
-        flowType?: string
-        connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
-      }
-      if (signal.aborted) return
-      const flowType = statusRes?.flowType
-      const initialConnMap = new Map((statusRes?.connections || []).map(c => [c.id, `${c.expiresAt || ''}:${c.updatedAt || ''}`]))
-
-      // 1. 令牌导入流 (如 Cursor 等)
-      if (flowType === 'import_token') {
-        setWizardOAuthPolling(false)
-        setWizardIsImport(true)
-        return
-      }
-
-      // 2. 网页授权码 / PKCE 流（如 Antigravity, Claude, Google 等）
-      if (flowType === 'authorization_code_pkce' || flowType === 'authorization_code') {
-        const callbackUri = `${window.location.origin}/api/oauth/${reg.id}/callback`
-        const pVal = wizardPriority(form().priority)
-        const nVal = encodeURIComponent(form().name || reg.name)
-        const authRes = (await api(`/api/oauth/${reg.id}/authorize?redirect_uri=${encodeURIComponent(callbackUri)}&priority=${pVal}&name=${nVal}`, { signal, silent: true })) as {
-          authorizeUrl: string
-          state: string
-        }
-        if (signal.aborted) return
-        if (authRes?.authorizeUrl) {
-          window.open(authRes.authorizeUrl, '_blank')
-          toast.info(t('toast.oauthWindowOpened', { name: reg.name }))
-          if (reg.id === 'antigravity') {
-            setWizardOAuthFlow({
-              verificationUri: authRes.authorizeUrl,
-              state: authRes.state,
-              isManualPaste: true,
-            })
-          }
-        }
-
-        // 轮询检测是否产生新连接
-        if (wizardPollTimer) clearInterval(wizardPollTimer)
-        wizardPollTimer = window.setInterval(async () => {
-          try {
-            const pollStatus = (await api(`/api/oauth/${reg.id}/status`, { signal, silent: true })) as {
-              connections?: Array<{ id: string; expiresAt?: string; updatedAt?: string }>
-            }
-            if (signal.aborted) return
-            const currentConns = pollStatus?.connections || []
-            const isFinished = currentConns.some(c => {
-              if (!initialConnMap.has(c.id)) return true
-              const oldSnap = initialConnMap.get(c.id) || ''
-              const curSnap = `${c.expiresAt || ''}:${c.updatedAt || ''}`
-              return curSnap !== oldSnap
-            })
-            if (isFinished) {
-              cancelWizardOAuth()
-              toast.success(t('toast.oauthSuccess', { name: reg.name }))
-              setWizardOpen(false)
-              setActiveTab('connections')
-              await store.loadProvidersOnly()
-            }
-          } catch {
-            // 忽略轮询偶发网络错误与被中止的请求
-          }
-        }, 2500)
-        return
-      }
-
-      // 3. 设备码流（Device Code Flow，如 GitHub, Kimi, CodeBuddy, Qoder, Grok CLI 等）
-      const raw = (await apiPost(`/api/oauth/${reg.id}/device-code`, undefined, { signal, silent: true })) as Record<string, unknown>
-      if (signal.aborted) return
-      const res = {
-        verificationUri: ((raw.verificationUri || raw.verification_uri || '') as string),
-        verificationUriComplete: ((raw.verificationUriComplete || raw.verification_uri_complete || '') as string),
-        userCode: (raw.userCode || raw.user_code) as string | undefined,
-        deviceCode: (raw.deviceCode || raw.device_code) as string | undefined,
-        nonce: raw.nonce as string | undefined,
-        codeVerifier: (raw.codeVerifier || raw.code_verifier) as string | undefined,
-        machineId: (raw.machineId || raw.machine_id) as string | undefined,
-        extraData: (raw.extraData || raw.extra_data) as Record<string, unknown> | undefined,
-        expiresIn: (raw.expiresIn || raw.expires_in) as number | undefined,
-        interval: (raw.interval || 5) as number,
-      }
-      setWizardOAuthFlow(res)
-      const targetUrl = res.verificationUriComplete || res.verificationUri
-      if (targetUrl) {
-        window.open(targetUrl, '_blank')
-      }
-
-      if (wizardPollTimer) clearInterval(wizardPollTimer)
-      let inFlight = false
-      const intervalMs = res.interval ? res.interval * 1000 : 2500
-      wizardPollTimer = window.setInterval(async () => {
-        if (inFlight) return
-        inFlight = true
-        try {
-          const pollRes = (await apiPost(`/api/oauth/${reg.id}/device-code/poll`, {
-            deviceCode: res.deviceCode,
-            nonce: res.nonce,
-            codeVerifier: res.codeVerifier,
-            machineId: res.machineId,
-            extraData: res.extraData,
-            name: form().name || reg.name,
-            priority: wizardPriority(form().priority),
-          }, { signal, silent: true })) as { success?: boolean; error?: string; pending?: boolean; connection?: Provider }
-          if (signal.aborted) return
-          if (pollRes?.success) {
-            cancelWizardOAuth()
-            toast.success(t('toast.oauthSuccess', { name: reg.name }))
-            setWizardOpen(false)
-            setActiveTab('connections')
-            await store.loadProvidersOnly()
-          } else if (pollRes?.error && !pollRes?.pending) {
-            clearInterval(wizardPollTimer)
-            wizardPollTimer = undefined
-            setWizardOAuthPolling(false)
-            setWizardOAuthError(pollRes.error)
-          }
-        } catch (e: unknown) {
-          if (signal.aborted) return
-          if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) {
-            clearInterval(wizardPollTimer)
-            wizardPollTimer = undefined
-            setWizardOAuthPolling(false)
-            setWizardOAuthError(e.message)
-          }
-        } finally {
-          inFlight = false
-        }
-      }, intervalMs)
-    } catch (e: unknown) {
-      if (signal.aborted) return
-      setWizardOAuthPolling(false)
-      const msg = e instanceof Error ? e.message : String(e)
-      setWizardOAuthError(msg)
-      toast.error(t('toast.oauthFailed', { error: msg }))
-    }
-  }
-
-  // 提交 Token 导入
-  async function handleWizardImportSubmit() {
-    const reg = selectedReg()
-    if (!reg) return
-    const token = wizardImportToken().trim()
-    if (!token) {
-      toast.error(t('toast.tokenRequired'))
-      return
-    }
-    const signal = wizardOAuthController?.signal
-    setWizardImporting(true)
-    try {
-      await apiPost(`/api/oauth/${reg.id}/import`, {
-        accessToken: token,
-        name: form().name || reg.name,
-        priority: wizardPriority(form().priority),
-      }, { signal, silent: true })
-      if (signal?.aborted) return
-      cancelWizardOAuth()
-      setWizardOpen(false)
-      setActiveTab('connections')
-      await store.loadProvidersOnly()
-    } catch (e: unknown) {
-      if (signal?.aborted) return
-      const msg = e instanceof Error ? e.message : String(e)
-      setWizardOAuthError(msg)
-      toast.error(t('toast.tokenImportFailed', { error: msg }))
-    } finally {
-      if (!signal?.aborted) setWizardImporting(false)
-    }
-  }
-  async function handleWizardManualSubmit() {
-    const raw = wizardManualCode().trim()
-    const reg = selectedReg()
-    if (!raw || !reg) return
-    const signal = wizardOAuthController?.signal
-    setWizardExchanging(true)
-    setWizardOAuthError('')
-    try {
-      let code = raw
-      let state = wizardOAuthFlow()?.state || ''
-      if (raw.includes('?') || raw.includes('&')) {
-        try {
-          const url = new URL(raw.startsWith('http') ? raw : `http://dummy/?${raw}`)
-          const c = url.searchParams.get('code')
-          const s = url.searchParams.get('state')
-          if (c) code = c
-          if (s) state = s
-        } catch {}
-      }
-      await apiPost(`/api/oauth/${reg.id}/exchange`, {
-        code,
-        state,
-        redirectUri: reg.id === 'antigravity' ? 'http://127.0.0.1:51121/oauth-callback' : undefined,
-        name: form().name || reg.name,
-        priority: wizardPriority(form().priority),
-      }, { signal, silent: true })
-      if (signal?.aborted) return
-      toast.success(t('toast.oauthSuccess', { name: reg.name }))
-      cancelWizardOAuth()
-      setWizardOpen(false)
-      setActiveTab('connections')
-      await store.loadProvidersOnly()
-    } catch (e: unknown) {
-      if (signal?.aborted) return
-      const msg = e instanceof Error ? e.message : String(e)
-      setWizardOAuthError(msg)
-      toast.error(msg)
-    } finally {
-      if (!signal?.aborted) setWizardExchanging(false)
-    }
-  }
 
   // 提交向导表单
   async function handleWizardSubmit() {
@@ -1239,7 +1005,7 @@ const Providers: Component = () => {
                         variant="danger"
                         title={t('providers.authProblemTitle')}
                         closable
-                        onClose={() => setWizardOAuthError('')}
+                        onClose={clearWizardOAuthError}
                       >
                         {wizardOAuthError()}
                       </Alert>

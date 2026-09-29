@@ -233,6 +233,11 @@ export function useOAuthFlow(deps: OAuthFlowDeps) {
     }
   }
 
+  /** 关闭错误提示条：只清文案，不动轮询生命周期。 */
+  function clearDeviceError() {
+    setDeviceError('')
+  }
+
   function cancelDeviceFlow() {
     abortDeviceFlow()
     setDevicePolling(false)
@@ -292,7 +297,7 @@ export function useOAuthFlow(deps: OAuthFlowDeps) {
     setManualCode,
     manualExchanging,
     devicePolling,
-    deviceError,
+    deviceError, clearDeviceError,
     copiedCode,
     setCopiedCode,
     isImportFlow,
