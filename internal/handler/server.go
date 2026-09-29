@@ -300,7 +300,7 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 	buildMediaProviders := func() []EnrichedRegistryProvider {
 		var list []EnrichedRegistryProvider
 		for id, mp := range media.Registry {
-			if _, inChat := provider.Registry[id]; inChat {
+			if _, inChat := provider.GetProvider(id); inChat {
 				continue
 			}
 			kinds := make([]string, len(mp.Kinds))
@@ -555,8 +555,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(sortedProviders, func(i, j int) bool {
 		p1, p2 := sortedProviders[i], sortedProviders[j]
-		info1, ok1 := provider.Registry[p1]
-		info2, ok2 := provider.Registry[p2]
+		info1, ok1 := provider.GetProvider(p1)
+		info2, ok2 := provider.GetProvider(p2)
 		prio1 := 1000
 		if ok1 && info1.Priority > 0 {
 			prio1 = info1.Priority
@@ -679,7 +679,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// 2. targetID is a provider ID (e.g. "qoder", "openai", "custom-openai")
-		providerID := targetID
+		providerID := provider.ResolveProviderAlias(targetID)
 		providerInfo, ok = provider.GetProvider(providerID)
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider"})

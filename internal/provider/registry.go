@@ -107,9 +107,11 @@ func ResolveProviderAlias(aliasOrID string) string {
 	return aliasOrID
 }
 
-// GetProvider returns provider info by ID
+// GetProvider returns provider info by ID. Shorthand aliases resolve here so
+// every caller sees one canonical entry point; Registry itself stays keyed by
+// canonical ID only.
 func GetProvider(id string) (ProviderInfo, bool) {
-	p, ok := Registry[id]
+	p, ok := Registry[ResolveProviderAlias(id)]
 	return p, ok
 }
 

@@ -260,3 +260,34 @@ func TestRegistryAliasesBrevityAndUniqueness(t *testing.T) {
 		}
 	}
 }
+
+// TestGetProviderAcceptsAlias pins the single canonical read entry point: every
+// caller goes through GetProvider, so an alias must resolve to the same record
+// as the id it stands for instead of silently missing the connection lookup.
+func TestGetProviderAcceptsAlias(t *testing.T) {
+	for id, p := range Registry {
+		canonical, ok := GetProvider(id)
+		if !ok || canonical.ID != id {
+			t.Fatalf("GetProvider(%q) = (%q,%v), want its own record", id, canonical.ID, ok)
+		}
+		if p.Alias == "" || p.Alias == id {
+			continue
+		}
+		viaAlias, ok := GetProvider(p.Alias)
+		if !ok {
+			t.Errorf("GetProvider(%q) not found, want alias of %q", p.Alias, id)
+			continue
+		}
+		if viaAlias.ID != canonical.ID || viaAlias.BaseURL != canonical.BaseURL || viaAlias.APIType != canonical.APIType {
+			t.Errorf("GetProvider(%q) returned a different record than GetProvider(%q)", p.Alias, id)
+		}
+	}
+
+	// Unknown ids stay unknown: no fuzzy or prefix matching.
+	if _, ok := GetProvider("no-such-provider"); ok {
+		t.Error("GetProvider resolved an unknown provider")
+	}
+	if got := ResolveProviderAlias("no-such-provider"); got != "no-such-provider" {
+		t.Errorf("ResolveProviderAlias rewrote an unknown id to %q", got)
+	}
+}

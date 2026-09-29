@@ -128,8 +128,7 @@ func ClearSession(state string) {
 
 // GetProviderFlowType determines the OAuth flow type for a provider.
 func GetProviderFlowType(providerID string) OAuthFlowType {
-	canonical := ResolveProviderAlias(providerID)
-	info, ok := Registry[canonical]
+	info, ok := GetProvider(providerID)
 	if !ok {
 		return ""
 	}
@@ -152,7 +151,7 @@ func GetProviderFlowType(providerID string) OAuthFlowType {
 
 // BuildAuthorizeURL constructs the authorization URL for a provider.
 func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, error) {
-	info, ok := Registry[providerID]
+	info, ok := GetProvider(providerID)
 	if !ok {
 		return "", fmt.Errorf("unknown provider: %s", providerID)
 	}
@@ -245,7 +244,7 @@ type TokenExchangeResult struct {
 
 // ExchangeCode exchanges an authorization code for tokens.
 func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *http.Client) (*TokenExchangeResult, error) {
-	info, ok := Registry[providerID]
+	info, ok := GetProvider(providerID)
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", providerID)
 	}
@@ -334,7 +333,7 @@ type DeviceCodeResponse struct {
 
 // RequestDeviceCode initiates a device code flow for a provider.
 func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeResponse, error) {
-	info, ok := Registry[providerID]
+	info, ok := GetProvider(providerID)
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", providerID)
 	}
@@ -542,7 +541,7 @@ type PollDeviceCodeResult struct {
 
 // PollDeviceCode polls the token endpoint for a device code flow.
 func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[string]any, client *http.Client) (*PollDeviceCodeResult, error) {
-	info, ok := Registry[providerID]
+	info, ok := GetProvider(providerID)
 	if !ok {
 		return nil, fmt.Errorf("unknown provider: %s", providerID)
 	}

@@ -344,7 +344,7 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 // handleVideoStatus handles GET /v1/videos/{id}
 func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 	requestID := r.PathValue("id")
-	providerID := r.URL.Query().Get("provider")
+	providerID := provider.ResolveProviderAlias(r.URL.Query().Get("provider"))
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider query param"})
 		return
@@ -389,6 +389,7 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})
 		return
 	}
+	req.Provider = provider.ResolveProviderAlias(req.Provider)
 
 	if !media.SupportsKind(req.Provider, media.KindWebFetch) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web fetch", req.Provider)})
@@ -637,7 +638,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 
 // handleMediaVoices handles GET /api/media-providers/tts/voices
 func (s *Server) handleMediaVoices(w http.ResponseWriter, r *http.Request) {
-	providerID := r.URL.Query().Get("provider")
+	providerID := provider.ResolveProviderAlias(r.URL.Query().Get("provider"))
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider query param"})
 		return

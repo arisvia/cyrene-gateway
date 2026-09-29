@@ -1625,7 +1625,9 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Provider != "" {
-		modelInfo.Provider = req.Provider
+		// The explicit override has to land on the same canonical id that
+		// connections, credentials and usage rows are keyed by.
+		modelInfo.Provider = provider.ResolveProviderAlias(req.Provider)
 		modelInfo.Model = req.Model
 		if strings.HasPrefix(modelInfo.Model, req.Provider+"/") {
 			modelInfo.Model = strings.TrimPrefix(modelInfo.Model, req.Provider+"/")
