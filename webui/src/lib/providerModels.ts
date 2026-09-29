@@ -252,9 +252,9 @@ export function useProviderModels(deps: ProviderModelsDeps) {
     if (outcome === undefined) return
     const result = modelTestResults()[modelId]
     if (outcome) {
-      toast.success(t('toast.modelTestPassed', { id: modelId, latency: result?.latency || 'ok' }))
+      toast.success(t('toast.modelTestPassed', { id: modelId, latency: result?.latency || t('providerDetail.normal') }))
     } else {
-      toast.error(t('toast.modelTestFailed', { id: modelId, error: result?.error || 'unavailable' }))
+      toast.error(t('toast.modelTestFailed', { id: modelId, error: result?.error || t('providerDetail.testNotPassed') }))
     }
   }
 
