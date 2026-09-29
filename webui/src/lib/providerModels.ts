@@ -1,0 +1,364 @@
+import { createEffect, createMemo, createResource, createSignal } from 'solid-js'
+import { api, apiPost } from './api'
+import { confirm } from './confirm'
+import { t } from '@/i18n'
+import { useToast } from './toast'
+import { useGatewayStore } from '@/stores/gateway'
+import type { ProviderModel } from '@/types/domain'
+
+export interface ProviderModelsPayload {
+  registryModels?: ProviderModel[]
+  customModels?: ProviderModel[]
+  isFreeMode?: boolean
+  authType?: string
+  authModes?: string[]
+  defaultHeaders?: Record<string, string>
+  hasApiKey?: boolean
+}
+
+const EMPTY_MODELS: ProviderModelsPayload = {}
+
+export interface ModelTestResult {
+  ok: boolean
+  latency?: string
+  error?: string
+}
+
+export interface ProviderModelsDeps {
+  /** 当前账号连接 id，模型接口按连接取数。 */
+  connectionId: () => string | undefined
+  /** 当前账号所属供应商 id，用于拼 model key。 */
+  providerId: () => string | undefined
+}
+
+const modelKeyOf = (m: ProviderModel) => m.id || m.name || ''
+
+/** 启用者优先、再按模型 ID 自然序，注册表与自定义清单共用同一套排序。 */
+function sortModels(list: ProviderModel[]): ProviderModel[] {
+  return list.slice().sort((a, b) => {
+    const aEnabled = a.enabled !== false
+    const bEnabled = b.enabled !== false
+    if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
+    return modelKeyOf(a).localeCompare(modelKeyOf(b), undefined, { numeric: true, sensitivity: 'base' })
+  })
+}
+
+/**
+ * 一个供应商连接的模型清单：读取、启停、连通性探测与元数据覆写。
+ * 由 ProviderDetail 在自身作用域内创建，切换账号即随路由重建。
+ */
+export function useProviderModels(deps: ProviderModelsDeps) {
+  const store = useGatewayStore()
+  const toast = useToast()
+
+  const [models, { refetch: refetchModels, mutate: mutateModels }] = createResource(
+    deps.connectionId,
+    async (id): Promise<ProviderModelsPayload> => {
+      try {
+        return await api(`/api/providers/${id}/models`) as ProviderModelsPayload
+      } catch {
+        return { registryModels: [], customModels: [] }
+      }
+    },
+  )
+
+  // 资源尚未就绪时以空对象占位，读侧只需一层 ?? []
+  const payload = (): ProviderModelsPayload => models() ?? EMPTY_MODELS
+
+  const allDisplayModels = () =>
+    (payload().registryModels ?? []).concat(payload().customModels ?? [])
+  const activeModels = () => allDisplayModels().filter(m => Boolean(m.id) && m.enabled !== false)
+
+  const enabledModelsCount = createMemo(() => allDisplayModels().filter(m => m.enabled !== false).length)
+  const disabledModelsCount = () => allDisplayModels().length - enabledModelsCount()
+
+  const sortedRegistryModels = createMemo(() => sortModels(payload().registryModels ?? []))
+  const sortedCustomModels = createMemo(() => sortModels(payload().customModels ?? []))
+  const customCount = () => (payload().customModels ?? []).length
+
+  const [modelSearch, setModelSearch] = createSignal('')
+  const [showCustomModels, setShowCustomModels] = createSignal(false)
+  const [syncingModels, setSyncingModels] = createSignal(false)
+  const [batchBusy, setBatchBusy] = createSignal(false)
+  const [testingModels, setTestingModels] = createSignal<Record<string, boolean>>({})
+  const [modelTestResults, setModelTestResults] = createSignal<Record<string, ModelTestResult>>({})
+  const [testingAll, setTestingAll] = createSignal(false)
+  const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
+
+  createEffect(() => {
+    if (customCount() > 0) setShowCustomModels(true)
+  })
+
+  /** 把一批模型的 enabled 落成目标值；targets 为 null 表示整张清单。 */
+  function mutateEnabled(targets: Set<string> | null, enabled: boolean) {
+    const apply = (list?: ProviderModel[]) =>
+      (list ?? []).map(m => (targets === null || targets.has(modelKeyOf(m)) ? { ...m, enabled } : m))
+    mutateModels(prev => ({
+      ...prev,
+      registryModels: apply(prev?.registryModels),
+      customModels: apply(prev?.customModels),
+    }))
+  }
+
+  /**
+   * 乐观落子 → 提交批量启停 → 失败则回读服务端状态。
+   * 全部启用 / 全部禁用 / 禁用失败项三条路径只差目标集合、方向与文案。
+   */
+  async function setModelsEnabled(options: {
+    targets: ProviderModel[]
+    enabled: boolean
+    confirmMessage?: string
+    infoMessage: string
+  }) {
+    const p = deps.providerId()
+    if (!p || batchBusy()) return
+    if (options.targets.length === 0) {
+      toast.info(options.infoMessage)
+      return
+    }
+    if (options.confirmMessage && !await confirm(options.confirmMessage)) return
+
+    const modelKeys = options.targets.map(m => `${p}/${modelKeyOf(m)}`)
+    setBatchBusy(true)
+    mutateEnabled(new Set(options.targets.map(modelKeyOf)), options.enabled)
+    try {
+      await store.batchSetModelsDisabled(modelKeys, !options.enabled)
+      toast.success(t(options.enabled ? 'toast.batchEnableSuccess' : 'toast.batchDisableSuccess', { count: options.targets.length }))
+    } catch {
+      refetchModels()
+    } finally {
+      setBatchBusy(false)
+    }
+  }
+
+  function toggleTargets(enabled: boolean) {
+    return allDisplayModels().filter(m => enabled ? m.enabled === false : m.enabled !== false)
+  }
+
+  function handleEnableAll() {
+    return setModelsEnabled({
+      targets: toggleTargets(true),
+      enabled: true,
+      infoMessage: t('toast.allModelsEnabled'),
+    })
+  }
+
+  async function handleDisableAll() {
+    const targets = toggleTargets(false)
+    await setModelsEnabled({
+      targets,
+      enabled: false,
+      confirmMessage: t('providerDetail.confirmDisableAll', { count: targets.length }),
+      infoMessage: t('toast.allModelsDisabled'),
+    })
+  }
+
+  const failedModelsList = () => {
+    const results = modelTestResults()
+    const seen = new Set<string>()
+    return allDisplayModels().filter(m => {
+      const mid = modelKeyOf(m)
+      if (!mid || seen.has(mid)) return false
+      seen.add(mid)
+      return results[mid] && !results[mid].ok && m.enabled !== false
+    })
+  }
+
+  async function handleDisableFailed() {
+    const targets = failedModelsList()
+    await setModelsEnabled({
+      targets,
+      enabled: false,
+      confirmMessage: t('providerDetail.confirmDisableFailed', { count: targets.length }),
+      infoMessage: t('toast.noFailedModels'),
+    })
+  }
+
+  async function toggleModel(modelId: string, currentEnabled: boolean) {
+    const p = deps.providerId()
+    if (!p) return
+    const nextState = !currentEnabled
+
+    // 立即乐观更新本地响应式状态
+    mutateEnabled(new Set([modelId]), nextState)
+    try {
+      await store.setModelDisabled(`${p}/${modelId}`, !nextState)
+    } catch {
+      refetchModels()
+    }
+  }
+
+  /** 探测单个模型并记录结果；单点测试与批量测试共用，仅失败兜底文案不同。 */
+  async function probeModel(modelId: string, fallbackError = t('providerDetail.testRequestError')) {
+    const p = deps.providerId()
+    if (!p) return
+    setTestingModels(prev => ({ ...prev, [modelId]: true }))
+    try {
+      const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
+      const res = await store.testModel(fullModel, deps.connectionId())
+      setModelTestResults(prev => ({ ...prev, [modelId]: { ok: res.ok, latency: res.latency, error: res.error } }))
+      return res.ok
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : fallbackError
+      setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
+      return false
+    } finally {
+      setTestingModels(prev => ({ ...prev, [modelId]: false }))
+    }
+  }
+
+  async function testSingleModel(modelId: string) {
+    if (testingModels()[modelId]) return
+    const ok = await probeModel(modelId)
+    const result = modelTestResults()[modelId]
+    if (ok) {
+      toast.success(t('toast.modelTestPassed', { id: modelId, latency: result?.latency || 'ok' }))
+    } else {
+      toast.error(t('toast.modelTestFailed', { id: modelId, error: result?.error || 'unavailable' }))
+    }
+  }
+
+  async function handleTestAll() {
+    if (testingAll()) return
+    const seen = new Set<string>()
+    const targetList = allDisplayModels().filter(m => {
+      const k = modelKeyOf(m)
+      if (!k || seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    if (targetList.length === 0) {
+      toast.info(t('toast.noTestableModels'))
+      return
+    }
+    setTestingAll(true)
+    setTestAllProgress({ current: 0, total: targetList.length })
+
+    let completed = 0
+    let passed = 0
+    let failed = 0
+    let index = 0
+    // 三条并发，避免对上游造成突发压力
+    const worker = async () => {
+      while (index < targetList.length) {
+        const cur = targetList[index++]
+        const modelId = modelKeyOf(cur)
+        if (!modelId) continue
+        if (await probeModel(modelId, t('providerDetail.testUnexpected'))) passed++
+        else failed++
+        completed++
+        setTestAllProgress({ current: completed, total: targetList.length })
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(3, targetList.length) }, worker))
+
+    setTestingAll(false)
+    setTestAllProgress(null)
+    toast.success(t('toast.testAllDone', { passed, failed }))
+  }
+
+  async function handleSyncModels() {
+    const p = deps.providerId()
+    if (!p) return
+    setSyncingModels(true)
+    try {
+      await apiPost(`/api/providers/${p}/refresh-models`)
+      toast.success(t('toast.syncModelsSuccess'))
+      await refetchModels()
+    } catch {
+      // Error is automatically surfaced by api.ts
+    } finally {
+      setSyncingModels(false)
+    }
+  }
+
+  async function addCustomModel(modelId: string, modelName: string) {
+    const id = modelId.trim()
+    if (!id || !deps.connectionId()) return
+    try {
+      await store.addProviderModel(deps.connectionId()!, { id, name: modelName.trim() || id })
+      toast.success(t('providerDetail.customModelAdded', { id }))
+      refetchModels()
+    } catch {
+      // Error is automatically surfaced by api.ts
+    }
+  }
+
+  async function removeCustomModel(modelId: string) {
+    const connectionId = deps.connectionId()
+    if (!connectionId) return
+    const ok = await confirm({
+      title: t('providerDetail.deleteModelTitle'),
+      message: t('providerDetail.deleteModelMessage', { id: modelId }),
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await store.deleteProviderModel(connectionId, modelId)
+      toast.success(t('providerDetail.modelDeleted', { id: modelId }))
+      refetchModels()
+    } catch {
+      // Error is automatically surfaced by api.ts
+    }
+  }
+
+  // ── 模型元数据覆写编辑 ──
+  const [editingModel, setEditingModel] = createSignal<ProviderModel | null>(null)
+  const [editDisplayName, setEditDisplayName] = createSignal('')
+  const [editContextLength, setEditContextLength] = createSignal('')
+  const [editMaxOutput, setEditMaxOutput] = createSignal('')
+  const [savingMeta, setSavingMeta] = createSignal(false)
+
+  function startEditModel(m: ProviderModel) {
+    setEditingModel(m)
+    setEditDisplayName(m.name || m.id || '')
+    setEditContextLength(m.contextLength ? String(m.contextLength) : '')
+    setEditMaxOutput(m.maxOutputTokens ? String(m.maxOutputTokens) : '')
+  }
+
+  async function submitModelMeta(run: (connectionId: string, modelId: string) => Promise<unknown>) {
+    const m = editingModel()
+    const connectionId = deps.connectionId()
+    if (!m?.id || !connectionId) return
+    setSavingMeta(true)
+    try {
+      await run(connectionId, m.id)
+      await refetchModels()
+      setEditingModel(null)
+    } catch (e) {
+      console.error('model metadata write failed:', e)
+    } finally {
+      setSavingMeta(false)
+    }
+  }
+
+  function handleSaveModelMeta() {
+    return submitModelMeta((connectionId, modelId) => store.saveProviderModelMeta(connectionId, {
+      id: modelId,
+      displayName: editDisplayName().trim(),
+      contextLength: Number(editContextLength()) || 0,
+      maxOutputTokens: Number(editMaxOutput()) || 0,
+    }))
+  }
+
+  function handleResetModelMeta() {
+    return submitModelMeta((connectionId, modelId) => store.resetProviderModelMeta(connectionId, modelId))
+  }
+
+  return {
+    models, payload, refetchModels,
+    activeModels, allDisplayModels, enabledModelsCount, disabledModelsCount,
+    sortedRegistryModels, sortedCustomModels, customCount,
+    showCustomModels, setShowCustomModels, modelSearch, setModelSearch,
+    syncingModels, handleSyncModels, batchBusy,
+    testingModels, modelTestResults, testingAll, testAllProgress,
+    toggleModel, testSingleModel, handleTestAll, failedModelsList,
+    handleEnableAll, handleDisableAll, handleDisableFailed,
+    addCustomModel, removeCustomModel,
+    editingModel, setEditingModel, editDisplayName, setEditDisplayName,
+    editContextLength, setEditContextLength, editMaxOutput, setEditMaxOutput,
+    savingMeta, startEditModel, handleSaveModelMeta, handleResetModelMeta,
+  }
+}
+
+export type ProviderModelsApi = ReturnType<typeof useProviderModels>

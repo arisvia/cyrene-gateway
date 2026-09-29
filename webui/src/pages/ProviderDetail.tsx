@@ -1,25 +1,14 @@
-import { type Component, For, Show, Switch, Match, createSignal, createMemo, createResource, createEffect, onMount, onCleanup } from 'solid-js'
+import { type Component, For, Show, Switch, Match, createSignal, createResource, createEffect, onMount, onCleanup } from 'solid-js'
 import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { api, apiPost } from '@/lib/api'
+import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { useOAuthFlow } from '@/lib/oauthFlow'
+import { useProviderModels } from '@/lib/providerModels'
 import OAuthFlowModal from '@/components/provider/OAuthFlowModal'
 import { useI18n } from '@/i18n'
-import type { Provider, ProviderModel } from '@/types/domain'
+import type { Provider } from '@/types/domain'
 import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconLock, IconEdit, IconZap, confirm, TabTransition } from '@/components/ui'
-
-interface ProviderModelsPayload {
-  registryModels?: ProviderModel[]
-  customModels?: ProviderModel[]
-  isFreeMode?: boolean
-  authType?: string
-  authModes?: string[]
-  defaultHeaders?: Record<string, string>
-  hasApiKey?: boolean
-}
-
-const EMPTY_MODELS: ProviderModelsPayload = {}
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -39,7 +28,6 @@ const ProviderDetail: Component = () => {
   const [chatBusy, setChatBusy] = createSignal(false)
   const [chatHistory, setChatHistory] = createSignal<Array<{ role: string; content: string; servedModel?: string }>>([])
   const [chatErr, setChatErr] = createSignal('')
-  const [modelSearch, setModelSearch] = createSignal('')
   const [newCustomModelId, setNewCustomModelId] = createSignal('')
   let chatBoxRef: HTMLDivElement | undefined
 
@@ -102,29 +90,6 @@ const ProviderDetail: Component = () => {
   const [priority, setPriority] = createSignal('0')
   const [showAdvanced, setShowAdvanced] = createSignal(false)
   const [customHeadersText, setCustomHeadersText] = createSignal('')
-  const [syncingModels, setSyncingModels] = createSignal(false)
-
-  async function handleSyncModels() {
-    const p = conn()?.provider
-    if (!p) return
-    setSyncingModels(true)
-    try {
-      await apiPost(`/api/providers/${p}/refresh-models`)
-      toast.success(t('toast.syncModelsSuccess'))
-      await refetchModels()
-    } catch {
-      // Error is automatically surfaced by api.ts
-    } finally {
-      setSyncingModels(false)
-    }
-  }
-
-  // 模型元数据编辑状态
-  const [editingModel, setEditingModel] = createSignal<ProviderModel | null>(null)
-  const [editDisplayName, setEditDisplayName] = createSignal('')
-  const [editContextLength, setEditContextLength] = createSignal('')
-  const [editMaxOutput, setEditMaxOutput] = createSignal('')
-  const [savingMeta, setSavingMeta] = createSignal(false)
   // ── 多账号管理状态 ──
   const regInfo = () => {
     const p = conn()?.provider
@@ -308,264 +273,19 @@ const ProviderDetail: Component = () => {
     }
   })
 
-  const [models, { refetch: refetchModels, mutate: mutateModels }] = createResource(
-    () => params.id,
-    async (id): Promise<ProviderModelsPayload> => {
-      try {
-        return await api(`/api/providers/${id}/models`) as ProviderModelsPayload
-      } catch {
-        return { registryModels: [], customModels: [] }
-      }
-    },
-  )
-
-  // 资源尚未就绪时以空对象占位，读侧只需一层 ?? []
-  const payload = (): ProviderModelsPayload => models() ?? EMPTY_MODELS
-
-  const activeModels = () =>
-    (payload().registryModels ?? [])
-      .concat(payload().customModels ?? [])
-      .filter(m => Boolean(m.id) && m.enabled !== false)
-
-  async function toggleModel(modelId: string, currentEnabled: boolean) {
-    if (!conn()) return
-    const fullModel = `${conn()!.provider}/${modelId}`
-    const nextState = !currentEnabled
-
-    // 立即乐观更新本地响应式状态
-    mutateModels(prev => {
-      const updateList = (list?: ProviderModel[]) =>
-        (list ?? []).map(m => (m.id === modelId || m.name === modelId ? { ...m, enabled: nextState } : m))
-      return {
-        ...prev,
-        registryModels: updateList(prev?.registryModels),
-        customModels: updateList(prev?.customModels),
-      }
-    })
-
-    try {
-      await store.setModelDisabled(fullModel, !nextState)
-    } catch {
-      refetchModels()
-    }
-  }
-  // ── 模型连通性单测与批量运维 ──
-  const [testingModels, setTestingModels] = createSignal<Record<string, boolean>>({})
-  const [modelTestResults, setModelTestResults] = createSignal<Record<string, { ok: boolean; latency?: string; error?: string }>>({})
-  const [testingAll, setTestingAll] = createSignal(false)
-  const [testAllProgress, setTestAllProgress] = createSignal<{ current: number; total: number } | null>(null)
-  const [showCustomModels, setShowCustomModels] = createSignal(false)
-  const customCount = () => (payload().customModels ?? []).length
-  createEffect(() => {
-    if (customCount() > 0) {
-      setShowCustomModels(true)
-    }
+  const {
+    payload, activeModels, allDisplayModels, enabledModelsCount, disabledModelsCount,
+    sortedRegistryModels, sortedCustomModels, customCount, showCustomModels, setShowCustomModels,
+    modelSearch, setModelSearch, syncingModels, handleSyncModels, batchBusy,
+    testingModels, modelTestResults, testingAll, testAllProgress, failedModelsList,
+    toggleModel, testSingleModel, handleTestAll, handleEnableAll, handleDisableAll, handleDisableFailed,
+    addCustomModel, removeCustomModel,
+    editingModel, setEditingModel, editDisplayName, setEditDisplayName, editContextLength, setEditContextLength,
+    editMaxOutput, setEditMaxOutput, savingMeta, startEditModel, handleSaveModelMeta, handleResetModelMeta,
+  } = useProviderModels({
+    connectionId: () => params.id,
+    providerId: () => conn()?.provider,
   })
-
-  const allDisplayModels = () =>
-    (payload().registryModels ?? [])
-      .concat(payload().customModels ?? [])
-  const enabledModelsCount = () => allDisplayModels().filter(m => m.enabled !== false).length
-  const disabledModelsCount = () => allDisplayModels().filter(m => m.enabled === false).length
-  const sortedRegistryModels = createMemo<ProviderModel[]>(() => {
-    const list: ProviderModel[] = payload().registryModels ?? []
-    return list.slice().sort((a, b) => {
-      const aEnabled = a.enabled !== false
-      const bEnabled = b.enabled !== false
-      if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
-      const idA = a.id || a.name || ''
-      const idB = b.id || b.name || ''
-      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' })
-    })
-  })
-
-  const sortedCustomModels = createMemo<ProviderModel[]>(() => {
-    const list: ProviderModel[] = payload().customModels ?? []
-    return list.slice().sort((a, b) => {
-      const aEnabled = a.enabled !== false
-      const bEnabled = b.enabled !== false
-      if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
-      const idA = a.id || a.name || ''
-      const idB = b.id || b.name || ''
-      return idA.localeCompare(idB, undefined, { numeric: true, sensitivity: 'base' })
-    })
-  })
-  async function testSingleModel(modelId: string) {
-    if (!conn() || testingModels()[modelId]) return
-    const p = conn()!.provider
-    const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
-    setTestingModels(prev => ({ ...prev, [modelId]: true }))
-    try {
-      const res = await store.testModel(fullModel, params.id)
-      setModelTestResults(prev => ({
-        ...prev,
-        [modelId]: {
-          ok: res.ok,
-          latency: res.latency,
-          error: res.error,
-        },
-      }))
-      if (res.ok) {
-        toast.success(t('toast.modelTestPassed', { id: modelId, latency: res.latency || 'ok' }))
-      } else {
-        toast.error(t('toast.modelTestFailed', { id: modelId, error: res.error || 'unavailable' }))
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t('providerDetail.testRequestError')
-      setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
-    } finally {
-      setTestingModels(prev => ({ ...prev, [modelId]: false }))
-    }
-  }
-  const [batchBusy, setBatchBusy] = createSignal(false)
-
-  async function handleEnableAll() {
-    if (!conn() || batchBusy()) return
-    const p = conn()!.provider
-    const toEnable = allDisplayModels().filter(m => m.enabled === false)
-    if (toEnable.length === 0) {
-      toast.info(t('toast.allModelsEnabled'))
-      return
-    }
-    const modelKeys = toEnable.map(m => `${p}/${m.id || m.name}`)
-    setBatchBusy(true)
-    mutateModels(prev => ({
-      ...prev,
-      registryModels: (prev?.registryModels ?? []).map(m => ({ ...m, enabled: true })),
-      customModels: (prev?.customModels ?? []).map(m => ({ ...m, enabled: true })),
-    }))
-    try {
-      await store.batchSetModelsDisabled(modelKeys, false)
-      toast.success(t('toast.batchEnableSuccess', { count: toEnable.length }))
-    } catch {
-      refetchModels()
-    } finally {
-      setBatchBusy(false)
-    }
-  }
-
-  async function handleDisableAll() {
-    if (!conn() || batchBusy()) return
-    const p = conn()!.provider
-    const toDisable = allDisplayModels().filter(m => m.enabled !== false)
-    if (toDisable.length === 0) {
-      toast.info(t('toast.allModelsDisabled'))
-      return
-    }
-    if (!await confirm(t('providerDetail.confirmDisableAll', { count: toDisable.length }))) return
-    const modelKeys = toDisable.map(m => `${p}/${m.id || m.name}`)
-    setBatchBusy(true)
-    mutateModels(prev => ({
-      ...prev,
-      registryModels: (prev?.registryModels ?? []).map(m => ({ ...m, enabled: false })),
-      customModels: (prev?.customModels ?? []).map(m => ({ ...m, enabled: false })),
-    }))
-    try {
-      await store.batchSetModelsDisabled(modelKeys, true)
-      toast.success(t('toast.batchDisableSuccess', { count: toDisable.length }))
-    } catch {
-      refetchModels()
-    } finally {
-      setBatchBusy(false)
-    }
-  }
-
-  async function handleTestAll() {
-    if (!conn() || testingAll()) return
-    const p = conn()!.provider
-    const seen = new Set<string>()
-    const targetList = allDisplayModels().filter(m => {
-      const k = m.id || m.name
-      if (!k || seen.has(k)) return false
-      seen.add(k)
-      return true
-    })
-    if (targetList.length === 0) {
-      toast.info(t('toast.noTestableModels'))
-      return
-    }
-    setTestingAll(true)
-    setTestAllProgress({ current: 0, total: targetList.length })
-
-    let completed = 0
-    let passed = 0
-    let failed = 0
-
-    const concurrency = 3
-    let index = 0
-
-    async function worker() {
-      while (index < targetList.length) {
-        const cur = targetList[index++]
-        const modelId = cur.id || cur.name || ''
-        if (!modelId) continue
-        setTestingModels(prev => ({ ...prev, [modelId]: true }))
-        try {
-          const fullModel = modelId.includes('/') ? modelId : `${p}/${modelId}`
-          const res = await store.testModel(fullModel, params.id)
-          setModelTestResults(prev => ({
-            ...prev,
-            [modelId]: { ok: res.ok, latency: res.latency, error: res.error },
-          }))
-          if (res.ok) passed++
-          else failed++
-        } catch (e: unknown) {
-          failed++
-          const msg = e instanceof Error ? e.message : t('providerDetail.testUnexpected')
-          setModelTestResults(prev => ({ ...prev, [modelId]: { ok: false, error: msg } }))
-        } finally {
-          completed++
-          setTestingModels(prev => ({ ...prev, [modelId]: false }))
-          setTestAllProgress({ current: completed, total: targetList.length })
-        }
-      }
-    }
-
-    const workers = Array.from({ length: Math.min(concurrency, targetList.length) }, () => worker())
-    await Promise.all(workers)
-
-    setTestingAll(false)
-    setTestAllProgress(null)
-    toast.success(t('toast.testAllDone', { passed, failed }))
-  }
-
-  const failedModelsList = () => {
-    const results = modelTestResults()
-    const seen = new Set<string>()
-    return allDisplayModels().filter(m => {
-      const mid = m.id || m.name
-      if (!mid || seen.has(mid)) return false
-      seen.add(mid)
-      return results[mid] && !results[mid].ok && m.enabled !== false
-    })
-  }
-
-  async function handleDisableFailed() {
-    if (!conn() || batchBusy()) return
-    const p = conn()!.provider
-    const failedList = failedModelsList()
-    if (failedList.length === 0) {
-      toast.info(t('toast.noFailedModels'))
-      return
-    }
-    if (!await confirm(t('providerDetail.confirmDisableFailed', { count: failedList.length }))) return
-    const failedIds = new Set(failedList.map(m => m.id || m.name).filter((id): id is string => Boolean(id)))
-    const modelKeys = failedList.map(m => `${p}/${m.id || m.name}`)
-    setBatchBusy(true)
-    mutateModels(prev => ({
-      ...prev,
-      registryModels: (prev?.registryModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
-      customModels: (prev?.customModels ?? []).map(m => failedIds.has(m.id || m.name || '') ? { ...m, enabled: false } : m),
-    }))
-    try {
-      await store.batchSetModelsDisabled(modelKeys, true)
-      toast.success(t('toast.batchDisableSuccess', { count: failedList.length }))
-    } catch {
-      refetchModels()
-    } finally {
-      setBatchBusy(false)
-    }
-  }
   const [, { refetch: refetchOAuth }] = createResource(
     () => conn()?.provider,
     async p => {
@@ -578,48 +298,6 @@ const ProviderDetail: Component = () => {
       } catch { return null }
     },
   )
-
-  function startEditModel(m: ProviderModel) {
-    setEditingModel(m)
-    setEditDisplayName(m.name || m.id || '')
-    setEditContextLength(m.contextLength ? String(m.contextLength) : '')
-    setEditMaxOutput(m.maxOutputTokens ? String(m.maxOutputTokens) : '')
-  }
-
-  async function handleSaveModelMeta() {
-    const m = editingModel()
-    if (!m || !m.id) return
-    setSavingMeta(true)
-    try {
-      await store.saveProviderModelMeta(params.id, {
-        id: m.id,
-        displayName: editDisplayName().trim(),
-        contextLength: Number(editContextLength()) || 0,
-        maxOutputTokens: Number(editMaxOutput()) || 0,
-      })
-      await refetchModels()
-      setEditingModel(null)
-    } catch (e) {
-      console.error('save meta failed:', e)
-    } finally {
-      setSavingMeta(false)
-    }
-  }
-
-  async function handleResetModelMeta() {
-    const m = editingModel()
-    if (!m || !m.id) return
-    setSavingMeta(true)
-    try {
-      await store.resetProviderModelMeta(params.id, m.id)
-      await refetchModels()
-      setEditingModel(null)
-    } catch (e) {
-      console.error('reset meta failed:', e)
-    } finally {
-      setSavingMeta(false)
-    }
-  }
 
   async function save() {
     setSaving(true)
@@ -683,33 +361,6 @@ const ProviderDetail: Component = () => {
       // Error surfaced by api.ts
     } finally {
       setTesting(false)
-    }
-  }
-
-  async function addCustomModel(modelId: string, modelName: string) {
-    if (!modelId.trim()) return
-    try {
-      await store.addProviderModel(params.id, { id: modelId.trim(), name: modelName.trim() || modelId.trim() })
-      toast.success(t('providerDetail.customModelAdded', { id: modelId.trim() }))
-      refetchModels()
-    } catch {
-      // Error is automatically surfaced by api.ts
-    }
-  }
-
-  async function removeCustomModel(modelId: string) {
-    const ok = await confirm({
-      title: t('providerDetail.deleteModelTitle'),
-      message: t('providerDetail.deleteModelMessage', { id: modelId }),
-      variant: 'danger',
-    })
-    if (!ok) return
-    try {
-      await store.deleteProviderModel(params.id, modelId)
-      toast.success(t('providerDetail.modelDeleted', { id: modelId }))
-      refetchModels()
-    } catch {
-      // Error is automatically surfaced by api.ts
     }
   }
 
