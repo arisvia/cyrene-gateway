@@ -79,3 +79,45 @@ func TestHandleCreateProviderValidation(t *testing.T) {
 		})
 	}
 }
+
+// Connections are routed and listed by canonical provider id, so a row stored
+// under its shorthand would be invisible to ListConnectionsByProvider.
+func TestProviderWriteBoundaryCanonicalizesAlias(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	w := httptest.NewRecorder()
+	req := newLocalRequest(http.MethodPost, "/api/providers",
+		strings.NewReader(`{"provider":"cc","authType":"api-key","data":{"apiKey":"sk-cc"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	stored, err := database.ListConnectionsByProvider("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("the alias-stored connection is invisible to its canonical provider: %+v", stored)
+	}
+	if got := stored[0].Provider; got != "claude" {
+		t.Errorf("created provider = %q, want the canonical id", got)
+	}
+
+	w = httptest.NewRecorder()
+	req = newLocalRequest(http.MethodPut, "/api/providers/"+stored[0].ID,
+		strings.NewReader(`{"provider":"ds"}`))
+	req.Header.Set("Content-Type", "application/json")
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update status=%d body=%s", w.Code, w.Body.String())
+	}
+	updated, err := database.ListConnectionsByProvider("deepseek")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 1 || updated[0].ID != stored[0].ID {
+		t.Fatalf("update stored the shorthand verbatim: %+v", updated)
+	}
+}
