@@ -455,9 +455,6 @@ function createGatewayStore() {
     return res
   }
 
-  async function testCredentials(payload: Record<string, unknown>) {
-    return apiPost('/api/providers/test-credentials', payload)
-  }
   async function testBatch(ids: string[]) {
     return apiPost('/api/providers/test-batch', { ids })
   }
@@ -561,7 +558,7 @@ function createGatewayStore() {
     saveProxyPool, toggleProxyPool, deleteProxyPool,
     addAlias, deleteAlias,
     saveSettings, setPassword,
-    updateProvider, testCredentials, testBatch, refreshModels,
+    updateProvider, testBatch, refreshModels,
     loadProviderModels, addProviderModel, deleteProviderModel,
     saveProviderModelMeta, resetProviderModelMeta,
     oauthStart, oauthPoll, oauthImport, oauthStatus, oauthRefresh,

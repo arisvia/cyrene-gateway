@@ -39,6 +39,11 @@ function wizardPriority(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+/** 注册表用 "apikey"，连接与后端用 "api-key"，两边在进表单状态前先归一。 */
+function normAuthType(mode: string): string {
+  return mode === 'apikey' ? 'api-key' : mode
+}
+
 const Providers: Component = () => {
   const store = useGatewayStore()
   const { t } = useI18n()
@@ -356,10 +361,10 @@ const Providers: Component = () => {
 
       if (res.ok) {
         setTestedCreds({ ok: true, msg: t('providers.credVerifiedMsg', { latency: res.latency || t('providerDetail.normal') }) })
-        toast.success(t('toast.credTestSuccess', { latency: res.latency || 'ok' }))
+        toast.success(t('toast.credTestSuccess', { latency: res.latency || t('providerDetail.normal') }))
       } else {
-        setTestedCreds({ ok: false, msg: res.error || 'error' })
-        toast.error(t('toast.credTestFailed', { error: res.error || 'error' }))
+        setTestedCreds({ ok: false, msg: res.error || t('providerDetail.testNotPassed') })
+        toast.error(t('toast.credTestFailed', { error: res.error || t('providerDetail.testNotPassed') }))
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -376,7 +381,7 @@ const Providers: Component = () => {
     if (!reg) return
 
     const f = form()
-    const normAuth = f.authType === 'apikey' ? 'api-key' : f.authType
+    const normAuth = normAuthType(f.authType)
 
     // 若是 OAuth 模式，直接点击即发起授权，不预存空账号
     if (normAuth === 'oauth') {
@@ -904,7 +909,7 @@ const Providers: Component = () => {
               const r = reg()
               if (!r) return []
               const raw = r.authModes || [r.authType || 'api-key']
-              return raw.map(m => m === 'apikey' ? 'api-key' : m).filter(m => m !== 'none')
+              return raw.map(normAuthType).filter(m => m !== 'none')
             }
 
             return (
@@ -939,16 +944,16 @@ const Providers: Component = () => {
                 <Show when={authModes().length > 1}>
                   <Field label={t('providers.authMethod')} hint={t('providers.authMethodHint')}>
                     <Select
-                      value={form().authType === 'apikey' ? 'api-key' : form().authType}
+                      value={normAuthType(form().authType)}
                       options={authModes().map(m => {
-                        const norm = m === 'apikey' ? 'api-key' : m
+                        const norm = normAuthType(m)
                         return { value: norm, label: authTypeLabel()[norm] || norm }
                       })}
                       onChange={v => setForm(f => ({ ...f, authType: v }))}
                     />
                   </Field>
                 </Show>
-                <Show when={form().authType === 'api-key' || form().authType === 'apikey'}>
+                <Show when={normAuthType(form().authType) === 'api-key'}>
                   <div class="space-y-2">
                     <Field label={t('providers.authCredential')} hint={reg().authHint || t('providers.credentialHint')}>
                       <div class="flex flex-wrap items-center gap-2 min-w-0">
@@ -1046,7 +1051,7 @@ const Providers: Component = () => {
                     variant="primary"
                     loading={saving() || wizardOAuthPolling()}
                     disabled={
-                      (form().authType === 'api-key' || form().authType === 'apikey') && (!testedCreds() || !testedCreds()!.ok)
+                      (normAuthType(form().authType) === 'api-key') && (!testedCreds() || !testedCreds()!.ok)
                     }
                     onClick={handleWizardSubmit}
                   >
