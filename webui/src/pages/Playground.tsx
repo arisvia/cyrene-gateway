@@ -35,6 +35,7 @@ import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
+import { buildRequestPayload, generateCodeSnippet, type CodeLang, type SamplingParams } from '@/lib/playgroundRequest'
 import { useI18n } from '@/i18n'
 
 
@@ -295,117 +296,28 @@ const Playground: Component = () => {
     toast.info(t('toast.clearHistorySuccess'))
   }
 
-  // 根据选定协议构造各厂商规范的请求体与请求头
-  function buildRequestPayload(
-    proto: ProtocolType,
-    targetModel: string,
-    historyMessages: { role: string; content: string }[],
-    isStream: boolean
-  ): { url: string; headers: Record<string, string>; body: Record<string, unknown> } {
-    const cleanSys = systemPrompt().trim()
-    const temp = Number(temperature())
-    const top_p = Number(topP())
-    const max_tokens = Number(maxTokens())
-
-    switch (proto) {
-      case 'responses': {
-        const input = historyMessages.map(m => ({
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content,
-        }))
-        const body: Record<string, unknown> = {
-          model: targetModel,
-          input,
-          stream: isStream,
-          temperature: temp,
-          top_p,
-        }
-        if (max_tokens > 0) {
-          body.max_output_tokens = max_tokens
-        }
-        if (cleanSys) {
-          body.instructions = cleanSys
-        }
-        return {
-          url: '/v1/responses',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        }
-      }
-      case 'anthropic': {
-        const messages = historyMessages.map(m => ({
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.content,
-        }))
-        const body: Record<string, unknown> = {
-          model: targetModel,
-          messages,
-          max_tokens: max_tokens > 0 ? max_tokens : 4096,
-          temperature: temp,
-          top_p,
-          stream: isStream,
-        }
-        if (cleanSys) {
-          body.system = cleanSys
-        }
-        return {
-          url: '/v1/messages',
-          headers: {
-            'Content-Type': 'application/json',
-            'anthropic-version': '2023-06-01',
-          },
-          body,
-        }
-      }
-      case 'gemini': {
-        const contents = historyMessages.map(m => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
-        }))
-        const body: Record<string, unknown> = {
-          contents,
-          generationConfig: {
-            temperature: temp,
-            topP: top_p,
-            maxOutputTokens: max_tokens > 0 ? max_tokens : 2048,
-          },
-        }
-        if (cleanSys) {
-          body.systemInstruction = {
-            parts: [{ text: cleanSys }],
-          }
-        }
-        const action = isStream ? 'streamGenerateContent?alt=sse' : 'generateContent'
-        const encodedModel = encodeURIComponent(targetModel)
-        return {
-          url: `/v1beta/models/${encodedModel}:${action}`,
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        }
-      }
-      case 'openai':
-      default: {
-        const reqMessages = cleanSys
-          ? [{ role: 'system', content: cleanSys }, ...historyMessages]
-          : historyMessages
-        const body: Record<string, unknown> = {
-          model: targetModel,
-          messages: reqMessages,
-          temperature: temp,
-          top_p,
-          stream: isStream,
-        }
-        if (max_tokens > 0) {
-          body.max_tokens = max_tokens
-        }
-        return {
-          url: '/v1/chat/completions',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        }
-      }
+  // 采样参数只在 store 里，请求体构造与客户端示例共用同一份真值。
+  function requestParams(): SamplingParams {
+    return {
+      systemPrompt: systemPrompt(),
+      temperature: Number(temperature()),
+      topP: Number(topP()),
+      maxTokens: Number(maxTokens()),
     }
   }
+
+  function codeSnippet(lang: CodeLang): string {
+    return generateCodeSnippet({
+      lang,
+      proto: protocol(),
+      model: modelA() || 'antigravity/gemini-2.5-flash',
+      prompt: turns().slice(-1)[0]?.user || t('playground.sampleUserMessage'),
+      origin: window.location.origin,
+      stream: stream(),
+      params: requestParams(),
+    })
+  }
+
 
   // 跨协议提取非流式响应文本
   function extractResponseContent(proto: ProtocolType, data: unknown): string {
@@ -493,7 +405,7 @@ const Playground: Component = () => {
     const startTime = performance.now()
     let firstTokenTime: number | null = null
     const activeProto = protocol()
-    const reqInfo = buildRequestPayload(activeProto, targetModel, historyMessages, stream())
+    const reqInfo = buildRequestPayload(activeProto, targetModel, historyMessages, stream(), requestParams())
 
     const res = await fetch(reqInfo.url, {
       method: 'POST',
@@ -818,194 +730,6 @@ const Playground: Component = () => {
     }
   }
 
-  // 生成代码片段（全协议自适应）
-  function generateCode(lang: 'curl' | 'python' | 'node'): string {
-    const origin = window.location.origin
-    const model = modelA() || 'antigravity/gemini-2.5-flash'
-    const sample = t('playground.sampleUserMessage')
-    const lastUser = turns().slice(-1)[0]?.user || sample
-    const historySample = [{ role: 'user', content: lastUser }]
-    const proto = protocol()
-    const reqInfo = buildRequestPayload(proto, model, historySample, stream())
-
-    if (lang === 'curl') {
-      const headerLines = Object.entries(reqInfo.headers)
-        .map(([k, v]) => `  -H "${k}: ${v}" \\`)
-        .join('\n')
-      return `curl -X POST "${origin}${reqInfo.url}" \\\n${headerLines}\n  -d '${JSON.stringify(reqInfo.body, null, 2)}'`
-    }
-
-    if (lang === 'python') {
-      switch (proto) {
-        case 'responses':
-          return `from openai import OpenAI
-
-client = OpenAI(
-    base_url="${origin}/v1",
-    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
-)
-
-response = client.responses.create(
-    model="${model}",
-    input=${JSON.stringify(reqInfo.body.input, null, 4)},${reqInfo.body.instructions ? `\n    instructions=${JSON.stringify(reqInfo.body.instructions)},` : ''}
-    stream=${stream() ? 'True' : 'False'}
-)
-
-${stream() ? 'for event in response:\n    if hasattr(event, "delta") and event.delta:\n        print(event.delta, end="", flush=True)' : 'print(response.output_text)'}
-`
-        case 'anthropic':
-          return `import anthropic
-
-client = anthropic.Anthropic(
-    base_url="${origin}",
-    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
-)
-
-response = client.messages.create(
-    model="${model}",
-    messages=${JSON.stringify(reqInfo.body.messages, null, 4)},${reqInfo.body.system ? `\n    system=${JSON.stringify(reqInfo.body.system)},` : ''}
-    max_tokens=${reqInfo.body.max_tokens},
-    temperature=${temperature()},
-    stream=${stream() ? 'True' : 'False'}
-)
-
-${stream() ? 'for event in response:\n    if event.type == "content_block_delta" and hasattr(event.delta, "text"):\n        print(event.delta.text, end="", flush=True)' : 'print("".join(block.text for block in response.content if hasattr(block, "text")))'}
-`
-        case 'gemini':
-          return `from google import genai
-
-client = genai.Client(
-    http_options={"api_version": "v1beta", "base_url": "${origin}"},
-    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
-)
-
-${stream() ? `response = client.models.generate_content_stream(
-    model="${model}",
-    contents=${JSON.stringify(reqInfo.body.contents, null, 4)},
-)
-for chunk in response:
-    print(chunk.text, end="", flush=True)` : `response = client.models.generate_content(
-    model="${model}",
-    contents=${JSON.stringify(reqInfo.body.contents, null, 4)},
-)
-print(response.text)`}
-`
-        case 'openai':
-        default:
-          return `from openai import OpenAI
-
-client = OpenAI(
-    base_url="${origin}/v1",
-    api_key="cyrene-local"  # ${t('playground.pyApiKeyComment')}
-)
-
-response = client.chat.completions.create(
-    model="${model}",
-    messages=${JSON.stringify(reqInfo.body.messages, null, 4)},
-    temperature=${temperature()},
-    top_p=${topP()},
-    max_tokens=${maxTokens()},
-    stream=${stream() ? 'True' : 'False'}
-)
-
-${stream() ? 'for chunk in response:\n    if chunk.choices[0].delta.content:\n        print(chunk.choices[0].delta.content, end="", flush=True)' : 'print(response.choices[0].message.content)'}
-`
-      }
-    }
-
-    // Node.js
-    switch (proto) {
-      case 'responses':
-        return `import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "${origin}/v1",
-  apiKey: "cyrene-local",
-});
-
-async function main() {
-  const response = await client.responses.create({
-    model: "${model}",
-    input: ${JSON.stringify(reqInfo.body.input, null, 4)},${reqInfo.body.instructions ? `\n    instructions: ${JSON.stringify(reqInfo.body.instructions)},` : ''}
-    stream: ${stream() ? 'true' : 'false'},
-  });
-
-  ${stream() ? 'for await (const event of response) {\n    if (event.delta) process.stdout.write(event.delta);\n  }' : 'console.log(response.output_text);'}
-}
-
-main();
-`
-      case 'anthropic':
-        return `import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic({
-  baseURL: "${origin}",
-  apiKey: "cyrene-local",
-});
-
-async function main() {
-  const response = await client.messages.create({
-    model: "${model}",
-    messages: ${JSON.stringify(reqInfo.body.messages, null, 4)},${reqInfo.body.system ? `\n    system: ${JSON.stringify(reqInfo.body.system)},` : ''}
-    max_tokens: ${reqInfo.body.max_tokens},
-    stream: ${stream() ? 'true' : 'false'},
-  });
-
-  ${stream() ? 'for await (const chunk of response) {\n    if (chunk.type === "content_block_delta" && chunk.delta?.text) {\n      process.stdout.write(chunk.delta.text);\n    }\n  }' : 'console.log(response.content.map(c => c.text).join(""));'}
-}
-
-main();
-`
-      case 'gemini':
-        return `import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({
-  apiKey: "cyrene-local",
-  httpOptions: { baseUrl: "${origin}" },
-});
-
-async function main() {
-  ${stream() ? `const response = await ai.models.generateContentStream({
-    model: "${model}",
-    contents: ${JSON.stringify(reqInfo.body.contents, null, 4)},
-  });
-  for await (const chunk of response) {
-    process.stdout.write(chunk.text || "");
-  }` : `const response = await ai.models.generateContent({
-    model: "${model}",
-    contents: ${JSON.stringify(reqInfo.body.contents, null, 4)},
-  });
-  console.log(response.text);`}
-}
-
-main();
-`
-      case 'openai':
-      default:
-        return `import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "${origin}/v1",
-  apiKey: "cyrene-local",
-});
-
-async function main() {
-  const response = await client.chat.completions.create({
-    model: "${model}",
-    messages: ${JSON.stringify(reqInfo.body.messages, null, 4)},
-    temperature: ${temperature()},
-    top_p: ${topP()},
-    max_tokens: ${maxTokens()},
-    stream: ${stream() ? 'true' : 'false'},
-  });
-
-  ${stream() ? 'for await (const chunk of response) {\n    process.stdout.write(chunk.choices[0]?.delta?.content || "");\n  }' : 'console.log(response.choices[0]?.message?.content);'}
-}
-
-main();
-`
-    }
-  }
 
   return (
     <div class="flex flex-col h-auto min-h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-9rem)] lg:min-h-[36rem] min-w-0 max-w-7xl mx-auto gap-3 stagger">
@@ -1661,7 +1385,7 @@ main();
               variant="primary"
               class="gap-1.5"
               onClick={() => {
-                copyText(generateCode(codeLang()), t('playground.copyClientCode'))
+                copyText(codeSnippet(codeLang()), t('playground.copyClientCode'))
                 setCopiedCode(true)
                 setTimeout(() => setCopiedCode(false), 2000)
               }}
@@ -1675,7 +1399,7 @@ main();
 
           <div class="relative">
             <pre class="min-w-0 p-4 bg-code-bg text-text rounded-xl text-xs leading-relaxed font-mono overflow-auto max-h-[min(24rem,60dvh)] border border-subtle">
-              <code>{generateCode(codeLang())}</code>
+              <code>{codeSnippet(codeLang())}</code>
             </pre>
           </div>
         </div>
