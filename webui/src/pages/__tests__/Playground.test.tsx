@@ -49,6 +49,9 @@ const buttonByText = (view: ReturnType<typeof render>, label: string) =>
   allButtons(view).find(b => (b.textContent || '').includes(label))
 
 beforeEach(() => {
+  // 抽屉初始态来自 window.innerWidth >= 1024，显式钉住视口，
+  // 不让 jsdom/vitest 的默认值决定用例前提。
+  Object.defineProperty(window, 'innerWidth', { value: 1280, configurable: true })
   const store = usePlaygroundStore()
   store.setMode('single')
   store.setSystemPrompt('')
@@ -62,7 +65,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('Playground 参数抽屉', () => {
-  // showParams 的默认值取自 window.innerWidth >= 1024，测试环境里天然是展开态
+  // beforeEach 把视口钉在 1280，所以抽屉初始为展开态
   it('参数面板按需展开与收起', async () => {
     const view = await mount()
     expect(view.getByText(t('playground.paramsConfig'))).toBeTruthy()
