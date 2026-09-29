@@ -115,7 +115,7 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
         <div class="flex flex-wrap items-center gap-2 min-w-0">
           <h3 class="text-sm font-semibold text-foreground">{t('providerDetail.availableModels')}</h3>
           <span>
-            {t('providerDetail.modelsCountSummary', {
+            {t('providerDetail.registryCountSummary', {
               total: registryCount(),
               enabled: registryEnabledCount(),
             })}

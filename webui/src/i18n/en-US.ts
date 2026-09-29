@@ -564,6 +564,7 @@ export const enUS: TranslationDict = {
     availableModels: "Available Models",
     priceFactorTitle: "Credit multiplier: {factor}x",
     modelsCountSummary: "{total} total · {enabled} active",
+    registryCountSummary: "This table lists catalog models only: {total} · {enabled} active",
     editModelMeta: "Edit Model Metadata - {id}",
     oauthModeTitle: "OAuth Authorization Mode",
     oauthModeDesc: "After creation, launch device code or web OAuth directly from this page to bind accounts automatically.",

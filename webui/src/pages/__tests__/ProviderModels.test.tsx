@@ -80,6 +80,16 @@ describe('ProviderDetail 模型运维基线（重构前后必须等价）', () =
     expect(view.getByText('2/3')).toBeTruthy()
   })
 
+  // 三处计数各自的口径必须各自自洽：标签页与徽章同为"含自定义"，
+  // 表格标题则明确限定为注册表，因为下方列表只渲染注册表行。
+  it('标签页与徽章同口径含自定义，表格标题限定注册表', async () => {
+    const view = await openModelsTab()
+    // 注册表 2 条（1 停用）+ 自定义 1 条
+    expect(view.getByRole('tab', { name: `${t('providerDetail.tabs.models')} (3)` })).toBeTruthy()
+    expect(view.getByTitle(t('providerDetail.modelsCountSummary', { total: 3, enabled: 2 }))).toBeTruthy()
+    expect(view.getByText(t('providerDetail.registryCountSummary', { total: 2, enabled: 1 }))).toBeTruthy()
+  })
+
   it('全部启用只提交被禁用的模型，并立即乐观置为全启用', async () => {
     const view = await openModelsTab()
     let settle!: (v: unknown) => void

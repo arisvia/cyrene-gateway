@@ -562,6 +562,7 @@ export const zhCN = {
     availableModels: "可用模型",
     priceFactorTitle: "消耗倍率: {factor}x",
     modelsCountSummary: "共 {total} 个 · 开放中 {enabled} 个",
+    registryCountSummary: "本表仅列注册表：{total} 个 · 开放中 {enabled} 个",
     editModelMeta: "编辑模型元数据 - {id}",
     oauthModeTitle: "OAuth 授权模式",
     oauthModeDesc: "保存创建后可直接在当前页发起设备码一键授权，新标签页登录后自动完成绑定。",

@@ -281,7 +281,7 @@ const ProviderDetail: Component = () => {
     providerId: () => conn()?.provider,
   })
 
-  const { payload, activeModels } = modelsApi
+  const { payload, activeModels, allDisplayModels } = modelsApi
   const [, { refetch: refetchOAuth }] = createResource(
     () => conn()?.provider,
     async p => {
@@ -404,7 +404,7 @@ const ProviderDetail: Component = () => {
                 onChange={setTab}
                 options={[
                   { value: 'overview', label: t('providerDetail.tabs.overview') },
-                  { value: 'models', label: `${t('providerDetail.tabs.models')} (${(payload().registryModels ?? []).length})` },
+                  { value: 'models', label: `${t('providerDetail.tabs.models')} (${allDisplayModels().length})` },
                   { value: 'chat', label: t('providerDetail.tabs.chat') },
                 ]}
               />
