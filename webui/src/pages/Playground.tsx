@@ -4,31 +4,24 @@ import { asArray, dig, num, str } from '@/lib/json'
 import { usePlaygroundStore, type AssistantResponse, type Metrics, type ProtocolOption, type ProtocolType, type Turn } from '@/stores/playground'
 import {
   Card,
-  Input,
   Textarea,
   Button,
   IconButton,
   Empty,
   Select,
-  Toggle,
-  Slider,
-  Modal,
   PageHeader,
   SegmentedControl,
   ProviderAvatar,
   Badge,
   IconChat,
   IconZap,
-  IconSparkles,
   IconSliders,
   IconCode,
   IconClipboard,
-  IconCheck,
   IconTrash,
   IconSquare,
   IconPlay,
   IconAlertCircle,
-  IconClose,
   TabTransition,
 } from '@/components/ui'
 import { useToast } from '@/lib/toast'
@@ -36,15 +29,18 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
 import { buildRequestPayload, generateCodeSnippet, type CodeLang, type SamplingParams } from '@/lib/playgroundRequest'
+import ParamsPanel from '@/components/playground/ParamsPanel'
+import ExportCodeModal from '@/components/playground/ExportCodeModal'
+import RawJsonModal from '@/components/playground/RawJsonModal'
 import { useI18n } from '@/i18n'
 
 
 
 const Playground: Component = () => {
   const {
-    mode, setMode, protocol, setProtocol, modelA, setModelA, modelB, setModelB,
-    systemPrompt, setSystemPrompt, temperature, setTemperature, topP, setTopP,
-    maxTokens, setMaxTokens, stream, setStream, turnsAll, setTurnsAll, turns, setTurns,
+    mode, setMode, protocol, modelA, setModelA, modelB, setModelB,
+    systemPrompt, temperature, topP,
+    maxTokens, stream, turnsAll, setTurnsAll, turns, setTurns,
   } = usePlaygroundStore()
   const { t } = useI18n()
   const toast = useToast()
@@ -153,9 +149,7 @@ const Playground: Component = () => {
 
   // 弹窗状态
   const [codeModalOpen, setCodeModalOpen] = createSignal(false)
-  const [codeLang, setCodeLang] = createSignal<'curl' | 'python' | 'node'>('curl')
   const [rawJsonModal, setRawJsonModal] = createSignal<{ title: string; request: unknown; response: unknown } | null>(null)
-  const [copiedCode, setCopiedCode] = createSignal(false)
 
   onMount(async () => {
     await loadModels()
@@ -1192,265 +1186,11 @@ const Playground: Component = () => {
           </Card>
         </div>
 
-        {/* 右侧高级参数面板 (Inspector)：大屏并列内滚动，小屏侧滑抽屉 */}
-        <Show when={showParams()}>
-          <div
-            class="lg:hidden fixed inset-0 z-40 bg-overlay backdrop-blur-sm animate-fade-in"
-            onClick={() => setShowParams(false)}
-          />
-          <div class="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] lg:static lg:w-auto lg:z-auto lg:col-span-4 xl:col-span-3 flex flex-col h-dvh lg:h-full min-h-0 min-w-0 animate-slide-up lg:animate-none">
-            <Card class="flex flex-col h-full min-h-0 min-w-0 p-4 rounded-none lg:rounded-card border-l lg:border border-subtle/50">
-              <div class="flex items-center justify-between border-b border-subtle/50 pb-2 shrink-0">
-                <span class="text-xs font-semibold text-text flex items-center gap-1.5">
-                  <IconSliders size={14} />
-                  {t('playground.paramsConfig')}
-                </span>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-faint">{t('playground.autoSaved')}</span>
-                  <IconButton
-                    size="sm"
-                    class="lg:hidden"
-                    aria-label={t('common.close')}
-                    onClick={() => setShowParams(false)}
-                  >
-                    <IconClose size="xs" />
-                  </IconButton>
-                </div>
-              </div>
-              {/* 参数项独立滚动容器 */}
-              <div class="flex-1 min-h-0 overflow-y-auto space-y-4 px-1 pt-2">
-              {/* 1. API 协议端点选择卡片 */}
-              <div class="p-3 rounded-xl bg-surface-inset border border-subtle/50 space-y-2.5">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-medium text-text flex items-center gap-1.5">
-                    <IconZap size={14} class="text-accent" />
-                    <span>{t('playground.protocol')}</span>
-                  </span>
-                  <Badge tone={activeProtocolMeta().badgeTone} class="text-[10px] font-mono px-1.5 py-0 uppercase">
-                    POST
-                  </Badge>
-                </div>
-                <Select
-                  class="w-full text-xs font-mono"
-                  size="sm"
-                  value={protocol()}
-                  options={protocolOptions()}
-                  onChange={v => setProtocol(v as ProtocolType)}
-                />
-              </div>
-
-              {/* 2. 系统提示词卡片 */}
-              <div class="p-3 rounded-xl bg-surface-inset border border-subtle/50 space-y-2.5">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-medium text-text flex items-center gap-1.5">
-                    <IconSparkles size={14} class="text-accent" />
-                    <span>{t('playground.systemPrompt')}</span>
-                  </span>
-                  <Show when={systemPrompt()}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="h-5! min-h-0! px-1.5! py-0! text-[11px]! text-muted hover:text-danger cursor-pointer"
-                      onClick={() => setSystemPrompt('')}
-                    >
-                      {t('playground.systemPromptReset')}
-                    </Button>
-                  </Show>
-                </div>
-                <Textarea
-                  class="p-2 text-xs min-h-[80px] resize-y"
-                  ariaLabel={t('playground.systemPrompt')}
-                  placeholder={t('playground.systemPromptPlaceholder')}
-                  value={systemPrompt()}
-                  onInput={setSystemPrompt}
-                />
-                <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
-                  <For each={systemPresets()}>
-                    {preset => {
-                      const isActive = () => systemPrompt() === preset.text
-                      return (
-                        <Button
-                          variant={isActive() ? 'primary' : 'secondary'}
-                          size="sm"
-                          class="h-6! min-h-0! px-2.5! py-0! text-[11px]! rounded-full font-normal transition-all"
-                          onClick={() => setSystemPrompt(preset.text)}
-                          title={preset.text}
-                        >
-                          <span class={`w-1.5 h-1.5 rounded-full shrink-0 mr-1.5 ${isActive() ? 'bg-on-accent' : 'bg-muted/70'}`} />
-                          <span>{preset.label}</span>
-                        </Button>
-                      )
-                    }}
-                  </For>
-                </div>
-              </div>
-
-              {/* 3. 采样与推理参数卡片 */}
-              <div class="p-3 rounded-xl bg-surface-inset border border-subtle/50 space-y-3.5">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-medium text-text flex items-center gap-1.5">
-                    <IconSliders size={14} class="text-accent" />
-                    <span>{t('playground.samplingParams')}</span>
-                  </span>
-                </div>
-
-                {/* Temperature (温度) */}
-                <div class="space-y-1">
-                  <Slider
-                    label={t('playground.paramTemperature')}
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    value={temperature()}
-                    valueDisplay={temperature().toFixed(2)}
-                    onChange={setTemperature}
-                  />
-                  <div class="flex justify-between text-[11px] text-faint">
-                    <span>{t('playground.tempPrecise')}</span>
-                    <span>{t('playground.tempCreative')}</span>
-                  </div>
-                </div>
-
-                {/* Top P */}
-                <div class="space-y-1">
-                  <Slider
-                    label={t('playground.paramTopP')}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={topP()}
-                    valueDisplay={topP().toFixed(2)}
-                    onChange={setTopP}
-                  />
-                </div>
-
-                {/* 最大输出 Tokens */}
-                <div class="space-y-1.5">
-                  <label class="block text-xs font-medium text-muted leading-none">{t('playground.paramMaxTokens')}</label>
-                  <Input
-                    type="number"
-                    min={64}
-                    max={32768}
-                    step={256}
-                    size="sm"
-                    value={maxTokens()}
-                    onInput={(v: string) => setMaxTokens(parseInt(v) || 2048)}
-                    class="font-mono"
-                  />
-                </div>
-
-                {/* 流式传输开关 */}
-                <div class="flex items-center justify-between gap-3 pt-2.5 border-t border-subtle/40">
-                  <div class="min-w-0">
-                    <div class="text-xs font-medium text-text">{t('playground.streamLabel')}</div>
-                    <div class="text-[11px] text-faint">{t('playground.streamDesc')}</div>
-                  </div>
-                  <Toggle
-                    ariaLabel={t('playground.streamLabel')}
-                    checked={stream()}
-                    onChange={setStream}
-                  />
-                </div>
-              </div>
-              </div>
-            </Card>
-          </div>
-        </Show>
+        <ParamsPanel open={showParams} onClose={() => setShowParams(false)} protocolOptions={protocolOptions} activeMeta={activeProtocolMeta} presets={systemPresets} />
       </div>
+      <ExportCodeModal open={codeModalOpen} onClose={() => setCodeModalOpen(false)} activeMeta={activeProtocolMeta} snippet={codeSnippet} onCopy={copyText} />
+      <RawJsonModal data={rawJsonModal} onClose={() => setRawJsonModal(null)} onCopy={copyText} />
 
-      {/* 导出代码弹窗 */}
-      <Modal
-        open={codeModalOpen()}
-        title={t('playground.exportCodeModalTitle')}
-        onClose={() => setCodeModalOpen(false)}
-      >
-        <div class="space-y-4">
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex flex-wrap items-center gap-2 min-w-0">
-              <SegmentedControl
-                value={codeLang()}
-                onChange={l => setCodeLang(l as 'curl' | 'python' | 'node')}
-                options={[
-                  { value: 'curl', label: 'cURL' },
-                  { value: 'python', label: 'Python' },
-                  { value: 'node', label: 'Node.js / TS' },
-                ]}
-                size="sm"
-              />
-              <Badge tone={activeProtocolMeta().badgeTone} class="text-xs font-mono px-2 py-0.5 uppercase">
-                {activeProtocolMeta().shortLabel}
-              </Badge>
-            </div>
-            <Button
-              variant="primary"
-              class="gap-1.5"
-              onClick={() => {
-                copyText(codeSnippet(codeLang()), t('playground.copyClientCode'))
-                setCopiedCode(true)
-                setTimeout(() => setCopiedCode(false), 2000)
-              }}
-            >
-              <Show when={copiedCode()} fallback={<IconClipboard size={14} />}>
-                <IconCheck size={14} />
-              </Show>
-              {t('playground.copyCode')}
-            </Button>
-          </div>
-
-          <div class="relative">
-            <pre class="min-w-0 p-4 bg-code-bg text-text rounded-xl text-xs leading-relaxed font-mono overflow-auto max-h-[min(24rem,60dvh)] border border-subtle">
-              <code>{codeSnippet(codeLang())}</code>
-            </pre>
-          </div>
-        </div>
-      </Modal>
-
-      {/* 原始 JSON 抽屉/弹窗 */}
-      <Show when={rawJsonModal()}>
-        {data => (
-          <Modal
-            open={true}
-            title={`${t('playground.rawJsonModalTitle')} - ${data().title}`}
-            onClose={() => setRawJsonModal(null)}
-          >
-            <div class="space-y-4">
-              <div class="space-y-1.5">
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted">
-                  <span>{t('playground.requestPayload')}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="text-accent"
-                    onClick={() => copyText(JSON.stringify(data().request, null, 2), t('playground.copyRequestJson'))}
-                  >
-                    {t('playground.copyRequestJson')}
-                  </Button>
-                </div>
-                <pre class="min-w-0 p-3 bg-code-bg text-text rounded-lg text-xs leading-relaxed font-mono overflow-auto max-h-40 whitespace-pre-wrap break-words [overflow-wrap:anywhere] border border-subtle">
-                  {JSON.stringify(data().request, null, 2)}
-                </pre>
-              </div>
-
-              <div class="space-y-1.5">
-                <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted">
-                  <span>{t('playground.responsePayload')}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="text-accent"
-                    onClick={() => copyText(JSON.stringify(data().response, null, 2), t('playground.copyResponseJson'))}
-                  >
-                    {t('playground.copyResponseJson')}
-                  </Button>
-                </div>
-                <pre class="min-w-0 p-3 bg-code-bg text-text rounded-lg text-xs leading-relaxed font-mono overflow-auto max-h-56 whitespace-pre-wrap break-words [overflow-wrap:anywhere] border border-subtle">
-                  {JSON.stringify(data().response, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </Show>
     </div>
   )
 }
