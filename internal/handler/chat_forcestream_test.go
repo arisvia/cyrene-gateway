@@ -156,3 +156,33 @@ func TestForceStreamAggregation(t *testing.T) {
 		t.Errorf("expected 1 request detail, got %d", rdRes.Pagination.TotalItems)
 	}
 }
+
+// An in-band upstream error chunk ended the stream without recording anything,
+// so the request vanished from usage and detail lists even though the client was
+// served a normal-looking [DONE].
+func TestStreamInBandUpstreamErrorStillRecordsUsage(t *testing.T) {
+	srv, database := setupTestServer(t)
+	defer database.Close()
+
+	body := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":\"stop\"}]}\n\n" +
+		"data: {\"error\":{\"message\":\"upstream overloaded\"}}\n\n"
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	w := httptest.NewRecorder()
+	uc := &usageContext{Provider: "inband", Model: "m", StartedAt: time.Now(), Status: 200}
+	srv.proxyResponse(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, true, true, translator.FormatOpenAI, "m", uc)
+
+	details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: "inband", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.Pagination.TotalItems != 1 {
+		t.Fatalf("in-band upstream error dropped the usage row: %d records, client body=%q", details.Pagination.TotalItems, w.Body.String())
+	}
+	if uc.Status != http.StatusBadGateway {
+		t.Errorf("recorded status = %d, want the same upstream-failure status the other paths use", uc.Status)
+	}
+}

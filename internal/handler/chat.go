@@ -854,6 +854,12 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 				return
 			}
 			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+				// A 502 the client was handed must still show up in usage, or the
+				// failed request is invisible in stats and in the detail list.
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+				}
+				s.recordUsage(uc, lastUsage)
 				writeJSON(w, http.StatusBadGateway, map[string]json.RawMessage{"error": chunk.Error})
 				return
 			}
@@ -1134,6 +1140,13 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 				return
 			}
 			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+				// The upstream failed in-band: same status and bookkeeping as the
+				// other upstream failures, so the row is not lost from usage.
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+					uc.Response = respBuilder.String()
+				}
+				s.recordUsage(uc, lastUsage)
 				fmt.Fprint(w, "data: [DONE]\n\n")
 				flush()
 				return

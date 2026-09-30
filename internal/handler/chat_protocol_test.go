@@ -271,12 +271,22 @@ func TestProtocolStreamFailures(t *testing.T) {
 				if !strings.Contains(w.Body.String(), "upstream failed") || (!stream && w.Code != http.StatusBadGateway) {
 					t.Fatalf("lost failure: HTTP %d %s", w.Code, w.Body.String())
 				}
+				// A failed upstream stream must be visible in the detail list with a
+				// failure status: previously the row simply vanished, so stats and the
+				// dashboard could not see these requests at all.
 				details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: "failure-test", Page: 1, PageSize: 10})
 				if err != nil {
 					t.Fatal(err)
 				}
-				if details.Pagination.TotalItems != 0 {
-					t.Fatal("failed stream was recorded as successful")
+				if details.Pagination.TotalItems != 1 {
+					t.Fatalf("upstream failure left no record: %d", details.Pagination.TotalItems)
+				}
+				var entry map[string]any
+				if err := json.Unmarshal(details.Details[0], &entry); err != nil {
+					t.Fatal(err)
+				}
+				if entry["status"] != "502" {
+					t.Fatalf("failed stream was recorded as %v, want 502", entry["status"])
 				}
 			})
 		}
