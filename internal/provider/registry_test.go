@@ -1,6 +1,9 @@
 package provider
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestRegistryCompleteness pins the curated KEEP set (Phase 36 T1): 31 chat
 // providers across curated coding agents, direct vendor APIs, E2E-verified
@@ -129,9 +132,30 @@ func TestRegistryOfficialNames(t *testing.T) {
 		"github":       "GitHub Copilot",
 		"openrouter":   "OpenRouter",
 		"alicode":      "Alibaba (Intl)",
-		"alicode-cn":   "Alibaba (China)",
-		"qoder":        "Qoder (Intl)",
-		"qoder-cn":     "Qoder (CN)",
+		"alicode-cn":   "Alibaba (CN)",
+		// 区域拆分提供商统一：国际 = 官方产品线名 + (Intl)，国内 = 产品线名 + (CN)。
+		"glm":        "GLM Coding (Intl)",
+		"glm-cn":     "GLM (CN)",
+		"minimax":    "MiniMax Coding (Intl)",
+		"minimax-cn": "MiniMax (CN)",
+		"qoder":      "Qoder (Intl)",
+		"qoder-cn":   "Qoder (CN)",
+	}
+	// 任何区域型提供商都必须按该规范收尾，新增者自动受检；
+	// Region 还用于同品牌非地域变体（opencode 的 zen/go），那类不在此列。
+	for id, p := range Registry {
+		var want string
+		switch p.Region {
+		case "intl":
+			want = " (Intl)"
+		case "cn":
+			want = " (CN)"
+		default:
+			continue
+		}
+		if !strings.HasSuffix(p.Name, want) {
+			t.Errorf("Provider %q Name = %q, want it to end with %q", id, p.Name, want)
+		}
 	}
 	for id, want := range names {
 		p, ok := Registry[id]

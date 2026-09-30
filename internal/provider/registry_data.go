@@ -36,7 +36,7 @@ func init() {
 		TextIcon: "ALi",
 	}
 	Registry["alicode-cn"] = ProviderInfo{
-		ID: "alicode-cn", Name: "Alibaba (China)",
+		ID: "alicode-cn", Name: "Alibaba (CN)",
 		Alias:   "alicn",
 		BaseURL: "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
 		APIType: "openai", AuthType: "api-key",
@@ -234,7 +234,7 @@ func init() {
 		},
 	}
 	Registry["glm-cn"] = ProviderInfo{
-		ID: "glm-cn", Name: "GLM (China)",
+		ID: "glm-cn", Name: "GLM (CN)",
 		Alias:   "glmcn",
 		BaseURL: "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
 		APIType: "openai", AuthType: "api-key",
@@ -246,7 +246,7 @@ func init() {
 		TextIcon: "GC",
 	}
 	Registry["glm"] = ProviderInfo{
-		ID: "glm", Name: "GLM Coding",
+		ID: "glm", Name: "GLM Coding (Intl)",
 		BaseURL: "https://api.z.ai/api/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 140,
@@ -320,7 +320,7 @@ func init() {
 		AuthHooks:  []string{"kimiHeaders"},
 	}
 	Registry["minimax-cn"] = ProviderInfo{
-		ID: "minimax-cn", Name: "MiniMax (China)",
+		ID: "minimax-cn", Name: "MiniMax (CN)",
 		Alias:   "mmcn",
 		BaseURL: "https://api.minimaxi.com/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
@@ -339,7 +339,7 @@ func init() {
 		AuthScheme: "raw",
 	}
 	Registry["minimax"] = ProviderInfo{
-		ID: "minimax", Name: "MiniMax Coding",
+		ID: "minimax", Name: "MiniMax Coding (Intl)",
 		Alias:   "mm",
 		BaseURL: "https://api.minimax.io/anthropic/v1/messages",
 		APIType: "anthropic", AuthType: "api-key",
