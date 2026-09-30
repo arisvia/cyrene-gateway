@@ -556,6 +556,24 @@ func TestDisabledModel(t *testing.T) {
 	}
 }
 
+// A client can pin an upstream with a shorthand, and the panel stores the switch
+// under the canonical id, so the typed spelling has to land on the same decision.
+func TestDisabledModelReachedByProviderAlias(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	database.KVSet("disabledModels", "openai/gpt-4", "true")
+
+	body := `{"model":"oai/gpt-4","messages":[{"role":"user","content":"hello"}]}`
+	req := newLocalRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for a disabled model typed by alias, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestDisabledModelExcludedFromV1Models(t *testing.T) {
 	srv, database := setupTestServer(t)
 

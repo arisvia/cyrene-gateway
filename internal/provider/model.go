@@ -174,7 +174,8 @@ func ResolveCombo(modelStr string, database *db.DB) (*model.Combo, bool) {
 }
 
 // IsModelDisabled checks if a model is in the disabled models list.
-// It checks both the full identifier (e.g. "opencode/big-pickle") and bare identifier (e.g. "big-pickle").
+// It checks both the full identifier (e.g. "opencode/big-pickle") and bare identifier (e.g. "big-pickle"),
+// and resolves a shorthand prefix so callers can pass whatever the client typed.
 func IsModelDisabled(modelStr string, database *db.DB) bool {
 	if database == nil {
 		return false
@@ -185,6 +186,16 @@ func IsModelDisabled(modelStr string, database *db.DB) bool {
 	}
 	if _, ok := disabled[modelStr]; ok {
 		return true
+	}
+	// A client may pin an upstream by shorthand while the list is keyed by the
+	// canonical id, so the rewritten prefix has to reach the same decision.
+	if before, after, ok := strings.Cut(modelStr, "/"); ok {
+		canonical := ResolveProviderAlias(before) + "/" + after
+		if canonical != modelStr {
+			if _, ok := disabled[canonical]; ok {
+				return true
+			}
+		}
 	}
 	// If modelStr is "provider/model", check bare model as well
 	if idx := strings.Index(modelStr, "/"); idx != -1 {
