@@ -3,6 +3,7 @@ import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
 import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
+import { keyPlaceholder } from '@/lib/credentialHint'
 import { useOAuthFlow } from '@/lib/oauthFlow'
 import { useProviderModels } from '@/lib/providerModels'
 import ModelsToolbar from '@/components/provider/ModelsToolbar'
@@ -702,13 +703,7 @@ const ProviderDetail: Component = () => {
                             type="password"
                             value={apiKey()}
                             onInput={setApiKey}
-                            placeholder={
-                              c().provider === 'qoder' || c().provider === 'qoder-cn'
-                                ? 'pt-... (Personal Access Token)'
-                                : c().provider === 'opencode' || c().provider === 'opencode-go'
-                                ? t('providerDetail.opencodeKeyPlaceholder')
-                                : 'sk-...'
-                            }
+                            placeholder={keyPlaceholder(c().provider)}
                           />
                           <Show when={c().data?.hasApiKey}>
                             <div class="text-[11px] text-success mt-1 flex items-center gap-1">
@@ -962,13 +957,7 @@ const ProviderDetail: Component = () => {
                   type="password"
                   value={newAccountApiKey()}
                   onInput={setNewAccountApiKey}
-                  placeholder={
-                    conn()?.provider === 'qoder' || conn()?.provider === 'qoder-cn'
-                      ? 'pt-... (Personal Access Token)'
-                      : conn()?.provider === 'opencode' || conn()?.provider === 'opencode-go'
-                      ? t('providerDetail.opencodeKeyPlaceholder')
-                      : 'sk-...'
-                  }
+                  placeholder={keyPlaceholder(conn()?.provider)}
                 />
                 <Show when={regInfo()?.apiKeyUrl}>
                   <div class="flex justify-end">

@@ -2,6 +2,7 @@ import {type Component, createMemo, createSignal, For, onMount, Show, Switch, Ma
 import {A} from '@solidjs/router'
 import {useGatewayStore} from '@/stores/gateway'
 import {useOAuthFlow} from '@/lib/oauthFlow'
+import { keyPlaceholder } from '@/lib/credentialHint'
 import OAuthFlowPanel from '@/components/provider/OAuthFlowPanel'
 import {useI18n} from '@/i18n'
 import {
@@ -961,7 +962,7 @@ const Providers: Component = () => {
                           <Input
                             type="password"
                             value={form().apiKey}
-                            placeholder={reg().authHint?.includes('pt-') ? "pt-... (Personal Access Token)" : "sk-..."}
+                            placeholder={keyPlaceholder(reg().id)}
                             onInput={v => {
                               setForm(f => ({ ...f, apiKey: v }))
                               setTestedCreds(null)

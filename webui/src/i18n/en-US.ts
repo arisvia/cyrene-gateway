@@ -570,6 +570,7 @@ export const enUS: TranslationDict = {
     details: "Provider Details",
     accountIndex: "Account {index}",
     opencodeKeyPlaceholder: "Enter OpenCode API Key",
+    patKeyPlaceholder: "pt-... (Personal Access Token)",
     selectAccount: "Select account {name}",
     priorityValue: "Priority {value}",
     accountNamePlaceholder: "e.g. Primary, Backup PAT (current: {name})",

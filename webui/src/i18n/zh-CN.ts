@@ -568,6 +568,7 @@ export const zhCN = {
     details: "供应商详情",
     accountIndex: "账号 {index}",
     opencodeKeyPlaceholder: "输入 OpenCode API Key",
+    patKeyPlaceholder: "pt-... (Personal Access Token)",
     selectAccount: "选择账号 {name}",
     priorityValue: "优先级 {value}",
     accountNamePlaceholder: "例如：主账号、备用 PAT（当前默认：{name}）",
