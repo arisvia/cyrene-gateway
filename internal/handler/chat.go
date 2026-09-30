@@ -824,6 +824,10 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 		event, err := reader.ReadEvent(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
+				if uc != nil {
+					uc.Status = 499
+				}
+				s.recordUsage(uc, lastUsage)
 				return
 			}
 			complete := len(choices) > 0
@@ -831,6 +835,10 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 				complete = complete && choice.finishReason != ""
 			}
 			if !errors.Is(err, io.EOF) || !complete {
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+				}
+				s.recordUsage(uc, lastUsage)
 				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream stream ended before completion"})
 				return
 			}
@@ -844,12 +852,20 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 		}
 		chunkData, done, err := streamTranslator.TranslateChunk(event.Data)
 		if err != nil {
+			if uc != nil {
+				uc.Status = http.StatusBadGateway
+			}
+			s.recordUsage(uc, lastUsage)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid upstream stream: " + err.Error()})
 			return
 		}
 		if len(chunkData) > 0 && string(chunkData) != "[DONE]" {
 			var chunk chatStreamChunk
 			if err := json.Unmarshal(chunkData, &chunk); err != nil {
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+				}
+				s.recordUsage(uc, lastUsage)
 				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid upstream stream payload"})
 				return
 			}
@@ -1103,12 +1119,22 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 		}
 		chunkData, done, err := streamTranslator.TranslateChunk(event.Data)
 		if err != nil {
+			if uc != nil {
+				uc.Status = http.StatusBadGateway
+				uc.Response = respBuilder.String()
+			}
+			s.recordUsage(uc, lastUsage)
 			fail("invalid upstream stream: " + err.Error())
 			return
 		}
 		if len(chunkData) > 0 && string(chunkData) != "[DONE]" {
 			var chunk chatStreamChunk
 			if err := json.Unmarshal(chunkData, &chunk); err != nil {
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+					uc.Response = respBuilder.String()
+				}
+				s.recordUsage(uc, lastUsage)
 				fail("invalid upstream stream payload")
 				return
 			}

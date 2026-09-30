@@ -186,3 +186,68 @@ func TestStreamInBandUpstreamErrorStillRecordsUsage(t *testing.T) {
 		t.Errorf("recorded status = %d, want the same upstream-failure status the other paths use", uc.Status)
 	}
 }
+
+// The aggregation path handed the client a 502 for a broken upstream stream but
+// booked nothing, so the same failure that is visible in the streaming path
+// disappeared from usage here.
+func TestAggregatedStreamFailureStillRecordsUsage(t *testing.T) {
+	srv, database := setupTestServer(t)
+	defer database.Close()
+
+	// A delta without a finish_reason and no [DONE] sentinel is a truncated stream.
+	body := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n"
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	w := httptest.NewRecorder()
+	uc := &usageContext{Provider: "aggfail", Model: "m", StartedAt: time.Now(), Status: 200}
+	srv.proxyResponse(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, false, true, translator.FormatOpenAI, "m", uc)
+
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("client status = %d, want 502 for a truncated upstream stream", w.Code)
+	}
+	details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: "aggfail", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.Pagination.TotalItems != 1 {
+		t.Fatalf("aggregated stream failure dropped the usage row: %d records", details.Pagination.TotalItems)
+	}
+	if uc.Status != http.StatusBadGateway {
+		t.Errorf("recorded status = %d, want 502", uc.Status)
+	}
+}
+
+// Same policy on the streaming side, where the failure is reported as an in-band
+// error frame instead of an HTTP status.
+func TestStreamTranslatorFailureStillRecordsUsage(t *testing.T) {
+	srv, database := setupTestServer(t)
+	defer database.Close()
+
+	body := "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"}}]}\n\n" +
+		"data: this is not json\n\n"
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	w := httptest.NewRecorder()
+	uc := &usageContext{Provider: "streamfail", Model: "m", StartedAt: time.Now(), Status: 200}
+	srv.proxyResponse(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, true, true, translator.FormatOpenAI, "m", uc)
+
+	details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: "streamfail", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details.Pagination.TotalItems != 1 {
+		t.Fatalf("undecodable stream chunk dropped the usage row: %d records, client body=%q", details.Pagination.TotalItems, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid upstream stream") {
+		t.Fatalf("expected the translator failure frame, got %q", w.Body.String())
+	}
+	if uc.Status != http.StatusBadGateway {
+		t.Errorf("recorded status = %d, want 502", uc.Status)
+	}
+}
