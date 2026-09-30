@@ -285,26 +285,30 @@ func TestRegistryAliasesBrevityAndUniqueness(t *testing.T) {
 	}
 }
 
-// TestGetProviderAcceptsAlias pins the single canonical read entry point: every
-// caller goes through GetProvider, so an alias must resolve to the same record
-// as the id it stands for instead of silently missing the connection lookup.
-func TestGetProviderAcceptsAlias(t *testing.T) {
+// TestGetProviderIsCanonicalOnly pins where a shorthand may enter: aliases are
+// resolved inside ParseModel, where a client types "qd/qmodel", and nowhere
+// else. Everything past that point is a canonical id, so the registry lookup
+// must reject a shorthand rather than quietly accepting it and letting the
+// alias become a second identity for the same provider.
+func TestGetProviderIsCanonicalOnly(t *testing.T) {
 	for id, p := range Registry {
-		canonical, ok := GetProvider(id)
-		if !ok || canonical.ID != id {
-			t.Fatalf("GetProvider(%q) = (%q,%v), want its own record", id, canonical.ID, ok)
+		if _, ok := GetProvider(id); !ok {
+			t.Fatalf("GetProvider(%q) missed its own canonical record", id)
 		}
 		if p.Alias == "" || p.Alias == id {
 			continue
 		}
-		viaAlias, ok := GetProvider(p.Alias)
-		if !ok {
-			t.Errorf("GetProvider(%q) not found, want alias of %q", p.Alias, id)
-			continue
+		if got, ok := GetProvider(p.Alias); ok {
+			t.Errorf("GetProvider(%q) resolved an alias to %q, want a miss", p.Alias, got.ID)
 		}
-		if viaAlias.ID != canonical.ID || viaAlias.BaseURL != canonical.BaseURL || viaAlias.APIType != canonical.APIType {
-			t.Errorf("GetProvider(%q) returned a different record than GetProvider(%q)", p.Alias, id)
-		}
+	}
+
+	// The client-facing form still resolves, which is the alias's only purpose.
+	if got := ParseModel("oai/gpt-4o"); got.Provider != "openai" || got.Model != "gpt-4o" {
+		t.Errorf("ParseModel(oai/gpt-4o) = %+v, want provider openai and the bare model", got)
+	}
+	if got := ParseModel("openai/gpt-4o"); got.Provider != "openai" {
+		t.Errorf("ParseModel with a canonical prefix = %+v, want provider openai", got)
 	}
 
 	// Unknown ids stay unknown: no fuzzy or prefix matching.

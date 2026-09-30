@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
-	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // handleUsageStats returns aggregated usage statistics.
@@ -132,7 +131,7 @@ func (s *Server) handleUsageHistory(w http.ResponseWriter, r *http.Request) {
 	offset, _ := strconv.Atoi(q.Get("offset"))
 
 	filter := db.UsageFilter{
-		Provider:  provider.ResolveProviderAlias(q.Get("provider")),
+		Provider:  q.Get("provider"),
 		Model:     q.Get("model"),
 		StartDate: q.Get("startDate"),
 		EndDate:   q.Get("endDate"),
@@ -249,7 +248,7 @@ func (s *Server) handleUsageRequestDetails(w http.ResponseWriter, r *http.Reques
 	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
 
 	filter := db.RequestDetailFilter{
-		Provider:     provider.ResolveProviderAlias(q.Get("provider")),
+		Provider:     q.Get("provider"),
 		Model:        q.Get("model"),
 		ConnectionID: q.Get("connectionId"),
 		Status:       q.Get("status"),
@@ -292,7 +291,7 @@ func (s *Server) handleUsageLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := db.UsageFilter{
-		Provider: provider.ResolveProviderAlias(q.Get("provider")),
+		Provider: q.Get("provider"),
 		Model:    q.Get("model"),
 		Limit:    limit,
 	}

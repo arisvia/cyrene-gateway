@@ -124,11 +124,11 @@ func TestProviderWriteBoundaryCanonicalizesAlias(t *testing.T) {
 	}
 }
 
-// Reads keyed by provider string must reach the same connection whether the
-// caller used the shorthand or the canonical id: without canonicalization the
-// alias simply returns an empty list, which no client can tell apart from
-// "this provider has no connection".
-func TestProviderReadBoundaryCanonicalizesAlias(t *testing.T) {
+// Admin reads name a provider by its canonical id only: the console sends
+// registry ids, so a shorthand reaching /api/* means a hand-built request that
+// should surface as "no such provider" instead of quietly aliasing to a second
+// identity for the same upstream.
+func TestAdminReadRejectsProviderAlias(t *testing.T) {
 	srv, database := setupTestServer(t)
 	if err := database.CreateConnection(&model.ProviderConnection{
 		ID:       "conn-claude",
@@ -146,14 +146,14 @@ func TestProviderReadBoundaryCanonicalizesAlias(t *testing.T) {
 	byID := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(byID, newLocalRequest(http.MethodGet, "/api/oauth/claude/status", nil))
 
-	if byAlias.Code != http.StatusOK || byID.Code != http.StatusOK {
-		t.Fatalf("status alias=%d id=%d", byAlias.Code, byID.Code)
+	if byID.Code != http.StatusOK {
+		t.Fatalf("canonical status=%d body=%s", byID.Code, byID.Body.String())
 	}
-	if !strings.Contains(byAlias.Body.String(), "conn-claude") {
-		t.Fatalf("alias read found no connection: %s", byAlias.Body.String())
+	if !strings.Contains(byID.Body.String(), "conn-claude") {
+		t.Fatalf("canonical read lost its own connection: %s", byID.Body.String())
 	}
-	if byAlias.Body.String() != byID.Body.String() {
-		t.Errorf("alias read diverged from canonical: alias=%s id=%s", byAlias.Body.String(), byID.Body.String())
+	if strings.Contains(byAlias.Body.String(), "conn-claude") {
+		t.Errorf("alias read reached the connection, want a canonical-id-only surface: %s", byAlias.Body.String())
 	}
 }
 

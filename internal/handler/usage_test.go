@@ -150,10 +150,10 @@ func TestUsageStatsRollingWindowFractionalAndOffsetTimestamps(t *testing.T) {
 	})
 }
 
-// Usage rows are written with the canonical provider id, so an alias typed into
-// a filter would otherwise match nothing and read as "no traffic for that
-// provider" rather than as an unknown id.
-func TestUsageHistoryFilterAcceptsProviderAlias(t *testing.T) {
+// Usage rows are written with the canonical provider id and the filter sits on
+// the admin surface, so it matches that id exactly: a shorthand is a client-side
+// model-prefix convenience and must not become a second key for stats.
+func TestUsageHistoryFilterIsCanonicalIDOnly(t *testing.T) {
 	database, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -181,10 +181,7 @@ func TestUsageHistoryFilterAcceptsProviderAlias(t *testing.T) {
 	if got := history("provider=claude"); !strings.Contains(got, "\"sonnet\"") {
 		t.Fatalf("canonical filter lost its own row: %s", got)
 	}
-	if got := history("provider=cc"); !strings.Contains(got, "\"sonnet\"") {
-		t.Errorf("alias filter matched nothing: %s", got)
-	}
-	if canonical, viaAlias := history("provider=claude"), history("provider=cc"); canonical != viaAlias {
-		t.Errorf("alias filter diverged from canonical: alias=%s canonical=%s", viaAlias, canonical)
+	if got := history("provider=cc"); strings.Contains(got, "\"sonnet\"") {
+		t.Errorf("alias filter matched canonical rows, want the id taken verbatim: %s", got)
 	}
 }

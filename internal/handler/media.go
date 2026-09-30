@@ -642,7 +642,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 
 // handleMediaVoices handles GET /api/media-providers/tts/voices
 func (s *Server) handleMediaVoices(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.URL.Query().Get("provider"))
+	providerID := r.URL.Query().Get("provider")
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider query param"})
 		return

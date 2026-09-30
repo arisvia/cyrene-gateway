@@ -229,10 +229,7 @@ var xaiTokenURL = sync.OnceValue(func() string {
 
 // RefreshCredentials attempts to refresh the OAuth token for a connection.
 // Dispatches to per-provider logic based on the provider ID.
-func RefreshCredentials(aliasOrID string, conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
-	// The branches below key off canonical ids, so an alias has to land on the
-	// same path as the id it stands for.
-	providerID := ResolveProviderAlias(aliasOrID)
+func RefreshCredentials(providerID string, conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
 	if conn.Data.RefreshToken == "" {
 		return nil, fmt.Errorf("no refresh token available")
 	}

@@ -38,6 +38,7 @@ cd webui && npm run typecheck && npm test && npm run build
    - SSE 数据行解析统一使用 `translator.ParseSSEDataLine` 或 `ParseSSEDataLineString`。
    - 前端通用辅助函数统一收口至 `@/lib/format` 与 `@/lib/clipboard`。
    - 提供商凭据解析与免密模型路由必须统一走 `provider.ResolveCredentials`，严禁在 handler 散落手写凭据覆盖分支。
+   - 提供商短别名（`qd`/`cb`/`ag` 等）**只**用于客户端在请求里点名上游：`provider/model` 模型串前缀、`/v1/*` 的显式 `provider` 字段与查询参数（`provider.ResolveProviderAlias`）。除此之外一律以规范 provider id 为准：连接、库内数据、KV 缓存键、用量统计、`/api/*` 管理面与 `provider.GetProvider` 都不得接受别名。区域型提供商命名统一为「国际 = 官方产品线名 + `(Intl)`，国内 = 产品线名 + `(CN)`」（判据见 `Region`）。
 8. **全量国际化（Strict i18n）**：
    - 禁止在 JSX/TSX 中硬编码自然语言字符串。
    - 文案必须在 `zh-CN.ts` 与 `en-US.ts` 严格对齐，通过 `NestedKeyOf` 静态类型检查。

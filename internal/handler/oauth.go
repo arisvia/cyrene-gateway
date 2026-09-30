@@ -27,7 +27,7 @@ func htmlEscape(s string) string {
 // handleOAuthAuthorize generates an authorization URL for a provider.
 // GET /api/oauth/{provider}/authorize?redirect_uri=...
 func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})
 		return
@@ -96,7 +96,7 @@ func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 // handleOAuthCallback exchanges an authorization code for tokens and creates a connection.
 // GET /api/oauth/{provider}/callback?code=...&state=...
 func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 
@@ -187,7 +187,7 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 // handleOAuthExchange exchanges an authorization code for tokens (POST variant).
 // POST /api/oauth/{provider}/exchange
 func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 
 	var req struct {
 		Code         string `json:"code"`
@@ -293,7 +293,7 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 // handleOAuthDeviceCode initiates a device code flow.
 // POST /api/oauth/{provider}/device-code
 func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 
 	if _, ok := provider.GetProvider(providerID); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerID})
@@ -338,7 +338,7 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 // handleOAuthDeviceCodePoll polls for a device code token.
 // POST /api/oauth/{provider}/device-code/poll
 func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 
 	if _, ok := provider.GetProvider(providerID); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerID})
@@ -528,7 +528,7 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 // handleOAuthImport imports a manually pasted token.
 // POST /api/oauth/{provider}/import
 func (s *Server) handleOAuthImport(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 
 	if _, ok := provider.GetProvider(providerID); !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider: " + providerID})
@@ -575,7 +575,7 @@ func (s *Server) handleOAuthImport(w http.ResponseWriter, r *http.Request) {
 // handleOAuthStatus returns the OAuth connection status for a provider.
 // GET /api/oauth/{provider}/status
 func (s *Server) handleOAuthStatus(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 
 	conns, err := s.DB.ListConnectionsByProvider(providerID)
 	if err != nil {
@@ -627,7 +627,7 @@ func (s *Server) handleOAuthStatus(w http.ResponseWriter, r *http.Request) {
 // handleOAuthRefresh manually triggers a token refresh for a connection.
 // POST /api/oauth/{provider}/refresh
 func (s *Server) handleOAuthRefresh(w http.ResponseWriter, r *http.Request) {
-	providerID := provider.ResolveProviderAlias(r.PathValue("provider"))
+	providerID := r.PathValue("provider")
 
 	var req struct {
 		ConnectionID string `json:"connectionId"`

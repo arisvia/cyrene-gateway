@@ -679,7 +679,7 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// 2. targetID is a provider ID (e.g. "qoder", "openai", "custom-openai")
-		providerID := provider.ResolveProviderAlias(targetID)
+		providerID := targetID
 		providerInfo, ok = provider.GetProvider(providerID)
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown provider"})

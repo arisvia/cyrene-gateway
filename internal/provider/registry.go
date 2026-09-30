@@ -99,7 +99,10 @@ func buildAliasMap() map[string]string {
 	return m
 }
 
-// ResolveProviderAlias resolves a provider alias to its canonical ID
+// ResolveProviderAlias resolves a provider alias to its canonical ID. Call it
+// only where a client names an upstream in a request (a "provider/model" string
+// or an explicit provider field); connections, database rows, cache keys and
+// stats are all keyed by the canonical ID and must not pass through here.
 func ResolveProviderAlias(aliasOrID string) string {
 	if id, ok := aliasMap[aliasOrID]; ok {
 		return id
@@ -107,11 +110,11 @@ func ResolveProviderAlias(aliasOrID string) string {
 	return aliasOrID
 }
 
-// GetProvider returns provider info by ID. Shorthand aliases resolve here so
-// every caller sees one canonical entry point; Registry itself stays keyed by
-// canonical ID only.
+// GetProvider returns provider info by canonical ID. Shorthands are NOT
+// accepted here: an alias is only ever a client's way of typing a provider
+// inside a model string, and every id past that point is canonical.
 func GetProvider(id string) (ProviderInfo, bool) {
-	p, ok := Registry[ResolveProviderAlias(id)]
+	p, ok := Registry[id]
 	return p, ok
 }
 
