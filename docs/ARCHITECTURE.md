@@ -63,6 +63,7 @@ Cyrene Gateway 是一个单二进制运行的高性能 LLM API 统一网关，�
 | 模块路径 | 关键类型 / 入口 | 职责 |
 |---|---|---|
 | `cmd/gateway/` | `main.go` | 服务启动入口，加载配置、初始化 DB、启动后台模型同步协程、优雅停机（SIGINT/SIGTERM）。 |
+| `scripts/` | `migrate.go`（发布为 `cyrene-migrate-*`） | 独立数据迁移工具，一次性改写历史提供商 ID；随 Release 多架构分发，网关启动时不自动执行，主流程因此不含兼容与自我升级逻辑。 |
 | `internal/config/` | `Config`, `Load()` | 解析命令行参数与 `CYRENE_*` 环境变量，设置默认路径 `~/.cyrene-gateway/`。 |
 | `internal/db/` | `DB`, `Open()` | 基于 `modernc.org/sqlite`（纯 Go、零 CGo），单连接 WAL 模式，管理表结构迁移、连接、组合、密钥、日用量聚合事务。 |
 | `internal/middleware/` | `Chain`, `Recovery`, `APIKeyAuth`, `DashboardAuth` | 全局中间件链：Panic 恢复、请求大小限制（JSON 10MB / Multipart 50MB）、CORS、API Key 签名与白名单校验、管理端会话鉴权。 |

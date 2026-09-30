@@ -106,7 +106,31 @@ schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 
 ### 发布
 
-打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
+打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release,同时附带同架构矩阵的独立数据迁移工具 `cyrene-migrate-*`。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
+
+## 升级与数据迁移
+
+提供商 ID 规范化（如 `alicode-intl` → `alicode`、未标注的 `alicode` → `alicode-cn`）属于一次性历史整理，网关启动时**不会**自动改写你的数据库。跨越这次规范化的升级请显式运行 Release 附件里的 `cyrene-migrate-<os>-<arch>`：
+
+```sh
+# 1. 对照 Release 附件校验 checksums.txt，再停止网关
+# 2. 完整备份数据目录（data.sqlite 及其 -wal / -shm 伴生文件）
+# 3. 选择与主机架构一致的迁移工具，默认读取 ~/.cyrene-gateway
+./cyrene-migrate-linux-amd64
+#    或指定数据目录
+./cyrene-migrate-linux-amd64 -data-dir /path/to/cyrene-data
+```
+
+工具在单个事务内完成改写，失败即整体回滚；成功后写入 `standaloneMigrations/provider-ids-v1` 标记，重复执行为空操作。不含旧 ID 特征的数据库会被直接拒绝，避免把已是规范 ID 的数据二次改写。
+
+容器部署需保持数据卷属主一致：先停止容器，再用主机上的迁移二进制挂载数据卷执行。
+
+```sh
+docker run --rm --user 10001:10001 \
+  -v cyrene-data:/home/gateway/.cyrene-gateway \
+  -v "$PWD:/tool:ro" \
+  alpine:3.21 /tool/cyrene-migrate-linux-amd64 -data-dir /home/gateway/.cyrene-gateway
+```
 
 ## 安全机制
 

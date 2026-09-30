@@ -46,7 +46,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           LDFLAGS="-s -w -X github.com/arisvia/cyrene-gateway/internal/handler.version=${VERSION}"
 
-          # 并行编译 6 大平台架构二进制
+          # 并行编译 6 大平台架构二进制，以及配套的 standalone 数据迁移工具
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-linux-amd64 ./cmd/gateway &
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-linux-arm64 ./cmd/gateway &
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-darwin-arm64 ./cmd/gateway &
@@ -54,6 +54,16 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-windows-amd64.exe ./cmd/gateway &
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-windows-arm64.exe ./cmd/gateway &
           wait
+
+          # 迁移工具一次性使用，不注入版本号
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-migrate-linux-amd64 ./scripts &
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-migrate-linux-arm64 ./scripts &
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-migrate-darwin-amd64 ./scripts &
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-migrate-darwin-arm64 ./scripts &
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-migrate-windows-amd64.exe ./scripts &
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-migrate-windows-arm64.exe ./scripts &
+          wait
+          chmod +x dist/cyrene-migrate-linux-* dist/cyrene-migrate-darwin-*
       - name: Generate Checksums and Release Notes
         run: |
           cd dist && sha256sum * > checksums.txt && cd ..
