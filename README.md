@@ -115,11 +115,15 @@ schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 ```sh
 # 1. 对照 Release 附件校验 checksums.txt，再停止网关
 # 2. 完整备份数据目录（data.sqlite 及其 -wal / -shm 伴生文件）
-# 3. 选择与主机架构一致的迁移工具，默认读取 ~/.cyrene-gateway
+# 3. 下载与主机架构一致的迁移工具；Release 附件不含可执行位，需先 chmod
+chmod +x ./cyrene-migrate-linux-amd64
+# 4. 执行迁移，默认读取 ~/.cyrene-gateway
 ./cyrene-migrate-linux-amd64
 #    或指定数据目录
 ./cyrene-migrate-linux-amd64 -data-dir /path/to/cyrene-data
 ```
+
+macOS 产物未做签名与公证，首次执行会被 Gatekeeper 拦截，用 `xattr -d com.apple.quarantine <文件>` 解除隔离后再运行。
 
 工具在单个事务内完成改写，失败即整体回滚；成功后写入 `standaloneMigrations/provider-ids-v1` 标记，重复执行为空操作。不含旧 ID 特征的数据库会被直接拒绝，避免把已是规范 ID 的数据二次改写。
 
