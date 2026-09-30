@@ -319,3 +319,19 @@ func TestGetProviderIsCanonicalOnly(t *testing.T) {
 		t.Errorf("ResolveProviderAlias rewrote an unknown id to %q", got)
 	}
 }
+
+// sanitizeCodebuddyRequest handles the two regional shapes explicitly, so a new
+// codebuddy-* sibling would silently lose system-prompt handling. This keeps that
+// drift in the registry where the provider is added instead of deep in the executor.
+func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
+	for id := range Registry {
+		if !strings.HasPrefix(id, "codebuddy") {
+			continue
+		}
+		switch id {
+		case "codebuddy", "codebuddy-cn":
+		default:
+			t.Errorf("provider %q needs an explicit branch in sanitizeCodebuddyRequest", id)
+		}
+	}
+}

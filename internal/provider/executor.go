@@ -297,7 +297,9 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 			filtered = append(filtered, msgMap)
 		}
 		bodyMap["messages"] = filtered
-	} else {
+	} else if providerID == "codebuddy-cn" {
+		// Explicit: an unlisted codebuddy-* sibling must not silently inherit the
+		// China shape. TestRegistryCoversEveryCodebuddyShape guards that.
 		hasSystem := false
 		for _, m := range rawMsgs {
 			if msgMap, ok := m.(map[string]any); ok {
