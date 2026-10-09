@@ -1159,6 +1159,18 @@ func (s *Server) handleGetProvider(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, conn.ToDTO())
 }
 
+// requireKnownAuthType guards the two connection write boundaries. An arbitrary
+// authType stores a row no credential resolver can serve, and nothing repairs it
+// later, so the typo has to fail here rather than surface as a dead connection.
+func requireKnownAuthType(w http.ResponseWriter, authType string) bool {
+	switch authType {
+	case "api-key", "oauth", "access_token":
+		return true
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": `authType must be "api-key", "oauth" or "access_token"`})
+	return false
+}
+
 func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Data     map[string]any `json:"data"`
@@ -1186,6 +1198,9 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AuthType == "" {
 		req.AuthType = "api-key"
+	}
+	if !requireKnownAuthType(w, req.AuthType) {
+		return
 	}
 
 	// Convert generic data map to ConnectionData
@@ -1273,6 +1288,9 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		existing.Provider = provider.ResolveProviderAlias(*req.Provider)
 	}
 	if req.AuthType != nil {
+		if !requireKnownAuthType(w, *req.AuthType) {
+			return
+		}
 		existing.AuthType = *req.AuthType
 	}
 	if req.Name != nil {

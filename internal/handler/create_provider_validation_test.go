@@ -52,6 +52,18 @@ func TestHandleCreateProviderValidation(t *testing.T) {
 			body: `{"provider":"openai","authType":"oauth","data":{}}`,
 			want: http.StatusCreated,
 		},
+		{
+			name: "unknown authType is rejected",
+			body: `{"provider":"openai","authType":"no-auth","data":{"apiKey":"sk-x"}}`,
+			want: http.StatusBadRequest,
+		},
+		{
+			// A credential-less row is selectable by the candidate query but has
+			// nothing to send upstream, and nothing repairs it at startup now.
+			name: "none authType is rejected",
+			body: `{"provider":"opencode","authType":"none","data":{}}`,
+			want: http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range tests {
