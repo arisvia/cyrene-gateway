@@ -574,3 +574,7 @@ export function useGatewayStore() {
   if (!_store) _store = createRoot(createGatewayStore)
   return _store
 }
+
+export function resetGatewayStoreForTesting() {
+  _store = null
+}

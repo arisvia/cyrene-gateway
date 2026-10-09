@@ -30,17 +30,14 @@ vi.mock('@/lib/toast', () => ({
 }))
 
 import { api, apiPost } from '@/lib/api'
+import { useGatewayStore, resetGatewayStoreForTesting } from '@/stores/gateway'
 
 describe('gateway store', () => {
-  let useGatewayStore: typeof import('@/stores/gateway').useGatewayStore
-
-  beforeEach(async () => {
-    vi.resetModules()
+  beforeEach(() => {
     vi.resetAllMocks()
     window.localStorage?.clear()
-    useGatewayStore = (await import('@/stores/gateway')).useGatewayStore
+    resetGatewayStoreForTesting()
   })
-
   afterEach(() => {
     vi.restoreAllMocks()
     window.localStorage?.clear()
