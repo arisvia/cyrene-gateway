@@ -2,6 +2,23 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-10-09
+
+### Security
+- **鉴权与密钥生命周期 Fail-Closed 防护**：Settings 异常时阻断开放网关降级并返回 503，强制校验 HMAC 密钥长度（>=32 字节）并实施原子写入。
+- **脱敏备份全链路闭环与凭据保护**：脱敏备份彻底擦除代理 URL 用户凭证、敏感 KV 项、用量元数据及请求明细载荷；合并导入保护库内已有真实凭据。
+
+### Added
+- **多账户连接优先级与模型倍率调度**：支持同级负载均衡与跨级故障转移，用量统计透传价格倍率并支持动态配额解析。
+- **循环防御门禁全局可控（LoopGuard）**：支持全链路开关循环防御，在保持请求结构完整的同时防御多轮循环死锁。
+
+### Changed
+- **区域型提供商规范统一**：拆分 Qoder 国际版与国内版独立生命周期，收口别名解析为规范 Provider ID。
+
+### Fixed
+- **上游提供商连接写入校验**：创建与更新上游连接时严格拦截未知 `authType`，防止脏数据入库。
+- **前端测试多实例警告消除**：状态存储导出测试重置钩子，彻底消除 Solid 多实例重复加载警告。
+
 ## [1.4.0] - 2026-09-23
 
 ### Added
@@ -107,6 +124,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.5.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.4...v1.3.0
 [1.2.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.3...v1.2.4
