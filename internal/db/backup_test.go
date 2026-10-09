@@ -51,11 +51,24 @@ func TestBackupAndRestore(t *testing.T) {
 	if err := d.CreateCombo(combo); err != nil {
 		t.Fatalf("create combo: %v", err)
 	}
+	pool := &model.ProxyPool{
+		ID:       "pool-1",
+		IsActive: true,
+		Data: model.ProxyPoolData{
+			Name:     "Test Proxy",
+			ProxyURL: "http://user:secretpass@127.0.0.1:8080",
+		},
+	}
+	if err := d.CreateProxyPool(pool); err != nil {
+		t.Fatalf("create proxy pool: %v", err)
+	}
 
 	if err := d.KVSet("testScope", "hello", "world"); err != nil {
 		t.Fatalf("set kv: %v", err)
 	}
-
+	if err := d.KVSet("auth", "api_key", "secret-token-val"); err != nil {
+		t.Fatalf("set kv secret: %v", err)
+	}
 	// 2. Test export with secrets
 	exportWithSecrets, err := d.ExportData(true, false)
 	if err != nil {
@@ -73,6 +86,18 @@ func TestBackupAndRestore(t *testing.T) {
 	if len(exportWithSecrets.Data.APIKeys) != 1 || exportWithSecrets.Data.APIKeys[0].Key != "cg-client-key-999" {
 		t.Fatalf("expected APIKey key to be preserved")
 	}
+	if len(exportWithSecrets.Data.ProxyPools) != 1 || exportWithSecrets.Data.ProxyPools[0].Data.ProxyURL != "http://user:secretpass@127.0.0.1:8080" {
+		t.Fatalf("expected proxy pool URL to preserve credentials in exportWithSecrets")
+	}
+	var foundSecretKVWithSecrets bool
+	for _, kv := range exportWithSecrets.Data.KV {
+		if kv.Scope == "auth" && kv.Key == "api_key" && kv.Value == "secret-token-val" {
+			foundSecretKVWithSecrets = true
+		}
+	}
+	if !foundSecretKVWithSecrets {
+		t.Fatalf("expected secret-named KV to be preserved in exportWithSecrets")
+	}
 
 	// 3. Test export WITHOUT secrets (sanitized)
 	exportSanitized, err := d.ExportData(false, false)
@@ -87,6 +112,26 @@ func TestBackupAndRestore(t *testing.T) {
 	}
 	if exportSanitized.Data.APIKeys[0].Key != "" {
 		t.Fatalf("expected APIKey key to be empty in sanitized export")
+	}
+	if len(exportSanitized.Data.ProxyPools) != 1 || exportSanitized.Data.ProxyPools[0].Data.ProxyURL != "http://127.0.0.1:8080" {
+		t.Fatalf("expected proxy pool URL userinfo to be redacted in sanitized export, got %q", exportSanitized.Data.ProxyPools[0].Data.ProxyURL)
+	}
+	var foundSecretKVEmpty, foundPlainKVPreserved bool
+	for _, kv := range exportSanitized.Data.KV {
+		if kv.Scope == "auth" && kv.Key == "api_key" {
+			if kv.Value == "" {
+				foundSecretKVEmpty = true
+			}
+		}
+		if kv.Scope == "testScope" && kv.Key == "hello" && kv.Value == "world" {
+			foundPlainKVPreserved = true
+		}
+	}
+	if !foundSecretKVEmpty {
+		t.Fatalf("expected secret-named KV to be cleared in sanitized export")
+	}
+	if !foundPlainKVPreserved {
+		t.Fatalf("expected non-secret KV to remain intact in sanitized export")
 	}
 
 	// 4. Test that importing sanitized export preserves existing credentials!
@@ -109,6 +154,17 @@ func TestBackupAndRestore(t *testing.T) {
 	if cAfter.Data.AccessToken != "access-token-abc" {
 		t.Fatalf("CRITICAL: sanitized import wiped existing AccessToken!")
 	}
+	pAfter, err := d.GetProxyPool("pool-1")
+	if err != nil {
+		t.Fatalf("get proxy pool after import: %v", err)
+	}
+	if pAfter.Data.ProxyURL != "http://user:secretpass@127.0.0.1:8080" {
+		t.Fatalf("CRITICAL: sanitized import wiped existing ProxyURL credentials! Got %s", pAfter.Data.ProxyURL)
+	}
+	kvAfter, err := d.KVGet("auth", "api_key")
+	if err != nil || kvAfter != "secret-token-val" {
+		t.Fatalf("CRITICAL: sanitized import wiped existing secret KV! Got %s (err: %v)", kvAfter, err)
+	}
 
 	// 5. Test restore to a fresh database
 	dFresh := setupTestDB(t)
@@ -127,6 +183,14 @@ func TestBackupAndRestore(t *testing.T) {
 	val, err := dFresh.KVGet("testScope", "hello")
 	if err != nil || val != "world" {
 		t.Fatalf("expected kv restored, got %s (err: %v)", val, err)
+	}
+	pFresh, err := dFresh.GetProxyPool("pool-1")
+	if err != nil || pFresh.Data.ProxyURL != "http://user:secretpass@127.0.0.1:8080" {
+		t.Fatalf("expected proxy pool with credentials restored in fresh db, got %+v (err: %v)", pFresh, err)
+	}
+	valSecret, err := dFresh.KVGet("auth", "api_key")
+	if err != nil || valSecret != "secret-token-val" {
+		t.Fatalf("expected secret kv restored in fresh db, got %s (err: %v)", valSecret, err)
 	}
 
 	// 6. Test invalid schema version rejected
@@ -445,5 +509,103 @@ func TestUsageMergeCompleteSubsetOfPartiallyPrunedDay(t *testing.T) {
 	backup.Data.UsageDaily[0].Data = string(data)
 	if err := local.ImportData(backup, RestoreModeMerge); err == nil {
 		t.Fatal("inconsistent dimensions silently accepted")
+	}
+}
+
+func TestExportData_SanitizedUsageAndDetails(t *testing.T) {
+	d := setupTestDB(t)
+
+	// 1. Configure settings with password hash
+	st, err := d.GetSettings()
+	if err != nil {
+		t.Fatalf("get settings: %v", err)
+	}
+	st.PasswordHash = "super-secret-password-hash"
+	if err := d.SaveSettings(st); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+
+	// 2. Insert usage entry with sensitive fields
+	ue := &UsageEntry{
+		Timestamp:        "2026-09-10T12:00:00Z",
+		Provider:         "openai",
+		Model:            "gpt-4o",
+		ConnectionID:     "conn-1",
+		APIKey:           "cg-sensitive-api-key",
+		Endpoint:         "/v1/chat/completions",
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		Cost:             0.005,
+		Status:           "ok",
+		Meta:             `{"user":"secret-corp-id","ip":"1.2.3.4"}`,
+	}
+	if err := d.SaveUsageEntry(ue); err != nil {
+		t.Fatalf("save usage entry: %v", err)
+	}
+
+	// 3. Insert request detail with sensitive payload
+	rd := &RequestDetail{
+		ID:           "rd-1",
+		Timestamp:    "2026-09-10T12:00:00Z",
+		Provider:     "openai",
+		Model:        "gpt-4o",
+		ConnectionID: "conn-1",
+		Status:       "ok",
+		Data:         `{"messages":[{"role":"user","content":"my secret prompt"}]}`,
+	}
+	if err := d.SaveRequestDetail(rd); err != nil {
+		t.Fatalf("save request detail: %v", err)
+	}
+
+	// 4. Export without secrets (sanitized)
+	exportSanitized, err := d.ExportData(false, true)
+	if err != nil {
+		t.Fatalf("export sanitized: %v", err)
+	}
+	if exportSanitized.Data.Settings.PasswordHash != "" {
+		t.Fatalf("expected PasswordHash to be empty in sanitized export, got %q", exportSanitized.Data.Settings.PasswordHash)
+	}
+	if len(exportSanitized.Data.UsageHistory) == 0 {
+		t.Fatal("expected usage history in export")
+	}
+	for _, u := range exportSanitized.Data.UsageHistory {
+		if u.APIKey != "" {
+			t.Fatalf("expected APIKey to be empty in sanitized usage history, got %q", u.APIKey)
+		}
+		if u.Meta != "" {
+			t.Fatalf("expected Meta to be empty in sanitized usage history, got %q", u.Meta)
+		}
+		if u.Provider != "openai" || u.PromptTokens != 100 {
+			t.Fatalf("expected non-sensitive usage metrics preserved, got %+v", u)
+		}
+	}
+	if len(exportSanitized.Data.RequestDetails) == 0 {
+		t.Fatal("expected request details in export")
+	}
+	for _, r := range exportSanitized.Data.RequestDetails {
+		if r.Data != "" {
+			t.Fatalf("expected Data to be empty in sanitized request details, got %q", r.Data)
+		}
+		if r.Model != "gpt-4o" || r.Status != "ok" {
+			t.Fatalf("expected non-sensitive request detail metadata preserved, got %+v", r)
+		}
+	}
+
+	// 5. Export with secrets (intact)
+	exportFull, err := d.ExportData(true, true)
+	if err != nil {
+		t.Fatalf("export full: %v", err)
+	}
+	if exportFull.Data.Settings.PasswordHash != "super-secret-password-hash" {
+		t.Fatalf("expected PasswordHash preserved in full export")
+	}
+	if len(exportFull.Data.UsageHistory) == 0 || exportFull.Data.UsageHistory[0].APIKey != "cg-sensitive-api-key" {
+		t.Fatalf("expected APIKey preserved in full export")
+	}
+	if exportFull.Data.UsageHistory[0].Meta != `{"user":"secret-corp-id","ip":"1.2.3.4"}` {
+		t.Fatalf("expected Meta preserved in full export")
+	}
+	if len(exportFull.Data.RequestDetails) == 0 || exportFull.Data.RequestDetails[0].Data != `{"messages":[{"role":"user","content":"my secret prompt"}]}` {
+		t.Fatalf("expected Data payload preserved in full export")
 	}
 }

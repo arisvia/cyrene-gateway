@@ -30,7 +30,10 @@ func main() {
 
 	// Auth secret: -secret flag wins; else load/generate <data-dir>/auth-secret
 	auth.SetSecret(cfg.Secret)
-	auth.InitSecretFile(cfg.DataDir)
+	if err := auth.InitSecretFile(cfg.DataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize authentication secret: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Structured logging with web SSE broadcast
 	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
@@ -181,6 +184,6 @@ Localhost defaults to local-first mode (no login required). This password
 is reserved for remote WAN access or if you enable 'Require Login' in Settings.
 ========================================================================
 `, initialPassword)
-		slog.Info("Initial admin password generated", slog.String("password", initialPassword))
+		slog.Info("Initial admin password generated; retrieve it from the startup console and change it immediately")
 	}
 }

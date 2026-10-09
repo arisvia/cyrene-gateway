@@ -19,6 +19,12 @@ func Open(path string) (*DB, error) {
 	}
 
 	conn.SetMaxOpenConns(1)
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = conn.Close()
+		}
+	}()
 
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("ping database: %w", err)
@@ -31,6 +37,7 @@ func Open(path string) (*DB, error) {
 	d.BackfillRequestDetails()
 
 	slog.Info("Database initialized", slog.String("path", path))
+	initialized = true
 	return d, nil
 }
 

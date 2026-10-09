@@ -29,11 +29,12 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 
 			// Check if requireApiKey is enabled
 			settings, err := database.GetSettings()
-			requireKey := err == nil && settings != nil && settings.RequireAPIKey
-			passwordHash := ""
-			if err == nil && settings != nil {
-				passwordHash = settings.PasswordHash
+			if err != nil || settings == nil {
+				writeAuthError(w, http.StatusServiceUnavailable, "authentication configuration unavailable")
+				return
 			}
+			requireKey := settings.RequireAPIKey
+			passwordHash := settings.PasswordHash
 
 			if keyStr == "" {
 				if requireKey {

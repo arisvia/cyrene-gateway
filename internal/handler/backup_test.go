@@ -92,4 +92,15 @@ func TestBackupRestoreEndpoints(t *testing.T) {
 	if cAfter.Data.APIKey != "sk-endpoint-secret" {
 		t.Fatalf("expected APIKey 'sk-endpoint-secret' intact after 400 rejection, got %s", cAfter.Data.APIKey)
 	}
+
+	// 4. Test invalid short authSecret rejected with 400 before DB modification
+	payload.AuthSecret = "too-short"
+	payload.IncludesSecrets = true
+	bodyShortSecret, _ := json.Marshal(payload)
+	reqShortSecret := httptest.NewRequest("POST", "/api/system/restore?mode=replace", bytes.NewReader(bodyShortSecret))
+	wShortSecret := httptest.NewRecorder()
+	srv.Router.ServeHTTP(wShortSecret, reqShortSecret)
+	if wShortSecret.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for short authSecret, got %d: %s", wShortSecret.Code, wShortSecret.Body.String())
+	}
 }

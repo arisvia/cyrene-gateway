@@ -411,3 +411,38 @@ func TestDashboardAuth_SecurityAndRebinding(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIKeyAuth_FailClosedOnDatabaseError(t *testing.T) {
+	database, cleanup := setupTestDB(t)
+	// Close the DB immediately so any query inside APIKeyAuth fails
+	cleanup()
+
+	nextCalled := false
+	handler := APIKeyAuth(database)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// 1. /v1/* route must fail-closed with 503 Service Unavailable, NOT 200
+	reqV1 := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	recV1 := httptest.NewRecorder()
+	handler.ServeHTTP(recV1, reqV1)
+
+	if recV1.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 Service Unavailable on database error, got %d", recV1.Code)
+	}
+	if nextCalled {
+		t.Fatalf("next handler must not be called when database settings fails")
+	}
+
+	// 2. Non-v1 route is not intercepted by APIKeyAuth
+	reqNonV1 := httptest.NewRequest("GET", "/health", nil)
+	recNonV1 := httptest.NewRecorder()
+	handler.ServeHTTP(recNonV1, reqNonV1)
+	if recNonV1.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for non-v1 path, got %d", recNonV1.Code)
+	}
+	if !nextCalled {
+		t.Fatalf("expected next handler to be called for non-v1 path")
+	}
+}

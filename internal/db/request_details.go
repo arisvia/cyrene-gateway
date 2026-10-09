@@ -59,28 +59,30 @@ func (d *DB) SaveRequestDetail(rd *RequestDetail) error {
 		rd.Timestamp = time.Now().UTC().Format(time.RFC3339)
 	}
 
-	_, err := d.conn.Exec(
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("begin request detail transaction: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
 		`INSERT INTO requestDetails (id, timestamp, provider, model, connectionId, status, data)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(id) DO UPDATE SET timestamp=excluded.timestamp, provider=excluded.provider,
 		   model=excluded.model, connectionId=excluded.connectionId, status=excluded.status, data=excluded.data`,
 		rd.ID, rd.Timestamp, rd.Provider, rd.Model, rd.ConnectionID, rd.Status, rd.Data,
-	)
-	if err != nil {
+	); err != nil {
 		return fmt.Errorf("save request detail: %w", err)
 	}
-
-	// Trim old records beyond max
-	var count int
-	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM requestDetails`).Scan(&count); err == nil {
-		if count > defaultMaxRequestDetails {
-			d.conn.Exec(
-				`DELETE FROM requestDetails WHERE id IN (SELECT id FROM requestDetails ORDER BY timestamp ASC LIMIT ?)`,
-				count-defaultMaxRequestDetails,
-			)
-		}
+	if _, err := tx.Exec(
+		`DELETE FROM requestDetails WHERE id IN (
+		   SELECT id FROM requestDetails ORDER BY timestamp DESC, id DESC LIMIT -1 OFFSET ?
+		 )`, defaultMaxRequestDetails,
+	); err != nil {
+		return fmt.Errorf("trim request details: %w", err)
 	}
-
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit request detail: %w", err)
+	}
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
@@ -80,6 +81,14 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	needsSecretPersist := payload.AuthSecret != "" && payload.IncludesSecrets && !auth.IsExplicitSecret()
+	if needsSecretPersist && len(strings.TrimSpace(payload.AuthSecret)) < 32 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid authSecret in backup: must be at least 32 bytes",
+		})
+		return
+	}
+
 	if err := s.DB.ImportData(&payload, mode); err != nil {
 		slog.Error("Failed to restore database", "error", err, "mode", mode)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to restore database: %v", err)})
@@ -87,7 +96,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Post-restore hydration & hot-reload
-	if payload.AuthSecret != "" && payload.IncludesSecrets && !auth.IsExplicitSecret() {
+	if needsSecretPersist {
 		dataDir := ""
 		if s.Config != nil {
 			dataDir = s.Config.DataDir

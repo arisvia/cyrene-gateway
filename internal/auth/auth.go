@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -41,34 +42,69 @@ func init() {
 // InitSecretFile loads the HMAC secret from <dir>/auth-secret, generating and
 // persisting one when absent. Must be called after flag parsing with the
 // resolved data directory. A secret already set via env or SetSecret wins.
-func InitSecretFile(dir string) {
+func InitSecretFile(dir string) error {
 	secretMu.Lock()
 	defer secretMu.Unlock()
+	if isExplicit {
+		if len(secret) < 32 {
+			return fmt.Errorf("auth-secret is too short: must be at least 32 bytes")
+		}
+		return nil
+	}
 	if len(secret) >= 32 {
-		return // env or explicit SetSecret already provided a secret
+		return nil // secret already provided
 	}
 	path := filepath.Join(dir, "auth-secret")
-	if data, err := os.ReadFile(path); err == nil && len(data) >= 32 {
-		secret = []byte(strings.TrimSpace(string(data)))
-		return
+	if data, err := os.ReadFile(path); err == nil {
+		trimmed := strings.TrimSpace(string(data))
+		if len(trimmed) < 32 {
+			return fmt.Errorf("auth-secret is too short: must be at least 32 bytes")
+		}
+		secret = []byte(trimmed)
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read auth-secret: %w", err)
 	}
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		return fmt.Errorf("generate auth-secret: %w", err)
+	}
 	generated := hex.EncodeToString(b)
-	os.MkdirAll(dir, 0o700)
-	os.WriteFile(path, []byte(generated), 0o600)
+	if err := writeSecretFile(dir, generated); err != nil {
+		return err
+	}
 	secret = []byte(generated)
+	return nil
 }
 
-// loadSecret is retained for backward compatibility of tests only.
-func loadSecret() []byte {
-	if env := os.Getenv("CYRENE_AUTH_SECRET"); env != "" {
-		return []byte(env)
+func writeSecretFile(dir, content string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create auth-secret directory: %w", err)
 	}
-	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".cyrene-gateway", "auth-secret")
-	if data, err := os.ReadFile(path); err == nil && len(data) >= 32 {
-		return []byte(strings.TrimSpace(string(data)))
+	tmp, err := os.CreateTemp(dir, ".auth-secret-*")
+	if err != nil {
+		return fmt.Errorf("create temporary auth-secret: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod temporary auth-secret: %w", err)
+	}
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temporary auth-secret: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temporary auth-secret: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary auth-secret: %w", err)
+	}
+	path := filepath.Join(dir, "auth-secret")
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("install auth-secret: %w", err)
 	}
 	return nil
 }
@@ -108,12 +144,8 @@ func PersistSecret(dir, secretStr string) error {
 		return nil
 	}
 	if dir != "" {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return fmt.Errorf("create data dir for auth-secret: %w", err)
-		}
-		path := filepath.Join(dir, "auth-secret")
-		if err := os.WriteFile(path, []byte(trimmed), 0o600); err != nil {
-			return fmt.Errorf("write auth-secret: %w", err)
+		if err := writeSecretFile(dir, trimmed); err != nil {
+			return err
 		}
 	}
 	secret = []byte(trimmed)
@@ -144,7 +176,9 @@ func verify(data []byte, signature string) bool {
 // GenerateAPIKey creates an HMAC-signed API key: cg-<random>.<signature>
 func GenerateAPIKey() string {
 	b := make([]byte, 24)
-	rand.Read(b)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		panic(fmt.Errorf("generate API key: %w", err))
+	}
 	payload := hex.EncodeToString(b)
 	sig := sign([]byte(payload))
 	return "cg-" + payload + "." + sig
@@ -263,8 +297,8 @@ const (
 // Format: cg-admin-<16 random hex characters>
 func GenerateRandomPassword() string {
 	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("cg-admin-%d", time.Now().UnixNano())
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		panic(fmt.Errorf("generate initial admin password: %w", err))
 	}
 	return "cg-admin-" + hex.EncodeToString(b)
 }
@@ -272,7 +306,9 @@ func GenerateRandomPassword() string {
 // HashPassword creates a secure Argon2id hash of the password.
 func HashPassword(password string) string {
 	salt := make([]byte, argonSaltLen)
-	rand.Read(salt)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		panic(fmt.Errorf("generate password salt: %w", err))
+	}
 	hash := argon2.IDKey([]byte(password), salt, argonIterations, argonMemory, argonParallelism, argonKeyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, argonMemory, argonIterations, argonParallelism,

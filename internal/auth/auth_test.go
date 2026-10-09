@@ -3,6 +3,9 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -178,5 +181,130 @@ func TestClientIP(t *testing.T) {
 		if got := ClientIP(tc.remote); got != tc.want {
 			t.Errorf("ClientIP(%q) = %q, want %q", tc.remote, got, tc.want)
 		}
+	}
+}
+
+func withIsolatedSecret(t *testing.T) {
+	t.Helper()
+	secretMu.Lock()
+	savedSecret := append([]byte(nil), secret...)
+	savedExplicit := isExplicit
+	secret = nil
+	isExplicit = false
+	secretMu.Unlock()
+	t.Cleanup(func() {
+		secretMu.Lock()
+		secret = savedSecret
+		isExplicit = savedExplicit
+		secretMu.Unlock()
+	})
+}
+
+func TestInitSecretFile_NewSecretGenerated(t *testing.T) {
+	withIsolatedSecret(t)
+
+	dir := t.TempDir()
+	if err := InitSecretFile(dir); err != nil {
+		t.Fatalf("InitSecretFile failed: %v", err)
+	}
+
+	secretPath := filepath.Join(dir, "auth-secret")
+	data, err := os.ReadFile(secretPath)
+	if err != nil {
+		t.Fatalf("failed to read created auth-secret: %v", err)
+	}
+	trimmed := strings.TrimSpace(string(data))
+	if len(trimmed) < 32 {
+		t.Fatalf("expected generated secret to be at least 32 chars, got %d", len(trimmed))
+	}
+	if GetSecret() != trimmed {
+		t.Fatalf("in-memory secret %q does not match file secret %q", GetSecret(), trimmed)
+	}
+}
+
+func TestInitSecretFile_ExistingValidSecret(t *testing.T) {
+	withIsolatedSecret(t)
+
+	dir := t.TempDir()
+	secretPath := filepath.Join(dir, "auth-secret")
+	preExisting := "this-is-a-valid-pre-existing-secret-key-123456"
+	if err := os.WriteFile(secretPath, []byte(preExisting), 0o600); err != nil {
+		t.Fatalf("failed to write test secret: %v", err)
+	}
+
+	if err := InitSecretFile(dir); err != nil {
+		t.Fatalf("InitSecretFile failed: %v", err)
+	}
+	if GetSecret() != preExisting {
+		t.Fatalf("expected in-memory secret to be %q, got %q", preExisting, GetSecret())
+	}
+}
+
+func TestInitSecretFile_TooShortFileRejects(t *testing.T) {
+	withIsolatedSecret(t)
+
+	dir := t.TempDir()
+	secretPath := filepath.Join(dir, "auth-secret")
+	if err := os.WriteFile(secretPath, []byte("short-10b!"), 0o600); err != nil {
+		t.Fatalf("failed to write short test secret: %v", err)
+	}
+
+	err := InitSecretFile(dir)
+	if err == nil {
+		t.Fatal("expected error for too short auth-secret file, got nil")
+	}
+	if !strings.Contains(err.Error(), "too short") {
+		t.Fatalf("expected 'too short' error message, got: %v", err)
+	}
+}
+
+func TestInitSecretFile_ExplicitShortSecretRejects(t *testing.T) {
+	withIsolatedSecret(t)
+
+	SetSecret("short-explicit")
+	dir := t.TempDir()
+	err := InitSecretFile(dir)
+	if err == nil {
+		t.Fatal("expected error for explicit short secret, got nil")
+	}
+	if !strings.Contains(err.Error(), "too short") {
+		t.Fatalf("expected 'too short' error message, got: %v", err)
+	}
+}
+
+func TestInitSecretFile_UnwriteableDirRejects(t *testing.T) {
+	withIsolatedSecret(t)
+
+	f, err := os.CreateTemp("", "cyrene-regular-file-*")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(f.Name())
+	f.Close()
+
+	badDir := filepath.Join(f.Name(), "sub-dir")
+	if err := InitSecretFile(badDir); err == nil {
+		t.Fatal("expected error when data dir cannot be created under a regular file, got nil")
+	}
+}
+
+func TestPersistSecret_RoundTrip(t *testing.T) {
+	withIsolatedSecret(t)
+
+	dir := t.TempDir()
+	newSecret := "persisted-secret-value-that-exceeds-thirty-two-bytes-by-far"
+	if err := PersistSecret(dir, newSecret); err != nil {
+		t.Fatalf("PersistSecret failed: %v", err)
+	}
+
+	if GetSecret() != newSecret {
+		t.Fatalf("expected in-memory secret to update to %q, got %q", newSecret, GetSecret())
+	}
+	fileData, err := os.ReadFile(filepath.Join(dir, "auth-secret"))
+	if err != nil {
+		t.Fatalf("failed to read persisted secret file: %v", err)
+	}
+	if strings.TrimSpace(string(fileData)) != newSecret {
+		t.Fatalf("file content does not match persisted secret: %q", string(fileData))
 	}
 }

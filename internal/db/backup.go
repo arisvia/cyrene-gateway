@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -50,6 +52,33 @@ type KVEntry struct {
 type DailyUsageEntry struct {
 	DateKey string `json:"dateKey"`
 	Data    string `json:"data"`
+}
+
+func redactProxyURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		if !strings.Contains(raw, "@") {
+			return raw
+		}
+		return ""
+	}
+	u.User = nil
+	return u.String()
+}
+
+var secretKVMarkers = []string{"secret", "token", "password", "credential", "api_key", "apikey", "private_key"}
+
+func isSecretKVKey(scope, key string) bool {
+	name := strings.ToLower(scope + ":" + key)
+	for _, marker := range secretKVMarkers {
+		if strings.Contains(name, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // ExportData builds a versioned snapshot of the database.
@@ -105,7 +134,14 @@ func (d *DB) ExportData(includeSecrets, includeUsage bool) (*ExportPayload, erro
 	if err != nil {
 		return nil, fmt.Errorf("export proxyPools: %w", err)
 	}
-	data.ProxyPools = pools
+	poolsCopy := make([]model.ProxyPool, len(pools))
+	for i, p := range pools {
+		if !includeSecrets {
+			p.Data.ProxyURL = redactProxyURL(p.Data.ProxyURL)
+		}
+		poolsCopy[i] = p
+	}
+	data.ProxyPools = poolsCopy
 
 	// 5. API Keys
 	keys, err := d.ListAPIKeys()
@@ -140,6 +176,9 @@ func (d *DB) ExportData(includeSecrets, includeUsage bool) (*ExportPayload, erro
 		if err := kvRows.Scan(&entry.Scope, &entry.Key, &entry.Value); err != nil {
 			return nil, fmt.Errorf("scan kv: %w", err)
 		}
+		if !includeSecrets && isSecretKVKey(entry.Scope, entry.Key) {
+			entry.Value = ""
+		}
 		kvList = append(kvList, entry)
 	}
 	data.KV = kvList
@@ -148,6 +187,12 @@ func (d *DB) ExportData(includeSecrets, includeUsage bool) (*ExportPayload, erro
 	if includeUsage {
 		usageEntries, err := d.GetUsageHistory(UsageFilter{Limit: 100000})
 		if err == nil {
+			if !includeSecrets {
+				for i := range usageEntries {
+					usageEntries[i].APIKey = ""
+					usageEntries[i].Meta = ""
+				}
+			}
 			data.UsageHistory = usageEntries
 		}
 
@@ -176,6 +221,9 @@ func (d *DB) ExportData(includeSecrets, includeUsage bool) (*ExportPayload, erro
 					rd.Model = mod.String
 					rd.ConnectionID = connID.String
 					rd.Status = st.String
+					if !includeSecrets {
+						rd.Data = ""
+					}
 					reqList = append(reqList, rd)
 				}
 			}
@@ -266,6 +314,32 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 			}
 		}
 		kRows.Close()
+	}
+	existingPools := make(map[string]model.ProxyPool)
+	pRows, err := tx.Query(`SELECT id, data FROM proxyPools`)
+	if err == nil {
+		for pRows.Next() {
+			var id, rawData string
+			if err := pRows.Scan(&id, &rawData); err == nil {
+				var pp model.ProxyPool
+				pp.ID = id
+				_ = json.Unmarshal([]byte(rawData), &pp.Data)
+				existingPools[id] = pp
+			}
+		}
+		pRows.Close()
+	}
+
+	existingKV := make(map[string]string)
+	kvExistingRows, err := tx.Query(`SELECT scope, key, value FROM kv`)
+	if err == nil {
+		for kvExistingRows.Next() {
+			var scope, key, val string
+			if err := kvExistingRows.Scan(&scope, &key, &val); err == nil {
+				existingKV[scope+"\x00"+key] = val
+			}
+		}
+		kvExistingRows.Close()
 	}
 
 	var existingPasswordHash string
@@ -419,6 +493,11 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 		if p.ID == "" {
 			continue
 		}
+		if existing, ok := existingPools[p.ID]; ok {
+			if (p.Data.ProxyURL == "" || p.Data.ProxyURL == redactProxyURL(existing.Data.ProxyURL)) && existing.Data.ProxyURL != "" {
+				p.Data.ProxyURL = existing.Data.ProxyURL
+			}
+		}
 		dataBytes, err := json.Marshal(p.Data)
 		if err != nil {
 			return fmt.Errorf("marshal proxy pool %s: %w", p.ID, err)
@@ -535,6 +614,11 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 		if kv.Scope == "" || kv.Key == "" {
 			continue
 		}
+		if kv.Value == "" && isSecretKVKey(kv.Scope, kv.Key) {
+			if existingVal, ok := existingKV[kv.Scope+"\x00"+kv.Key]; ok && existingVal != "" {
+				kv.Value = existingVal
+			}
+		}
 		if _, err := stmtKV.Exec(kv.Scope, kv.Key, kv.Value); err != nil {
 			return fmt.Errorf("upsert kv (%s, %s): %w", kv.Scope, kv.Key, err)
 		}
@@ -599,6 +683,13 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 				if _, err := stmtReq.Exec(rd.ID, rd.Timestamp, rd.Provider, rd.Model, rd.ConnectionID, rd.Status, rd.Data); err != nil {
 					return fmt.Errorf("insert requestDetail entry: %w", err)
 				}
+			}
+			if _, err := tx.Exec(
+				`DELETE FROM requestDetails WHERE id IN (
+				   SELECT id FROM requestDetails ORDER BY timestamp DESC, id DESC LIMIT -1 OFFSET ?
+				 )`, defaultMaxRequestDetails,
+			); err != nil {
+				return fmt.Errorf("trim requestDetails after restore: %w", err)
 			}
 		}
 	}
