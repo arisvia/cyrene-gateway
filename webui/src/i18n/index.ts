@@ -8,20 +8,23 @@ export * from './types'
 const STORAGE_KEY = 'cyrene_locale'
 
 function getInitialLocale(): Locale {
+  let initial: Locale = 'zh-CN'
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY)
       if (saved === 'zh-CN' || saved === 'en-US') {
-        return saved
+        initial = saved
       }
     } catch {
       // ignore
     }
+  } else if (typeof navigator !== 'undefined' && typeof navigator.language === 'string') {
+    initial = navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
   }
-  if (typeof navigator !== 'undefined' && typeof navigator.language === 'string') {
-    return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US'
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.lang = initial === 'zh-CN' ? 'zh' : 'en'
   }
-  return 'zh-CN'
+  return initial
 }
 const [currentLocale, setCurrentLocale] = createSignal<Locale>(getInitialLocale())
 

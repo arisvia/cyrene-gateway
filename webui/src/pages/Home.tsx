@@ -1,4 +1,4 @@
-import { type Component, For, Show, createSignal, onMount } from 'solid-js'
+import { type Component, For, Show, createSignal, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
 import { Card, Badge, Empty, PageHeader, Button, Input, Textarea, IconCheck, IconEdit, IconLink, IconKey, Modal, Field, Skeleton, LoadState, confirm } from '@/components/ui'
@@ -15,6 +15,28 @@ const Home: Component = () => {
   const [creatingKey, setCreatingKey] = createSignal(false)
   const [copiedKeyId, setCopiedKeyId] = createSignal<string | null>(null)
   const [copiedEndpoint, setCopiedEndpoint] = createSignal<string | null>(null)
+  let copyTimer: number | undefined
+  onCleanup(() => {
+    clearTimeout(copyTimer)
+  })
+
+  const endpointLabel = (ep: { label: string; url: string; type: string }) => {
+    if (ep.type === 'current') {
+      const match = ep.label.match(/\(([^)]+)\)/)
+      const host = match ? match[1] : (typeof window !== 'undefined' ? window.location.host : '')
+      return t('home.endpointCurrent', { host: host || ep.url })
+    }
+    if (ep.type === 'local') {
+      return t('home.endpointLocalhost')
+    }
+    if (ep.type === 'lan') {
+      const match = ep.label.match(/\(([^)]+)\)/)
+      const ip = match ? match[1] : ''
+      return t('home.endpointLan', { ip: ip || ep.url })
+    }
+    return ep.label
+  }
+
 
   const effectiveEndpoints = () => {
     const list = store.endpoints()
@@ -145,17 +167,20 @@ const Home: Component = () => {
                   const isCopied = () => copiedEndpoint() === ep.url
                   return (
                       <button
-                          class="w-full flex items-center justify-between gap-3 rounded-xl border border-subtle px-3.5 py-3 text-left bg-card/40 hover:bg-card hover:border-accent/40 transition-all group"
+                          type="button"
+                          class="w-full flex items-center justify-between gap-3 rounded-xl border border-subtle px-3.5 py-3 text-left bg-card/40 hover:bg-card hover:border-accent/40 transition-all group cursor-pointer"
                           onClick={() => {
-                            copyText(ep.url, ep.label)
+                            const label = endpointLabel(ep)
+                            copyText(ep.url, label)
                             setCopiedEndpoint(ep.url)
-                            setTimeout(() => setCopiedEndpoint(null), 2000)
+                            clearTimeout(copyTimer)
+                            copyTimer = window.setTimeout(() => setCopiedEndpoint(null), 2000)
                           }}
                           title={t('home.clickToCopy')}
                       >
                         <div class="min-w-0 flex-1">
                           <div class="text-sm font-medium text-foreground flex items-center gap-2">
-                            <span class="truncate">{ep.label}</span>
+                            <span class="truncate">{endpointLabel(ep)}</span>
                             <Show when={ep.type === 'current'}>
                               <Badge tone="green" class="text-[10px] py-0 px-1.5 shrink-0">
                                 {t('home.currentTag')}
@@ -164,9 +189,19 @@ const Home: Component = () => {
                           </div>
                           <code class="text-xs text-faint truncate block font-mono mt-0.5">{ep.url}</code>
                         </div>
-                        <span class="text-xs text-muted group-hover:text-accent font-medium shrink-0 flex items-center gap-1">
-                        {isCopied() ? <><span>{t('common.copied')}</span><IconCheck size={12} class="text-success" /></> : t('common.copy')}
-                      </span>
+                        <div class="relative shrink-0 text-xs font-medium min-w-16 h-5 flex items-center justify-end">
+                          <span
+                            class={`transition-opacity duration-150 text-muted group-hover:text-accent ${isCopied() ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                          >
+                            {t('common.copy')}
+                          </span>
+                          <span
+                            class={`absolute inset-0 flex items-center justify-end gap-1 text-success transition-opacity duration-150 ${isCopied() ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                          >
+                            <span>{t('common.copied')}</span>
+                            <IconCheck size={12} class="text-success" />
+                          </span>
+                        </div>
                       </button>
                   )
                 }}
