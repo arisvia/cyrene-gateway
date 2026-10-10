@@ -48,24 +48,33 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 		if eff, ok := oc["effort"].(string); ok && eff != "" {
 			result["reasoning_effort"] = eff
 		}
-	} else if th, ok := claudeBody["thinking"].(map[string]any); ok {
-		tType, _ := th["type"].(string)
-		switch tType {
-		case "disabled":
-			result["reasoning_effort"] = "none"
-		case "adaptive":
-			result["reasoning_effort"] = "medium"
-		case "enabled":
-			if b, ok := th["budget_tokens"].(float64); ok {
-				if b <= 2048 {
-					result["reasoning_effort"] = "low"
-				} else if b <= 8192 {
-					result["reasoning_effort"] = "medium"
+	} else if eff, ok := claudeBody["effort"].(string); ok && eff != "" {
+		result["reasoning_effort"] = eff
+	}
+	if th, ok := claudeBody["thinking"].(map[string]any); ok {
+		if _, hasEffort := result["reasoning_effort"]; !hasEffort {
+			tType, _ := th["type"].(string)
+			switch tType {
+			case "disabled":
+				result["reasoning_effort"] = "none"
+			case "adaptive":
+				if eff, ok := th["effort"].(string); ok && eff != "" {
+					result["reasoning_effort"] = eff
 				} else {
-					result["reasoning_effort"] = "high"
+					result["reasoning_effort"] = "medium"
 				}
-			} else {
-				result["reasoning_effort"] = "medium"
+			case "enabled":
+				if b, ok := th["budget_tokens"].(float64); ok {
+					if b <= 2048 {
+						result["reasoning_effort"] = "low"
+					} else if b <= 8192 {
+						result["reasoning_effort"] = "medium"
+					} else {
+						result["reasoning_effort"] = "high"
+					}
+				} else {
+					result["reasoning_effort"] = "medium"
+				}
 			}
 		}
 		result["thinking"] = th

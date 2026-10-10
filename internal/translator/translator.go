@@ -316,9 +316,27 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 	// Support reasoning_effort & thinking conversion
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
 		effortLower := strings.ToLower(effort)
-		if effortLower == "adaptive" {
+		if effortLower == "none" || effortLower == "off" {
+			// Explicitly disabled reasoning; do not emit thinking or effort.
+		} else if effortLower == "adaptive" || isClaudeAdaptiveThinkingModel(model) {
+			// Claude 5.x models use adaptive thinking. Sending legacy manual
+			// budget_tokens to these models causes upstream 400 responses.
 			result["thinking"] = map[string]any{
 				"type": "adaptive",
+			}
+			if effortLower != "adaptive" {
+				switch effortLower {
+				case "low", "medium", "high", "max", "xhigh":
+					if effortLower == "max" {
+						effortLower = "xhigh"
+					}
+					result["effort"] = effortLower
+					if oc, ok := result["output_config"].(map[string]any); ok {
+						oc["effort"] = effortLower
+					} else {
+						result["output_config"] = map[string]any{"effort": effortLower}
+					}
+				}
 			}
 		} else {
 			var budget int
@@ -391,6 +409,31 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 	trimClaudeCacheControl(result)
 
 	return result, nil
+}
+
+// isClaudeAdaptiveThinkingModel reports whether model is a Claude 5.x model using adaptive thinking.
+func isClaudeAdaptiveThinkingModel(model string) bool {
+	m := strings.ToLower(model)
+	if slash := strings.LastIndex(m, "/"); slash >= 0 {
+		m = m[slash+1:]
+	}
+	if !strings.HasPrefix(m, "claude-") {
+		return false
+	}
+	rest := strings.TrimPrefix(m, "claude-")
+	parts := strings.Split(rest, "-")
+	if len(parts) == 0 || parts[0] == "" {
+		return false
+	}
+	// Format A: claude-<major>-... (e.g. claude-5-sonnet, claude-3-5-sonnet, claude-5.5-haiku)
+	if parts[0][0] >= '0' && parts[0][0] <= '9' {
+		return strings.HasPrefix(parts[0], "5")
+	}
+	// Format B: claude-<family>-<major>... (e.g. claude-opus-5, claude-sonnet-5, claude-haiku-5-5)
+	if len(parts) > 1 && len(parts[1]) > 0 && parts[1][0] >= '0' && parts[1][0] <= '9' {
+		return strings.HasPrefix(parts[1], "5")
+	}
+	return false
 }
 
 // trimClaudeCacheControl ensures the request does not exceed Anthropic's hard limit of 4 cache_control blocks.

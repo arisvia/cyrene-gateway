@@ -25,7 +25,8 @@ func registerImageProviders() {
 	mergeProvider("openrouter", "OpenRouter", KindImage,
 		[]ModelEntry{
 			{ID: "google/gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},
-			{ID: "google/gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image", Kind: KindImage},
+			{ID: "google/gemini-nano-banana-2.1", Name: "Gemini Nano Banana 2.1", Kind: KindImage},
+			{ID: "google/gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image (Deprecated)", Kind: KindImage},
 			{ID: "google/gemini-3-pro-image", Name: "Gemini 3 Pro Image", Kind: KindImage},
 		},
 		ProviderConfig{
@@ -41,6 +42,7 @@ func registerImageProviders() {
 	// Gemini image generation
 	mergeProvider("gemini", "Gemini", KindImage,
 		[]ModelEntry{
+			{ID: "gemini-nano-banana-2.1", Name: "Gemini Nano Banana 2.1", Kind: KindImage},
 			{ID: "gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},
 			{ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro Image", Kind: KindImage},
 		},
@@ -57,7 +59,8 @@ func registerImageProviders() {
 	// Antigravity (Google Code Assist) image generation via Gemini Flash Image
 	mergeProvider("antigravity", "Antigravity", KindImage,
 		[]ModelEntry{
-			{ID: "gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image", Kind: KindImage},
+			{ID: "gemini-nano-banana-2.1", Name: "Gemini Nano Banana 2.1", Kind: KindImage},
+			{ID: "gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image (Deprecated)", Kind: KindImage},
 			{ID: "gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},
 		},
 		ProviderConfig{

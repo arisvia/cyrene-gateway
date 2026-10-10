@@ -98,7 +98,7 @@ var unsupportedSchemaKeywords = map[string]bool{
 	"dependencies": true, "dependentSchemas": true, "dependentRequired": true,
 	// Other unsupported
 	"title": true, "optional": true, "if": true, "then": true, "else": true,
-	"contentMediaType": true, "contentEncoding": true,
+	"contentMediaType": true, "contentEncoding": true, "errorMessage": true,
 	// UI/Styling properties (from Cursor tools)
 	"cornerRadius": true, "fillColor": true, "fontFamily": true, "fontSize": true,
 	"fontWeight": true, "gap": true, "padding": true, "strokeColor": true,

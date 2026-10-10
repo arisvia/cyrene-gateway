@@ -694,6 +694,7 @@ func TestCleanJSONSchemaGeminiArrayKeywords(t *testing.T) {
 				"type":                  "object",
 				"unevaluatedProperties": false,
 				"contentSchema":         map[string]any{"type": "string"},
+				"errorMessage":          "invalid extra object",
 			},
 		},
 	}
@@ -724,7 +725,7 @@ func TestCleanJSONSchemaGeminiArrayKeywords(t *testing.T) {
 	}
 
 	extra := props["extra"].(map[string]any)
-	for _, kw := range []string{"unevaluatedProperties", "contentSchema"} {
+	for _, kw := range []string{"unevaluatedProperties", "contentSchema", "errorMessage"} {
 		if _, ok := extra[kw]; ok {
 			t.Fatalf("extra.%s should be removed", kw)
 		}
