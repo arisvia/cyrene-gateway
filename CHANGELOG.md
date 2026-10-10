@@ -2,6 +2,13 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.1] - 2026-10-10
+
+### Fixed
+- **Claude 5.x 自适应思考与双向深度保真**：严格校准 Claude 5.x 主版本识别，防止 3.5 模型被误触发；支持 `output_config.effort` 与双向往返映射，修复显式禁用推理时误删温度参数。
+- **Gemini Schema 清洗与图片模型扩展**：工具 Schema 自动过滤 `errorMessage` 关键字；图像目录加入 `gemini-nano-banana-2.1`。
+- **控制台交互防抖与多语言体验修复**：统一网关端点全量国际化，复制状态容器锁定宽度与平滑过渡消除 CLS 抖动，并同步首屏 `html` 语言属性。
+
 ## [1.5.0] - 2026-10-09
 
 ### Security
@@ -124,6 +131,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.5.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.2.4...v1.3.0
