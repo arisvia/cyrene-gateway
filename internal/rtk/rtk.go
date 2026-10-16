@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -264,22 +265,47 @@ func compressText(text string, isHistorical bool) string {
 			headChars = 8 * 1024
 			tailChars = 4 * 1024
 		}
-		omittedChars := n - headChars - tailChars
 
-		var sb strings.Builder
-		sb.WriteString(text[:headChars])
-		sb.WriteString("\n\n... [")
-		sb.WriteString(strconv.Itoa(omittedChars))
-		sb.WriteString(" ")
-		sb.WriteString(omittedCharMsg)
-		sb.WriteString("] ...\n\n")
-		sb.WriteString(text[n-tailChars:])
+		head := safeSliceHead(text, headChars)
+		tail := safeSliceTail(text, tailChars)
+		omittedChars := n - len(head) - len(tail)
+		if omittedChars > 0 {
+			var sb strings.Builder
+			sb.WriteString(head)
+			sb.WriteString("\n\n... [")
+			sb.WriteString(strconv.Itoa(omittedChars))
+			sb.WriteString(" ")
+			sb.WriteString(omittedCharMsg)
+			sb.WriteString("] ...\n\n")
+			sb.WriteString(tail)
 
-		result := sb.String()
-		if len(result) < n {
-			return result
+			result := sb.String()
+			if len(result) < n {
+				return result
+			}
 		}
 	}
 
 	return text
+}
+
+func safeSliceHead(text string, limit int) string {
+	if limit >= len(text) {
+		return text
+	}
+	for limit > 0 && !utf8.RuneStart(text[limit]) {
+		limit--
+	}
+	return text[:limit]
+}
+
+func safeSliceTail(text string, limit int) string {
+	if limit >= len(text) {
+		return text
+	}
+	start := len(text) - limit
+	for start < len(text) && !utf8.RuneStart(text[start]) {
+		start++
+	}
+	return text[start:]
 }

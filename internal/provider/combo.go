@@ -144,8 +144,12 @@ func (cm *ComboManager) GetRotatedModels(models []string, comboName string, stra
 	case StrategyLatencyFirst:
 		sorted := make([]string, len(models))
 		copy(sorted, models)
+		latencies := make(map[string]float64, len(models))
+		for _, m := range models {
+			latencies[m] = cm.GetModelLatency(m)
+		}
 		sort.SliceStable(sorted, func(i, j int) bool {
-			return cm.GetModelLatency(sorted[i]) < cm.GetModelLatency(sorted[j])
+			return latencies[sorted[i]] < latencies[sorted[j]]
 		})
 		return sorted
 

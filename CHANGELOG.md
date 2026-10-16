@@ -9,6 +9,12 @@
 - **Anthropic 官方规范 Token 计数端点（count_tokens）**：提供 `POST /v1/messages/count_tokens` 原生接口，支持本地多语言 BPE 快速分词估算与官方上游透明转发，并集成 SSRF 安全防护。
 - **Combo 组合路由多维智能选路**：新增成本优先（`cost-first`）与时延感知（`latency-first`）调度策略，支持按模型价格因子调度廉价节点及基于 EWMA 滑动窗口与动态故障惩罚自适应选路。
 - **Anthropic 提示词缓存自动打点（Auto Prompt Caching）**：在转发 Anthropic/DeepSeek 请求时自动在 System Prompt、工具集与前序轮次注入 `ephemeral` 缓存断点，强行激活 90% 输入费用打折并严格约束 4 个标记上限。
+- **演练场思考过程独立解构与折叠展示**：解构并分离 `reasoning_content` 与回答正文，以独立折叠卡片实时流式呈现思考链路，杜绝思考内容污染回答与后续上下文。
+- **用量详情与拓扑实时流式联动（Real-Time SSE Sync）**：用量明细与拓扑图全量接入 SSE 事件驱动自动刷新，消除请求结束或失败后界面滞后或需手动刷新的体验问题。
+- **多色谱贯通激光动效（Chromatic Spectral Laser）**：重构拓扑能量通路为单线多色阶贯通导管、白热核心丝与多级彩色光子波束，带来极具质感的实时传输流动感知。
+
+### Fixed
+- **CodeBuddy 会话渠道校验合规补齐（X-Conversation-* Headers）**：自动提取与规范化会话标识（`session_id`、`prompt_cache_key`），注入渠道验证所需的 `X-Conversation-Id` 与 `X-Conversation-Request-Id`，修复 11128 鉴权校验失败拦截。
 
 ## [1.6.1] - 2026-10-16
 

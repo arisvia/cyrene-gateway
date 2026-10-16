@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestCompressMessages_Disabled(t *testing.T) {
@@ -102,6 +103,29 @@ func TestCompressMessages_ErrorBlockPreserved(t *testing.T) {
 	saved := CompressMessages(body, true)
 	if saved != 0 {
 		t.Errorf("expected 0 saved for error block (preserved), got %d", saved)
+	}
+}
+
+func TestCompressMessages_UTF8RuneBoundarySafe(t *testing.T) {
+	// Generate a single-line string with multi-byte Chinese runes that exceeds 16 KiB
+	var sb strings.Builder
+	for sb.Len() < 20000 {
+		sb.WriteString("中文测试超长输出测试，用于验证字符截断时不会截断多字节编码。")
+	}
+	raw := sb.String()
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "tool", "content": raw},
+		},
+	}
+
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Fatalf("expected savings, got %d", saved)
+	}
+	compressed := body["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !utf8.ValidString(compressed) {
+		t.Fatal("compressed string contains invalid UTF-8 bytes")
 	}
 }
 

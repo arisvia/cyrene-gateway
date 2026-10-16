@@ -231,4 +231,12 @@ func TestCodebuddyConversationHeaders_StabilityAndPrecedence(t *testing.T) {
 	if reqEmpty.Header.Get("X-Conversation-Id") == "" {
 		t.Errorf("expected fallback conversation ID for empty messages")
 	}
+
+	// 5. Explicit client header preservation
+	reqWithHeader, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodyA}, cand, nil)
+	reqWithHeader.Header.Set("X-Conversation-Id", "custom-client-conversation-123")
+	applyCodebuddyConversationHeaders(reqWithHeader, map[string]any{"session_id": "other-session"})
+	if got := reqWithHeader.Header.Get("X-Conversation-Id"); got != "custom-client-conversation-123" {
+		t.Errorf("expected custom client conversation ID preserved, got %q", got)
+	}
 }

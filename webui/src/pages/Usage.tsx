@@ -61,9 +61,6 @@ const Usage: Component = () => {
     })
     toggleLive()
   })
-  onMount(() => {
-    if (!es) toggleLive()
-  })
 
   onCleanup(() => {
     if (refreshTimer !== null) {

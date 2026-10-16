@@ -409,11 +409,17 @@ func applyCodebuddyConversationHeaders(req *http.Request, bodyMap map[string]any
 		}
 	}
 
-	convID := uuid.New().String()
-	if conversationKey != "" {
-		convID = stableCodebuddyUUID(conversationKey)
+	if req.Header.Get("X-Conversation-ID") == "" {
+		convID := uuid.New().String()
+		if conversationKey != "" {
+			convID = stableCodebuddyUUID(conversationKey)
+		}
+		req.Header.Set("X-Conversation-ID", convID)
 	}
-	req.Header.Set("X-Conversation-ID", convID)
-	req.Header.Set("X-Conversation-Request-ID", uuid.New().String())
-	req.Header.Set("X-Conversation-Message-ID", uuid.New().String())
+	if req.Header.Get("X-Conversation-Request-ID") == "" {
+		req.Header.Set("X-Conversation-Request-ID", uuid.New().String())
+	}
+	if req.Header.Get("X-Conversation-Message-ID") == "" {
+		req.Header.Set("X-Conversation-Message-ID", uuid.New().String())
+	}
 }
