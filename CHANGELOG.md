@@ -2,6 +2,14 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] - 2026-10-16
+
+### Added
+- **轮次感知智能令牌瘦身（Turn-Aware Tool Slimming）**：升级 RTK 压缩引擎，全量保护最新活跃轮次以确保 Agent 完整读取代码与报错，对前序过期轮次实施安全折叠与摘要，并提供 `X-Cyrene-Tool-Slimmer` 动态请求头。
+- **Anthropic 官方规范 Token 计数端点（count_tokens）**：提供 `POST /v1/messages/count_tokens` 原生接口，支持本地多语言 BPE 快速分词估算与官方上游透明转发，并集成 SSRF 安全防护。
+- **Combo 组合路由多维智能选路**：新增成本优先（`cost-first`）与时延感知（`latency-first`）调度策略，支持按模型价格因子调度廉价节点及基于 EWMA 滑动窗口与动态故障惩罚自适应选路。
+- **Anthropic 提示词缓存自动打点（Auto Prompt Caching）**：在转发 Anthropic/DeepSeek 请求时自动在 System Prompt、工具集与前序轮次注入 `ephemeral` 缓存断点，强行激活 90% 输入费用打折并严格约束 4 个标记上限。
+
 ## [1.6.1] - 2026-10-16
 
 ### Fixed
@@ -153,6 +161,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.7.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.0...v1.5.1
