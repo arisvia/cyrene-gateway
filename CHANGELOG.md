@@ -2,6 +2,13 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.1] - 2026-10-16
+
+### Fixed
+- **上下游链路长流防截断与超时重构**：解除流式长连接的硬性总时长 Client.Timeout，引入每分块 5 分钟空闲停滞检测（Stall Timeout）并规范 `no-cache, no-transform` 响应头，彻底消除超长思考模型（o1/o3-mini/R1/Claude 3.7）在 3~5 分钟被误杀截断的问题。
+- **Claude 思考流保真与开源模型 `<think>` 标签解构**：补齐 `translateClaude` 与非流式中的 `thinking_delta` 映射，消除思考过程丢失；引入流式标签状态机（`ThinkTagState`）自动将开源模型内嵌的 `<think>` 标签解构为标准思考块，防止提示词污染。
+- **Antigravity 媒体聚合异常透传**：为图片生成流式聚合补齐 HTTP 状态码拦截与双格式 Candidate 兼容，消除失败时静默下发空数据的假成功假象。
+
 ## [1.6.0] - 2026-10-16
 
 ### Security
@@ -144,6 +151,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.6.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.4.0...v1.5.0
