@@ -52,10 +52,40 @@ func Recovery(next http.Handler) http.Handler {
 	})
 }
 
+// SecurityHeaders applies browser hardening without forcing HTTPS on local deployments.
+// The CSP is only attached to the dashboard HTML document, where the console runs:
+// applying it globally would break the user-configurable remote wallpaper feature
+// (cross-origin fetch + <img src> in the appearance panel) and the OAuth callback page.
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if isDashboardDocument(r.URL.Path) {
+			// img-src https: data: blob: and connect-src https: are required by the
+			// user-configurable remote wallpaper (appearance panel fetches an
+			// arbitrary image URL and renders it). Everything else stays locked
+			// to 'self'; script-src stays strict because the theme-init bootstrap
+			// is an external classic script (webui/public/theme-init.js).
+			h.Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https:")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// isDashboardDocument reports whether the path resolves to the SPA entry document,
+// the only response that renders console markup and therefore needs the CSP.
+func isDashboardDocument(path string) bool {
+	return path == "/" || path == "/index.html"
+}
+
 // SanitizeInternalHeaders strips gateway-internal control headers from incoming external requests.
 func SanitizeInternalHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Del("X-Cyrene-Original-Endpoint")
+		r.Header.Del("X-Cyrene-Request-ID")
 		next.ServeHTTP(w, r)
 	})
 }

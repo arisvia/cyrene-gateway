@@ -91,6 +91,7 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 
 	s.Handler = middleware.Chain(mux,
 		middleware.Recovery,
+		middleware.SecurityHeaders,
 		middleware.SanitizeInternalHeaders,
 		middleware.Logging,
 		middleware.RequestSizeLimiter(),
