@@ -27,6 +27,16 @@ const Usage: Component = () => {
   const [liveEvents, setLiveEvents] = createSignal<LiveUsageEvent[]>([])
   const [modelNameMap] = createResource(fetchModelDisplayNameMap)
   let es: EventSource | null = null
+  let refreshTimer: number | null = null
+
+  function scheduleRefresh() {
+    if (refreshTimer !== null) return
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = null
+      store.loadRequestDetails(store.requestDetailsPagination().page, 10)
+      store.loadUsage(period())
+    }, 400)
+  }
   const timeUnits = () => timeUnitsFor(t)
 
   function load() {
@@ -55,7 +65,14 @@ const Usage: Component = () => {
     if (!es) toggleLive()
   })
 
-  onCleanup(() => { es?.close(); es = null })
+  onCleanup(() => {
+    if (refreshTimer !== null) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+    es?.close()
+    es = null
+  })
 
   function toggleLive() {
     if (live()) {
@@ -77,6 +94,9 @@ const Usage: Component = () => {
               return [d, ...withoutCurrent].slice(0, 24)
             })
             setLiveEvents(list => [d, ...list].slice(0, 30))
+            if (d.type === 'completed' || d.type === 'failed' || d.type === 'request') {
+              scheduleRefresh()
+            }
           }
         } catch { /* 忽略心跳与解析错误 */ }
       }

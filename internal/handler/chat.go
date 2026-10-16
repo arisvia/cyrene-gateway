@@ -702,6 +702,8 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		slog.Error("Upstream request failed", "error", err, "provider", modelInfo.Provider)
+		latencyMs := time.Since(start).Milliseconds()
+		s.publishRequestEvent(r, RequestEvent{Type: "failed", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "502", Endpoint: endpoint, LatencyMs: latencyMs})
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
 		return
 	}
@@ -728,6 +730,8 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))
 				resp, err = client.Do(retryReq)
 				if err != nil {
+					latencyMs := time.Since(start).Milliseconds()
+					s.publishRequestEvent(r, RequestEvent{Type: "failed", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "502", Endpoint: endpoint, LatencyMs: latencyMs})
 					writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed after refresh"})
 					return
 				}
