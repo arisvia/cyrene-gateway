@@ -358,6 +358,10 @@ export const zhCN = {
   playground: {
     totalTime: "总计",
     emptyResponse: "(空返回)",
+    thinkingProcess: "思考过程",
+    thinkingInProgress: "思考中...",
+    collapseThinking: "收起",
+    expandThinking: "展开",
     sampleUserMessage: "你好",
     pyApiKeyComment: "网关本地调用或填写在网关配置的 API Key",
     ttftTitle: "首字到达延迟 (TTFT)",

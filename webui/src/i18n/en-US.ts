@@ -360,6 +360,10 @@ export const enUS: TranslationDict = {
   playground: {
     totalTime: "Total",
     emptyResponse: "(empty response)",
+    thinkingProcess: "Thinking Process",
+    thinkingInProgress: "Thinking...",
+    collapseThinking: "Collapse",
+    expandThinking: "Expand",
     sampleUserMessage: "Hello",
     pyApiKeyComment: "Local gateway call, or use the API key configured in the gateway",
     ttftTitle: "Time to first token (TTFT)",

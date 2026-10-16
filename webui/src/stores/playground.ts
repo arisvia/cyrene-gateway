@@ -21,6 +21,7 @@ export interface ProtocolOption {
 export interface AssistantResponse {
   targetModel: string
   content: string
+  reasoning?: string
   busy: boolean
   error?: string
   servedModel?: string

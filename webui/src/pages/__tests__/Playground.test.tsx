@@ -220,6 +220,48 @@ describe('Playground 轮次回答区（拆卡前先钉住）', () => {
     await tick()
     expect(copyToClipboard).toHaveBeenCalledWith('回答正文')
   })
+  it('存在思考过程时渲染独立思考卡片并支持折叠展开', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn({ content: '最终回答', reasoning: '深度思考步骤' })])
+    const view = await mount()
+    await tick()
+    const text = view.baseElement.textContent || ''
+    expect(text).toContain('最终回答')
+    expect(text).toContain(t('playground.thinkingProcess'))
+    expect(text).toContain(t('playground.expandThinking'))
+    // 默认收起态下思考详情未展示
+    expect(text).not.toContain('深度思考步骤')
+
+    // 点击展开
+    const toggleBtn = buttonByText(view, t('playground.thinkingProcess'))!
+    expect(toggleBtn).toBeTruthy()
+    fireEvent.click(toggleBtn)
+    await tick()
+    expect(view.baseElement.textContent).toContain('深度思考步骤')
+    expect(view.baseElement.textContent).toContain(t('playground.collapseThinking'))
+
+    // 再次点击收起
+    fireEvent.click(toggleBtn)
+    await tick()
+    expect(view.baseElement.textContent).not.toContain('深度思考步骤')
+  })
+
+  it('生成中且只有思考文本时展示思考中状态并默认保持展开', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn({ content: '', reasoning: '正在规划...', busy: true })])
+    const view = await mount()
+    await tick()
+    const text = view.baseElement.textContent || ''
+    expect(text).toContain(t('playground.thinkingInProgress'))
+    expect(text).toContain('正在规划...')
+  })
+
+  it('复制按钮在只有思考文本时能兜底复制思考过程', async () => {
+    usePlaygroundStore().setTurnsAll([singleTurn({ content: '', reasoning: '仅有思考' })])
+    const view = await mount()
+    await tick()
+    fireEvent.click(view.getByTitle(t('playground.copyContent')))
+    await tick()
+    expect(copyToClipboard).toHaveBeenCalledWith('仅有思考')
+  })
 })
 
 describe('Playground 原始报文弹窗', () => {

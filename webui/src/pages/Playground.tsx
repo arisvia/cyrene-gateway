@@ -33,6 +33,7 @@ import ParamsPanel from '@/components/playground/ParamsPanel'
 import ExportCodeModal from '@/components/playground/ExportCodeModal'
 import RawJsonModal from '@/components/playground/RawJsonModal'
 import ResponseCard from '@/components/playground/ResponseCard'
+import ThinkingBlock from '@/components/playground/ThinkingBlock'
 import { useI18n } from '@/i18n'
 
 
@@ -314,18 +315,35 @@ const Playground: Component = () => {
   }
 
 
-  // 跨协议提取非流式响应文本
-  function extractResponseContent(proto: ProtocolType, data: unknown): string {
-    const openAIFallback = () => str(dig(data, 'choices', 0, 'message', 'content')) || str(dig(data, 'choices', 0, 'message', 'reasoning_content')) || ''
+  interface ExtractedResponseData {
+    content: string
+    reasoning: string
+  }
+
+  interface ExtractedSSEDelta {
+    content?: string
+    reasoning?: string
+  }
+
+  // 跨协议提取非流式响应文本与思考过程
+  function extractResponseData(proto: ProtocolType, data: unknown): ExtractedResponseData {
+    const openAIFallback = (): ExtractedResponseData => {
+      const content = str(dig(data, 'choices', 0, 'message', 'content')) ?? ''
+      const reasoning =
+        str(dig(data, 'choices', 0, 'message', 'reasoning_content')) ??
+        str(dig(data, 'choices', 0, 'message', 'reasoning')) ??
+        ''
+      return { content, reasoning }
+    }
     switch (proto) {
       case 'responses': {
         const outText = str(dig(data, 'output_text'))
-        if (outText) return outText
+        if (outText) return { content: outText, reasoning: '' }
         const items = asArray(dig(data, 'output'))
         if (items && items.length > 0) {
           const blocks = asArray(dig(items[0], 'content'))
           if (blocks && blocks.length > 0) {
-            return str(dig(blocks[0], 'text')) ?? ''
+            return { content: str(dig(blocks[0], 'text')) ?? '', reasoning: '' }
           }
         }
         return openAIFallback()
@@ -333,14 +351,33 @@ const Playground: Component = () => {
       case 'anthropic': {
         const blocks = asArray(dig(data, 'content'))
         if (blocks && blocks.length > 0) {
-          return blocks.map(b => str(dig(b, 'text')) ?? '').join('')
+          let content = ''
+          let reasoning = ''
+          for (const b of blocks) {
+            const bType = str(dig(b, 'type'))
+            if (bType === 'thinking') {
+              reasoning += str(dig(b, 'thinking')) ?? ''
+            } else {
+              content += str(dig(b, 'text')) ?? ''
+            }
+          }
+          return { content, reasoning }
         }
         return openAIFallback()
       }
       case 'gemini': {
         const parts = asArray(dig(data, 'candidates', 0, 'content', 'parts'))
         if (parts && parts.length > 0) {
-          return parts.map(p => str(dig(p, 'text')) ?? '').join('')
+          let content = ''
+          let reasoning = ''
+          for (const p of parts) {
+            if (Boolean(dig(p, 'thought'))) {
+              reasoning += str(dig(p, 'text')) ?? ''
+            } else {
+              content += str(dig(p, 'text')) ?? ''
+            }
+          }
+          return { content, reasoning }
         }
         return openAIFallback()
       }
@@ -350,30 +387,53 @@ const Playground: Component = () => {
     }
   }
 
-  // 跨协议提取 SSE 增量文本
-  function extractSSEDelta(proto: ProtocolType, parsed: unknown): string | null {
-    if (!parsed) return null
-    const openAIFallback = () => str(dig(parsed, 'choices', 0, 'delta', 'content')) ?? str(dig(parsed, 'choices', 0, 'delta', 'reasoning_content'))
+  // 跨协议提取 SSE 增量文本与思考过程
+  function extractSSEDelta(proto: ProtocolType, parsed: unknown): ExtractedSSEDelta {
+    if (!parsed) return {}
+    const openAIFallback = (): ExtractedSSEDelta => {
+      const content = str(dig(parsed, 'choices', 0, 'delta', 'content')) ?? undefined
+      const reasoning =
+        str(dig(parsed, 'choices', 0, 'delta', 'reasoning_content')) ??
+        str(dig(parsed, 'choices', 0, 'delta', 'reasoning')) ??
+        undefined
+      return { content, reasoning }
+    }
     switch (proto) {
       case 'responses': {
         if (dig(parsed, 'type') === 'response.output_text.delta') {
           const delta = str(dig(parsed, 'delta'))
-          if (delta !== null) return delta
+          if (delta !== null) return { content: delta }
         }
         return openAIFallback()
       }
       case 'anthropic': {
         if (dig(parsed, 'type') === 'content_block_delta') {
+          const deltaType = str(dig(parsed, 'delta', 'type'))
+          if (deltaType === 'thinking_delta') {
+            const thinking = str(dig(parsed, 'delta', 'thinking'))
+            if (thinking !== null) return { reasoning: thinking }
+          }
           const delta = str(dig(parsed, 'delta', 'text'))
-          if (delta !== null) return delta
+          if (delta !== null) return { content: delta }
         }
         return openAIFallback()
       }
       case 'gemini': {
         const parts = asArray(dig(parsed, 'candidates', 0, 'content', 'parts'))
         if (parts && parts.length > 0) {
-          const t = parts.map(p => str(dig(p, 'text')) ?? '').join('')
-          return t || null
+          let content = ''
+          let reasoning = ''
+          for (const p of parts) {
+            if (Boolean(dig(p, 'thought'))) {
+              reasoning += str(dig(p, 'text')) ?? ''
+            } else {
+              content += str(dig(p, 'text')) ?? ''
+            }
+          }
+          return {
+            content: content || undefined,
+            reasoning: reasoning || undefined,
+          }
         }
         return openAIFallback()
       }
@@ -387,10 +447,14 @@ const Playground: Component = () => {
   async function executeRequest(
     targetModel: string,
     historyMessages: { role: string; content: string }[],
-    onUpdate: (chunk: string, meta?: { servedModel?: string; firstToken?: boolean }) => void,
+    onUpdate: (
+      data: { content: string; reasoning: string },
+      meta?: { servedModel?: string; firstToken?: boolean }
+    ) => void,
     signal: AbortSignal
   ): Promise<{
     fullContent: string
+    fullReasoning: string
     servedModel: string
     protocol: ProtocolType
     metrics: Metrics
@@ -421,17 +485,18 @@ const Playground: Component = () => {
     if (!stream() || !res.body) {
       const data: unknown = await res.json()
       const totalMs = Math.round(performance.now() - startTime)
-      const content = extractResponseContent(activeProto, data)
+      const { content, reasoning } = extractResponseData(activeProto, data)
       const reportedTokens =
         num(dig(data, 'usage', 'completion_tokens')) ??
         num(dig(data, 'usage', 'output_tokens')) ??
         num(dig(data, 'usageMetadata', 'candidatesTokenCount'))
-      const completionTokens = reportedTokens ?? Math.max(1, Math.round(content.length / 3.5))
+      const completionTokens = reportedTokens ?? Math.max(1, Math.round((content.length + reasoning.length) / 3.5))
       const speed = totalMs > 0 ? Number(((completionTokens / totalMs) * 1000).toFixed(1)) : 0
       const respModel = str(dig(data, 'model')) ?? str(dig(data, 'modelVersion')) ?? ''
-      onUpdate(content, { servedModel: servedHeader || respModel || undefined })
+      onUpdate({ content, reasoning }, { servedModel: servedHeader || respModel || undefined })
       return {
         fullContent: content,
+        fullReasoning: reasoning,
         servedModel: servedHeader || respModel || targetModel,
         protocol: activeProto,
         metrics: {
@@ -448,7 +513,8 @@ const Playground: Component = () => {
     // Stream 模式处理
     const reader = res.body.getReader()
     const decoder = new TextDecoder('utf-8')
-    let accumulated = ''
+    let accumulatedContent = ''
+    let accumulatedReasoning = ''
     let buffer = ''
     let servedModel = servedHeader
     const rawChunks: unknown[] = []
@@ -476,14 +542,16 @@ const Playground: Component = () => {
               servedModel = str(dig(parsed, 'model')) ?? str(dig(parsed, 'modelVersion')) ?? ''
             }
             const delta = extractSSEDelta(activeProto, parsed)
-            if (delta) {
+            if (delta.content || delta.reasoning) {
+              if (delta.content) accumulatedContent += delta.content
+              if (delta.reasoning) accumulatedReasoning += delta.reasoning
+
               if (firstTokenTime === null) {
                 firstTokenTime = performance.now()
-                onUpdate(delta, { servedModel, firstToken: true })
+                onUpdate({ content: accumulatedContent, reasoning: accumulatedReasoning }, { servedModel, firstToken: true })
               } else {
-                onUpdate(delta, { servedModel })
+                onUpdate({ content: accumulatedContent, reasoning: accumulatedReasoning }, { servedModel })
               }
-              accumulated += delta
             }
           } catch {
             // ignore non-json chunk
@@ -502,12 +570,13 @@ const Playground: Component = () => {
 
     const totalMs = Math.round(performance.now() - startTime)
     const ttftMs = firstTokenTime !== null ? Math.round(firstTokenTime - startTime) : totalMs
-    const estimatedTokens = Math.max(1, Math.round(accumulated.length / 3.5))
+    const estimatedTokens = Math.max(1, Math.round((accumulatedContent.length + accumulatedReasoning.length) / 3.5))
     const genDuration = totalMs - (ttftMs || 0)
     const speed = genDuration > 0 ? Number(((estimatedTokens / genDuration) * 1000).toFixed(1)) : 0
 
     return {
-      fullContent: accumulated,
+      fullContent: accumulatedContent,
+      fullReasoning: accumulatedReasoning,
       servedModel: servedModel || targetModel,
       protocol: activeProto,
       metrics: {
@@ -517,7 +586,7 @@ const Playground: Component = () => {
         speed,
       },
       rawRequest: reqInfo.body,
-      rawResponse: rawChunks.length > 0 ? rawChunks : { content: accumulated },
+      rawResponse: rawChunks.length > 0 ? rawChunks : { content: accumulatedContent, reasoning: accumulatedReasoning },
     }
   }
 
@@ -557,7 +626,7 @@ const Playground: Component = () => {
     const promiseA = executeRequest(
       modelA(),
       historyA,
-      (chunk, meta) => {
+      (data, meta) => {
         setTurns(prev =>
           prev.map(t => {
             if (t.id !== turnId) return t
@@ -565,7 +634,8 @@ const Playground: Component = () => {
               ...t,
               a: {
                 ...t.a,
-                content: t.a.content + chunk,
+                content: data.content,
+                reasoning: data.reasoning,
                 servedModel: meta?.servedModel || t.a.servedModel,
               },
             }
@@ -583,6 +653,7 @@ const Playground: Component = () => {
                   a: {
                     ...t.a,
                     content: res.fullContent,
+                    reasoning: res.fullReasoning,
                     busy: false,
                     servedModel: res.servedModel,
                     protocol: res.protocol,
@@ -626,7 +697,7 @@ const Playground: Component = () => {
       promiseB = executeRequest(
         modelB(),
         historyB,
-        (chunk, meta) => {
+        (data, meta) => {
           setTurns(prev =>
             prev.map(t => {
               if (t.id !== turnId || !t.b) return t
@@ -634,7 +705,8 @@ const Playground: Component = () => {
                 ...t,
                 b: {
                   ...t.b,
-                  content: t.b.content + chunk,
+                  content: data.content,
+                  reasoning: data.reasoning,
                   servedModel: meta?.servedModel || t.b.servedModel,
                 },
               }
@@ -652,6 +724,7 @@ const Playground: Component = () => {
                     b: {
                       ...t.b,
                       content: res.fullContent,
+                      reasoning: res.fullReasoning,
                       busy: false,
                       servedModel: res.servedModel,
                       protocol: res.protocol,
@@ -919,7 +992,7 @@ const Playground: Component = () => {
                                 size="sm"
                                 title={t('playground.copyContent')}
                                 aria-label={t('playground.copyContent')}
-                                onClick={() => copyText(turn.a.content, t('playground.copyAssistant'))}
+                                onClick={() => copyText(turn.a.content || turn.a.reasoning || '', t('playground.copyAssistant'))}
                               >
                                 <IconClipboard size={14} />
                               </IconButton>
@@ -938,8 +1011,15 @@ const Playground: Component = () => {
                               </div>
                             }
                           >
+                            <Show when={turn.a.reasoning}>
+                              <ThinkingBlock
+                                reasoning={turn.a.reasoning!}
+                                busy={turn.a.busy}
+                                hasContent={Boolean(turn.a.content)}
+                              />
+                            </Show>
                             <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text font-sans">
-                              {turn.a.content || (turn.a.busy ? '...' : t('playground.emptyResponse'))}
+                              {turn.a.content || (turn.a.busy ? '...' : (turn.a.reasoning ? '' : t('playground.emptyResponse')))}
                             </div>
                           </Show>
                         </Card>
@@ -961,7 +1041,7 @@ const Playground: Component = () => {
                             request: turn.a.rawRequest,
                             response: turn.a.rawResponse,
                           })}
-                          onCopy={() => copyText(turn.a.content, t('playground.copyModelA'))}
+                          onCopy={() => copyText(turn.a.content || turn.a.reasoning || '', t('playground.copyModelA'))}
                         />
 
                         {/* 右侧：模型 B */}
@@ -979,7 +1059,7 @@ const Playground: Component = () => {
                               request: b()?.rawRequest,
                               response: b()?.rawResponse,
                             })}
-                            onCopy={() => copyText(b()?.content || '', t('playground.copyModelB'))}
+                            onCopy={() => copyText(b()?.content || b()?.reasoning || '', t('playground.copyModelB'))}
                           />
                         )}</Show>
                       </div>

@@ -3,6 +3,7 @@ import { useI18n } from '@/i18n'
 import { protocolBadgeTone, protocolLabel } from '@/lib/playgroundRequest'
 import type { AssistantResponse } from '@/stores/playground'
 import { Badge, Card, IconButton, IconClipboard, IconCode, ProviderAvatar } from '@/components/ui'
+import ThinkingBlock from './ThinkingBlock'
 
 interface ResponseCardProps {
   response: AssistantResponse
@@ -96,8 +97,15 @@ const ResponseCard: Component<ResponseCardProps> = props => {
           </div>
         }
       >
+        <Show when={resp().reasoning}>
+          <ThinkingBlock
+            reasoning={resp().reasoning!}
+            busy={resp().busy}
+            hasContent={Boolean(resp().content)}
+          />
+        </Show>
         <div class="min-w-0 text-sm text-text whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed select-text min-h-[60px]">
-          {resp().content || (resp().busy ? '...' : t('playground.emptyResponse'))}
+          {resp().content || (resp().busy ? '...' : (resp().reasoning ? '' : t('playground.emptyResponse')))}
         </div>
       </Show>
     </Card>
