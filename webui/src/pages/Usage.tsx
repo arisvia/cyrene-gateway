@@ -6,7 +6,6 @@ import { ProviderAvatar } from '@/components/ui/ProviderIcon'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor, maskKey } from '@/lib/format'
-import { getStoredSessionToken } from '@/lib/api'
 import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
 
@@ -52,6 +51,10 @@ const Usage: Component = () => {
     })
     toggleLive()
   })
+  onMount(() => {
+    if (!es) toggleLive()
+  })
+
   onCleanup(() => { es?.close(); es = null })
 
   function toggleLive() {
@@ -63,22 +66,25 @@ const Usage: Component = () => {
     }
 
     try {
-      const token = getStoredSessionToken()
-      const streamUrl = token ? `/api/usage/stream?token=${encodeURIComponent(token)}` : '/api/usage/stream'
-      es = new EventSource(streamUrl)
+      es = new EventSource('/api/usage/stream', { withCredentials: true })
       const handleData = (ev: MessageEvent) => {
         try {
           const d = JSON.parse(ev.data)
           if (d && (d.model || d.provider || d.endpoint)) {
-            setRealtimeEvents([d])
+            setRealtimeEvents(list => {
+              const key = d.requestId || `${d.provider || ''}:${d.model || ''}`
+              const withoutCurrent = list.filter(item => (item.requestId || `${item.provider || ''}:${item.model || ''}`) !== key)
+              return [d, ...withoutCurrent].slice(0, 24)
+            })
             setLiveEvents(list => [d, ...list].slice(0, 30))
           }
         } catch { /* 忽略心跳与解析错误 */ }
       }
 
       es.onmessage = handleData
-      es.addEventListener('request', handleData as EventListener)
-      es.addEventListener('routing', handleData as EventListener)
+      for (const eventName of ['accepted', 'routing', 'upstream_connected', 'streaming', 'request', 'completed', 'failed', 'cancelled']) {
+        es.addEventListener(eventName, handleData as EventListener)
+      }
       es.addEventListener('connected', () => {
         setLive(true)
       })

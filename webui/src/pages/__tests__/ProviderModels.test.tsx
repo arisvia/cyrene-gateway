@@ -321,4 +321,3 @@ describe('ProviderDetail 跨账号探测竞态', () => {
     expect(view.baseElement.textContent).not.toContain('boom')
   })
 })
-

@@ -1,6 +1,6 @@
 import { batch, createSignal, createRoot, createMemo } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
-import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized, setStoredSessionToken } from '@/lib/api'
+import { api, apiPost, apiPut, apiPatch, apiDelete, setOnUnauthorized } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { t } from '@/i18n'
 import type {
@@ -100,17 +100,13 @@ function createGatewayStore() {
   }
 
   async function login(password: string) {
-    const res = await apiPost<{ ok?: boolean; token?: string; error?: string }>('/api/auth/login', { password })
-    if (res && res.token) {
-      setStoredSessionToken(res.token)
-    }
+    const res = await apiPost<{ ok?: boolean; error?: string }>('/api/auth/login', { password })
     setAuthenticated(true)
     await loadCore()
     return res
   }
 
   async function logout() {
-    setStoredSessionToken(null)
     try {
       await apiPost('/api/auth/logout')
     } catch {
@@ -435,10 +431,7 @@ function createGatewayStore() {
     await loadSettings()
   }
   async function setPassword(password: string) {
-    const res = await apiPost<{ ok?: boolean; token?: string; error?: string }>('/api/auth/password', { password })
-    if (res && res.token) {
-      setStoredSessionToken(res.token)
-    }
+    const res = await apiPost<{ ok?: boolean; error?: string }>('/api/auth/password', { password })
     setHasPassword(true)
     setAuthenticated(true)
     try {

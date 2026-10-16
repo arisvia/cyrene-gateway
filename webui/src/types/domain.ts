@@ -163,6 +163,9 @@ export interface ProviderUsage {
 
 
 export interface LiveUsageEvent {
+  requestId?: string
+  sequence?: number
+  type?: 'accepted' | 'routing' | 'upstream_connected' | 'streaming' | 'completed' | 'failed' | 'cancelled' | 'fallback' | 'request'
   timestamp?: string
   provider?: string
   model?: string

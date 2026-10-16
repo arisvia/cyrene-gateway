@@ -10,7 +10,7 @@ import { LoadState } from '@/components/ui'
 import { createSignal } from 'solid-js'
 
 vi.mock('@/lib/api', () => ({
-  api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(), setOnUnauthorized: vi.fn(), getStoredSessionToken: vi.fn(),
+  api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(), setOnUnauthorized: vi.fn(),
  }))
 const mockToast = vi.hoisted(() => ({
   toasts: () => [],

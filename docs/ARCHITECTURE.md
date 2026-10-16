@@ -163,4 +163,3 @@ Client 接收最终响应
 2. 配置对应的 `BaseURL`、`APIType`（`openai` / `anthropic` / `gemini`）、`AuthType` 以及 `Brand`/`Region`。
 3. 若支持 live catalog，配置 `ModelsURL` 与 `ModelsAuth`；若有特殊鉴权 Header，配置 `AuthHeader` / `AuthScheme`。
 4. 在 `internal/provider/registry.go` 的 `modelPrefixProviders` 中追加模型名称前缀，便于路由自动推断。
-
