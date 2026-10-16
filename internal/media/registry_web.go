@@ -42,9 +42,10 @@ func registerWebProviders() {
 		})
 	}
 
-	// Antigravity (Google Code Assist search grounding via gemini-2.5-flash)
+	// Antigravity (Google Code Assist search grounding via gemini-2.5-flash & gemini-2.5-pro)
 	mergeProvider("antigravity", "Antigravity", KindWebSearch, []ModelEntry{
 		{ID: "gemini-2.5-flash", Name: "Google Search (Gemini 2.5 Flash)", Kind: KindWebSearch},
+		{ID: "gemini-2.5-pro", Name: "Google Search (Gemini 2.5 Pro)", Kind: KindWebSearch},
 	}, ProviderConfig{
 		Provider:   "antigravity",
 		BaseURL:    provider.AntigravityBaseURL,
