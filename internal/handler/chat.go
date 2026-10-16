@@ -471,7 +471,11 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 		s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
-		client := s.getHTTPClient(5 * time.Minute)
+		clientTimeout := 5 * time.Minute
+		if upstreamStream {
+			clientTimeout = 0
+		}
+		client := s.getHTTPClient(clientTimeout)
 		resp, err := client.Do(upstreamReq)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
@@ -636,7 +640,11 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 
 	// Phase 9: Use proxy-aware HTTP client
 	start := time.Now()
-	client := s.getHTTPClient(5 * time.Minute)
+	clientTimeout := 5 * time.Minute
+	if upstreamStream {
+		clientTimeout = 0
+	}
+	client := s.getHTTPClient(clientTimeout)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		slog.Error("Upstream request failed", "error", err, "provider", modelInfo.Provider)
@@ -786,7 +794,9 @@ type chatStreamChunk struct {
 }
 
 func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, format translator.Format, model string, uc *usageContext) {
-	reader := provider.NewSSEReader(resp.Body)
+	stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
+	defer stallReader.Close()
+	reader := provider.NewSSEReader(stallReader)
 	streamTranslator := translator.NewSSETranslator(format, model)
 	var lastUsage usage.Usage
 	var chunkID string
@@ -1054,14 +1064,16 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 		}
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	w.WriteHeader(http.StatusOK)
 	flush()
 	ctx := r.Context()
-	reader := provider.NewSSEReader(resp.Body)
+	stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
+	defer stallReader.Close()
+	reader := provider.NewSSEReader(stallReader)
 	streamTranslator := translator.NewSSETranslator(format, model)
 	var lastUsage usage.Usage
 	var respBuilder strings.Builder
@@ -1374,7 +1386,11 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	endpoint := resolveRequestEndpoint(r, "/v1/messages")
 	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
-	client := s.getHTTPClient(5 * time.Minute)
+	clientTimeout := 5 * time.Minute
+	if stream {
+		clientTimeout = 0
+	}
+	client := s.getHTTPClient(clientTimeout)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		slog.Error("Messages upstream request failed", "error", err, "provider", modelInfo.Provider, "url", targetURL)
@@ -1448,7 +1464,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// For Anthropic passthrough, stream directly without translation
 	if stream {
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-cache, no-transform")
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
@@ -1460,7 +1476,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 
-		scanner := bufio.NewScanner(resp.Body)
+		stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
+		defer stallReader.Close()
+		scanner := bufio.NewScanner(stallReader)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		var totalUsage usage.Usage
 		var outBuilder strings.Builder

@@ -38,7 +38,11 @@ func (s *Server) handleAntigravityChat(
 		return
 	}
 
-	client := s.getHTTPClient(3 * time.Minute)
+	clientTimeout := 3 * time.Minute
+	if req.Stream {
+		clientTimeout = 0
+	}
+	client := s.getHTTPClient(clientTimeout)
 	projectID := ""
 	if conn.Data.ProviderSpecificData != nil {
 		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && pid != "" {
@@ -505,14 +509,16 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("X-Cyrene-Served-Model", model)
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	scanner := bufio.NewScanner(resp.Body)
+	stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
+	defer stallReader.Close()
+	scanner := bufio.NewScanner(stallReader)
 	scanner.Buffer(make([]byte, 1024*1024), 5*1024*1024)
 
 	chatCmpleID := fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())

@@ -283,6 +283,7 @@ func newSafeTransport(allowPrivate bool, proxyURL *url.URL) *safeTransport {
 		transport: &http.Transport{
 			ForceAttemptHTTP2: true, MaxIdleConns: 100,
 			IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: safeConnectTimeout,
+			ResponseHeaderTimeout: 3 * time.Minute,
 			ExpectContinueTimeout: time.Second,
 		},
 	}

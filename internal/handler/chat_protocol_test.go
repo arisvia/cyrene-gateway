@@ -570,3 +570,20 @@ func TestCodebuddyChatSanitization(t *testing.T) {
 		t.Fatal("timed out waiting for upstream request")
 	}
 }
+
+func TestProxyStreaming_NoTransformHeader(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	stream := "data: " + `{"choices":[{"delta":{"content":"Hi"}}]}` + "\n\ndata: [DONE]\n\n"
+	resp := &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(stream)),
+	}
+	w := httptest.NewRecorder()
+	srv.proxyResponse(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, true, true, translator.FormatOpenAI, "test-model", &usageContext{StartedAt: time.Now(), Status: 200})
+
+	cc := w.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "no-transform") {
+		t.Errorf("expected Cache-Control to include no-transform, got: %q", cc)
+	}
+}

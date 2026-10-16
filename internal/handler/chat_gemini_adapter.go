@@ -54,7 +54,7 @@ func (a *geminiResponseAdapter) WriteHeader(statusCode int) {
 	}
 	if a.isStream {
 		a.w.Header().Set("Content-Type", "text/event-stream")
-		a.w.Header().Set("Cache-Control", "no-cache")
+		a.w.Header().Set("Cache-Control", "no-cache, no-transform")
 		a.w.Header().Set("Connection", "keep-alive")
 		a.w.Header().Set("X-Accel-Buffering", "no")
 		a.w.WriteHeader(statusCode)

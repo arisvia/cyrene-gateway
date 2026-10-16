@@ -43,7 +43,11 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		return
 	}
 
-	client := s.getHTTPClient(5 * time.Minute)
+	clientTimeout := 5 * time.Minute
+	if req.Stream {
+		clientTimeout = 0
+	}
+	client := s.getHTTPClient(clientTimeout)
 
 	// PAT (pt-...) → exchange for short-lived job token + resolve userId so
 	// COSY signing works (9router@9c9dd7b1, @d433c0b2). Device/job tokens
@@ -369,7 +373,9 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 	}
 
 	ctx := r.Context()
-	scanner := bufio.NewScanner(resp.Body)
+	stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
+	defer stallReader.Close()
+	scanner := bufio.NewScanner(stallReader)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var (
@@ -424,7 +430,7 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 
 	// Stream is healthy: commit HTTP 200 headers now
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
