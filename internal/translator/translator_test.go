@@ -231,6 +231,41 @@ func TestClaudeToOpenAIResponse(t *testing.T) {
 	}
 }
 
+func TestClaudeToOpenAIResponse_Thinking(t *testing.T) {
+	claudeResp := map[string]any{
+		"id":   "msg_think_456",
+		"type": "message",
+		"role": "assistant",
+		"content": []any{
+			map[string]any{"type": "thinking", "thinking": "Analyzing step-by-step logic...", "signature": "sig_xyz"},
+			map[string]any{"type": "text", "text": "Here is the final answer."},
+		},
+		"stop_reason": "end_turn",
+		"usage": map[string]any{
+			"input_tokens":  float64(25),
+			"output_tokens": float64(40),
+		},
+	}
+	data, _ := json.Marshal(claudeResp)
+
+	result, err := claudeToOpenAI(data, "claude-sonnet-4-20250514")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var openAIResp map[string]any
+	json.Unmarshal(result, &openAIResp)
+
+	choices := openAIResp["choices"].([]any)
+	message := choices[0].(map[string]any)["message"].(map[string]any)
+	if message["content"] != "Here is the final answer." {
+		t.Fatalf("expected content match, got %v", message["content"])
+	}
+	if message["reasoning_content"] != "Analyzing step-by-step logic..." {
+		t.Fatalf("expected reasoning_content match, got %v", message["reasoning_content"])
+	}
+}
+
 func TestGeminiToOpenAIResponse(t *testing.T) {
 	geminiResp := map[string]any{
 		"candidates": []any{
@@ -303,6 +338,40 @@ func TestClaudeSSEToOpenAI(t *testing.T) {
 	delta := choices[0].(map[string]any)["delta"].(map[string]any)
 	if delta["content"] != "Hello" {
 		t.Fatalf("expected delta content=Hello, got %v", delta["content"])
+	}
+}
+
+func TestClaudeSSEToOpenAI_ThinkingDelta(t *testing.T) {
+	event := map[string]any{
+		"type":  "content_block_delta",
+		"index": 0,
+		"delta": map[string]any{
+			"type":     "thinking_delta",
+			"thinking": "Pondering the solution...",
+		},
+	}
+	data, _ := json.Marshal(event)
+
+	result, isDone, err := claudeSSEToOpenAI(data, "claude-3-7-sonnet")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isDone {
+		t.Fatal("should not be done on thinking delta")
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	var chunk map[string]any
+	json.Unmarshal(result, &chunk)
+	choices := chunk["choices"].([]any)
+	delta := choices[0].(map[string]any)["delta"].(map[string]any)
+	if delta["reasoning_content"] != "Pondering the solution..." {
+		t.Fatalf("expected delta reasoning_content, got %v", delta["reasoning_content"])
+	}
+	if delta["content"] != nil {
+		t.Fatalf("expected nil content in reasoning delta, got %v", delta["content"])
 	}
 }
 

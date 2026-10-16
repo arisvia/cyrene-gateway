@@ -893,8 +893,8 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 
 	// Convert content blocks to message
 	var content strings.Builder
+	var reasoning strings.Builder
 	var toolCalls []any
-
 	if contentBlocks, ok := claudeResp["content"].([]any); ok {
 		for _, block := range contentBlocks {
 			b, ok := block.(map[string]any)
@@ -905,6 +905,10 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 			case "text":
 				if text, ok := b["text"].(string); ok {
 					content.WriteString(text)
+				}
+			case "thinking":
+				if th, ok := b["thinking"].(string); ok {
+					reasoning.WriteString(th)
 				}
 			case "tool_use":
 				var argsStr string
@@ -934,6 +938,9 @@ func claudeToOpenAI(data []byte, model string) ([]byte, error) {
 	message := map[string]any{
 		"role":    "assistant",
 		"content": content.String(),
+	}
+	if reasoning.Len() > 0 {
+		message["reasoning_content"] = reasoning.String()
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
@@ -1096,8 +1103,11 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 		if d, ok := event["delta"].(map[string]any); ok {
 			if d["type"] == "text_delta" {
 				delta["content"] = d["text"]
+			} else if d["type"] == "thinking_delta" {
+				if thinking, ok := d["thinking"].(string); ok && thinking != "" {
+					delta["reasoning_content"] = thinking
+				}
 			} else if d["type"] == "input_json_delta" {
-				// Preserve the content_block index for correct tool_call ordering (9router#2747)
 				idx := 0
 				if rawIdx, ok := event["index"]; ok {
 					if f, ok := rawIdx.(float64); ok {

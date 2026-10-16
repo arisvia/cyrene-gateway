@@ -318,20 +318,23 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 			}
 
 			if msg, ok := choice["message"].(map[string]any); ok {
-				if rText, ok := msg["reasoning_content"].(string); ok && rText != "" {
+				rText, _ := msg["reasoning_content"].(string)
+				text, _ := msg["content"].(string)
+				if rText == "" && strings.Contains(text, "<think>") {
+					rText, text = StripThinkTags(text)
+				}
+				if rText != "" {
 					contentBlocks = append(contentBlocks, map[string]any{
 						"type":     "thinking",
 						"thinking": rText,
 					})
 				}
-
-				if text, ok := msg["content"].(string); ok && text != "" {
+				if text != "" {
 					contentBlocks = append(contentBlocks, map[string]any{
 						"type": "text",
 						"text": text,
 					})
 				}
-
 				if tcList, ok := msg["tool_calls"].([]any); ok {
 					for _, tcRaw := range tcList {
 						if tc, ok := tcRaw.(map[string]any); ok {
@@ -408,6 +411,7 @@ type OpenAIToClaudeSSETranslator struct {
 	hasToolCalls     bool
 	toolBlockIndices map[int]int
 	toolBlockStarted map[int]bool
+	thinkTags        ThinkTagState
 }
 
 // NewOpenAIToClaudeSSETranslator creates a new stateful translator.
@@ -418,6 +422,81 @@ func NewOpenAIToClaudeSSETranslator(model string) *OpenAIToClaudeSSETranslator {
 		toolBlockIndices: make(map[int]int),
 		toolBlockStarted: make(map[int]bool),
 	}
+}
+
+func (t *OpenAIToClaudeSSETranslator) emitThinking(out *bytes.Buffer, reasoning string) {
+	if reasoning == "" {
+		return
+	}
+	if t.blockStarted && t.blockType != "thinking" {
+		out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
+		t.blockStarted = false
+	}
+	if !t.blockStarted {
+		t.blockStarted = true
+		t.blockType = "thinking"
+		t.blockIndex = t.nextBlockIndex
+		t.nextBlockIndex++
+		startBlock := map[string]any{
+			"type":  "content_block_start",
+			"index": t.blockIndex,
+			"content_block": map[string]any{
+				"type":     "thinking",
+				"thinking": "",
+			},
+		}
+		blockBytes, _ := json.Marshal(startBlock)
+		out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
+	}
+	deltaEvent := map[string]any{
+		"type":  "content_block_delta",
+		"index": t.blockIndex,
+		"delta": map[string]any{
+			"type":     "thinking_delta",
+			"thinking": reasoning,
+		},
+	}
+	deltaBytes, _ := json.Marshal(deltaEvent)
+	out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
+}
+
+func (t *OpenAIToClaudeSSETranslator) emitText(out *bytes.Buffer, text string) {
+	if text == "" {
+		return
+	}
+	if t.blockStarted && t.blockType != "text" {
+		out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
+		t.blockStarted = false
+	}
+	if !t.blockStarted {
+		t.blockStarted = true
+		t.blockType = "text"
+		t.blockIndex = t.nextBlockIndex
+		t.nextBlockIndex++
+		startBlock := map[string]any{
+			"type":  "content_block_start",
+			"index": t.blockIndex,
+			"content_block": map[string]any{
+				"type": "text",
+				"text": "",
+			},
+		}
+		blockBytes, _ := json.Marshal(startBlock)
+		out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
+	}
+	if !t.outputUsageKnown {
+		t.outputTokens++
+	}
+	deltaEvent := map[string]any{
+		"type":  "content_block_delta",
+		"index": t.blockIndex,
+		"delta": map[string]any{
+			"type": "text_delta",
+			"text": text,
+		},
+	}
+	deltaBytes, _ := json.Marshal(deltaEvent)
+	out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
 }
 
 // TranslateChunk takes an OpenAI SSE data payload (e.g. `{"id":"...","choices":[{"delta":{"content":"hi"}}]}` or `[DONE]`)
@@ -452,6 +531,13 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			out.WriteString(fmt.Sprintf("event: message_start\ndata: %s\n\n", string(startBytes)))
 		}
 
+		for _, fragment := range t.thinkTags.Flush() {
+			if fragment.Type == DeltaThinking {
+				t.emitThinking(&out, fragment.Delta)
+			} else {
+				t.emitText(&out, fragment.Delta)
+			}
+		}
 		if t.blockStarted {
 			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
 			t.blockStarted = false
@@ -566,72 +652,17 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	reasoning, _ := delta["reasoning_content"].(string)
 
 	if reasoning != "" {
-		if t.blockStarted && t.blockType != "thinking" {
-			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
-			t.blockStarted = false
-		}
-		if !t.blockStarted {
-			t.blockStarted = true
-			t.blockType = "thinking"
-			t.blockIndex = t.nextBlockIndex
-			t.nextBlockIndex++
-			startBlock := map[string]any{
-				"type":  "content_block_start",
-				"index": t.blockIndex,
-				"content_block": map[string]any{
-					"type":     "thinking",
-					"thinking": "",
-				},
-			}
-			blockBytes, _ := json.Marshal(startBlock)
-			out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
-		}
-		deltaEvent := map[string]any{
-			"type":  "content_block_delta",
-			"index": t.blockIndex,
-			"delta": map[string]any{
-				"type":     "thinking_delta",
-				"thinking": reasoning,
-			},
-		}
-		deltaBytes, _ := json.Marshal(deltaEvent)
-		out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
+		t.emitThinking(&out, reasoning)
 	}
 
 	if text != "" {
-		if t.blockStarted && t.blockType != "text" {
-			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
-			t.blockStarted = false
-		}
-		if !t.blockStarted {
-			t.blockStarted = true
-			t.blockType = "text"
-			t.blockIndex = t.nextBlockIndex
-			t.nextBlockIndex++
-			startBlock := map[string]any{
-				"type":  "content_block_start",
-				"index": t.blockIndex,
-				"content_block": map[string]any{
-					"type": "text",
-					"text": "",
-				},
+		for _, fragment := range t.thinkTags.ProcessFeed(text) {
+			if fragment.Type == DeltaThinking {
+				t.emitThinking(&out, fragment.Delta)
+			} else {
+				t.emitText(&out, fragment.Delta)
 			}
-			blockBytes, _ := json.Marshal(startBlock)
-			out.WriteString(fmt.Sprintf("event: content_block_start\ndata: %s\n\n", string(blockBytes)))
 		}
-		if !t.outputUsageKnown {
-			t.outputTokens++
-		}
-		deltaEvent := map[string]any{
-			"type":  "content_block_delta",
-			"index": t.blockIndex,
-			"delta": map[string]any{
-				"type": "text_delta",
-				"text": text,
-			},
-		}
-		deltaBytes, _ := json.Marshal(deltaEvent)
-		out.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", string(deltaBytes)))
 	}
 
 	// 3. Tool calls streaming

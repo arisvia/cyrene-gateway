@@ -412,3 +412,39 @@ func TestOpenAIToClaudeResponse_Reasoning(t *testing.T) {
 		t.Errorf("unexpected block 1: %v", b1)
 	}
 }
+
+func TestOpenAIToClaudeSSETranslator_InlineThinkTags(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("claude-sonnet-4-20250514")
+
+	// Chunk 1: <think>step 1
+	c1 := []byte(`{"choices":[{"delta":{"content":"<think>step 1"}}]}`)
+	out1, _, err := trans.TranslateChunk(c1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s1 := string(out1)
+	if !strings.Contains(s1, `"type":"thinking"`) || !strings.Contains(s1, `"thinking":"step 1"`) {
+		t.Fatalf("expected thinking block, got: %s", s1)
+	}
+
+	// Chunk 2: </think>final answer
+	c2 := []byte(`{"choices":[{"delta":{"content":"</think>final answer"}}]}`)
+	out2, _, err := trans.TranslateChunk(c2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2 := string(out2)
+	if !strings.Contains(s2, "content_block_stop") || !strings.Contains(s2, `"type":"text"`) || !strings.Contains(s2, `"text":"final answer"`) {
+		t.Fatalf("expected transition to text block, got: %s", s2)
+	}
+
+	// Chunk 3: [DONE]
+	out3, done, err := trans.TranslateChunk([]byte("[DONE]"))
+	if err != nil || !done {
+		t.Fatalf("expected done=true, got %v, err=%v", done, err)
+	}
+	s3 := string(out3)
+	if !strings.Contains(s3, "message_stop") {
+		t.Fatalf("expected message_stop, got: %s", s3)
+	}
+}
