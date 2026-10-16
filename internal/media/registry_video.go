@@ -15,19 +15,4 @@ func registerVideoProviders() {
 			Format:     "xai-video",
 		},
 	)
-
-	// MiniMax Video (Hailuo)
-	mergeProvider("minimax", "MiniMax", KindVideo,
-		[]ModelEntry{
-			{ID: "video-01", Name: "MiniMax Video-01 (Hailuo)", Kind: KindVideo},
-		},
-		ProviderConfig{
-			Provider:   "minimax",
-			Kind:       KindVideo,
-			BaseURL:    "https://api.minimax.chat/v1/video_generation",
-			AuthType:   "apikey",
-			AuthHeader: "bearer",
-			Format:     "minimax-video",
-		},
-	)
 }

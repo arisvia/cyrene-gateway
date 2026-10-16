@@ -35,22 +35,6 @@ func registerTTSProviders() {
 		},
 	)
 
-	// MiniMax Speech
-	mergeProvider("minimax", "MiniMax", KindTTS,
-		[]ModelEntry{
-			{ID: "speech-01-turbo", Name: "MiniMax Speech-01 Turbo", Kind: KindTTS},
-			{ID: "speech-01-hd", Name: "MiniMax Speech-01 HD", Kind: KindTTS},
-		},
-		ProviderConfig{
-			Provider:   "minimax",
-			Kind:       KindTTS,
-			BaseURL:    "https://api.minimax.chat/v1/t2a_v2",
-			AuthType:   "apikey",
-			AuthHeader: "bearer",
-			Format:     "minimax-tts",
-		},
-	)
-
 	// Gemini TTS
 	mergeProvider("gemini", "Gemini", KindTTS,
 		[]ModelEntry{

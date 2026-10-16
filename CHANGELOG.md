@@ -8,7 +8,7 @@
 - **上下游链路长流防截断与超时重构**：解除流式长连接的硬性总时长 Client.Timeout，引入每分块 5 分钟空闲停滞检测（Stall Timeout）并规范 `no-cache, no-transform` 响应头，彻底消除超长思考模型（o1/o3-mini/R1/Claude 3.7）在 3~5 分钟被误杀截断的问题。
 - **Claude 思考流保真与开源模型 `<think>` 标签解构**：补齐 `translateClaude` 与非流式中的 `thinking_delta` 映射，消除思考过程丢失；引入流式标签状态机（`ThinkTagState`）自动将开源模型内嵌的 `<think>` 标签解构为标准思考块，防止提示词污染。
 - **Antigravity 媒体聚合异常透传**：为图片生成流式聚合补齐 HTTP 状态码拦截与双格式 Candidate 兼容，消除失败时静默下发空数据的假成功假象。
-- **多模态媒体模型注册表多退少补**：全面更新生图、语音合成、语音识别、视频生成与向量模型目录，剔除废弃与臆测占位，补齐 Google Imagen 3、FLUX 1.1 Pro、DALL·E 3、MiniMax Image/TTS/Video、Groq Whisper Turbo 与 ElevenLabs Flash 等官方主力模型规格。
+- **多模态媒体模型注册表多退少补**：全面更新生图、语音合成、语音识别、视频生成与向量模型目录，剔除废弃与未适配占位，补齐 Google Imagen 3、FLUX 1.1 Pro、DALL·E 3、Groq Whisper Turbo 与 ElevenLabs Flash 等官方主力模型规格。
 
 ## [1.6.0] - 2026-10-16
 

@@ -19,21 +19,6 @@ func registerImageProviders() {
 		},
 	)
 
-	// MiniMax Image
-	mergeProvider("minimax", "MiniMax", KindImage,
-		[]ModelEntry{
-			{ID: "image-01", Name: "MiniMax Image-01", Kind: KindImage},
-		},
-		ProviderConfig{
-			Provider:   "minimax",
-			Kind:       KindImage,
-			BaseURL:    "https://api.minimax.chat/v1/images/generations",
-			AuthType:   "apikey",
-			AuthHeader: "bearer",
-			Format:     "openai",
-		},
-	)
-
 	// OpenRouter image generation
 	mergeProvider("openrouter", "OpenRouter", KindImage,
 		[]ModelEntry{
