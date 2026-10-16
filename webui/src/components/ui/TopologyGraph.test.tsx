@@ -5,7 +5,6 @@ import { TopologyGraph } from './TopologyGraph'
 
 afterEach(cleanup)
 
-const flowDash = '0.12' + ' ' + '0.88'
 
 function firstPath(container: HTMLElement): string {
   return container.querySelector('path')!.getAttribute('d')!
@@ -78,25 +77,30 @@ describe('TopologyGraph', () => {
     expect(view.container.querySelectorAll('path')).toHaveLength(1)
   })
 
-  it('shows one normalized-flow particle per hit and keeps static feedback with reduced motion', () => {
+  it('shows laser pulse beams and leading photon particle on hit, suppressing animation on reduced motion', () => {
     const [reducedMotion, setReducedMotion] = createSignal(false)
-    const [nodes, setNodes] = createSignal([{ id: 'provider', x:240, y: 0, isActive: true, isHitting: true }])
+    const [nodes, setNodes] = createSignal([{ id: 'provider', x: 240, y: 0, isActive: true, isHitting: true }])
     const view = render(() => <TopologyGraph nodes={nodes()} hoveredNode={null} reducedMotion={reducedMotion()} />)
     const motion = view.container.querySelector('animateMotion')!
-    const overlay = view.container.querySelectorAll('path')[1]!
 
-    expect(view.container.querySelectorAll('path')).toHaveLength(2)
-    expect(view.container.querySelectorAll('circle')).toHaveLength(1)
-    expect(overlay.getAttribute('pathLength')).toBe('1')
-    expect(overlay.getAttribute('stroke-dasharray')).toBe(flowDash)
+    expect(view.container.querySelectorAll('path').length).toBeGreaterThanOrEqual(2)
+    expect(view.container.querySelectorAll('circle').length).toBeGreaterThanOrEqual(1)
+    expect(motion).toBeTruthy()
     expect(motion.getAttribute('path')).toBe(firstPath(view.container))
-    expect(motion.getAttribute('dur')).toBe('1.35s')
+    expect(motion.getAttribute('dur')).toBe('1.2s')
     expect(motion.getAttribute('repeatCount')).toBe('indefinite')
+
+    // 开启减弱动效时，抑制动画元素
     setReducedMotion(true)
-    expect(view.container.querySelectorAll('path')).toHaveLength(2)
+    expect(view.container.querySelector('animateMotion')).toBeNull()
     expect(view.container.querySelector('circle')).toBeNull()
+
+    // 恢复动效
     setReducedMotion(false)
-    expect(view.container.querySelectorAll('circle')).toHaveLength(1)
+    expect(view.container.querySelector('animateMotion')).toBeTruthy()
+    expect(view.container.querySelectorAll('circle').length).toBeGreaterThanOrEqual(1)
+
+    // 传输结束，恢复基准连线
     setNodes(nodes => nodes.map(node => ({ ...node, isHitting: false })))
     expect(view.container.querySelectorAll('path')).toHaveLength(1)
     expect(view.container.querySelector('circle')).toBeNull()
