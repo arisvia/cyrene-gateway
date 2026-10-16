@@ -384,10 +384,18 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Provider string `json:"provider"`
+		Model    string `json:"model"`
 	}
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
+	}
+	if req.Provider == "" && req.Model != "" {
+		if idx := strings.Index(req.Model, "/"); idx != -1 {
+			req.Provider = req.Model[:idx]
+		} else if media.SupportsKind(req.Model, media.KindWebFetch) {
+			req.Provider = req.Model
+		}
 	}
 	if req.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})
@@ -429,6 +437,14 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+	if providerID == "" && modelName != "" {
+		if idx := strings.Index(modelName, "/"); idx != -1 {
+			providerID = modelName[:idx]
+		} else if media.SupportsKind(modelName, media.KindWebSearch) {
+			providerID = modelName
+		}
+		providerID = provider.ResolveProviderAlias(providerID)
 	}
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})

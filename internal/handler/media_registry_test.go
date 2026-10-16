@@ -781,3 +781,27 @@ func TestExtractRoutingFieldsCanonicalizesProviderID(t *testing.T) {
 		t.Errorf("forwarded body provider = %q, want the client's own spelling", forwarded.Provider)
 	}
 }
+
+func TestWebSearchAndFetchInferProviderFromModel(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// 1. Web Search with model: "antigravity" (no explicit provider field)
+	body := []byte(`{"model":"antigravity","query":"test query"}`)
+	req := httptest.NewRequest("POST", "/v1/search", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code == http.StatusBadRequest && strings.Contains(w.Body.String(), "missing provider") {
+		t.Fatalf("search failed to infer provider from model: %s", w.Body.String())
+	}
+
+	// 2. Web Fetch with model: "firecrawl"
+	fetchBody := []byte(`{"model":"firecrawl","url":"https://example.com"}`)
+	fetchReq := httptest.NewRequest("POST", "/v1/web/fetch", bytes.NewReader(fetchBody))
+	fetchReq.Header.Set("Content-Type", "application/json")
+	wFetch := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(wFetch, fetchReq)
+	if wFetch.Code == http.StatusBadRequest && strings.Contains(wFetch.Body.String(), "missing provider") {
+		t.Fatalf("fetch failed to infer provider from model: %s", wFetch.Body.String())
+	}
+}
