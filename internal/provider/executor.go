@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/rtk"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
+	"github.com/google/uuid"
 )
 
 // ExecutionCandidate represents a resolved model & connection attempt candidate.
@@ -177,6 +179,9 @@ func PrepareUpstreamRequest(
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	if upstreamStream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")
+	}
+	if strings.HasPrefix(modelInfo.Provider, "codebuddy") {
+		applyCodebuddyConversationHeaders(upstreamReq, bodyMap)
 	}
 	return upstreamReq, targetFormat, nil
 }
@@ -354,4 +359,61 @@ func sanitizeGithubRequest(model string, bodyMap map[string]any) {
 	if eff, ok := bodyMap["reasoning_effort"].(string); ok && strings.ToLower(eff) == "none" {
 		delete(bodyMap, "reasoning_effort")
 	}
+}
+
+func stableCodebuddyUUID(key string) string {
+	h := sha1.Sum([]byte(key))
+	h[6] = (h[6] & 0x0f) | 0x50
+	h[8] = (h[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
+
+func applyCodebuddyConversationHeaders(req *http.Request, bodyMap map[string]any) {
+	var conversationKey string
+	for _, key := range []string{"session_id", "prompt_cache_key", "conversation_id"} {
+		if val, ok := bodyMap[key].(string); ok && val != "" {
+			conversationKey = val
+			break
+		}
+	}
+	if conversationKey == "" {
+		if msgs, ok := bodyMap["messages"].([]any); ok {
+			for _, m := range msgs {
+				if msgMap, ok := m.(map[string]any); ok {
+					if role, _ := msgMap["role"].(string); role == "user" {
+						switch c := msgMap["content"].(type) {
+						case string:
+							if c != "" {
+								conversationKey = "cbai:" + c
+							}
+						case []any:
+							var parts []string
+							for _, b := range c {
+								if bMap, ok := b.(map[string]any); ok {
+									if text, ok := bMap["text"].(string); ok && text != "" {
+										parts = append(parts, text)
+									}
+								}
+							}
+							if len(parts) > 0 {
+								conversationKey = "cbai:" + strings.Join(parts, "\n")
+							}
+						}
+						if conversationKey != "" {
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	convID := uuid.New().String()
+	if conversationKey != "" {
+		convID = stableCodebuddyUUID(conversationKey)
+	}
+	req.Header.Set("X-Conversation-ID", convID)
+	req.Header.Set("X-Conversation-Request-ID", uuid.New().String())
+	req.Header.Set("X-Conversation-Message-ID", uuid.New().String())
 }

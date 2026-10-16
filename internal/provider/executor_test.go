@@ -149,6 +149,12 @@ func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
 	if req.Header.Get("X-Domain") != "www.codebuddy.ai" {
 		t.Errorf("unexpected X-Domain: %s", req.Header.Get("X-Domain"))
 	}
+	convID := req.Header.Get("X-Conversation-Id")
+	reqID := req.Header.Get("X-Conversation-Request-Id")
+	msgID := req.Header.Get("X-Conversation-Message-Id")
+	if convID == "" || reqID == "" || msgID == "" {
+		t.Errorf("expected X-Conversation-* headers, got conv=%q req=%q msg=%q", convID, reqID, msgID)
+	}
 
 	bodyBytes, _ := io.ReadAll(req.Body)
 	var parsed map[string]any
@@ -164,5 +170,65 @@ func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
 	first := msgs[0].(map[string]any)
 	if first["role"] != "system" {
 		t.Errorf("expected leading system message, got %+v", first)
+	}
+}
+
+func TestCodebuddyConversationHeaders_StabilityAndPrecedence(t *testing.T) {
+	cand := ExecutionCandidate{
+		Connection: &model.ProviderConnection{
+			ID:       "test-cb",
+			Provider: "codebuddy",
+			AuthType: "oauth",
+			Data:     model.ConnectionData{AccessToken: "token"},
+		},
+		ModelInfo:    model.ModelInfo{Provider: "codebuddy", Model: "hy4-preview"},
+		ProviderInfo: Registry["codebuddy"],
+	}
+
+	// 1. Same user content produces stable X-Conversation-Id across retries
+	bodyA := []byte(`{"messages":[{"role":"user","content":"Hello world"}]}`)
+	reqA, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodyA}, cand, nil)
+	reqB, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodyA}, cand, nil)
+
+	convA := reqA.Header.Get("X-Conversation-Id")
+	convB := reqB.Header.Get("X-Conversation-Id")
+	if convA == "" || convA != convB {
+		t.Errorf("expected stable conversation ID for same content, got convA=%q convB=%q", convA, convB)
+	}
+	// Request and Message IDs must be fresh
+	if reqA.Header.Get("X-Conversation-Request-Id") == reqB.Header.Get("X-Conversation-Request-Id") {
+		t.Error("expected fresh request ID per attempt")
+	}
+	if reqA.Header.Get("X-Conversation-Message-Id") == reqB.Header.Get("X-Conversation-Message-Id") {
+		t.Error("expected fresh message ID per attempt")
+	}
+
+	// 2. Explicit session_id takes precedence
+	bodySess1 := []byte(`{"session_id":"sess-123","messages":[{"role":"user","content":"Hello world"}]}`)
+	bodySess2 := []byte(`{"session_id":"sess-456","messages":[{"role":"user","content":"Hello world"}]}`)
+	reqS1, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodySess1}, cand, nil)
+	reqS2, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodySess2}, cand, nil)
+
+	convS1 := reqS1.Header.Get("X-Conversation-Id")
+	convS2 := reqS2.Header.Get("X-Conversation-Id")
+	if convS1 == convA {
+		t.Errorf("explicit session_id should take precedence over message content")
+	}
+	if convS1 == convS2 {
+		t.Errorf("different session_ids should produce different conversation IDs")
+	}
+
+	// 3. Typed blocks user content
+	bodyBlocks := []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"Hello world"}]}]}`)
+	reqBlocks, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodyBlocks}, cand, nil)
+	if reqBlocks.Header.Get("X-Conversation-Id") != convA {
+		t.Errorf("typed block content should yield same stable ID as string content: got %q, want %q", reqBlocks.Header.Get("X-Conversation-Id"), convA)
+	}
+
+	// 4. Empty messages fallback to valid UUID
+	bodyEmpty := []byte(`{"messages":[]}`)
+	reqEmpty, _, _ := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: bodyEmpty}, cand, nil)
+	if reqEmpty.Header.Get("X-Conversation-Id") == "" {
+		t.Errorf("expected fallback conversation ID for empty messages")
 	}
 }
