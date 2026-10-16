@@ -9,6 +9,7 @@
 - **Claude 思考流保真与开源模型 `<think>` 标签解构**：补齐 `translateClaude` 与非流式中的 `thinking_delta` 映射，消除思考过程丢失；引入流式标签状态机（`ThinkTagState`）自动将开源模型内嵌的 `<think>` 标签解构为标准思考块，防止提示词污染。
 - **Antigravity 媒体聚合异常透传**：为图片生成流式聚合补齐 HTTP 状态码拦截与双格式 Candidate 兼容，消除失败时静默下发空数据的假成功假象。
 - **多模态媒体模型注册表多退少补**：全面更新生图、语音合成、语音识别、视频生成与向量模型目录，剔除废弃与未适配占位，补齐 Google Imagen 3、FLUX 1.1 Pro、DALL·E 3、Groq Whisper Turbo 与 ElevenLabs Flash 等官方主力模型规格。
+- **媒体搜索与抓取提供商智能推断**：支持自动从 `model` 参数前缀推断检索/抓取 Provider（如 `model: "tavily"` 或 `model: "brave-search"`），无缝兼容限制传参格式的第三方 Agent 框架。
 
 ## [1.6.0] - 2026-10-16
 
