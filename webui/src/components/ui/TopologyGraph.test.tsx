@@ -87,7 +87,7 @@ describe('TopologyGraph', () => {
     expect(view.container.querySelectorAll('circle').length).toBeGreaterThanOrEqual(1)
     expect(motion).toBeTruthy()
     expect(motion.getAttribute('path')).toBe(firstPath(view.container))
-    expect(motion.getAttribute('dur')).toBe('1.2s')
+    expect(motion.getAttribute('dur')).toBe('0.95s')
     expect(motion.getAttribute('repeatCount')).toBe('indefinite')
 
     // 开启减弱动效时，抑制动画元素
