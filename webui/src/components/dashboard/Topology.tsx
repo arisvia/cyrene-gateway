@@ -1,5 +1,5 @@
 import { A } from '@solidjs/router'
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, type JSX } from 'solid-js'
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack, type JSX } from 'solid-js'
 import { Badge, Card, CyreneLogo, IconButton, IconRotateCcw, ProviderAvatar } from '@/components/ui'
 import { TopologyGraph } from '@/components/ui/TopologyGraph'
 import { useI18n } from '@/i18n'
@@ -23,33 +23,33 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
   const [isDragging, setIsDragging] = createSignal(false)
   const [dragStart, setDragStart] = createSignal({ x: 0, y: 0 })
   const [hoveredNode, setHoveredNode] = createSignal<string | null>(null)
-  const [activeHit, setActiveHit] = createSignal<{ provider: string; latencyMs?: number; time: number } | null>(null)
-  let hitTimer: ReturnType<typeof setTimeout> | undefined
+  const [activeHits, setActiveHits] = createSignal<Record<string, { latencyMs?: number; expiresAt: number }>>({})
+  let hitTimer: ReturnType<typeof setInterval> | undefined
 
-  // 实时请求脉冲监听：
-  // 1. 若为 routing (流式传输进行中)，保持激光脉冲持续激活；
-  // 2. 若为完成请求 (request)，保留 8 秒命中反馈与物理延时展示。
+  // Track concurrent providers independently so one request no longer hides another.
   createEffect(() => {
-    const events = props.liveEvents || []
-    if (events.length === 0) return
-    const latest = events[0]
-    if (!latest || !latest.provider) return
+    const now = Date.now()
+    const next: Record<string, { latencyMs?: number; expiresAt: number }> = {}
+    for (const event of (props.liveEvents || []).slice(0, 24)) {
+      if (!event.provider) continue
+      const ongoing = ['accepted', 'routing', 'upstream_connected', 'streaming', 'fallback'].includes(event.type || event.status || '')
+      next[event.provider] = {
+        latencyMs: event.latencyMs,
+        expiresAt: now + (ongoing ? 60_000 : 8_000),
+      }
+    }
+    if (Object.keys(next).length > 0) setActiveHits(previous => ({ ...previous, ...next }))
+  })
 
-    setActiveHit({
-      provider: latest.provider,
-      latencyMs: latest.latencyMs,
-      time: Date.now(),
-    })
-
-    clearTimeout(hitTimer)
-    const isOngoing = latest.status === 'routing'
-    hitTimer = setTimeout(() => {
-      setActiveHit(null)
-    }, isOngoing ? 60000 : 8000)
+  onMount(() => {
+    hitTimer = setInterval(() => {
+      const now = Date.now()
+      setActiveHits(previous => Object.fromEntries(Object.entries(previous).filter(([, hit]) => hit.expiresAt > now)))
+    }, 1_000)
   })
 
   onCleanup(() => {
-    clearTimeout(hitTimer)
+    if (hitTimer) clearInterval(hitTimer)
   })
 
   const providers = createMemo(() => props.providers || [])
@@ -101,37 +101,22 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
     const grouped = Array.from(map.values())
     const count = grouped.length
     if (count === 0) return []
-
-    // 卡片半宽与半高 (180px × 52px)
-    const cardHalfW = 90
-    const cardHalfH = 26
-    // 视觉等距间隙：无论处于哪个角度，两张卡片边缘之间的空隙/连线可视长度绝对严格一致
-    const visualGap = Math.min(108, Math.max(92, 88 + count * 2))
+    // 规整放射布局：角度均匀分布，半径恒定（椭圆环适配宽扁容器）。
+    // rx 随节点数自适应保证相邻卡片弦距，ry 压缩高度换取更大的缩放比例。
+    const rx = count <= 1 ? 235 : Math.max(235, Math.min(340, 110 / Math.sin(Math.PI / count)))
+    const ry = Math.min(260, Math.round(rx * 0.8))
 
     return grouped.map((g, i) => {
-      // 角度均匀分布（从 -90 度/正上方开始顺时针分布）
       const angle = (i / count) * 2 * Math.PI - Math.PI / 2
-      const cosA = Math.cos(angle)
-      const sinA = Math.sin(angle)
-      const absCos = Math.abs(cosA)
-      const absSin = Math.abs(sinA)
-
-      // 沿光线方向从卡片几何中心到卡片边界的截距
-      const rBox = Math.min(
-        absCos > 1e-4 ? cardHalfW / absCos : Infinity,
-        absSin > 1e-4 ? cardHalfH / absSin : Infinity,
-      )
-
-      // 核心中心到节点中心的实际物理距离 = 核心截距 + 恒定可视间隙 + 节点截距
-      const centerDist = 2 * rBox + visualGap
-      const x = Math.round(cosA * centerDist)
-      const y = Math.round(sinA * centerDist)
-      const hit = activeHit()
-      const isHitting = hit ? (
-        hit.provider === g.provider ||
-        g.accounts.some(a => a.id === hit.provider) ||
-        (g.name !== '' && hit.provider.toLowerCase().includes(g.name.toLowerCase()))
-      ) : false
+      const x = Math.round(Math.cos(angle) * rx)
+      const y = Math.round(Math.sin(angle) * ry)
+      const hitEntry = Object.entries(activeHits()).find(([provider]) => (
+        provider === g.provider ||
+        g.accounts.some(a => a.id === provider) ||
+        (g.name !== '' && provider.toLowerCase().includes(g.name.toLowerCase()))
+      ))
+      const hit = hitEntry?.[1]
+      const isHitting = !!hit
 
       return {
         ...g,
@@ -180,19 +165,32 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
     setZoom(z => Math.max(0.3, Math.min(2.0, Number((z + delta).toFixed(2)))))
   }
 
+  // 依据节点实际 extent 动态计算适配缩放，取代写死的分母常量。
+  function applyFit(): void {
+    if (!containerRef) return
+    const { width, height } = containerRef.getBoundingClientRect()
+    const pts = nodePositions()
+    const halfW = pts.reduce((m, p) => Math.max(m, Math.abs(p.x)), 0) + 102
+    const halfH = pts.reduce((m, p) => Math.max(m, Math.abs(p.y)), 0) + 38
+    const fit = Math.min(1, (width - 32) / (2 * halfW), (height - 144) / (2 * halfH))
+    setFitZoom(Math.max(0.3, fit))
+    setZoom(Math.max(0.3, fit))
+    setPan({ x: 0, y: 0 })
+  }
+
+  // provider 数量变化时重算适配；untrack 防止流量心跳状态抖动重置用户缩放。
+  createEffect(() => {
+    providers().length
+    untrack(applyFit)
+  })
+
   onMount(() => {
     window.addEventListener('mouseup', handleMouseUp)
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
     const updateMotion = () => setReducedMotion(motion.matches)
     updateMotion()
     motion.addEventListener('change', updateMotion)
-    const observer = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect
-      const fit = Math.min(1, (width - 32) / 800, (height - 144) / 390)
-      setFitZoom(Math.max(0.3, fit))
-      setZoom(Math.max(0.3, fit))
-      setPan({ x: 0, y: 0 })
-    })
+    const observer = new ResizeObserver(applyFit)
     if (containerRef) observer.observe(containerRef)
     onCleanup(() => {
       motion.removeEventListener('change', updateMotion)
@@ -265,7 +263,7 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
           {/* 中心枢纽 */}
           <div
             class={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 z-20 w-[180px] h-[52px] px-3 py-2 rounded-2xl glass-float transition-all duration-300 cursor-default flex items-center gap-2.5 ${
-              activeHit()
+              Object.keys(activeHits()).length > 0
                 ? 'border-accent ring-2 ring-accent/30 shadow-[0_0_16px_rgba(var(--accent-rgb),0.2)]'
                 : 'border-accent/30 shadow-xs hover:border-accent/50'
             }`}
@@ -273,7 +271,7 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
             <div class="relative shrink-0">
               <CyreneLogo class="w-6 h-6" />
               <span class={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-bg-elevated transition-colors duration-200 ${
-                activeHit() ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : 'bg-success'
+                Object.keys(activeHits()).length > 0 ? 'bg-accent shadow-[0_0_6px_var(--accent)]' : 'bg-success'
               }`} />
             </div>
             <div class="min-w-0 flex-1">
@@ -281,9 +279,9 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
                 <span>Cyrene Gateway</span>
               </div>
               <div class={`text-xs font-medium flex items-center gap-1 transition-colors duration-200 ${
-                activeHit() ? 'text-accent font-semibold' : 'text-accent/90'
+                Object.keys(activeHits()).length > 0 ? 'text-accent font-semibold' : 'text-accent/90'
               }`}>
-                <span class="truncate">{activeHit() ? t('topology.routing') : t('topology.core')}</span>
+                <span class="truncate">{Object.keys(activeHits()).length > 0 ? t('topology.routing') : t('topology.core')}</span>
                 <span class="shrink-0 text-faint">{t('topology.activeCount', { count: activeCount() })}</span>
               </div>
             </div>
