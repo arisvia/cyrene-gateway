@@ -755,9 +755,24 @@ func mediaProviderID(modelStr string) string {
 
 // aggregateAntigravityImageResponse parses Google streamGenerateContent SSE stream and packages inlineData into OpenAI Image Response
 func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *http.Response) {
+	if resp.StatusCode >= 400 {
+		respBytes, _ := io.ReadAll(resp.Body)
+		var errData struct {
+			Error struct {
+				Message string `json:"message"`
+				Code    int    `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(respBytes, &errData) == nil && errData.Error.Message != "" {
+			writeJSON(w, resp.StatusCode, map[string]any{"error": map[string]any{"message": errData.Error.Message, "type": "upstream_error", "code": resp.StatusCode}})
+			return
+		}
+		writeJSON(w, resp.StatusCode, map[string]any{"error": map[string]any{"message": string(respBytes), "type": "upstream_error", "code": resp.StatusCode}})
+		return
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 1024*1024), 20*1024*1024)
-
 	var b64Images []string
 	for scanner.Scan() {
 		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
@@ -765,22 +780,28 @@ func (s *Server) aggregateAntigravityImageResponse(w http.ResponseWriter, resp *
 			continue
 		}
 
+		type imgCandidate struct {
+			Content struct {
+				Parts []struct {
+					InlineData *struct {
+						MimeType string `json:"mimeType"`
+						Data     string `json:"data"`
+					} `json:"inlineData"`
+				} `json:"parts"`
+			} `json:"content"`
+		}
 		var payload struct {
 			Response struct {
-				Candidates []struct {
-					Content struct {
-						Parts []struct {
-							InlineData *struct {
-								MimeType string `json:"mimeType"`
-								Data     string `json:"data"`
-							} `json:"inlineData"`
-						} `json:"parts"`
-					} `json:"content"`
-				} `json:"candidates"`
+				Candidates []imgCandidate `json:"candidates"`
 			} `json:"response"`
+			Candidates []imgCandidate `json:"candidates"`
 		}
 		if err := json.Unmarshal([]byte(data), &payload); err == nil {
-			for _, c := range payload.Response.Candidates {
+			candidates := payload.Response.Candidates
+			if len(candidates) == 0 {
+				candidates = payload.Candidates
+			}
+			for _, c := range candidates {
 				for _, p := range c.Content.Parts {
 					if p.InlineData != nil && p.InlineData.Data != "" {
 						b64Images = append(b64Images, p.InlineData.Data)
