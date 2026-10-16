@@ -27,6 +27,7 @@ yarn-error.log*
 *.db
 .cyrene-gateway/
 .codegraph/
+*.log
 
 # IDE & OS
 .DS_Store
