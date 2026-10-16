@@ -6,10 +6,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // RequestEvent represents a real-time request event for SSE streaming.
 type RequestEvent struct {
+	RequestID string `json:"requestId,omitempty"`
+	Sequence  int64  `json:"sequence,omitempty"`
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
 	Provider  string `json:"provider,omitempty"`
@@ -19,6 +23,37 @@ type RequestEvent struct {
 	Prompt    int    `json:"promptTokens,omitempty"`
 	Compl     int    `json:"completionTokens,omitempty"`
 	LatencyMs int64  `json:"latencyMs,omitempty"`
+}
+
+const requestIDHeader = "X-Cyrene-Request-ID"
+
+// ensureRequestID creates one gateway-owned ID and reuses it through routing,
+// streaming, fallback and usage events. SanitizeInternalHeaders strips any
+// client supplied X-Cyrene-Request-ID first, so the value cached here is
+// always gateway-generated and correlates every event of one request.
+func ensureRequestID(r *http.Request) string {
+	if r == nil {
+		return uuid.NewString()
+	}
+	if id := r.Header.Get(requestIDHeader); id != "" {
+		return id
+	}
+	id := uuid.NewString()
+	r.Header.Set(requestIDHeader, id)
+	return id
+}
+
+func (s *Server) publishRequestEvent(r *http.Request, ev RequestEvent) {
+	if s == nil || s.Events == nil {
+		return
+	}
+	if ev.RequestID == "" {
+		ev.RequestID = ensureRequestID(r)
+	}
+	if ev.Timestamp == "" {
+		ev.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	s.Events.Publish(ev)
 }
 
 // EventBroadcaster is a simple pub/sub for request events.
@@ -75,7 +110,7 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
@@ -87,8 +122,10 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 	defer s.Events.Unsubscribe(ch)
 
 	ctx := r.Context()
-	// Send initial heartbeat
+	// Send initial heartbeat. A single ticker avoids allocating a new timer on every loop.
 	writeSSE(w, flusher, "connected", `{"ok":true}`)
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
 
 	for {
 		select {
@@ -103,8 +140,8 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 				evtName = "request"
 			}
 			writeSSE(w, flusher, evtName, string(data))
-		case <-time.After(30 * time.Second):
-			// Heartbeat to keep connection alive
+		case <-heartbeat.C:
+			// Heartbeat to keep tunnels and reverse proxies from idling out.
 			writeSSE(w, flusher, "ping", `{}`)
 		}
 	}

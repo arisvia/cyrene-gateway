@@ -38,6 +38,7 @@ func isHopByHopHeader(h string) bool {
 
 // usageContext carries metadata for recording usage after a proxied response.
 type usageContext struct {
+	RequestID    string
 	StartedAt    time.Time
 	Provider     string
 	Model        string
@@ -150,6 +151,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
 		return
 	}
+	requestID := ensureRequestID(r)
+	w.Header().Set(requestIDHeader, requestID)
+	s.publishRequestEvent(r, RequestEvent{Type: "accepted", Model: req.Model, Status: "accepted"})
 
 	// Strip reasoning effort suffix from model name (e.g. "claude-3-7-sonnet(high)" -> effort="high")
 	if cleanModel, effort := provider.ExtractModelReasoningEffort(req.Model); effort != "" {
@@ -465,16 +469,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 
 		endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
-		if s.Events != nil {
-			s.Events.Publish(RequestEvent{
-				Type:      "routing",
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Provider:  modelInfo.Provider,
-				Model:     modelInfo.Model,
-				Endpoint:  endpoint,
-				Status:    "routing",
-			})
-		}
+		s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
 		client := s.getHTTPClient(5 * time.Minute)
 		resp, err := client.Do(upstreamReq)
@@ -496,7 +491,9 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			slog.Info("Combo model succeeded", slog.String("model", modelStr))
 			provider.ResetAccountState(conn)
 			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
 			uc := &usageContext{
+				RequestID:    ensureRequestID(r),
 				Provider:     modelInfo.Provider,
 				Model:        modelInfo.Model,
 				ConnectionID: conn.ID,
@@ -533,6 +530,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			return
 		}
 
+		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
 		slog.Warn("Combo model failed, trying next",
 			slog.String("model", modelStr),
 			slog.Int("status", resp.StatusCode),
@@ -634,16 +632,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	)
 
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
-	if s.Events != nil {
-		s.Events.Publish(RequestEvent{
-			Type:      "routing",
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Provider:  modelInfo.Provider,
-			Model:     modelInfo.Model,
-			Endpoint:  endpoint,
-			Status:    "routing",
-		})
-	}
+	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
 	// Phase 9: Use proxy-aware HTTP client
 	start := time.Now()
@@ -728,17 +717,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
-		if s.Events != nil {
-			s.Events.Publish(RequestEvent{
-				Type:      "request",
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Provider:  modelInfo.Provider,
-				Model:     modelInfo.Model,
-				Status:    statusStr,
-				Endpoint:  endpoint,
-				LatencyMs: int64(latencyMs),
-			})
-		}
+		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		// Wrap error with actionable hint (Phase 26 Error UX)
@@ -751,8 +730,12 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	provider.ResetAccountState(conn)
 	s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 
+	// Response headers arrived; the selected upstream is reachable.
+	s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: endpoint})
+
 	// Proxy the response with format translation
 	uc := &usageContext{
+		RequestID:    ensureRequestID(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,
@@ -819,12 +802,14 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 	}
 	choices := make(map[int]*choiceState)
 	ctx := r.Context()
+	streamingPublished := false
 
 	for {
 		event, err := reader.ReadEvent(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				if uc != nil {
+					s.publishRequestEvent(r, RequestEvent{RequestID: uc.RequestID, Type: "cancelled", Provider: uc.Provider, Model: uc.Model, Status: "cancelled", Endpoint: uc.Endpoint})
 					uc.Status = 499
 				}
 				s.recordUsage(uc, lastUsage)
@@ -860,6 +845,10 @@ func (s *Server) aggregateSSEToNonStreaming(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if len(chunkData) > 0 && string(chunkData) != "[DONE]" {
+			if !streamingPublished && uc != nil {
+				streamingPublished = true
+				s.publishRequestEvent(r, RequestEvent{RequestID: uc.RequestID, Type: "streaming", Provider: uc.Provider, Model: uc.Model, Status: "streaming", Endpoint: uc.Endpoint})
+			}
 			var chunk chatStreamChunk
 			if err := json.Unmarshal(chunkData, &chunk); err != nil {
 				if uc != nil {
@@ -1076,6 +1065,7 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 	streamTranslator := translator.NewSSETranslator(format, model)
 	var lastUsage usage.Usage
 	var respBuilder strings.Builder
+	streamingPublished := false
 	finished := make(map[int]bool)
 	fail := func(message string) {
 		errChunk, _ := json.Marshal(map[string]any{"error": map[string]any{
@@ -1128,6 +1118,10 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 			return
 		}
 		if len(chunkData) > 0 && string(chunkData) != "[DONE]" {
+			if !streamingPublished && uc != nil {
+				streamingPublished = true
+				s.publishRequestEvent(r, RequestEvent{RequestID: uc.RequestID, Type: "streaming", Provider: uc.Provider, Model: uc.Model, Status: "streaming", Endpoint: uc.Endpoint})
+			}
 			var chunk chatStreamChunk
 			if err := json.Unmarshal(chunkData, &chunk); err != nil {
 				if uc != nil {
@@ -1378,16 +1372,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	)
 	start := time.Now()
 	endpoint := resolveRequestEndpoint(r, "/v1/messages")
-	if s.Events != nil {
-		s.Events.Publish(RequestEvent{
-			Type:      "routing",
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Provider:  modelInfo.Provider,
-			Model:     modelInfo.Model,
-			Endpoint:  endpoint,
-			Status:    "routing",
-		})
-	}
+	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
 	client := s.getHTTPClient(5 * time.Minute)
 	resp, err := client.Do(upstreamReq)
@@ -1437,17 +1422,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
-		if s.Events != nil {
-			s.Events.Publish(RequestEvent{
-				Type:      "request",
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Provider:  modelInfo.Provider,
-				Model:     modelInfo.Model,
-				Status:    statusStr,
-				Endpoint:  endpoint,
-				LatencyMs: int64(latencyMs),
-			})
-		}
+		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
@@ -1460,6 +1435,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	prompt := extractAnthropicPrompt(reqBody)
 	uc := &usageContext{
+		RequestID:    ensureRequestID(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,
@@ -2021,8 +1997,13 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 
 	// Publish real-time event for SSE stream
 	if s.Events != nil {
+		eventType := "completed"
+		if uc.Status >= 400 {
+			eventType = "failed"
+		}
 		s.Events.Publish(RequestEvent{
-			Type:      "request",
+			RequestID: uc.RequestID,
+			Type:      eventType,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 			Provider:  uc.Provider,
 			Model:     uc.Model,
@@ -2068,17 +2049,7 @@ func (s *Server) recordComboFailure(r *http.Request, comboName string, lastStatu
 	if s.Metrics != nil {
 		s.Metrics.ObserveRequest("combo", comboName, endpoint, lastStatus, time.Since(start).Seconds(), nil)
 	}
-	if s.Events != nil {
-		s.Events.Publish(RequestEvent{
-			Type:      "request",
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Provider:  "combo",
-			Model:     comboName,
-			Status:    statusStr,
-			Endpoint:  endpoint,
-			LatencyMs: int64(latencyMs),
-		})
-	}
+	s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: "combo", Model: comboName, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
 }
 
 // extractRequestAPIKey extracts the caller credential for usage attribution.
