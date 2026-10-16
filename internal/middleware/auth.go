@@ -231,9 +231,6 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 				if token == "" {
 					token = r.Header.Get("X-Cyrene-Auth-Token")
 				}
-				if token == "" {
-					token = r.URL.Query().Get("token")
-				}
 				if token == "" || !auth.VerifySessionToken(token, settings.PasswordHash) {
 					writeAuthError(w, http.StatusUnauthorized, "unauthorized")
 					return

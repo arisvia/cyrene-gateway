@@ -345,12 +345,16 @@ func verifyArgon2id(password, storedHash string) bool {
 	if err != nil {
 		return false
 	}
+	// Never allocate directly from untrusted/restored hash parameters.
+	if version != argon2.Version || memory < 8*1024 || memory > 256*1024 || iterations < 1 || iterations > 10 || parallelism < 1 || parallelism > 16 {
+		return false
+	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return false
 	}
 	expectedHash, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil {
+	if err != nil || len(salt) < 16 || len(salt) > 64 || len(expectedHash) < 16 || len(expectedHash) > 64 {
 		return false
 	}
 	calculatedHash := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expectedHash)))

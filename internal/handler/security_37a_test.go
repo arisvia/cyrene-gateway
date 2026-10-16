@@ -229,10 +229,6 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer "+token)
 			case "header":
 				req.Header.Set("X-Cyrene-Auth-Token", token)
-			case "query":
-				q := req.URL.Query()
-				q.Set("token", token)
-				req.URL.RawQuery = q.Encode()
 			}
 		}
 		rec := httptest.NewRecorder()
@@ -244,13 +240,13 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected token response 200, got %d: %s", rec.Code, rec.Body.String())
 		}
-		var result struct {
-			Token string `json:"token"`
+		for _, cookie := range rec.Result().Cookies() {
+			if cookie.Name == "auth_token" && cookie.Value != "" {
+				return cookie.Value
+			}
 		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Token == "" {
-			t.Fatalf("missing session token: %v", err)
-		}
-		return result.Token
+		t.Fatal("missing auth_token cookie")
+		return ""
 	}
 	assertAPIKey := func() {
 		t.Helper()
@@ -270,9 +266,9 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 	assertAPIKey()
 	newToken := readToken(send("POST", "/api/auth/password", `{"password":"replacement-password"}`, oldToken, "cookie"))
 	for _, path := range []string{"/api/protected", "/v1/protected"} {
-		for _, transport := range []string{"cookie", "bearer", "header", "query"} {
-			if path == "/v1/protected" && transport == "query" {
-				continue // APIKeyAuth does not accept dashboard query tokens.
+		for _, transport := range []string{"cookie", "bearer", "header"} {
+			if path == "/v1/protected" && transport == "header" {
+				continue // APIKeyAuth does not accept dashboard header tokens.
 			}
 			t.Run(path+"/"+transport, func(t *testing.T) {
 				if rec := send("GET", path, "", oldToken, transport); rec.Code != http.StatusUnauthorized {

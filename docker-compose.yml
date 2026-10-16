@@ -8,6 +8,13 @@ services:
     volumes:
       - gateway-data:/home/gateway/.cyrene-gateway
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     # MITM/Tailscale 属于宿主机能力，容器内默认不开启
 
 volumes:

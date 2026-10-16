@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 )
 
 const (
@@ -9,6 +10,8 @@ const (
 	MaxBodySizeJSON = 10 << 20
 	// MaxBodySizeMultipart limits multipart uploads (50 MB)
 	MaxBodySizeMultipart = 50 << 20
+	// MaxBodySizeRestore permits intentionally large encrypted/plain backup restores.
+	MaxBodySizeRestore = 100 << 20
 )
 
 // RequestSizeLimiter enforces maximum body read size per endpoint.
@@ -16,7 +19,9 @@ func RequestSizeLimiter() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			maxBytes := int64(MaxBodySizeJSON)
-			if r.Header.Get("Content-Type") != "" && len(r.Header.Get("Content-Type")) >= 19 && r.Header.Get("Content-Type")[:19] == "multipart/form-data" {
+			if r.URL.Path == "/api/system/restore" {
+				maxBytes = MaxBodySizeRestore
+			} else if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 				maxBytes = MaxBodySizeMultipart
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)

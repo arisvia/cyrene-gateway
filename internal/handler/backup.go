@@ -39,6 +39,9 @@ func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
 
 	filename := fmt.Sprintf("cyrene-backup-%s.cyrene.json", time.Now().UTC().Format("2006-01-02-150405"))
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.WriteHeader(http.StatusOK)
 
