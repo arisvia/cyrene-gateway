@@ -2,6 +2,19 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-10-16
+
+### Security
+- **控制台严格 CSP 隔离与容器最小特权加固**：针对管理页面实施细粒度内容安全策略并外置引导脚本；Docker 默认启用只读系统与特权剥离（cap_drop: ALL），并约束 Argon2 哈希解密资源上限防范 DoS。
+
+### Added
+- **端到端请求链路追踪与有序事件推送**：贯通网关生成之 `X-Cyrene-Request-ID` 与 `sequence` 序列号至全链路生命周期；心跳改用单一定时器降低内存开销并防止长连接空闲断流。
+- **网关拓扑均布椭圆环与 S 形旋涡连线**：重构拓扑排布为等角自适应椭圆环，配合 1.3 倍摆尾的三次贝塞尔旋转等变 S 曲线，大幅提升连线对称美感并支持容器动态视窗适配。
+
+### Fixed
+- **Google Gemini 与 Antigravity 工具参数清洗**：自动将联合类型数组展平成标量并剥离不支持的 Schema 属性，杜绝 Protobuf 解析器 HTTP 400 报错。
+- **Qoder 隐式额度耗尽熔断与指数退避**：精准识别 HTTP 200 SSE 流内嵌的 403 额度用尽错误，自动持久化健康状态并触发冷却退避，阻断无效轮询。
+
 ## [1.5.1] - 2026-10-10
 
 ### Fixed
@@ -131,6 +144,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.6.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.3.0...v1.4.0
