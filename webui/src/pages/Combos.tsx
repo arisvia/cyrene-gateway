@@ -12,6 +12,8 @@ const Combos: Component = () => {
   const strategyLabel = (): Record<string, string> => ({
     fallback: t('combos.fallbackStrategy'),
     'round-robin': t('combos.roundRobinStrategy'),
+    'cost-first': t('combos.costFirstStrategy'),
+    'latency-first': t('combos.latencyFirstStrategy'),
   })
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<Combo | null>(null)
@@ -188,6 +190,8 @@ const Combos: Component = () => {
               options={[
                 { value: 'fallback', label: t('combos.fallbackStrategy') },
                 { value: 'round-robin', label: t('combos.roundRobinStrategy') },
+                { value: 'cost-first', label: t('combos.costFirstStrategy') },
+                { value: 'latency-first', label: t('combos.latencyFirstStrategy') },
               ]}
               onChange={v => setForm(f => ({ ...f, kind: v }))}
             />

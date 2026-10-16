@@ -198,6 +198,49 @@ func TestComboManager_SingleModel(t *testing.T) {
 	}
 }
 
+func TestComboManager_GetRotatedModels_CostFirst(t *testing.T) {
+	cm := NewComboManager()
+	models := []string{"expensive-model", "free-model", "cheap-model"}
+
+	costFn := func(m string) float64 {
+		switch m {
+		case "free-model":
+			return 0.0
+		case "cheap-model":
+			return 0.2
+		case "expensive-model":
+			return 5.0
+		default:
+			return 1.0
+		}
+	}
+
+	got := cm.GetRotatedModels(models, "combo-cost", StrategyCostFirst, 1, costFn)
+	expected := []string{"free-model", "cheap-model", "expensive-model"}
+	if !slices.Equal(got, expected) {
+		t.Fatalf("expected cost-first ordering %v, got %v", expected, got)
+	}
+}
+
+func TestComboManager_GetRotatedModels_LatencyFirst(t *testing.T) {
+	cm := NewComboManager()
+	models := []string{"slow-model", "fast-model", "penalized-model"}
+
+	cm.RecordModelLatency("slow-model", 1500)
+	cm.RecordModelLatency("fast-model", 120)
+	cm.RecordModelLatency("penalized-model", 200)
+	cm.RecordModelFailure("penalized-model") // adds penalty
+
+	got := cm.GetRotatedModels(models, "combo-latency", StrategyLatencyFirst, 1)
+	// fast-model (120ms) should be first, slow-model (~1500ms) second, penalized (>2000ms) last
+	if got[0] != "fast-model" {
+		t.Fatalf("expected fast-model first, got %v", got)
+	}
+	if got[2] != "penalized-model" {
+		t.Fatalf("expected penalized-model last, got %v", got)
+	}
+}
+
 func TestRotateFromIndex(t *testing.T) {
 	models := []string{"a", "b", "c", "d"}
 
