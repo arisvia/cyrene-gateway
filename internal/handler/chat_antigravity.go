@@ -129,7 +129,7 @@ func (s *Server) handleAntigravityChat(
 
 	if !isImage {
 		s.applyLoopGuard(innerRequest, rawBody, "gemini", req.Tools != nil)
-		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider)
+		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider, r)
 	}
 	if isImage {
 		genConfig["maxOutputTokens"] = 8192

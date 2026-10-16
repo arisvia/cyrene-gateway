@@ -94,7 +94,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	var bodyMap map[string]any
 	json.Unmarshal(rawBody, &bodyMap)
 	s.applyLoopGuard(bodyMap, rawBody, "openai", req.Tools != nil)
-	s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider)
+	s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider, r)
 
 	start := time.Now()
 	encodedBody, qoderKey, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)

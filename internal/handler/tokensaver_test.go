@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -163,5 +164,56 @@ func TestApplyTokenSaver_AllLevelsAndFormats(t *testing.T) {
 	srv.applyTokenSaver(prefixBody, "openai", "openrouter")
 	if len(prefixBody["messages"].([]any)) != 1 {
 		t.Errorf("expected model prefix exclusion to skip injection")
+	}
+}
+
+func TestApplyTokenSaver_HeaderOverride(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// 1. Settings has RTKEnabled = false, but request has X-Cyrene-Tool-Slimmer = 1
+	st, _ := database.GetSettings()
+	st.RTKEnabled = false
+	st.CavemanEnabled = false
+	st.PonytailEnabled = false
+	database.SaveSettings(st)
+
+	var lines []string
+	for range 300 {
+		lines = append(lines, "overflow log line "+strings.Repeat("x", 20))
+	}
+	content := strings.Join(lines, "\n")
+
+	reqEnable := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	reqEnable.Header.Set("X-Cyrene-Tool-Slimmer", "1")
+
+	body1 := map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{"role": "tool", "content": content},
+		},
+	}
+	srv.applyTokenSaver(body1, "openai", "openai", reqEnable)
+	res1 := body1["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if !strings.Contains(res1, "lines omitted") {
+		t.Errorf("expected X-Cyrene-Tool-Slimmer: 1 to force-enable RTK compression")
+	}
+
+	// 2. Settings has RTKEnabled = true, but request has X-Cyrene-Tool-Slimmer = 0
+	st.RTKEnabled = true
+	database.SaveSettings(st)
+
+	reqDisable := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	reqDisable.Header.Set("X-Cyrene-Tool-Slimmer", "0")
+
+	body2 := map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{"role": "tool", "content": content},
+		},
+	}
+	srv.applyTokenSaver(body2, "openai", "openai", reqDisable)
+	res2 := body2["messages"].([]any)[0].(map[string]any)["content"].(string)
+	if strings.Contains(res2, "lines omitted") {
+		t.Errorf("expected X-Cyrene-Tool-Slimmer: 0 to force-disable RTK compression")
 	}
 }

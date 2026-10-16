@@ -371,21 +371,36 @@ func (s *Server) tryRefreshCopilotToken(conn *model.ProviderConnection) bool {
 func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, combo *model.Combo) {
 	// Determine strategy from combo kind or global settings
 	strategy := provider.StrategyFallback
-	if combo.Kind == "round-robin" {
+	switch combo.Kind {
+	case "round-robin":
 		strategy = provider.StrategyRoundRobin
-	} else if combo.Kind == "" {
-		settings, err := s.DB.GetSettings()
-		if err == nil && settings.ComboStrategy == "round-robin" {
-			strategy = provider.StrategyRoundRobin
+	case "cost-first":
+		strategy = provider.StrategyCostFirst
+	case "latency-first":
+		strategy = provider.StrategyLatencyFirst
+	case "":
+		if settings, err := s.DB.GetSettings(); err == nil && settings != nil {
+			switch settings.ComboStrategy {
+			case "round-robin":
+				strategy = provider.StrategyRoundRobin
+			case "cost-first":
+				strategy = provider.StrategyCostFirst
+			case "latency-first":
+				strategy = provider.StrategyLatencyFirst
+			}
 		}
 	}
 
 	// Get sticky limit from settings (default 1)
 	stickyLimit := 1
 
-	// Apply rotation
-	models := s.Combos.GetRotatedModels(combo.Models, combo.Name, strategy, stickyLimit)
+	// Cost resolver for cost-first routing
+	costFn := func(m string) float64 {
+		return s.resolveModelCostFactor(m)
+	}
 
+	// Apply rotation / sorting
+	models := s.Combos.GetRotatedModels(combo.Models, combo.Name, strategy, stickyLimit, costFn)
 	slog.Info("Combo request",
 		slog.String("combo", combo.Name),
 		slog.String("strategy", string(strategy)),
@@ -460,7 +475,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
 			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
 			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
+			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
 		)
 		if err != nil {
 			lastError = err.Error()
@@ -484,6 +499,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			}
 			lastError = fmt.Sprintf("upstream request failed: %v", err)
 			lastStatus = 502
+			s.Combos.RecordModelFailure(modelStr)
 			slog.Warn("Combo model failed", slog.String("model", modelStr), "error", err)
 			provider.ApplyErrorState(conn, 502, err.Error())
 			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
@@ -493,6 +509,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		// Success (2xx) - stream response to client
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			slog.Info("Combo model succeeded", slog.String("model", modelStr))
+			s.Combos.RecordModelLatency(modelStr, time.Since(start).Milliseconds())
 			provider.ResetAccountState(conn)
 			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
@@ -520,9 +537,9 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		lastError = string(errBody)
 
 		// Apply and persist error state for this connection
+		s.Combos.RecordModelFailure(modelStr)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-
 		// Check if should fallback
 		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
 		if !fallbackResult.ShouldFallback {
@@ -548,6 +565,43 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 	s.recordComboFailure(r, combo.Name, lastStatus, lastError, start, extractPromptSummary(req.Messages))
 	writeJSON(w, lastStatus, map[string]string{"error": lastError})
+}
+
+// resolveModelCostFactor resolves the relative cost factor for a model.
+// Free models or -free suffix evaluate to 0.0; otherwise looks up cached price_factor.
+func (s *Server) resolveModelCostFactor(modelStr string) float64 {
+	lower := strings.ToLower(modelStr)
+	if strings.HasSuffix(lower, "-free") || lower == "big-pickle" {
+		return 0.0
+	}
+	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
+	if err != nil || modelInfo.Provider == "" {
+		return 1.0
+	}
+	if s.DB != nil {
+		if raw, err := s.DB.KVGet("providerModelCache", modelInfo.Provider); err == nil && raw != "" {
+			var cache struct {
+				Models []struct {
+					ID          string  `json:"id"`
+					PriceFactor float64 `json:"price_factor"`
+					IsFree      bool    `json:"is_free"`
+				} `json:"models"`
+			}
+			if err := json.Unmarshal([]byte(raw), &cache); err == nil {
+				for _, m := range cache.Models {
+					if m.ID == modelInfo.Model || m.ID == modelStr {
+						if m.IsFree {
+							return 0.0
+						}
+						if m.PriceFactor > 0 {
+							return m.PriceFactor
+						}
+					}
+				}
+			}
+		}
+	}
+	return 1.0
 }
 
 // handleSingleModelChat processes a single model request (non-combo).
@@ -620,7 +674,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
 		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
 		provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-		func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
+		func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
 	)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -668,7 +722,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
 				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
 				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider) },
+				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
 			)
 			if retryErr == nil {
 				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))
@@ -1842,7 +1896,8 @@ func isTokenSaverExcluded(settings *db.Settings, providerID, model string) bool 
 }
 
 // applyTokenSaver applies RTK compression, caveman, and ponytail based on settings.
-func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, providerID string) {
+// It accepts an optional *http.Request to honor per-request header overrides (e.g. X-Cyrene-Tool-Slimmer).
+func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, providerID string, req ...*http.Request) {
 	settings, err := s.DB.GetSettings()
 	if err != nil {
 		return
@@ -1852,8 +1907,16 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 	if isTokenSaverExcluded(settings, providerID, model) {
 		return
 	}
+
+	rtkEnabled := settings.RTKEnabled
+	if len(req) > 0 && req[0] != nil {
+		if val := req[0].Header.Get("X-Cyrene-Tool-Slimmer"); val != "" {
+			rtkEnabled = (val == "1" || strings.EqualFold(val, "true"))
+		}
+	}
+
 	// RTK compression of tool results
-	if settings.RTKEnabled {
+	if rtkEnabled {
 		if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
 			slog.Debug("RTK compressed tool results", slog.Int("bytes_saved", saved))
 		}
