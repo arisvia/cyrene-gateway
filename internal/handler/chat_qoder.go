@@ -131,16 +131,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		slog.String("connection", conn.ID),
 	)
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
-	if s.Events != nil {
-		s.Events.Publish(RequestEvent{
-			Type:      "routing",
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Provider:  modelInfo.Provider,
-			Model:     modelInfo.Model,
-			Endpoint:  endpoint,
-			Status:    "routing",
-		})
-	}
+	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
@@ -189,17 +180,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
-		if s.Events != nil {
-			s.Events.Publish(RequestEvent{
-				Type:      "request",
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Provider:  modelInfo.Provider,
-				Model:     modelInfo.Model,
-				Status:    statusStr,
-				Endpoint:  endpoint,
-				LatencyMs: int64(latencyMs),
-			})
-		}
+		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		w.Write(errBody)
@@ -224,17 +205,17 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	// 非流式请求（OpenAI 契约 stream 默认 false）：上游只有 SSE，
 	// 在网关侧聚合 chunks 后拼成标准 chat.completion JSON 返回。
 	if !req.Stream {
-		s.proxyQoderNonStreaming(w, r, resp, qoderKey, uc)
+		s.proxyQoderNonStreaming(w, r, resp, qoderKey, uc, conn)
 		return
 	}
 
 	// Stream with envelope unwrapping
-	s.proxyQoderStreaming(w, r, resp, qoderKey, uc)
+	s.proxyQoderStreaming(w, r, resp, qoderKey, uc, conn)
 }
 
 // proxyQoderNonStreaming aggregates the upstream SSE envelope into a single
 // OpenAI chat.completion JSON object for stream=false clients.
-func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
+func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext, conn *model.ProviderConnection) {
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -273,7 +254,7 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 		data, done := provider.UnwrapQoderSSELine(scanner.Text(), "qoder/"+model)
 		if done {
 			if data != "" {
-				writeQoderFailure(w, uc, data, false)
+				s.writeQoderFailure(w, conn, uc, data, false)
 				return
 			}
 			complete = true
@@ -287,7 +268,7 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 		}
 		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			writeQoderFailure(w, uc, "invalid qoder SSE chunk", false)
+			s.writeQoderFailure(w, conn, uc, "invalid qoder SSE chunk", false)
 			return
 		}
 		if chunk.ID != "" {
@@ -335,7 +316,7 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 		if err := scanner.Err(); err != nil {
 			message = "failed to read qoder stream: " + err.Error()
 		}
-		writeQoderFailure(w, uc, message, false)
+		s.writeQoderFailure(w, conn, uc, message, false)
 		return
 	}
 	if id == "" {
@@ -376,7 +357,7 @@ func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, 
 
 // proxyQoderStreaming unwraps Qoder's {statusCodeValue, body} SSE envelope
 // into plain OpenAI SSE chunks.
-func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
+func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext, conn *model.ProviderConnection) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		if uc != nil {
@@ -428,16 +409,16 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 
 	if !hasFirst {
 		if scanErr := scanner.Err(); scanErr != nil {
-			writeQoderFailure(w, uc, scanErr.Error(), true)
+			s.writeQoderFailure(w, conn, uc, scanErr.Error(), true)
 		} else {
-			writeQoderFailure(w, uc, "upstream closed without response", true)
+			s.writeQoderFailure(w, conn, uc, "upstream closed without response", true)
 		}
 		return
 	}
 
 	// First-frame upstream error: return error response
 	if firstDone && firstData != "" {
-		writeQoderFailure(w, uc, firstData, true)
+		s.writeQoderFailure(w, conn, uc, firstData, true)
 		return
 	}
 
@@ -461,7 +442,7 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		}
 		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(firstData), &chunk); err != nil {
-			writeQoderFailure(w, uc, "invalid qoder SSE chunk", true)
+			s.writeQoderFailure(w, conn, uc, "invalid qoder SSE chunk", true)
 			return
 		}
 		for _, choice := range chunk.Choices {
@@ -493,7 +474,7 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		data, done := provider.UnwrapQoderSSELine(scanner.Text(), "qoder/"+model)
 		if done {
 			if data != "" {
-				writeQoderFailure(w, uc, data, true)
+				s.writeQoderFailure(w, conn, uc, data, true)
 				return
 			}
 			fmt.Fprintf(w, "data: [DONE]\n\n")
@@ -509,7 +490,7 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		}
 		var chunk chatStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			writeQoderFailure(w, uc, "invalid qoder SSE chunk", true)
+			s.writeQoderFailure(w, conn, uc, "invalid qoder SSE chunk", true)
 			return
 		}
 		for _, choice := range chunk.Choices {
@@ -540,12 +521,18 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 	if err := scanner.Err(); err != nil {
 		message = "failed to read qoder stream: " + err.Error()
 	}
-	writeQoderFailure(w, uc, message, true)
+	s.writeQoderFailure(w, conn, uc, message, true)
 }
 
 // writeQoderFailure preserves upstream protocol errors, never completion text.
 // Streaming headers may already be committed, so report failure as an SSE event.
-func writeQoderFailure(w http.ResponseWriter, uc *usageContext, data string, stream bool) {
+//
+// Qoder wraps auth/quota failures inside an HTTP 200 SSE envelope
+// (e.g. 403 {"code":"112","pricingUrl":...}), so the transport-level status
+// branch in handleQoderChat never sees them. Applying the same error-state
+// classification here keeps cooldown/backoff and the panel's connection health
+// in sync with what the upstream actually reported.
+func (s *Server) writeQoderFailure(w http.ResponseWriter, conn *model.ProviderConnection, uc *usageContext, data string, stream bool) {
 	status := http.StatusBadGateway
 	var payload struct {
 		Error json.RawMessage `json:"error"`
@@ -561,6 +548,12 @@ func writeQoderFailure(w http.ResponseWriter, uc *usageContext, data string, str
 		}
 		if json.Unmarshal(payload.Error, &upstream) == nil && upstream.Code >= 400 && upstream.Code <= 599 {
 			status = upstream.Code
+		}
+	}
+	if conn != nil {
+		provider.ApplyErrorState(conn, status, data)
+		if s.DB != nil {
+			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
 	}
 	if uc != nil {

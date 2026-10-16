@@ -40,7 +40,7 @@ func TestQoderStreamingResponseCapture(t *testing.T) {
 		Prompt:    "ping",
 	}
 	w := httptest.NewRecorder()
-	srv.proxyQoderStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc)
+	srv.proxyQoderStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc, nil)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", w.Code)
@@ -71,7 +71,7 @@ func TestQoderNonStreamingResponseCapture(t *testing.T) {
 		Prompt:    "hello",
 	}
 	w := httptest.NewRecorder()
-	srv.proxyQoderNonStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc)
+	srv.proxyQoderNonStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc, nil)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", w.Code)
@@ -122,12 +122,12 @@ func TestQoderFailuresAreNotSuccessfulOrCacheable(t *testing.T) {
 				rec := cache.NewRecorder(w)
 				r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
 				if stream {
-					srv.proxyQoderStreaming(rec, r, resp, "efficient", uc)
+					srv.proxyQoderStreaming(rec, r, resp, "efficient", uc, nil)
 					if !strings.Contains(w.Body.String(), "event: error\n") || strings.Contains(w.Body.String(), "[DONE]") {
 						t.Errorf("failure disguised as successful SSE: %s", w.Body.String())
 					}
 				} else {
-					srv.proxyQoderNonStreaming(rec, r, resp, "efficient", uc)
+					srv.proxyQoderNonStreaming(rec, r, resp, "efficient", uc, nil)
 					if w.Code != tc.status {
 						t.Errorf("HTTP status = %d, want %d", w.Code, tc.status)
 					}
@@ -171,7 +171,7 @@ func TestQoderStreamingWithoutFlusherDoesNotRelayUncheckedBody(t *testing.T) {
 	resp := &http.Response{StatusCode: 200, Body: io.NopCloser(io.MultiReader(
 		strings.NewReader(qoderTestFrame(`{"choices":[{"delta":{"content":"partial"}}]}`)), qoderBrokenReader{},
 	))}
-	srv.proxyQoderStreaming(writer, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc)
+	srv.proxyQoderStreaming(writer, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc, nil)
 	if w.Code < 400 || uc.Status < 400 || !strings.Contains(w.Body.String(), `"error"`) {
 		t.Errorf("unchecked relay succeeded: HTTP %d status=%d body=%s", w.Code, uc.Status, w.Body.String())
 	}
@@ -191,9 +191,9 @@ func TestQoderTerminalFrameStopsReading(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/v1/chat/completions", nil)
 			if stream {
-				srv.proxyQoderStreaming(w, r, resp, "efficient", uc)
+				srv.proxyQoderStreaming(w, r, resp, "efficient", uc, nil)
 			} else {
-				srv.proxyQoderNonStreaming(w, r, resp, "efficient", uc)
+				srv.proxyQoderNonStreaming(w, r, resp, "efficient", uc, nil)
 			}
 			if w.Code != 200 || uc.Status != 200 || !strings.Contains(w.Body.String(), `"content":"ok"`) || strings.Contains(w.Body.String(), `"error"`) {
 				t.Errorf("terminal frame not respected: HTTP %d status=%d body=%s", w.Code, uc.Status, w.Body.String())
@@ -210,7 +210,7 @@ func TestQoderNonStreamingAggregatesInterleavedToolsByChoice(t *testing.T) {
 	}
 	body := qoderTestFrame(frames[0]) + qoderTestFrame(frames[1]) + "data: [DONE]\n\n"
 	w := httptest.NewRecorder()
-	srv.proxyQoderNonStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, "efficient", nil)
+	srv.proxyQoderNonStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, "efficient", nil, nil)
 	var result struct {
 		ID      string `json:"id"`
 		Created int    `json:"created"`

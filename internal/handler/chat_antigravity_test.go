@@ -642,3 +642,58 @@ func TestAntigravityToolCallingSupport(t *testing.T) {
 		t.Fatalf("expected 1 tool call, got %d", len(tcList))
 	}
 }
+
+func TestAntigravityToolDeclarationSchemaSanitization(t *testing.T) {
+	// Replicates grep tool with type: ["number", "null"] and additionalProperties: false
+	rawTools := json.RawMessage(`[
+		{
+			"type": "function",
+			"function": {
+				"name": "grep",
+				"description": "Regex search",
+				"parameters": {
+					"type": "object",
+					"properties": {
+						"pattern": {"type": "string"},
+						"skip": {"type": ["number", "null"]}
+					},
+					"required": ["pattern"],
+					"additionalProperties": false
+				}
+			}
+		}
+	]`)
+
+	var toolsList []map[string]any
+	if err := json.Unmarshal(rawTools, &toolsList); err != nil {
+		t.Fatalf("unmarshal tools: %v", err)
+	}
+
+	var declarations []any
+	for _, raw := range toolsList {
+		fn := raw["function"].(map[string]any)
+		params := fn["parameters"].(map[string]any)
+		cleaned := translator.CleanJSONSchemaForGemini(params)
+		declarations = append(declarations, map[string]any{
+			"name":        fn["name"],
+			"description": fn["description"],
+			"parameters":  cleaned,
+		})
+	}
+
+	if len(declarations) != 1 {
+		t.Fatalf("expected 1 declaration, got %d", len(declarations))
+	}
+	decl := declarations[0].(map[string]any)
+	params := decl["parameters"].(map[string]any)
+
+	// Proto field is not repeating: type must be string, not slice
+	props := params["properties"].(map[string]any)
+	skip := props["skip"].(map[string]any)
+	if skip["type"] != "number" {
+		t.Errorf("skip.type = %v, want 'number'", skip["type"])
+	}
+	if _, ok := params["additionalProperties"]; ok {
+		t.Errorf("additionalProperties must be stripped for Gemini/Antigravity compatibility")
+	}
+}

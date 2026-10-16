@@ -82,25 +82,34 @@ func (s *Server) handleAntigravityChat(
 	}
 	// Forward tool definitions if present
 	if len(req.Tools) > 0 {
-		var toolsList []struct {
-			Type     string `json:"type"`
-			Function struct {
-				Name        string         `json:"name"`
-				Description string         `json:"description,omitempty"`
-				Parameters  map[string]any `json:"parameters,omitempty"`
-			} `json:"function"`
-		}
-		if err := json.Unmarshal(req.Tools, &toolsList); err == nil && len(toolsList) > 0 {
+		var rawTools []map[string]any
+		if err := json.Unmarshal(req.Tools, &rawTools); err == nil && len(rawTools) > 0 {
 			var declarations []any
-			for _, t := range toolsList {
-				if t.Function.Name != "" {
-					params := t.Function.Parameters
+			for _, t := range rawTools {
+				var name, description string
+				var params map[string]any
+
+				if fn, ok := t["function"].(map[string]any); ok {
+					name, _ = fn["name"].(string)
+					description, _ = fn["description"].(string)
+					params, _ = fn["parameters"].(map[string]any)
+				}
+				if name == "" {
+					name, _ = t["name"].(string)
+					description, _ = t["description"].(string)
+					if p, ok := t["parameters"].(map[string]any); ok {
+						params = p
+					} else if s, ok := t["input_schema"].(map[string]any); ok {
+						params = s
+					}
+				}
+				if name != "" {
 					if params != nil {
-						delete(params, "$schema")
+						params = translator.CleanJSONSchemaForGemini(params)
 					}
 					declarations = append(declarations, map[string]any{
-						"name":        t.Function.Name,
-						"description": t.Function.Description,
+						"name":        name,
+						"description": description,
 						"parameters":  params,
 					})
 				}
@@ -186,16 +195,7 @@ func (s *Server) handleAntigravityChat(
 
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 	start := time.Now()
-	if s.Events != nil {
-		s.Events.Publish(RequestEvent{
-			Type:      "routing",
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Provider:  conn.Provider,
-			Model:     modelInfo.Model,
-			Endpoint:  endpoint,
-			Status:    "routing",
-		})
-	}
+	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: conn.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 	resp, err := client.Do(upReq)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "antigravity upstream connection failed: " + err.Error()})
@@ -232,6 +232,10 @@ func (s *Server) handleAntigravityChat(
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
+		provider.ApplyErrorState(conn, resp.StatusCode, string(respBody))
+		if s.DB != nil {
+			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+		}
 		latencyMs := time.Since(start).Milliseconds()
 		if latencyMs < 0 {
 			latencyMs = 0
@@ -265,17 +269,7 @@ func (s *Server) handleAntigravityChat(
 		if s.Metrics != nil {
 			s.Metrics.ObserveRequest(conn.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
-		if s.Events != nil {
-			s.Events.Publish(RequestEvent{
-				Type:      "request",
-				Timestamp: time.Now().UTC().Format(time.RFC3339),
-				Provider:  conn.Provider,
-				Model:     modelInfo.Model,
-				Endpoint:  endpoint,
-				Status:    statusStr,
-				LatencyMs: latencyMs,
-			})
-		}
+		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: conn.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: statusStr, LatencyMs: latencyMs})
 		writeJSON(w, resp.StatusCode, map[string]any{
 			"error": fmt.Sprintf("antigravity upstream error (HTTP %d): %s", resp.StatusCode, string(respBody)),
 		})

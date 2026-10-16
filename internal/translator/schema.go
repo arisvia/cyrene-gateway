@@ -6,7 +6,7 @@ import (
 	"slices"
 )
 
-// cleanJSONSchemaForGemini sanitizes a JSON Schema for Gemini/Antigravity API compatibility.
+// CleanJSONSchemaForGemini sanitizes a JSON Schema for Gemini/Antigravity API compatibility.
 // Gemini rejects many standard JSON Schema keywords (additionalProperties, $schema, format, etc.)
 // and requires explicit type annotations. This function recursively normalizes the schema.
 // Ported from 9router open-sse/translator/formats/gemini.js cleanJSONSchemaForAntigravity.
@@ -18,7 +18,7 @@ import (
 //
 // Keys in a name map are user-defined parameter names and must never be treated as
 // schema keywords or have type annotations injected.
-func cleanJSONSchemaForGemini(schema map[string]any) map[string]any {
+func CleanJSONSchemaForGemini(schema map[string]any) map[string]any {
 	if schema == nil {
 		return schema
 	}
@@ -47,6 +47,10 @@ func cleanJSONSchemaForGemini(schema map[string]any) map[string]any {
 	addPlaceholders(schema)
 
 	return schema
+}
+
+func cleanJSONSchemaForGemini(schema map[string]any) map[string]any {
+	return CleanJSONSchemaForGemini(schema)
 }
 
 // childSchema computes the isSchema flag for a child map value.
