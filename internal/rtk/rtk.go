@@ -16,7 +16,9 @@ const (
 )
 
 // CompressMessages compresses tool_result content in-place within an OpenAI,
-// Anthropic, or Gemini shaped request body. Returns bytes saved or 0.
+// Anthropic, or Gemini shaped request body. It implements turn-aware slimming:
+// preserving full context for the latest active turn while aggressively collapsing
+// stale historical tool results. Returns bytes saved or 0.
 func CompressMessages(body map[string]any, enabled bool) int {
 	if !enabled || body == nil {
 		return 0
@@ -26,17 +28,27 @@ func CompressMessages(body map[string]any, enabled bool) int {
 
 	// OpenAI / Anthropic format: body["messages"]
 	if msgs, ok := body["messages"].([]any); ok {
-		for _, m := range msgs {
+		lastAssistantIdx := -1
+		for i, m := range msgs {
+			if msg, ok := m.(map[string]any); ok {
+				if role, _ := msg["role"].(string); role == "assistant" {
+					lastAssistantIdx = i
+				}
+			}
+		}
+
+		for i, m := range msgs {
 			msg, ok := m.(map[string]any)
 			if !ok {
 				continue
 			}
+			isHistorical := (lastAssistantIdx != -1 && i < lastAssistantIdx)
 
 			// OpenAI tool message: {role:"tool", content:"string"} or content parts
 			role, _ := msg["role"].(string)
 			if role == "tool" {
 				if content, ok := msg["content"].(string); ok {
-					compressed := compressText(content)
+					compressed := compressText(content, isHistorical)
 					if len(compressed) < len(content) {
 						saved += len(content) - len(compressed)
 						msg["content"] = compressed
@@ -45,7 +57,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					for _, part := range parts {
 						if p, ok := part.(map[string]any); ok {
 							if text, ok := p["text"].(string); ok {
-								compressed := compressText(text)
+								compressed := compressText(text, isHistorical)
 								if len(compressed) < len(text) {
 									saved += len(text) - len(compressed)
 									p["text"] = compressed
@@ -71,11 +83,13 @@ func CompressMessages(body map[string]any, enabled bool) int {
 				if blockType != "tool_result" {
 					continue
 				}
-				if isError, _ := b["is_error"].(bool); isError {
+				// Preserve active errors in the latest turn so agent can debug;
+				// historical errors can be safely compressed.
+				if isError, _ := b["is_error"].(bool); isError && !isHistorical {
 					continue
 				}
 				if text, ok := b["content"].(string); ok {
-					compressed := compressText(text)
+					compressed := compressText(text, isHistorical)
 					if len(compressed) < len(text) {
 						saved += len(text) - len(compressed)
 						b["content"] = compressed
@@ -84,7 +98,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					for _, inner := range innerArr {
 						if ib, ok := inner.(map[string]any); ok {
 							if text, ok := ib["text"].(string); ok {
-								compressed := compressText(text)
+								compressed := compressText(text, isHistorical)
 								if len(compressed) < len(text) {
 									saved += len(text) - len(compressed)
 									ib["text"] = compressed
@@ -99,11 +113,22 @@ func CompressMessages(body map[string]any, enabled bool) int {
 
 	// Gemini format: body["contents"] -> parts -> functionResponse -> response -> content
 	if contents, ok := body["contents"].([]any); ok {
-		for _, c := range contents {
+		lastModelIdx := -1
+		for i, c := range contents {
+			if contentMap, ok := c.(map[string]any); ok {
+				if role, _ := contentMap["role"].(string); role == "model" {
+					lastModelIdx = i
+				}
+			}
+		}
+
+		for i, c := range contents {
 			contentMap, ok := c.(map[string]any)
 			if !ok {
 				continue
 			}
+			isHistorical := (lastModelIdx != -1 && i < lastModelIdx)
+
 			parts, ok := contentMap["parts"].([]any)
 			if !ok {
 				continue
@@ -122,7 +147,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					continue
 				}
 				if content, ok := resp["content"].(string); ok {
-					compressed := compressText(content)
+					compressed := compressText(content, isHistorical)
 					if len(compressed) < len(content) {
 						saved += len(content) - len(compressed)
 						resp["content"] = compressed
@@ -171,23 +196,37 @@ func cleanAndCompactText(text string) string {
 	return text
 }
 
-// compressText applies lossless cleaning/compacting followed by smart truncation.
-func compressText(text string) string {
+// compressText applies lossless cleaning/compacting followed by turn-aware smart truncation.
+func compressText(text string, isHistorical bool) string {
 	n := len(text)
 	if n < minCompressSize || n > rawCap {
 		return text
 	}
 
-	// Phase 1: Lossless pre-compression
+	// Phase 1: Lossless pre-compression (ANSI strip, newline collapse, JSON compact)
 	cleaned := cleanAndCompactText(text)
 	if len(cleaned) < n {
 		text = cleaned
 		n = len(text)
 	}
 
-	// Check if lossless compression brought the text within comfortable bounds
-	const safeLineThreshold = 250
-	const maxCharThreshold = 16 * 1024 // 16 KiB (~4k tokens)
+	// Thresholds depend on whether this tool output belongs to an active latest turn
+	// or an expired historical turn.
+	safeLineThreshold := 250
+	maxCharThreshold := 16 * 1024 // 16 KiB (~4k tokens)
+	headLines := 120
+	tailLines := 60
+	omittedMsg := "lines omitted"
+	omittedCharMsg := "characters omitted"
+
+	if isHistorical {
+		safeLineThreshold = 80
+		maxCharThreshold = 4 * 1024 // 4 KiB (~1k tokens)
+		headLines = 30
+		tailLines = 20
+		omittedMsg = "lines of historical tool output omitted by Cyrene Gateway"
+		omittedCharMsg = "characters of historical tool output omitted by Cyrene Gateway"
+	}
 
 	lines := strings.Split(text, "\n")
 	if len(lines) <= safeLineThreshold && n <= maxCharThreshold {
@@ -196,9 +235,6 @@ func compressText(text string) string {
 
 	// Phase 2: Smart line-based truncation if exceeding line threshold
 	if len(lines) > safeLineThreshold {
-		const headLines = 120
-		const tailLines = 60
-
 		if len(lines) > headLines+tailLines {
 			head := lines[:headLines]
 			tail := lines[len(lines)-tailLines:]
@@ -208,7 +244,9 @@ func compressText(text string) string {
 			sb.WriteString(strings.Join(head, "\n"))
 			sb.WriteString("\n\n... [")
 			sb.WriteString(strconv.Itoa(omitted))
-			sb.WriteString(" lines omitted] ...\n\n")
+			sb.WriteString(" ")
+			sb.WriteString(omittedMsg)
+			sb.WriteString("] ...\n\n")
 			sb.WriteString(strings.Join(tail, "\n"))
 
 			result := sb.String()
@@ -220,15 +258,21 @@ func compressText(text string) string {
 
 	// Phase 3: Fallback character truncation for massive outputs with few/no newlines
 	if n > maxCharThreshold {
-		const headChars = 8 * 1024
-		const tailChars = 4 * 1024
+		headChars := maxCharThreshold / 2
+		tailChars := maxCharThreshold / 4
+		if !isHistorical {
+			headChars = 8 * 1024
+			tailChars = 4 * 1024
+		}
 		omittedChars := n - headChars - tailChars
 
 		var sb strings.Builder
 		sb.WriteString(text[:headChars])
 		sb.WriteString("\n\n... [")
 		sb.WriteString(strconv.Itoa(omittedChars))
-		sb.WriteString(" characters omitted] ...\n\n")
+		sb.WriteString(" ")
+		sb.WriteString(omittedCharMsg)
+		sb.WriteString("] ...\n\n")
 		sb.WriteString(text[n-tailChars:])
 
 		result := sb.String()

@@ -391,3 +391,91 @@ func TestCompressMessages_JSONCompactedWithoutTruncation(t *testing.T) {
 		t.Errorf("expected single-line compacted JSON, but found newlines: %s", res)
 	}
 }
+
+func TestCompressMessages_TurnAware_ProtectsLatestTurn(t *testing.T) {
+	// Build 150 lines of tool content.
+	// 150 lines is >80 lines (so historical turns will be truncated),
+	// but <=250 lines (so the latest turn is protected and NOT truncated).
+	var lines []string
+	for i := range 150 {
+		lines = append(lines, "content line "+strconv.Itoa(i)+" with padding text to exceed minimum size limit")
+	}
+	content150 := strings.Join(lines, "\n")
+
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "user", "content": "fix bug"},
+			map[string]any{"role": "assistant", "content": "running test"},
+			map[string]any{"role": "tool", "content": content150}, // Turn 1 (Historical)
+			map[string]any{"role": "assistant", "content": "reading file"},
+			map[string]any{"role": "tool", "content": content150}, // Turn 2 (Latest active turn!)
+		},
+	}
+
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Fatalf("expected savings from historical turn compression, got %d", saved)
+	}
+
+	msgs := body["messages"].([]any)
+	histTool := msgs[2].(map[string]any)["content"].(string)
+	latestTool := msgs[4].(map[string]any)["content"].(string)
+
+	// Historical tool MUST be collapsed with the historical marker
+	if !strings.Contains(histTool, "historical tool output omitted by Cyrene Gateway") {
+		t.Errorf("expected historical tool to contain omission marker, got: %s", histTool)
+	}
+
+	// Latest tool MUST be preserved 100% intact without any truncation!
+	if strings.Contains(latestTool, "omitted") {
+		t.Errorf("latest active tool was incorrectly truncated: %s", latestTool)
+	}
+	if latestTool != content150 {
+		t.Errorf("latest active tool content was altered, expected %d bytes, got %d bytes", len(content150), len(latestTool))
+	}
+}
+
+func TestCompressMessages_TurnAware_AnthropicErrors(t *testing.T) {
+	var lines []string
+	for i := range 150 {
+		lines = append(lines, "stack trace line "+strconv.Itoa(i)+" at github.com/arisvia/gateway/test.go:42")
+	}
+	errorContent := strings.Join(lines, "\n")
+
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "tool_result", "is_error": true, "content": errorContent}, // Turn 1
+				},
+			},
+			map[string]any{"role": "assistant", "content": "analyzing previous error"},
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "tool_result", "is_error": true, "content": errorContent}, // Turn 2 (Latest!)
+				},
+			},
+		},
+	}
+
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Fatalf("expected savings from historical error compression, got %d", saved)
+	}
+
+	msgs := body["messages"].([]any)
+	histBlock := msgs[0].(map[string]any)["content"].([]any)[0].(map[string]any)["content"].(string)
+	latestBlock := msgs[2].(map[string]any)["content"].([]any)[0].(map[string]any)["content"].(string)
+
+	// Historical error is collapsed to save prompt tokens
+	if !strings.Contains(histBlock, "historical tool output omitted by Cyrene Gateway") {
+		t.Errorf("expected historical error to be collapsed, got: %s", histBlock)
+	}
+
+	// Latest error MUST NOT be collapsed so the agent can debug the current failure
+	if strings.Contains(latestBlock, "omitted") {
+		t.Errorf("latest active error was incorrectly truncated: %s", latestBlock)
+	}
+}
