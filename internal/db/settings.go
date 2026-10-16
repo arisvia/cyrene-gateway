@@ -43,6 +43,7 @@ type Settings struct {
 	LoopGuardEnabled     bool `json:"loopGuardEnabled"`
 	ResponseCacheEnabled bool `json:"responseCacheEnabled"`
 	ResponseCacheAll     bool `json:"responseCacheAll,omitempty"`
+	AutoPromptCache      bool `json:"autoPromptCache"`
 }
 
 func DefaultSettings() *Settings {
@@ -54,6 +55,7 @@ func DefaultSettings() *Settings {
 		PonytailLevel:    "lite",
 		LoopGuardEnabled: true,
 		ResponseCacheTTL: 3600,
+		AutoPromptCache:  false,
 	}
 }
 

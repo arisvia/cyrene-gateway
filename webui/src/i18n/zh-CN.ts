@@ -301,6 +301,8 @@ export const zhCN = {
       },
       loopGuardTitle: '循环守卫',
       loopGuardHint: '识别重复的工具调用与复读式自述，并在全部上游路径注入循环提示与终止契约（默认开启）',
+      autoPromptCacheTitle: '自动提示词缓存打点',
+      autoPromptCacheHint: '在转发 Anthropic 与 DeepSeek 时，为未自带缓存控制的请求自动在长 System Prompt 与 Tools 尾部注入 ephemeral 断点，强行激活 90% 费用打折',
       exclusionsTitle: '排除提供商名单',
       exclusionsHint: '针对特定服务商（如擅长代码补全的特定专有通道）保持原始输出，不注入提示词',
     },

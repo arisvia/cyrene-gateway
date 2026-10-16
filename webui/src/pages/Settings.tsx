@@ -479,7 +479,7 @@ const Settings: Component = () => {
             <div class="flex flex-wrap items-center gap-2 min-w-0">
               <IconSparkles size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">{t('settings.tokenSaver.title')}</h3>
-              <Badge tone="gray">RTK · Caveman · Ponytail</Badge>
+              <Badge tone="gray">RTK · Caveman · Ponytail · AutoCache</Badge>
             </div>
           </div>
 
@@ -559,6 +559,17 @@ const Settings: Component = () => {
                 ariaLabel={t('settings.tokenSaver.loopGuardTitle')}
                 checked={!!local().loopGuardEnabled}
                 onChange={v => set('loopGuardEnabled', v)}
+              />
+            </div>
+            {/* 自动提示词缓存打点 */}
+            <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
+              <Field label={t('settings.tokenSaver.autoPromptCacheTitle')} hint={t('settings.tokenSaver.autoPromptCacheHint')}>
+                <span />
+              </Field>
+              <Toggle
+                ariaLabel={t('settings.tokenSaver.autoPromptCacheTitle')}
+                checked={!!local().autoPromptCache}
+                onChange={v => set('autoPromptCache', v)}
               />
             </div>
           </div>

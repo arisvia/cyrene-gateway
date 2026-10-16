@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -58,24 +59,27 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 					baseURL = conn.Data.BaseURL
 				}
 				targetURL := strings.TrimRight(baseURL, "/") + "/v1/messages/count_tokens"
+				allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
+				if _, err := provider.ValidateUpstreamURL(targetURL, allowPrivate); err == nil {
+					if upReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes)); err == nil {
+						transport := provider.ResolveTransport(providerInfo, baseURL, providerInfo.APIType, conn)
+						provider.ApplyAuth(upReq, transport, provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
+						upReq.Header.Set("Content-Type", "application/json")
+						if anthVer := r.Header.Get("anthropic-version"); anthVer != "" {
+							upReq.Header.Set("anthropic-version", anthVer)
+						} else {
+							upReq.Header.Set("anthropic-version", "2023-06-01")
+						}
 
-				if upReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes)); err == nil {
-					transport := provider.ResolveTransport(providerInfo, baseURL, providerInfo.APIType, conn)
-					provider.ApplyAuth(upReq, transport, provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
-					if anthVer := r.Header.Get("anthropic-version"); anthVer != "" {
-						upReq.Header.Set("anthropic-version", anthVer)
-					} else {
-						upReq.Header.Set("anthropic-version", "2023-06-01")
-					}
-
-					client := s.getHTTPClient(10)
-					if resp, err := client.Do(upReq); err == nil {
-						defer resp.Body.Close()
-						if resp.StatusCode == http.StatusOK {
-							w.Header().Set("Content-Type", "application/json")
-							w.WriteHeader(http.StatusOK)
-							io.Copy(w, resp.Body)
-							return
+						client := s.getHTTPClient(10 * time.Second)
+						if resp, err := client.Do(upReq); err == nil {
+							defer resp.Body.Close()
+							if resp.StatusCode == http.StatusOK {
+								w.Header().Set("Content-Type", "application/json")
+								w.WriteHeader(http.StatusOK)
+								io.Copy(w, resp.Body)
+								return
+							}
 						}
 					}
 				}

@@ -473,7 +473,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 
 		upstreamStream := req.Stream || providerInfo.ForceStream
 		upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
-			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
+			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
 			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
 		)
@@ -672,7 +672,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	upstreamStream := req.Stream || providerInfo.ForceStream
 	loopGuard := s.loopGuardEnabled()
 	upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
-		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
+		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 		provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
 		func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
 	)
@@ -720,7 +720,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			}
 
 			retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
-				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard},
+				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
 				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
 			)
@@ -1400,6 +1400,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.applyLoopGuard(reqBody, bodyBytes, "anthropic", reqBody["tools"] != nil)
+	if s.autoPromptCacheEnabled() {
+		translator.AutoInjectClaudeCacheControl(reqBody, true)
+	}
 	translatedBody, _ := json.Marshal(reqBody)
 
 	// Phase 30: resolve transport for URL building + auth injection.
@@ -1946,6 +1949,12 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 func (s *Server) loopGuardEnabled() bool {
 	settings, err := s.DB.GetSettings()
 	return err == nil && settings.LoopGuardEnabled
+}
+
+// autoPromptCacheEnabled resolves the settings switch for prompt cache injection.
+func (s *Server) autoPromptCacheEnabled() bool {
+	settings, err := s.DB.GetSettings()
+	return err == nil && settings != nil && settings.AutoPromptCache
 }
 
 // applyLoopGuard composes the loop guard prompts into a prepared upstream body.

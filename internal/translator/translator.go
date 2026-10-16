@@ -436,6 +436,136 @@ func isClaudeAdaptiveThinkingModel(model string) bool {
 	return false
 }
 
+// CountClaudeCacheControl counts the total number of cache_control markers across system, tools and messages.
+func CountClaudeCacheControl(result map[string]any) int {
+	if result == nil {
+		return 0
+	}
+	count := 0
+	if sys, ok := result["system"].([]any); ok {
+		for _, s := range sys {
+			if sm, ok := s.(map[string]any); ok {
+				if _, ok := sm["cache_control"]; ok {
+					count++
+				}
+			}
+		}
+	}
+	if tools, ok := result["tools"].([]any); ok {
+		for _, t := range tools {
+			if tm, ok := t.(map[string]any); ok {
+				if _, ok := tm["cache_control"]; ok {
+					count++
+				}
+			}
+		}
+	}
+	if msgs, ok := result["messages"].([]any); ok {
+		for _, m := range msgs {
+			if mm, ok := m.(map[string]any); ok {
+				if content, ok := mm["content"].([]any); ok {
+					for _, b := range content {
+						if bm, ok := b.(map[string]any); ok {
+							if _, ok := bm["cache_control"]; ok {
+								count++
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return count
+}
+
+// AutoInjectClaudeCacheControl injects up to 3 optimal ephemeral cache_control breakpoints
+// onto an Anthropic-formatted request body when auto-caching is enabled:
+// 1. On system prompt (if long enough, >= 1000 characters).
+// 2. On the last tool definition (caching system + entire tool catalog).
+// 3. On the second-to-last user turn (caching conversation prefix up to that point).
+// If the payload already contains explicit cache_control markers, existing markers are preserved
+// and capped at 4.
+func AutoInjectClaudeCacheControl(result map[string]any, enabled bool) {
+	if !enabled || result == nil {
+		return
+	}
+
+	count := CountClaudeCacheControl(result)
+	if count >= 4 {
+		return
+	}
+
+	ephemeral := map[string]any{"type": "ephemeral"}
+
+	// 1. System prompt: if string >= 1000 chars, convert to block array with cache_control
+	if sysStr, ok := result["system"].(string); ok && len(sysStr) >= 1000 && count < 4 {
+		result["system"] = []any{
+			map[string]any{
+				"type":          "text",
+				"text":          sysStr,
+				"cache_control": ephemeral,
+			},
+		}
+		count++
+	} else if sysArr, ok := result["system"].([]any); ok && len(sysArr) > 0 && count < 4 {
+		lastIdx := len(sysArr) - 1
+		if lastBlock, ok := sysArr[lastIdx].(map[string]any); ok {
+			if _, hasCC := lastBlock["cache_control"]; !hasCC {
+				lastBlock["cache_control"] = ephemeral
+				count++
+			}
+		}
+	}
+
+	// 2. Tools: inject on the last tool definition to cache all tools together
+	if tools, ok := result["tools"].([]any); ok && len(tools) > 0 && count < 4 {
+		lastIdx := len(tools) - 1
+		if lastTool, ok := tools[lastIdx].(map[string]any); ok {
+			if _, hasCC := lastTool["cache_control"]; !hasCC {
+				lastTool["cache_control"] = ephemeral
+				count++
+			}
+		}
+	}
+
+	// 3. Messages: find second-to-last user turn to cache conversation prefix
+	if msgs, ok := result["messages"].([]any); ok && count < 4 {
+		var userIndices []int
+		for i, m := range msgs {
+			if mm, ok := m.(map[string]any); ok {
+				if role, _ := mm["role"].(string); role == "user" {
+					userIndices = append(userIndices, i)
+				}
+			}
+		}
+		if len(userIndices) >= 2 {
+			targetIdx := userIndices[len(userIndices)-2]
+			targetMsg := msgs[targetIdx].(map[string]any)
+			if contentStr, ok := targetMsg["content"].(string); ok {
+				targetMsg["content"] = []any{
+					map[string]any{
+						"type":          "text",
+						"text":          contentStr,
+						"cache_control": ephemeral,
+					},
+				}
+				count++
+			} else if contentArr, ok := targetMsg["content"].([]any); ok && len(contentArr) > 0 {
+				lastBIdx := len(contentArr) - 1
+				if lastBlock, ok := contentArr[lastBIdx].(map[string]any); ok {
+					if _, hasCC := lastBlock["cache_control"]; !hasCC {
+						lastBlock["cache_control"] = ephemeral
+						count++
+					}
+				}
+			}
+		}
+	}
+
+	// Always strictly enforce Anthropic's hard cap of 4
+	trimClaudeCacheControl(result)
+}
+
 // trimClaudeCacheControl ensures the request does not exceed Anthropic's hard limit of 4 cache_control blocks.
 func trimClaudeCacheControl(result map[string]any) {
 	const maxMarkers = 4
@@ -469,6 +599,20 @@ func trimClaudeCacheControl(result map[string]any) {
 								}
 							}
 						}
+					}
+				}
+			}
+		}
+	}
+
+	// 3. Check system
+	if sys, ok := result["system"].([]any); ok {
+		for _, s := range sys {
+			if sm, ok := s.(map[string]any); ok {
+				if _, hasCC := sm["cache_control"]; hasCC {
+					count++
+					if count > maxMarkers {
+						delete(sm, "cache_control")
 					}
 				}
 			}

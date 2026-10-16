@@ -36,6 +36,7 @@ type ExecutionRequest struct {
 	// LoopGuardEnabled mirrors db.Settings.LoopGuardEnabled; the executor has no
 	// settings access, so the caller resolves the switch once per request.
 	LoopGuardEnabled bool
+	AutoPromptCache  bool
 }
 
 // ApplyLoopGuard composes the repetition hint and the termination contract into a
@@ -149,6 +150,9 @@ func PrepareUpstreamRequest(
 	translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, upstreamStream)
 	if err != nil {
 		return nil, "", fmt.Errorf("translation failed: %w", err)
+	}
+	if targetFormat == translator.FormatAnthropic && req.AutoPromptCache {
+		translator.AutoInjectClaudeCacheControl(translated, true)
 	}
 	if modelInfo.Provider == "codex" {
 		translated["store"] = false

@@ -303,6 +303,8 @@ export const enUS: TranslationDict = {
       },
       loopGuardTitle: 'Loop Guard',
       loopGuardHint: 'Detects repeated tool calls and echoing self-talk, then injects the loop hint and termination contract on every upstream path (on by default)',
+      autoPromptCacheTitle: 'Auto Prompt Caching',
+      autoPromptCacheHint: 'Automatically injects ephemeral cache breakpoints into long System Prompts and Tools definitions for Anthropic and DeepSeek requests, activating up to 90% prompt caching discounts',
       exclusionsTitle: 'Excluded Providers',
       exclusionsHint: 'Keep raw output without prompt injection for specific providers (e.g. specialized code completion channels)',
     },
