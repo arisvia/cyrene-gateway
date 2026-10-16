@@ -66,6 +66,7 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
       id: string
       provider: string
       name: string
+      color?: string
       accounts: Provider[]
       activeAccount?: Provider
       isActive: boolean
@@ -76,17 +77,21 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
     for (const p of list) {
       const key = p.provider
       const existing = map.get(key)
+      const reg = store.registryList().find(r => r.id === p.provider)
+      const color = reg?.color
       if (!existing) {
         map.set(key, {
           id: p.id,
           provider: p.provider,
           name: p.name || p.provider,
+          color,
           accounts: [p],
           activeAccount: p.isActive ? p : undefined,
           isActive: p.isActive,
           isHitting: false,
         })
       } else {
+        if (!existing.color && color) existing.color = color
         existing.accounts.push(p)
         // 优先采纳激活的账号
         if (p.isActive) {
@@ -124,6 +129,7 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
         y,
         isHitting,
         recentLatency: isHitting ? hit?.latencyMs : undefined,
+        color: g.color || 'var(--accent)',
       }
     })
   })

@@ -20,7 +20,7 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
         {/* 高能激光高斯光晕滤镜 */}
         <filter id="topology-laser-glow" x="-100%" y="-100%" width="300%" height="300%">
           <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur1" />
-          <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur2" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="blur2" />
           <feMerge>
             <feMergeNode in="blur2" />
             <feMergeNode in="blur1" />
@@ -35,6 +35,18 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
+        {/* 为每根辐条生成独立的沿线多色色谱渐变：青蓝 -> 天蓝 -> 霓虹紫 -> 洋红 -> 琥珀金 */}
+        <For each={props.nodes}>
+          {node => (
+            <linearGradient id={`chroma-grad-${node.id}`} x1="0" y1="0" x2={node.x} y2={node.y} gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#00f2fe" />
+              <stop offset="30%" stop-color="#4facfe" />
+              <stop offset="60%" stop-color="#a855f7" />
+              <stop offset="85%" stop-color="#f43f5e" />
+              <stop offset="100%" stop-color="#fbbf24" />
+            </linearGradient>
+          )}
+        </For>
       </defs>
 
       <For each={props.nodes}>
@@ -76,46 +88,46 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
                     />
                   }
                 >
-                  {/* 1. 全段高能等离子激光外晕 (Full-Segment Outer Laser Conduit Aura) */}
+                  {/* 1. 全段多色等离子外晕 (Multi-Color Chroma Glow Aura) */}
                   <path
                     d={path}
                     fill="none"
-                    stroke="var(--accent)"
-                    stroke-width={8}
+                    stroke={`url(#chroma-grad-${node.id})`}
+                    stroke-width={10}
                     stroke-linecap="round"
-                    opacity={0.32}
+                    opacity={0.38}
                     filter="url(#topology-laser-glow)"
                   >
                     <Show when={!props.reducedMotion}>
-                      <animate attributeName="opacity" values="0.25;0.52;0.25" dur="1.6s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="0.28;0.58;0.28" dur="1.6s" repeatCount="indefinite" />
                     </Show>
                   </path>
 
-                  {/* 2. 全段通电激光主导管 (Full-Segment Emissive Conduit) */}
+                  {/* 2. 全段多色激光主导管 (Chroma Laser Conduit) */}
                   <path
                     d={path}
                     fill="none"
-                    stroke="var(--accent)"
-                    stroke-width={4}
+                    stroke={`url(#chroma-grad-${node.id})`}
+                    stroke-width={4.5}
                     stroke-linecap="round"
-                    opacity={0.8}
+                    opacity={0.9}
                   >
                     <Show when={!props.reducedMotion}>
-                      <animate attributeName="stroke-width" values="3.5;4.8;3.5" dur="1.6s" repeatCount="indefinite" />
+                      <animate attributeName="stroke-width" values="4;5.2;4" dur="1.6s" repeatCount="indefinite" />
                     </Show>
                   </path>
 
-                  {/* 3. 全段白热微光光丝 (White Hot Filament Core) */}
+                  {/* 3. 全段白热微光核心丝 (Core Hot Filament) */}
                   <path
                     d={path}
                     fill="none"
                     stroke="#ffffff"
-                    stroke-width={1.2}
+                    stroke-width={1.4}
                     stroke-linecap="round"
-                    opacity={0.7}
+                    opacity={0.8}
                   >
                     <Show when={!props.reducedMotion}>
-                      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="0.8s" repeatCount="indefinite" />
+                      <animate attributeName="opacity" values="0.6;0.95;0.6" dur="0.8s" repeatCount="indefinite" />
                     </Show>
                   </path>
 
@@ -127,51 +139,62 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
                       fill="none"
                       stroke="#ffffff"
                       pathLength={1}
-                      stroke-width={3}
+                      stroke-width={3.5}
                       stroke-linecap="round"
-                      stroke-dasharray="0.25 0.75"
-                      filter="url(#topology-conduit-glow)"
+                      stroke-dasharray="0.22 0.78"
                       opacity={0.95}
                     >
                       <animate attributeName="stroke-dashoffset" from="1" to="0" dur="0.95s" repeatCount="indefinite" />
                     </path>
 
-                    {/* 激光脉冲 2: 紧随其后的彩色等离子波束 */}
+                    {/* 激光脉冲 2: 紧随其后的多色等离子波束 */}
                     <path
                       d={path}
                       fill="none"
-                      stroke="var(--accent)"
+                      stroke={`url(#chroma-grad-${node.id})`}
                       pathLength={1}
-                      stroke-width={5}
+                      stroke-width={6}
                       stroke-linecap="round"
-                      stroke-dasharray="0.35 0.65"
-                      opacity={0.7}
+                      stroke-dasharray="0.36 0.64"
+                      opacity={0.8}
                     >
                       <animate attributeName="stroke-dashoffset" from="1.3" to="0.3" dur="0.95s" repeatCount="indefinite" />
                     </path>
 
-                    {/* 5. 领航光子核 + 次级跟随光子核 (Dual Photon Sparks) */}
+                    {/* 5. 领航光子核 1: 霓虹青白粒子 */}
                     <g>
                       <animateMotion path={path} dur="0.95s" repeatCount="indefinite" />
-                      <circle r={9} fill="var(--accent)" opacity={0.35} filter="url(#topology-conduit-glow)">
-                        <animate attributeName="r" values="7;11;7" dur="0.5s" repeatCount="indefinite" />
+                      <circle r={9} fill="#00f2fe" opacity="0.45" filter="url(#topology-conduit-glow)">
+                        <animate attributeName="r" values="7;12;7" dur="0.5s" repeatCount="indefinite" />
                       </circle>
-                      <circle r={4} fill="var(--accent)" opacity={0.9} />
-                      <circle r={2} fill="#ffffff" opacity="1" />
+                      <circle r={4.5} fill="#00f2fe" opacity="0.95" />
+                      <circle r={2.2} fill="#ffffff" opacity="1" />
                     </g>
 
+                    {/* 6. 次级光子核 2: 洋红紫光粒子 */}
                     <g>
-                      <animateMotion path={path} dur="0.95s" begin="0.48s" repeatCount="indefinite" />
-                      <circle r={6} fill="var(--accent)" opacity="0.3" />
-                      <circle r={2.8} fill="#ffffff" opacity="0.85" />
+                      <animateMotion path={path} dur="0.95s" begin="0.32s" repeatCount="indefinite" />
+                      <circle r={7} fill="#a855f7" opacity="0.4" filter="url(#topology-conduit-glow)">
+                        <animate attributeName="r" values="5;9;5" dur="0.5s" repeatCount="indefinite" />
+                      </circle>
+                      <circle r={3.8} fill="#f43f5e" opacity="0.95" />
+                      <circle r={1.8} fill="#ffffff" opacity="1" />
                     </g>
 
-                    {/* 6. 两端能量辐射波环 (Terminal Pulse Rings) */}
-                    <circle cx={0} cy={0} r={14} fill="none" stroke="var(--accent)" stroke-width={2} opacity={0}>
+                    {/* 7. 尾随光子核 3: 金黄光子 */}
+                    <g>
+                      <animateMotion path={path} dur="0.95s" begin="0.64s" repeatCount="indefinite" />
+                      <circle r={6} fill="#fbbf24" opacity="0.35" />
+                      <circle r={3} fill="#f59e0b" opacity="0.9" />
+                      <circle r={1.5} fill="#ffffff" opacity="1" />
+                    </g>
+
+                    {/* 8. 两端能量辐射环: 核心端青色 + 目标端金黄色 */}
+                    <circle cx={0} cy={0} r={14} fill="none" stroke="#00f2fe" stroke-width={2} opacity={0}>
                       <animate attributeName="r" values="8;24" dur="1.2s" repeatCount="indefinite" />
                       <animate attributeName="opacity" values="0.8;0" dur="1.2s" repeatCount="indefinite" />
                     </circle>
-                    <circle cx={node.x} cy={node.y} r={14} fill="none" stroke="var(--accent)" stroke-width={2} opacity={0}>
+                    <circle cx={node.x} cy={node.y} r={14} fill="none" stroke="#fbbf24" stroke-width={2} opacity={0}>
                       <animate attributeName="r" values="8;26" dur="1.2s" repeatCount="indefinite" />
                       <animate attributeName="opacity" values="0.8;0" dur="1.2s" repeatCount="indefinite" />
                     </circle>
