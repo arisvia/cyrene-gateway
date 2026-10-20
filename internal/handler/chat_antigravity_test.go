@@ -504,6 +504,41 @@ func TestAntigravityConvertOpenAIToGeminiContents(t *testing.T) {
 	}
 }
 
+func TestAntigravityGemini4SamplingParamStrippingAndFROrder(t *testing.T) {
+	// 1. Verify isGemini4Model detection
+	if !isGemini4Model("gemini-4") || !isGemini4Model("antigravity/gemini-4.0-flash") || !isGemini4Model("gemini-4-argon") {
+		t.Fatal("expected isGemini4Model to match gemini-4 variations")
+	}
+	if isGemini4Model("gemini-3.8-flash") || isGemini4Model("gemini-2.5-pro") {
+		t.Fatal("expected isGemini4Model not to match gemini 2.x or 3.x")
+	}
+
+	// 2. Verify functionResponse placed last for Gemini 4
+	messages := []Message{
+		{Role: "user", Content: json.RawMessage(`"hello"`)},
+		{Role: "tool", ToolCallID: "call_1", Content: json.RawMessage(`"tool output 1"`)},
+		{Role: "user", Content: json.RawMessage(`"and what about this"`)},
+		{Role: "tool", ToolCallID: "call_2", Content: json.RawMessage(`"tool output 2"`)},
+	}
+
+	contents, _ := convertOpenAIToGeminiContents(messages, "gemini-4")
+	if len(contents) != 1 {
+		t.Fatalf("expected adjacent user/tool turns merged into 1 user turn, got %d", len(contents))
+	}
+	userTurn := contents[0]
+	parts := userTurn["parts"].([]map[string]any)
+	if len(parts) != 4 {
+		t.Fatalf("expected 4 parts, got %d", len(parts))
+	}
+	// The last two parts MUST be functionResponse
+	if _, ok := parts[2]["functionResponse"]; !ok {
+		t.Errorf("expected part 2 to be functionResponse, got %+v", parts[2])
+	}
+	if _, ok := parts[3]["functionResponse"]; !ok {
+		t.Errorf("expected part 3 to be functionResponse, got %+v", parts[3])
+	}
+}
+
 func TestAntigravityStreamingCandidatesPayloads(t *testing.T) {
 	srv, _ := setupTestServer(t)
 

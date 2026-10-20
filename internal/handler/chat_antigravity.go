@@ -64,16 +64,18 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	// Transform OpenAI messages into Gemini contents format
-	contents, systemInstruction := convertOpenAIToGeminiContents(req.Messages)
+	contents, systemInstruction := convertOpenAIToGeminiContents(req.Messages, modelInfo.Model)
 
 	genConfig := map[string]any{}
-	if req.Temperature != nil {
-		genConfig["temperature"] = *req.Temperature
+	// Gemini 4 removes external sampling params (temperature/topP); forwarding them causes 400 INVALID_ARGUMENT (9router #4802 parity)
+	if !isGemini4Model(modelInfo.Model) {
+		if req.Temperature != nil {
+			genConfig["temperature"] = *req.Temperature
+		}
 	}
 	if req.MaxTokens != nil && *req.MaxTokens > 0 {
 		genConfig["maxOutputTokens"] = *req.MaxTokens
 	}
-
 	sessionID := fmt.Sprintf("-%d", time.Now().UnixNano()%9000000000000000000)
 	innerRequest := map[string]any{
 		"contents":  contents,
@@ -326,10 +328,10 @@ func parseMessageContent(raw json.RawMessage) string {
 	return string(raw)
 }
 
-func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[string]any) {
+func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([]map[string]any, []map[string]any) {
 	var contents []map[string]any
 	var systemParts []map[string]any
-
+	isGemini4 := len(targetModel) > 0 && isGemini4Model(targetModel[0])
 	toolCallNames := make(map[string]string)
 	for _, msg := range messages {
 		if len(msg.ToolCalls) > 0 {
@@ -428,7 +430,67 @@ func convertOpenAIToGeminiContents(messages []Message) ([]map[string]any, []map[
 		})
 	}
 
+	// Normalization: merge adjacent same-role turns and ensure functionResponse is placed last in user turns for Gemini 4
+	contents = normalizeAntigravityContents(contents, isGemini4)
+
 	return contents, systemParts
+}
+
+// isGemini4Model reports whether a model name refers to Google Gemini 4 (Argon architecture).
+func isGemini4Model(model string) bool {
+	m := strings.ToLower(model)
+	if slash := strings.LastIndex(m, "/"); slash >= 0 {
+		m = m[slash+1:]
+	}
+	return strings.HasPrefix(m, "gemini-4") || strings.Contains(m, "/gemini-4")
+}
+
+// normalizeAntigravityContents merges adjacent turns of the same role and places functionResponse last for Gemini 4
+func normalizeAntigravityContents(contents []map[string]any, isGemini4 bool) []map[string]any {
+	if len(contents) == 0 {
+		return contents
+	}
+	var merged []map[string]any
+	for _, c := range contents {
+		role, _ := c["role"].(string)
+		parts, _ := c["parts"].([]map[string]any)
+		if len(parts) == 0 {
+			continue
+		}
+		if len(merged) > 0 && merged[len(merged)-1]["role"] == role {
+			lastParts, _ := merged[len(merged)-1]["parts"].([]map[string]any)
+			lastParts = append(lastParts, parts...)
+			if isGemini4 && role == "user" {
+				lastParts = moveFunctionResponsesLast(lastParts)
+			}
+			merged[len(merged)-1]["parts"] = lastParts
+			continue
+		}
+		if isGemini4 && role == "user" {
+			parts = moveFunctionResponsesLast(parts)
+		}
+		merged = append(merged, map[string]any{
+			"role":  role,
+			"parts": parts,
+		})
+	}
+	return merged
+}
+
+func moveFunctionResponsesLast(parts []map[string]any) []map[string]any {
+	var nonFR []map[string]any
+	var fr []map[string]any
+	for _, p := range parts {
+		if _, ok := p["functionResponse"]; ok {
+			fr = append(fr, p)
+		} else {
+			nonFR = append(nonFR, p)
+		}
+	}
+	if len(fr) == 0 {
+		return parts
+	}
+	return append(nonFR, fr...)
 }
 
 type antigravityCandidatePart struct {

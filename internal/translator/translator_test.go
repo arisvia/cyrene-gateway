@@ -1167,6 +1167,47 @@ func TestOpenAIToGemini_MultiTurnToolCallAndThinking(t *testing.T) {
 	}
 }
 
+func TestOpenAIToGemini4_DropsSamplingParamsAndOrdersFRLast(t *testing.T) {
+	body := map[string]any{
+		"temperature": 0.7,
+		"top_p":       0.9,
+		"max_tokens":  4096,
+		"messages": []any{
+			map[string]any{"role": "user", "content": "test question"},
+			map[string]any{"role": "tool", "tool_call_id": "call_1", "content": `{"data": 123}`},
+		},
+	}
+
+	// Test Gemini 4: temperature and topP must be dropped
+	resGem4, err := openAIToGemini("gemini-4-flash", body, false)
+	if err != nil {
+		t.Fatalf("openAIToGemini failed: %v", err)
+	}
+	genConfig4, _ := resGem4["generationConfig"].(map[string]any)
+	if _, hasTemp := genConfig4["temperature"]; hasTemp {
+		t.Errorf("expected temperature to be stripped for Gemini 4, got: %v", genConfig4["temperature"])
+	}
+	if _, hasTopP := genConfig4["topP"]; hasTopP {
+		t.Errorf("expected topP to be stripped for Gemini 4, got: %v", genConfig4["topP"])
+	}
+	if genConfig4["maxOutputTokens"] != 4096 {
+		t.Errorf("expected maxOutputTokens preserved, got: %v", genConfig4["maxOutputTokens"])
+	}
+
+	// Test Gemini 2.5 / 3.x: temperature and topP must be preserved
+	resGem3, err := openAIToGemini("gemini-2.5-flash", body, false)
+	if err != nil {
+		t.Fatalf("openAIToGemini failed: %v", err)
+	}
+	genConfig3, _ := resGem3["generationConfig"].(map[string]any)
+	if genConfig3["temperature"] != 0.7 {
+		t.Errorf("expected temperature preserved for Gemini 2.5, got: %v", genConfig3["temperature"])
+	}
+	if genConfig3["topP"] != 0.9 {
+		t.Errorf("expected topP preserved for Gemini 2.5, got: %v", genConfig3["topP"])
+	}
+}
+
 func decodeTranslatorPayload(t *testing.T, data []byte) map[string]any {
 	t.Helper()
 	var result map[string]any

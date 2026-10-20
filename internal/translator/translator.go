@@ -751,16 +751,19 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 	}
 
 	genConfig := map[string]any{}
-	if temp, ok := body["temperature"]; ok {
-		genConfig["temperature"] = temp
-	}
-	if topP, ok := body["top_p"]; ok {
-		genConfig["topP"] = topP
+	// Gemini 4 removes external sampling params (temperature/topP); forwarding them causes 400 INVALID_ARGUMENT (9router #4802 parity)
+	isGem4 := isGemini4Model(model)
+	if !isGem4 {
+		if temp, ok := body["temperature"]; ok {
+			genConfig["temperature"] = temp
+		}
+		if topP, ok := body["top_p"]; ok {
+			genConfig["topP"] = topP
+		}
 	}
 	if mt := getMaxTokens(body); mt > 0 {
 		genConfig["maxOutputTokens"] = mt
 	}
-
 	// Support reasoning_effort & thinking config for Gemini
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
 		switch strings.ToLower(effort) {
@@ -969,7 +972,8 @@ func convertContentToGeminiParts(content any) []any {
 // 1. Alternating turns: merges adjacent same-role messages ("user" + "user", "model" + "model").
 // 2. Initial turn: ensures conversation starts with role "user" (prepends placeholder if starting with "model").
 // 3. Drops turns with empty parts.
-func normalizeGeminiContents(contents []any) []any {
+func normalizeGeminiContents(contents []any, targetModel ...string) []any {
+	isGem4 := len(targetModel) > 0 && isGemini4Model(targetModel[0])
 	var out []any
 	for _, c := range contents {
 		cm, ok := c.(map[string]any)
@@ -995,11 +999,18 @@ func normalizeGeminiContents(contents []any) []any {
 			last := out[len(out)-1].(map[string]any)
 			if last["role"] == role {
 				lastParts, _ := last["parts"].([]any)
-				last["parts"] = append(lastParts, validParts...)
+				lastParts = append(lastParts, validParts...)
+				if isGem4 && role == "user" {
+					lastParts = moveFunctionResponsesLastInAny(lastParts)
+				}
+				last["parts"] = lastParts
 				continue
 			}
 		}
 
+		if isGem4 && role == "user" {
+			validParts = moveFunctionResponsesLastInAny(validParts)
+		}
 		out = append(out, map[string]any{
 			"role":  role,
 			"parts": validParts,
@@ -1017,6 +1028,32 @@ func normalizeGeminiContents(contents []any) []any {
 		}
 	}
 	return out
+}
+
+func isGemini4Model(model string) bool {
+	m := strings.ToLower(model)
+	if slash := strings.LastIndex(m, "/"); slash >= 0 {
+		m = m[slash+1:]
+	}
+	return strings.HasPrefix(m, "gemini-4") || strings.Contains(m, "/gemini-4")
+}
+
+func moveFunctionResponsesLastInAny(parts []any) []any {
+	var nonFR []any
+	var fr []any
+	for _, p := range parts {
+		if pm, ok := p.(map[string]any); ok {
+			if _, hasFR := pm["functionResponse"]; hasFR {
+				fr = append(fr, p)
+				continue
+			}
+		}
+		nonFR = append(nonFR, p)
+	}
+	if len(fr) == 0 {
+		return parts
+	}
+	return append(nonFR, fr...)
 }
 
 // --- Claude → OpenAI response ---

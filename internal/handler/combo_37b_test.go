@@ -155,3 +155,77 @@ func TestComboFallback429Fallbackable(t *testing.T) {
 	}
 	_ = time.Now()
 }
+
+func TestComboFallback200ZeroUsableContent(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// Mock upstream 1: returns HTTP 200 with zero usable content (empty content, no tools, finish_reason in_progress or empty)
+	mock1Called := false
+	mock1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mock1Called = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-empty-1","choices":[{"index":0,"message":{"role":"assistant","content":""},"finish_reason":"in_progress"}]}`))
+	}))
+	defer mock1.Close()
+
+	// Mock upstream 2: returns HTTP 200 with real content
+	mock2Called := false
+	mock2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mock2Called = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-real-2","choices":[{"index":0,"message":{"role":"assistant","content":"hello from fallback model"}}]}`))
+	}))
+	defer mock2.Close()
+
+	conn1 := &model.ProviderConnection{
+		ID:       "conn-zero-1",
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-mock1",
+			BaseURL: mock1.URL + "/v1",
+		},
+	}
+	conn2 := &model.ProviderConnection{
+		ID:       "conn-zero-2",
+		Provider: "groq",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-mock2",
+			BaseURL: mock2.URL + "/v1",
+		},
+	}
+	database.CreateConnection(conn1)
+	database.CreateConnection(conn2)
+
+	combo := &model.Combo{
+		ID:     "combo-zero-content-test",
+		Name:   "combo-zero-content-test",
+		Kind:   "fallback",
+		Models: []string{"openai/gpt-4o", "groq/llama-3.3-70b-versatile"},
+	}
+	database.CreateCombo(combo)
+
+	body := `{"model":"combo-zero-content-test","messages":[{"role":"user","content":"hello"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK on fallback, got %d: %s", w.Code, w.Body.String())
+	}
+	if !mock1Called {
+		t.Fatal("expected mock1 to be called first")
+	}
+	if !mock2Called {
+		t.Fatal("expected mock2 to be called after mock1 returned zero usable content")
+	}
+	if !strings.Contains(w.Body.String(), "hello from fallback model") {
+		t.Fatalf("expected response from mock2, got: %s", w.Body.String())
+	}
+}
