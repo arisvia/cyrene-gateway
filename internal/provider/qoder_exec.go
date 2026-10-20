@@ -422,6 +422,14 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 		statusVal = http.StatusOK
 	}
 	inner := strings.TrimSpace(envelope.Body)
+
+	// Qoder upstream queueing handshake frame: {"isQueued":true,...} or code 10605.
+	// Upstream temporarily returns status 403 or 200 with an isQueued payload while holding
+	// the stream open waiting for capacity. Skip this control line to allow subsequent data chunks.
+	if isQoderQueueingFrame(statusVal, inner) {
+		return "", false
+	}
+
 	if statusVal != http.StatusOK {
 		if inner == "" {
 			inner = fmt.Sprintf("upstream status %d", statusVal)
@@ -460,7 +468,7 @@ func isQoderBillingBlock(chunk map[string]json.RawMessage) bool {
 		code = string(chunk["code"])
 	}
 	switch code {
-	case "110", "112", "10605":
+	case "110", "112":
 		return true
 	}
 	var pricingURL, message string
@@ -468,4 +476,39 @@ func isQoderBillingBlock(chunk map[string]json.RawMessage) bool {
 	_ = json.Unmarshal(chunk["message"], &message)
 	lower := strings.ToLower(message)
 	return pricingURL != "" || strings.Contains(lower, "insufficient") || strings.Contains(lower, "arrears")
+}
+
+// isQoderQueueingFrame reports whether an envelope line represents a transient queue waiting event
+// (e.g. {"isQueued":true,"modelKey":"dfmodel","queueCount":0} or nested under code 10605).
+func isQoderQueueingFrame(statusVal int, inner string) bool {
+	// Normal completion chunks contain "choices" and must never be treated as control frames
+	if strings.Contains(inner, `"choices"`) {
+		return false
+	}
+	if !strings.Contains(inner, "isQueued") && !strings.Contains(inner, "10605") {
+		return false
+	}
+	// Fast text-level checks across unescaped and escaped variations
+	if strings.Contains(inner, "isQueued") {
+		return true
+	}
+	// 2. Structured JSON checks
+	var obj map[string]any
+	if json.Unmarshal([]byte(inner), &obj) == nil && obj != nil {
+		if q, ok := obj["isQueued"].(bool); ok && q {
+			return true
+		}
+		if msgStr, ok := obj["message"].(string); ok && msgStr != "" {
+			if strings.Contains(msgStr, "isQueued") {
+				return true
+			}
+			var nested map[string]any
+			if json.Unmarshal([]byte(msgStr), &nested) == nil && nested != nil {
+				if q, ok := nested["isQueued"].(bool); ok && q {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

@@ -15,6 +15,7 @@
 
 ### Fixed
 - **CodeBuddy 会话渠道校验合规补齐（X-Conversation-* Headers）**：自动提取与规范化会话标识（`session_id`、`prompt_cache_key`），注入渠道验证所需的 `X-Conversation-Id` 与 `X-Conversation-Request-Id`，修复 11128 鉴权校验失败拦截。
+- **Qoder 上游排队控制帧穿透与防误杀（isQueued Bypass）**：精准识别并安全跳过 Qoder `isQueued: true`（错误码 10605）排队等待握手信封，解绑非欠费误判，保障高峰期排队后正常接收流式生成结果。
 
 ## [1.6.1] - 2026-10-16
 

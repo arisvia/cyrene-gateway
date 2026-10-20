@@ -50,6 +50,43 @@ func TestQoderStreamingResponseCapture(t *testing.T) {
 	}
 }
 
+func TestQoderStreamingQueueingFrameSkipped(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// Leading queueing handshake envelope (status 403 or 200 with isQueued: true)
+	queueMsg := `{"code":"403","message":"{\"code\":\"10605\",\"message\":\"{\\\"isQueued\\\":true,\\\"modelKey\\\":\\\"dfmodel\\\",\\\"queueCount\\\":0}\"}"}`
+	bQueue, _ := json.Marshal(queueMsg)
+	envelopeQueue := `{"statusCodeValue":403,"body":` + string(bQueue) + `}`
+
+	// Followed by valid output data
+	bodyChunk := `{"id":"chatcmpl-qoder-q","choices":[{"delta":{"content":"Answer after queue"}}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`
+	bData, _ := json.Marshal(bodyChunk)
+	envelopeData := `{"statusCodeValue":200,"body":` + string(bData) + `}`
+
+	sseData := "data: " + envelopeQueue + "\n\ndata: " + envelopeData + "\n\ndata: [DONE]\n\n"
+
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(sseData)),
+		Header:     make(http.Header),
+	}
+	uc := &usageContext{
+		StartedAt: time.Now(),
+		Provider:  "qoder",
+		Model:     "efficient",
+		Prompt:    "ping",
+	}
+	w := httptest.NewRecorder()
+	srv.proxyQoderStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "efficient", uc, nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200 after skipping queue frame, got %d: body=%s", w.Code, w.Body.String())
+	}
+	if uc.Response != "Answer after queue" {
+		t.Errorf("expected uc.Response 'Answer after queue', got %q", uc.Response)
+	}
+}
+
 func TestQoderNonStreamingResponseCapture(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
