@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -234,11 +235,33 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 			Agents []struct {
 				Models []string `json:"models"`
 			} `json:"agents"`
+			ModelPromotions []struct {
+				Enabled  bool     `json:"enabled"`
+				ModelIDs []string `json:"modelIds"`
+				Discount struct {
+					Factor float64 `json:"factor"`
+				} `json:"discount"`
+			} `json:"modelPromotions"`
 			Models []json.RawMessage `json:"models"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("parse codebuddy models: %w", err)
+	}
+
+	// Extract promo discounts (e.g. factor 0 means free)
+	promoFree := make(map[string]bool)
+	promoFactor := make(map[string]float64)
+	for _, promo := range resp.Data.ModelPromotions {
+		if promo.Enabled {
+			for _, mID := range promo.ModelIDs {
+				if promo.Discount.Factor == 0 {
+					promoFree[mID] = true
+				} else if promo.Discount.Factor > 0 {
+					promoFactor[mID] = promo.Discount.Factor
+				}
+			}
+		}
 	}
 
 	var allowedModels map[string]bool
@@ -266,6 +289,7 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 		var m struct {
 			ID                string `json:"id"`
 			Name              string `json:"name"`
+			Credits           string `json:"credits"`
 			MaxInputTokens    int    `json:"maxInputTokens"`
 			MaxOutputTokens   int    `json:"maxOutputTokens"`
 			SupportsImages    bool   `json:"supportsImages"`
@@ -288,6 +312,19 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 			MaxOutput:     m.MaxOutputTokens,
 			FromUpstream:  m.MaxInputTokens > 0,
 		}
+
+		// Dynamic credits parsing: "x0.79 credits", "x0.00", "x3.31", etc.
+		factor, isFree := parseCodebuddyCredits(m.Credits)
+		if promoFree[m.ID] {
+			meta.IsFree = true
+		} else if isFree {
+			meta.IsFree = true
+		} else if pf, ok := promoFactor[m.ID]; ok {
+			meta.PriceFactor = pf
+		} else if factor > 0 {
+			meta.PriceFactor = factor
+		}
+
 		if m.SupportsImages {
 			meta.Modalities = []string{"text", "image"}
 		} else {
@@ -307,6 +344,28 @@ func normalizeCodebuddy(body []byte) ([]ModelMetadata, error) {
 		return nil, fmt.Errorf("codebuddy returned 0 models (token may be invalid or expired)")
 	}
 	return models, nil
+}
+
+// parseCodebuddyCredits parses credit multiplier strings like "x0.79 credits", "x3.31", "x0.00", "0x"
+func parseCodebuddyCredits(raw string) (factor float64, isFree bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	if trimmed == "" {
+		return 0, false
+	}
+	// Remove prefixes and suffixes
+	trimmed = strings.TrimPrefix(trimmed, "x")
+	trimmed = strings.TrimSuffix(trimmed, "x")
+	if idx := strings.Index(trimmed, " "); idx != -1 {
+		trimmed = trimmed[:idx]
+	}
+	val, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0, false
+	}
+	if val == 0 {
+		return 0, true
+	}
+	return val, false
 }
 
 func hasTruthyDisabledFlag(raw map[string]any) bool {

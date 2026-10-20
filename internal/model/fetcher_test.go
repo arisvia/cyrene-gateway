@@ -407,6 +407,80 @@ func TestNormalizeCodebuddy(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodebuddy_CreditsAndPromotions(t *testing.T) {
+	payload := []byte(`{
+		"code": 0,
+		"data": {
+			"modelPromotions": [
+				{
+					"enabled": true,
+					"modelIds": ["hy4-preview"],
+					"discount": {"factor": 0}
+				}
+			],
+			"models": [
+				{
+					"id": "default-model",
+					"name": "Auto",
+					"credits": "x0.79 credits",
+					"maxInputTokens": 176000
+				},
+				{
+					"id": "primary-model",
+					"name": "Primary",
+					"credits": "x3.31 credits",
+					"maxInputTokens": 272000
+				},
+				{
+					"id": "hy4-preview",
+					"name": "Hy4 preview",
+					"credits": "x0.00",
+					"maxInputTokens": 1000000
+				},
+				{
+					"id": "gpt-5.6-terra",
+					"name": "GPT-5.6-Terra",
+					"credits": "x1.39",
+					"maxInputTokens": 1000000
+				}
+			]
+		}
+	}`)
+
+	models, err := normalizeCodebuddy(payload)
+	if err != nil {
+		t.Fatalf("normalizeCodebuddy failed: %v", err)
+	}
+	if len(models) != 4 {
+		t.Fatalf("expected 4 models, got %d", len(models))
+	}
+
+	modelMap := make(map[string]ModelMetadata)
+	for _, m := range models {
+		modelMap[m.ID] = m
+	}
+
+	// default-model: 0.79x
+	if m := modelMap["default-model"]; m.PriceFactor != 0.79 || m.IsFree {
+		t.Errorf("expected default-model priceFactor 0.79 and not free, got factor=%v free=%v", m.PriceFactor, m.IsFree)
+	}
+
+	// primary-model: 3.31x
+	if m := modelMap["primary-model"]; m.PriceFactor != 3.31 || m.IsFree {
+		t.Errorf("expected primary-model priceFactor 3.31 and not free, got factor=%v free=%v", m.PriceFactor, m.IsFree)
+	}
+
+	// hy4-preview: isFree due to x0.00 and promo factor 0
+	if m := modelMap["hy4-preview"]; !m.IsFree {
+		t.Errorf("expected hy4-preview isFree=true, got free=%v factor=%v", m.IsFree, m.PriceFactor)
+	}
+
+	// gpt-5.6-terra: 1.39x
+	if m := modelMap["gpt-5.6-terra"]; m.PriceFactor != 1.39 || m.IsFree {
+		t.Errorf("expected gpt-5.6-terra priceFactor 1.39 and not free, got factor=%v free=%v", m.PriceFactor, m.IsFree)
+	}
+}
+
 func TestNormalizeCodebuddy_AgentFilter(t *testing.T) {
 	payload := []byte(`{
 		"code": 0,
