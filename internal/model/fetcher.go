@@ -379,14 +379,18 @@ func hasTruthyDisabledFlag(raw map[string]any) bool {
 	return false
 }
 
-// normalizeOpenRouter handles OpenRouter's /api/v1/models with rich metadata.
 func normalizeOpenRouter(body []byte) ([]ModelMetadata, error) {
 	var resp struct {
 		Data []struct {
 			ID            string `json:"id"`
 			Name          string `json:"name"`
 			ContextLength int    `json:"context_length"`
-			Architecture  struct {
+			Pricing       struct {
+				Prompt     string `json:"prompt"`
+				Completion string `json:"completion"`
+				Request    string `json:"request"`
+			} `json:"pricing"`
+			Architecture struct {
 				Modality string `json:"modality"`
 			} `json:"architecture"`
 			TopProvider struct {
@@ -406,6 +410,13 @@ func normalizeOpenRouter(body []byte) ([]ModelMetadata, error) {
 			ContextLength: m.ContextLength,
 			MaxOutput:     m.TopProvider.MaxCompletionTokens,
 			FromUpstream:  m.ContextLength > 0,
+		}
+		// OpenRouter pricing detection: "0" prompt and completion means completely free
+		promptP, _ := strconv.ParseFloat(m.Pricing.Prompt, 64)
+		compP, _ := strconv.ParseFloat(m.Pricing.Completion, 64)
+		reqP, _ := strconv.ParseFloat(m.Pricing.Request, 64)
+		if strings.HasSuffix(m.ID, ":free") || (m.Pricing.Prompt != "" && promptP == 0 && compP == 0 && reqP == 0) {
+			meta.IsFree = true
 		}
 
 		// Parse modality string like "text+image->text"
