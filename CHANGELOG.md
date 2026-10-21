@@ -2,6 +2,15 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.2] - 2026-10-20
+
+### Fixed
+- **Qoder 上游排队全自动透明代排（In-Stream Queue Polling）**：修正 1.7.1 中排队帧被静默跳过后上游断连导致的 502 空流。现精准提取 `10605` / `isQueued` 的 `retryAfterSeconds` 与队列位置，保持下游长连接并周期性注入 SSE 保活注释帧，原地透明轮询至出字，每次重试刷新 `request_id` 规避 103 Duplicate。
+- **SSE 实时流穿透反向代理缓冲（8KB 分块预填充）**：实时用量拓扑与系统日志 SSE 握手升级为 8KB 注释帧分块冲刷，击穿 Cloudflare Tunnel / Nginx 的 4-8KB 写缓冲阈值，修复公网域名下 EventStream 空白挂起、界面不实时刷新的问题。
+
+### Removed
+- **移除独立数据迁移工具（`cyrene-migrate-*`）**：提供商 ID 规范化自 `v1.5.0` 起已完成，该一次性工具不再有使用场景。Release 资产由 12 个精简为 6 个纯网关二进制，`scripts/` 源码与相关文档一并清理。
+
 ## [1.7.1] - 2026-10-20
 
 ### Fixed

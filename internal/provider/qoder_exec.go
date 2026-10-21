@@ -43,6 +43,16 @@ func qoderCacheKey(providerID, userID string) string {
 	return "qoder:" + providerID + ":" + userID
 }
 
+// SeedQoderCatalogForTest injects model configurations into the catalog cache for unit testing.
+func SeedQoderCatalogForTest(userID string, configs map[string]map[string]any) {
+	qoderCatalogMu.Lock()
+	defer qoderCatalogMu.Unlock()
+	qoderCatalogCache[qoderCacheKey("qoder", userID)] = &qoderCatalogEntry{
+		expiresAt:  time.Now().Add(time.Hour),
+		rawConfigs: configs,
+	}
+}
+
 // QoderModelConfig returns the server-published model_config for a model key,
 // fetching the live catalog if needed. Returns nil when unavailable.
 // Supports direct key match as well as display name / alias fuzzy matching.
@@ -424,12 +434,11 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 	inner := strings.TrimSpace(envelope.Body)
 
 	// Qoder upstream queueing handshake frame: {"isQueued":true,...} or code 10605.
-	// Upstream temporarily returns status 403 or 200 with an isQueued payload while holding
-	// the stream open waiting for capacity. Skip this control line to allow subsequent data chunks.
-	if isQoderQueueingFrame(statusVal, inner) {
+	// Upstream returns status 403 or 200 with an isQueued payload and then closes
+	// the socket; the handler re-issues the request after the hinted backoff.
+	if _, queued := ExtractQoderQueueRetrySeconds(inner); queued {
 		return "", false
 	}
-
 	if statusVal != http.StatusOK {
 		if inner == "" {
 			inner = fmt.Sprintf("upstream status %d", statusVal)
@@ -478,37 +487,78 @@ func isQoderBillingBlock(chunk map[string]json.RawMessage) bool {
 	return pricingURL != "" || strings.Contains(lower, "insufficient") || strings.Contains(lower, "arrears")
 }
 
-// isQoderQueueingFrame reports whether an envelope line represents a transient queue waiting event
-// (e.g. {"isQueued":true,"modelKey":"dfmodel","queueCount":0} or nested under code 10605).
-func isQoderQueueingFrame(statusVal int, inner string) bool {
-	// Normal completion chunks contain "choices" and must never be treated as control frames
+// DefaultQoderQueueRetrySeconds is the backoff used when the upstream queue
+// envelope omits retryAfterSeconds.
+const DefaultQoderQueueRetrySeconds = 3
+
+// ExtractQoderQueueRetrySeconds reports whether inner is a Qoder queue
+// handshake (code 10605 / isQueued: true) and, if so, how long the upstream
+// asked us to wait before retrying. Completion chunks carrying "choices" are
+// never treated as queue frames, so answers that merely mention isQueued pass
+// through untouched.
+func ExtractQoderQueueRetrySeconds(inner string) (int, bool) {
 	if strings.Contains(inner, `"choices"`) {
-		return false
+		return 0, false
 	}
 	if !strings.Contains(inner, "isQueued") && !strings.Contains(inner, "10605") {
-		return false
+		return 0, false
 	}
-	// Fast text-level checks across unescaped and escaped variations
-	if strings.Contains(inner, "isQueued") {
-		return true
+
+	retry := DefaultQoderQueueRetrySeconds
+	queued := false
+
+	// The queue payload may be nested through stringified `message` fields
+	// (upstream double-encodes: {"code":"403","message":"{\"code\":\"10605\"…}"}).
+	var walk func(m map[string]any)
+	walk = func(m map[string]any) {
+		if q, ok := m["isQueued"].(bool); ok && q {
+			queued = true
+		}
+		if code, ok := m["code"].(string); ok && code == "10605" {
+			queued = true
+		} else if code, ok := m["code"].(float64); ok && code == 10605 {
+			queued = true
+		}
+		for _, key := range []string{"retryAfterSeconds", "retry_after_seconds"} {
+			if v, ok := m[key].(float64); ok && v > 0 {
+				retry = int(v)
+			}
+		}
+		if msg, ok := m["message"].(string); ok && msg != "" {
+			var nested map[string]any
+			if json.Unmarshal([]byte(msg), &nested) == nil && nested != nil {
+				walk(nested)
+			}
+		}
 	}
-	// 2. Structured JSON checks
+
 	var obj map[string]any
 	if json.Unmarshal([]byte(inner), &obj) == nil && obj != nil {
-		if q, ok := obj["isQueued"].(bool); ok && q {
-			return true
-		}
-		if msgStr, ok := obj["message"].(string); ok && msgStr != "" {
-			if strings.Contains(msgStr, "isQueued") {
-				return true
-			}
-			var nested map[string]any
-			if json.Unmarshal([]byte(msgStr), &nested) == nil && nested != nil {
-				if q, ok := nested["isQueued"].(bool); ok && q {
-					return true
-				}
-			}
-		}
+		walk(obj)
 	}
-	return false
+	if !queued {
+		// Malformed or partially escaped envelope: the marker itself is the signal.
+		queued = true
+	}
+	return retry, queued
+}
+
+// ExtractQoderQueueRetryFromLine accepts either a raw SSE `data:` line or a
+// bare error body and unwraps the {statusCodeValue, body} envelope when present.
+func ExtractQoderQueueRetryFromLine(line string) (int, bool) {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+	if !strings.HasPrefix(trimmed, "data:") {
+		return ExtractQoderQueueRetrySeconds(trimmed)
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return 0, false
+	}
+	var envelope struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(payload), &envelope); err == nil {
+		return ExtractQoderQueueRetrySeconds(strings.TrimSpace(envelope.Body))
+	}
+	return ExtractQoderQueueRetrySeconds(payload)
 }

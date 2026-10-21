@@ -106,35 +106,11 @@ schema.sql          # 数据库 schema 参考(实际迁移在 internal/db/db.go)
 
 ### 发布
 
-打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release,同时附带同架构矩阵的独立数据迁移工具 `cyrene-migrate-*`。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
+打 `v*` tag 触发 GitHub Actions,多平台交叉编译(linux/darwin/windows × amd64/arm64)并附到 Release。版本号通过 `-ldflags -X .../internal/handler.version=…` 注入,未注入时从 git build info 读取,回退 `dev`。
 
-## 升级与数据迁移
+## 升级
 
-提供商 ID 规范化（如 `alicode-intl` → `alicode`、未标注的 `alicode` → `alicode-cn`）属于一次性历史整理，网关启动时**不会**自动改写你的数据库。跨越这次规范化的升级请显式运行 Release 附件里的 `cyrene-migrate-<os>-<arch>`：
-
-```sh
-# 1. 对照 Release 附件校验 checksums.txt，再停止网关
-# 2. 完整备份数据目录（data.sqlite 及其 -wal / -shm 伴生文件）
-# 3. 下载与主机架构一致的迁移工具；Release 附件不含可执行位，需先 chmod
-chmod +x ./cyrene-migrate-linux-amd64
-# 4. 执行迁移，默认读取 ~/.cyrene-gateway
-./cyrene-migrate-linux-amd64
-#    或指定数据目录
-./cyrene-migrate-linux-amd64 -data-dir /path/to/cyrene-data
-```
-
-macOS 产物未做签名与公证，首次执行会被 Gatekeeper 拦截，用 `xattr -d com.apple.quarantine <文件>` 解除隔离后再运行。
-
-工具在单个事务内完成改写，失败即整体回滚；成功后写入 `standaloneMigrations/provider-ids-v1` 标记，重复执行为空操作。不含旧 ID 特征的数据库会被直接拒绝，避免把已是规范 ID 的数据二次改写。
-
-容器部署需保持数据卷属主一致：先停止容器，再用主机上的迁移二进制挂载数据卷执行。
-
-```sh
-docker run --rm --user 10001:10001 \
-  -v cyrene-data:/home/gateway/.cyrene-gateway \
-  -v "$PWD:/tool:ro" \
-  alpine:3.21 /tool/cyrene-migrate-linux-amd64 -data-dir /home/gateway/.cyrene-gateway
-```
+提供商 ID 规范化（如 `alicode-intl` → `alicode`、未标注的 `alicode` → `alicode-cn`）属于一次性历史整理，已在 `v1.5.0` 起完成并固化，主流程不再包含兼容层与自我升级逻辑。升级前请完整备份数据目录（`data.sqlite` 及其 `-wal` / `-shm` 伴生文件）。
 
 ## 安全机制
 

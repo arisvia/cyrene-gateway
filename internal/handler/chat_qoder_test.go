@@ -1,17 +1,21 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestQoderStreamingResponseCapture(t *testing.T) {
@@ -84,6 +88,211 @@ func TestQoderStreamingQueueingFrameSkipped(t *testing.T) {
 	}
 	if uc.Response != "Answer after queue" {
 		t.Errorf("expected uc.Response 'Answer after queue', got %q", uc.Response)
+	}
+}
+func TestQoderQueueAutoRetrySuccess(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	var attempts atomic.Int32
+	queueMsg := `{"code":"403","message":"{\"code\":\"10605\",\"message\":\"{\\\"isQueued\\\":true,\\\"modelKey\\\":\\\"dfmodel\\\",\\\"queueCount\\\":0,\\\"retryAfterSeconds\\\":1}\"}"}`
+	bQueue, _ := json.Marshal(queueMsg)
+	envelopeQueue := `data: {"statusCodeValue":403,"body":` + string(bQueue) + `}` + "\n\n"
+
+	bodyChunk := `{"id":"chatcmpl-qoder-ok","choices":[{"delta":{"content":"Polled OK"}}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`
+	bData, _ := json.Marshal(bodyChunk)
+	envelopeSuccess := `data: {"statusCodeValue":200,"body":` + string(bData) + `}` + "\n\ndata: [DONE]\n\n"
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		att := attempts.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if att == 1 {
+			// First attempt returns queue envelope
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(envelopeQueue))
+			return
+		}
+		// Second attempt succeeds
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(envelopeSuccess))
+	}))
+	defer upstream.Close()
+
+	// Mock catalog cache so BuildQoderRequestBody finds dfmodel config immediately
+	provider.SeedQoderCatalogForTest("user-queue-test", map[string]map[string]any{
+		"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096},
+	})
+
+	conn := &model.ProviderConnection{
+		ID:       "qoder-queue-conn",
+		Provider: "qoder",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "dt-mock-token",
+			BaseURL:     upstream.URL,
+			ProviderSpecificData: map[string]any{
+				"userId": "user-queue-test",
+			},
+		},
+	}
+
+	reqBody := []byte(`{"model":"qoder/dfmodel","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	r := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(reqBody))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	var chatReq ChatCompletionRequest
+	json.Unmarshal(reqBody, &chatReq)
+	modelInfo := model.ModelInfo{Provider: "qoder", Model: "dfmodel"}
+	providerInfo, _ := provider.GetProvider("qoder")
+
+	srv.handleQoderChat(w, r, chatReq, reqBody, modelInfo, conn, providerInfo)
+
+	if attempts.Load() < 2 {
+		t.Fatalf("expected at least 2 attempts (retry after 10605), got %d", attempts.Load())
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d: %s", w.Code, w.Body.String())
+	}
+	bodyStr := w.Body.String()
+	if !strings.Contains(bodyStr, "Polled OK") {
+		t.Fatalf("expected streamed content 'Polled OK', got body: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, ": qoder model dfmodel queued") {
+		t.Errorf("expected keepalive comment frame with queue info, got body: %s", bodyStr)
+	}
+}
+
+// TestQoderPeekPreservesBufferedChunks guards the peek path against dropping
+// read-ahead bytes: the upstream writes several SSE frames into one TCP
+// segment, so anything buffered past the peeked first line must still reach the
+// client. A bufio.Scanner here would silently swallow them.
+func TestQoderPeekPreservesBufferedChunks(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	chunks := []string{"alpha-", "beta-", "gamma"}
+	var sse strings.Builder
+	for _, c := range chunks {
+		body := `{"id":"chatcmpl-peek","choices":[{"delta":{"content":"` + c + `"}}]}`
+		encoded, _ := json.Marshal(body)
+		sse.WriteString(`data: {"statusCodeValue":200,"body":` + string(encoded) + "}\n\n")
+	}
+	sse.WriteString("data: [DONE]\n\n")
+	payload := sse.String()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// Single write: every frame lands in one segment and thus in the peek buffer.
+		w.Write([]byte(payload))
+	}))
+	defer upstream.Close()
+
+	provider.SeedQoderCatalogForTest("user-peek-test", map[string]map[string]any{
+		"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096},
+	})
+
+	conn := &model.ProviderConnection{
+		ID:       "qoder-peek-conn",
+		Provider: "qoder",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "dt-mock-token-peek",
+			BaseURL:     upstream.URL,
+			ProviderSpecificData: map[string]any{
+				"userId": "user-peek-test",
+			},
+		},
+	}
+
+	reqBody := []byte(`{"model":"qoder/dfmodel","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	r := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(reqBody))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	var chatReq ChatCompletionRequest
+	json.Unmarshal(reqBody, &chatReq)
+	modelInfo := model.ModelInfo{Provider: "qoder", Model: "dfmodel"}
+	providerInfo, _ := provider.GetProvider("qoder")
+
+	srv.handleQoderChat(w, r, chatReq, reqBody, modelInfo, conn, providerInfo)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d: %s", w.Code, w.Body.String())
+	}
+	out := w.Body.String()
+	for _, c := range chunks {
+		if !strings.Contains(out, c) {
+			t.Fatalf("chunk %q was dropped from the stream; body: %s", c, out)
+		}
+	}
+}
+
+func TestQoderQueueHTTPStatusRetrySuccess(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	var attempts atomic.Int32
+	queueMsg := `{"code":"403","message":"{\"code\":\"10605\",\"message\":\"{\\\"isQueued\\\":true,\\\"modelKey\\\":\\\"dfmodel\\\",\\\"queueCount\\\":0,\\\"retryAfterSeconds\\\":1}\"}"}`
+
+	bodyChunk := `{"id":"chatcmpl-qoder-ok2","choices":[{"delta":{"content":"Retry 403 OK"}}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`
+	bData, _ := json.Marshal(bodyChunk)
+	envelopeSuccess := `data: {"statusCodeValue":200,"body":` + string(bData) + `}` + "\n\ndata: [DONE]\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		att := attempts.Add(1)
+		if att == 1 {
+			// First attempt returns HTTP 403 with 10605 queue JSON
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(queueMsg))
+			return
+		}
+		// Second attempt succeeds with SSE
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(envelopeSuccess))
+	}))
+	defer upstream.Close()
+
+	provider.SeedQoderCatalogForTest("user-queue-http", map[string]map[string]any{
+		"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096},
+	})
+
+	conn := &model.ProviderConnection{
+		ID:       "qoder-queue-http-conn",
+		Provider: "qoder",
+		AuthType: "oauth",
+		IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken: "dt-mock-token-2",
+			BaseURL:     upstream.URL,
+			ProviderSpecificData: map[string]any{
+				"userId": "user-queue-http",
+			},
+		},
+	}
+
+	reqBody := []byte(`{"model":"qoder/dfmodel","stream":true,"messages":[{"role":"user","content":"ping"}]}`)
+	r := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(reqBody))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	var chatReq ChatCompletionRequest
+	json.Unmarshal(reqBody, &chatReq)
+	modelInfo := model.ModelInfo{Provider: "qoder", Model: "dfmodel"}
+	providerInfo, _ := provider.GetProvider("qoder")
+
+	srv.handleQoderChat(w, r, chatReq, reqBody, modelInfo, conn, providerInfo)
+
+	if attempts.Load() < 2 {
+		t.Fatalf("expected at least 2 attempts, got %d", attempts.Load())
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200, got %d: %s", w.Code, w.Body.String())
+	}
+	bodyStr := w.Body.String()
+	if !strings.Contains(bodyStr, "Retry 403 OK") {
+		t.Fatalf("expected streamed content 'Retry 403 OK', got: %s", bodyStr)
 	}
 }
 

@@ -22,6 +22,13 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
 
+// qoderPeekedBody rejoins a peeked SSE line (and any read-ahead bytes) with the
+// live upstream body so downstream parsers see the byte stream unchanged.
+type qoderPeekedBody struct {
+	io.Reader
+	io.Closer
+}
+
 // handleQoderChat executes a chat request against Qoder's COSY-signed endpoint.
 func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, modelInfo model.ModelInfo, conn *model.ProviderConnection, providerInfo provider.ProviderInfo) {
 	psd := conn.Data.ProviderSpecificData
@@ -97,99 +104,254 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	s.applyTokenSaver(bodyMap, "openai", modelInfo.Provider, r)
 
 	start := time.Now()
-	encodedBody, qoderKey, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-
-	// jt- tokens are rejected by api3 ("Login expired" 403) — route them to
-	// api2.qoder.sh like the official qodercli.
-	chatURL := provider.QoderChatURLForToken(conn.Provider, resolved.AccessToken)
-	cosyHeaders, err := provider.BuildQoderCosyHeaders(encodedBody, chatURL, creds)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": fmt.Sprintf("qoder cosy signing failed: %v", err),
-		})
-		return
-	}
-	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", chatURL, bytes.NewReader(encodedBody))
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
-		return
-	}
-
-	upstreamReq.Header.Set("Content-Type", "application/json")
-	upstreamReq.Header.Set("Accept", "text/event-stream")
-	upstreamReq.Header.Set("Cache-Control", "no-cache")
-	upstreamReq.Header.Set("X-Model-Key", qoderKey)
-	upstreamReq.Header.Set("X-Model-Source", modelSource)
-	// gzip triggers signature validation on Qoder's CDN; force identity
-	upstreamReq.Header.Set("Accept-Encoding", "identity")
-	for k, v := range cosyHeaders {
-		upstreamReq.Header.Set(k, v)
-	}
-
-	slog.Info("Proxying Qoder request",
-		slog.String("model", qoderKey),
-		slog.String("connection", conn.ID),
-	)
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
-	resp, err := client.Do(upstreamReq)
-	if err != nil {
-		slog.Error("Qoder upstream request failed", "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "qoder upstream request failed"})
+	maxQueueAttempts := 20
+	maxQueueWaitBudget := 120 * time.Second
+	queueWaited := time.Duration(0)
+
+	var (
+		resp     *http.Response
+		qoderKey string
+	)
+
+	// Send helper that rebuilds and signs fresh request_id on each attempt
+	sendAttempt := func(isRetry bool) (*http.Response, string, error) {
+		encodedBody, key, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to build request body: %w", err)
+		}
+		chatURL := provider.QoderChatURLForConnection(conn, resolved.AccessToken)
+		cosyHeaders, err := provider.BuildQoderCosyHeaders(encodedBody, chatURL, creds)
+		if err != nil {
+			return nil, "", fmt.Errorf("qoder cosy signing failed: %w", err)
+		}
+		upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", chatURL, bytes.NewReader(encodedBody))
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create upstream request: %w", err)
+		}
+		upstreamReq.Header.Set("Content-Type", "application/json")
+		upstreamReq.Header.Set("Accept", "text/event-stream")
+		upstreamReq.Header.Set("Cache-Control", "no-cache")
+		upstreamReq.Header.Set("X-Model-Key", key)
+		upstreamReq.Header.Set("X-Model-Source", modelSource)
+		upstreamReq.Header.Set("Accept-Encoding", "identity")
+		for k, v := range cosyHeaders {
+			upstreamReq.Header.Set(k, v)
+		}
+
+		slog.Info("Proxying Qoder request",
+			slog.String("model", key),
+			slog.String("connection", conn.ID),
+			slog.Bool("retry", isRetry),
+		)
+		r, err := client.Do(upstreamReq)
+		return r, key, err
+	}
+
+	flusher, isStreaming := w.(http.Flusher)
+	isStreaming = isStreaming && req.Stream
+	headersCommitted := false
+
+	commitStreamingHeaders := func() {
+		if isStreaming && !headersCommitted {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache, no-transform")
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("X-Accel-Buffering", "no")
+			w.WriteHeader(http.StatusOK)
+			flusher.Flush()
+			headersCommitted = true
+		}
+	}
+
+	emitKeepalive := func(msg string) {
+		if isStreaming && headersCommitted {
+			fmt.Fprintf(w, ": %s\n\n", msg)
+			flusher.Flush()
+		}
+	}
+
+	// waitQueue blocks for the upstream-suggested interval, emitting one
+	// keepalive per second so neither the client nor an intermediate proxy
+	// times the idle stream out. Returns false when the client went away.
+	waitQueue := func(retrySec, attempt int) bool {
+		if retrySec <= 0 {
+			retrySec = provider.DefaultQoderQueueRetrySeconds
+		}
+		commitStreamingHeaders()
+		slog.Info("Qoder model queued, waiting before transparent retry",
+			slog.String("model", qoderKey),
+			slog.Int("attempt", attempt+1),
+			slog.Int("waitSec", retrySec),
+		)
+		emitKeepalive(fmt.Sprintf("qoder model %s queued (code 10605), waiting %ds then retry (%d/%d)",
+			qoderKey, retrySec, attempt+1, maxQueueAttempts))
+
+		waitDur := time.Duration(retrySec) * time.Second
+		deadline := time.NewTimer(waitDur)
+		defer deadline.Stop()
+		keepalive := time.NewTicker(time.Second)
+		defer keepalive.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return false
+			case <-keepalive.C:
+				emitKeepalive("ping - queue waiting")
+			case <-deadline.C:
+				queueWaited += waitDur
+				return true
+			}
+		}
+	}
+
+	for attempt := 0; attempt < maxQueueAttempts; attempt++ {
+		if r.Context().Err() != nil {
+			return
+		}
+		res, key, err := sendAttempt(attempt > 0)
+		if err != nil {
+			slog.Error("Qoder upstream request failed", "error", err)
+			msg := "qoder upstream request failed: " + err.Error()
+			if headersCommitted {
+				fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"upstream_error\",\"code\":502}}\n\n", msg)
+				flusher.Flush()
+			} else {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": msg})
+			}
+			return
+		}
+
+		qoderKey = key
+
+		// Check if the response is an explicit HTTP error
+		if res.StatusCode < 200 || res.StatusCode >= 300 {
+			errBody, _ := io.ReadAll(res.Body)
+			res.Body.Close()
+
+			// Check if this error status represents queue waiting (10605 / isQueued)
+			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(string(errBody)); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
+				if !waitQueue(retrySec, attempt) {
+					return
+				}
+				continue
+			}
+
+			// Genuine non-queue error
+			provider.ApplyErrorState(conn, res.StatusCode, string(errBody))
+			if s.DB != nil {
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			}
+			latencyMs := int(time.Since(start).Milliseconds())
+			if latencyMs < 0 {
+				latencyMs = 0
+			}
+			statusStr := fmt.Sprintf("%d", res.StatusCode)
+			rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+			rdData := map[string]any{
+				"id":           rdID,
+				"timestamp":    time.Now().UTC().Format(time.RFC3339),
+				"provider":     modelInfo.Provider,
+				"model":        modelInfo.Model,
+				"connectionId": conn.ID,
+				"status":       statusStr,
+				"latencyMs":    latencyMs,
+				"endpoint":     endpoint,
+				"error":        string(errBody),
+				"input":        extractPromptSummary(req.Messages),
+			}
+			rdBytes, _ := json.Marshal(rdData)
+			if s.DB != nil {
+				_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+					ID:           rdID,
+					Timestamp:    rdData["timestamp"].(string),
+					Provider:     modelInfo.Provider,
+					Model:        modelInfo.Model,
+					ConnectionID: conn.ID,
+					Status:       statusStr,
+					Data:         string(rdBytes),
+				})
+			}
+			if s.Metrics != nil {
+				s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, res.StatusCode, time.Since(start).Seconds(), nil)
+			}
+			s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
+
+			if headersCommitted {
+				fmt.Fprintf(w, "event: error\ndata: %s\n\n", string(errBody))
+				flusher.Flush()
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(res.StatusCode)
+				w.Write(errBody)
+			}
+			return
+		}
+
+		// Status is 200: peek the first data frame to detect an in-stream
+		// 10605 envelope. bufio.Reader keeps read-ahead bytes recoverable via
+		// Reader(), whereas bufio.Scanner would discard every chunk it had
+		// already buffered past the peeked line.
+		peekReader := bufio.NewReaderSize(res.Body, 64*1024)
+		var peeked strings.Builder // every byte consumed while peeking, verbatim
+		var rawLine string
+		hasLine := false
+		for {
+			if r.Context().Err() != nil {
+				res.Body.Close()
+				return
+			}
+			line, readErr := peekReader.ReadString('\n')
+			peeked.WriteString(line)
+			// Only the emptiness check trims; rawLine keeps the original bytes so
+			// detection cannot be confused by whitespace or a CRLF terminator.
+			if strings.TrimSpace(line) != "" {
+				rawLine = line
+				hasLine = true
+				break
+			}
+			if readErr != nil {
+				break
+			}
+		}
+
+		if hasLine {
+			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(rawLine); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
+				res.Body.Close()
+				if !waitQueue(retrySec, attempt) {
+					return
+				}
+				continue
+			}
+		}
+
+		// Replay every peeked byte (blank separator lines included) ahead of the
+		// untouched remainder of res.Body so downstream parsers see the stream
+		// exactly as the upstream wrote it.
+		res.Body = &qoderPeekedBody{
+			Reader: io.MultiReader(strings.NewReader(peeked.String()), peekReader),
+			Closer: res.Body,
+		}
+
+		resp = res
+		break
+	}
+
+	if resp == nil {
+		msg := fmt.Sprintf("qoder model %s still queued after %d attempts, giving up", qoderKey, maxQueueAttempts)
+		if headersCommitted {
+			// Headers are already 200 text/event-stream, so the client needs a
+			// terminal error event; closing silently would look like a hang.
+			fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"qoder_queue_timeout\",\"code\":503}}\n\n", msg)
+			flusher.Flush()
+		} else {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": msg})
+		}
 		return
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		errBody, _ := io.ReadAll(resp.Body)
-		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
-		if s.DB != nil {
-			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-		}
-		latencyMs := int(time.Since(start).Milliseconds())
-		if latencyMs < 0 {
-			latencyMs = 0
-		}
-		statusStr := fmt.Sprintf("%d", resp.StatusCode)
-		rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
-		rdData := map[string]any{
-			"id":           rdID,
-			"timestamp":    time.Now().UTC().Format(time.RFC3339),
-			"provider":     modelInfo.Provider,
-			"model":        modelInfo.Model,
-			"connectionId": conn.ID,
-			"status":       statusStr,
-			"latencyMs":    latencyMs,
-			"endpoint":     endpoint,
-			"error":        string(errBody),
-			"input":        extractPromptSummary(req.Messages),
-		}
-		rdBytes, _ := json.Marshal(rdData)
-		if s.DB != nil {
-			_ = s.DB.SaveRequestDetail(&db.RequestDetail{
-				ID:           rdID,
-				Timestamp:    rdData["timestamp"].(string),
-				Provider:     modelInfo.Provider,
-				Model:        modelInfo.Model,
-				ConnectionID: conn.ID,
-				Status:       statusStr,
-				Data:         string(rdBytes),
-			})
-		}
-		if s.Metrics != nil {
-			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
-		}
-		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(resp.StatusCode)
-		w.Write(errBody)
-		return
-	}
 
 	provider.ResetAccountState(conn)
 	if s.DB != nil {
@@ -428,14 +590,15 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 		return
 	}
 
-	// Stream is healthy: commit HTTP 200 headers now
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
+	// Stream is healthy: commit HTTP 200 headers if not already committed during queue wait
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache, no-transform")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+	}
 	if firstDone {
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
@@ -566,8 +729,10 @@ func (s *Server) writeQoderFailure(w http.ResponseWriter, conn *model.ProviderCo
 		uc.Status = status
 	}
 	if stream {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(status)
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(status)
+		}
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()

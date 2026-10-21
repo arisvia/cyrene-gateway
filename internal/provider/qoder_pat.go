@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
 // Qoder PAT/job-token endpoints (9router shared/qoder/constants.js).
@@ -63,6 +65,22 @@ func QoderChatURLForToken(providerID, authToken string) string {
 		base = QoderChatBaseAlt
 	}
 	return base + "/algo" + QoderChatSigPath + "?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+}
+
+// QoderChatURLForConnection resolves the chat endpoint respecting any custom BaseURL on the connection.
+func QoderChatURLForConnection(conn *model.ProviderConnection, authToken string) string {
+	if conn != nil && conn.Data.BaseURL != "" {
+		base := strings.TrimRight(conn.Data.BaseURL, "/")
+		if strings.Contains(base, "/algo") {
+			return base
+		}
+		return base + "/algo" + QoderChatSigPath + "?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
+	}
+	providerID := ""
+	if conn != nil {
+		providerID = conn.Provider
+	}
+	return QoderChatURLForToken(providerID, authToken)
 }
 
 // IsQoderPAT reports whether a token is a Qoder Personal Access Token.

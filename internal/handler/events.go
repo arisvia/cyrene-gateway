@@ -109,14 +109,7 @@ func (s *Server) handleUsageStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache, no-transform")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(http.StatusOK)
-	// Send initial 2KB SSE comment padding to bypass buffering in reverse proxies (Nginx / Cloudflare)
-	w.Write([]byte(": " + strings.Repeat(" ", 2048) + "\n\n"))
-	flusher.Flush()
+	primeSSE(w, flusher)
 
 	ch, done := s.Events.Subscribe()
 	defer s.Events.Unsubscribe(ch)
@@ -153,4 +146,29 @@ func writeSSE(w http.ResponseWriter, flusher http.Flusher, event, data string) {
 	}
 	w.Write([]byte("data: " + data + "\n\n"))
 	flusher.Flush()
+}
+
+// SSE priming: Cloudflare's edge and Nginx hold text/event-stream responses in
+// their write buffers until a threshold (typically 4-8KB) is reached. Padding
+// the handshake with SSE comment lines flushes the buffer immediately so the
+// stream is live from the first byte. Comment lines are ignored by EventSource.
+const (
+	ssePrimeBytes = 8192
+	ssePrimeChunk = 2048
+)
+
+// primeSSE commits SSE response headers and flushes an 8KB comment pad in 2KB
+// chunks, keeping each line short enough for proxies with per-line limits.
+func primeSSE(w http.ResponseWriter, flusher http.Flusher) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+
+	pad := strings.Repeat(" ", ssePrimeChunk-4)
+	for remaining := ssePrimeBytes; remaining > 0; remaining -= ssePrimeChunk {
+		w.Write([]byte(": " + pad + "\n\n"))
+		flusher.Flush()
+	}
 }

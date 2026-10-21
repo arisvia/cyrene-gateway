@@ -46,7 +46,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           LDFLAGS="-s -w -X github.com/arisvia/cyrene-gateway/internal/handler.version=${VERSION}"
 
-          # 顺序编译 6 大平台架构二进制与配套的 standalone 数据迁移工具。
+          # 顺序编译 6 大平台架构二进制。
           # 不用后台 & 并发：裸 wait 恒返回 0，任一编译失败都会静默漏发资产。
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-linux-amd64 ./cmd/gateway
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-linux-arm64 ./cmd/gateway
@@ -55,17 +55,8 @@ jobs:
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-windows-amd64.exe ./cmd/gateway
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/cyrene-gateway-windows-arm64.exe ./cmd/gateway
 
-          # 迁移工具一次性使用，不注入版本号
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-migrate-linux-amd64 ./scripts
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-migrate-linux-arm64 ./scripts
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-migrate-darwin-amd64 ./scripts
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-migrate-darwin-arm64 ./scripts
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/cyrene-migrate-windows-amd64.exe ./scripts
-          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o dist/cyrene-migrate-windows-arm64.exe ./scripts
-
-          chmod +x dist/cyrene-migrate-linux-* dist/cyrene-migrate-darwin-*
           # Fail closed：少任何一个资产都不允许进入 Release
-          EXPECTED=12
+          EXPECTED=6
           ACTUAL=$(find dist -maxdepth 1 -type f | wc -l)
           if [ "${ACTUAL}" -ne "${EXPECTED}" ]; then
             echo "Error: expected ${EXPECTED} release assets, found ${ACTUAL}"

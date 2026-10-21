@@ -53,23 +53,36 @@ func TestQoderSSEBillingErrorsAreTerminal(t *testing.T) {
 
 func TestQoderSSEQueueingFramesAreSkipped(t *testing.T) {
 	// Test various shapes of the upstream isQueued / 10605 queueing handshake frames
-	queueBodies := []string{
-		`{"code":"403","message":"{\"code\":\"10605\",\"message\":\"{\\\"isQueued\\\":true,\\\"modelKey\\\":\\\"dfmodel\\\",\\\"queueCount\\\":0}\"}"}`,
-		`{"isQueued":true,"modelKey":"dfmodel","queueCount":0}`,
-		`{"code":"10605","isQueued":true,"message":"queued"}`,
+	cases := []struct {
+		body      string
+		wantRetry int
+	}{
+		{`{"code":"403","message":"{\"code\":\"10605\",\"message\":\"{\\\"isQueued\\\":true,\\\"modelKey\\\":\\\"dfmodel\\\",\\\"queueCount\\\":0,\\\"retryAfterSeconds\\\":7}\"}"}`, 7},
+		{`{"isQueued":true,"modelKey":"dfmodel","queueCount":0}`, DefaultQoderQueueRetrySeconds},
+		{`{"code":"10605","isQueued":true,"message":"queued"}`, DefaultQoderQueueRetrySeconds},
 	}
 
-	for _, body := range queueBodies {
-		t.Run(body, func(t *testing.T) {
-			// Even if outer statusCodeValue is 403 or 200, queueing frames must be safely skipped (data="", done=false)
+	for _, tc := range cases {
+		t.Run(tc.body, func(t *testing.T) {
 			for _, status := range []int{200, 403} {
-				envelope, err := json.Marshal(map[string]any{"statusCodeValue": status, "body": body})
+				envelope, err := json.Marshal(map[string]any{"statusCodeValue": status, "body": tc.body})
 				if err != nil {
 					t.Fatal(err)
 				}
-				data, done := UnwrapQoderSSELine("data: "+string(envelope), "qoder/auto")
-				if done || data != "" {
-					t.Fatalf("queueing frame should be skipped with done=false and data=\"\": got done=%t data=%s (status=%d)", done, data, status)
+				line := "data: " + string(envelope)
+
+				// UnwrapQoderSSELine must swallow the control frame.
+				if data, done := UnwrapQoderSSELine(line, "qoder/auto"); done || data != "" {
+					t.Fatalf("queueing frame should return done=false and data=\"\": got done=%t data=%s (status=%d)", done, data, status)
+				}
+
+				// The retry hint drives the transparent polling backoff.
+				retry, queued := ExtractQoderQueueRetryFromLine(line)
+				if !queued {
+					t.Fatalf("expected queue detection for status=%d", status)
+				}
+				if retry != tc.wantRetry {
+					t.Errorf("retryAfterSeconds = %d, want %d", retry, tc.wantRetry)
 				}
 			}
 		})
