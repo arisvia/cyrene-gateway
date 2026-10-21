@@ -2,6 +2,32 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.4] - 2026-10-21
+
+### Performance
+- **用量面板 SSE 刷新合并（每事件 4 个请求 → 每秒最多 4 个）**：一个请求会发出 accepted → routing → streaming → completed 多个事件，每个事件都触发 `loadRequestDetails` 加 3 个 `/api/usage` 调用，繁忙时整页每秒重渲染数十次。现合并为 1 秒一次，标签页隐藏时跳过，切回前台立即补刷。
+- **用量统计聚合 2 秒 TTL 缓存**：`/api/usage/stats` 每次都要扫 `usageHistory` 并解析多维聚合，多开面板即多份重复计算。按周期缓存序列化结果，响应头 `X-Cyrene-Cache: hit` 可验证。
+- **非详情页不再刷新明细表**：概览页不渲染请求明细，原实现仍在刷新；现仅在详情页且停留在第一页时刷新，切回详情页主动拉取以免看到陈旧数据。
+- **实时事件按 `requestId` 去重**：同一请求的多个生命周期阶段原本各占一行，现原地更新，减少 DOM 行数。
+- **日志行格式化移至入库时**：300 行每次刷新都重跑 `toLocaleTimeString` 与 attrs 拼接，是刷新时的主要开销。现于入库时计算一次。
+- **日志页后台暂停渲染**：标签页隐藏时不再每 100ms 重建列表，改为回到前台一次性补刷，并给待渲染缓冲加上限。
+- **日志环形缓冲加固**：单锁内完成广播（原实现解锁后重新加读锁，存在 records 与 subs 不一致窗口）；订阅者积压时保留最新而非丢弃（日志尾部只有追到当前才有价值）；淘汰改为原地 `copy` 避免每次重分配。
+- **messages 透传流跳过冗余 JSON 解析**：每条 SSE 行原本完整解析两次，其中 usage 提取对最常见的 `content_block_delta` 毫无收获。现以字节扫描门控，长流下每行省一次完整 unmarshal；行输出改用 `w.Write` 避免格式解析。
+- **请求体按 `Content-Length` 预分配**：新增 `readRequestBody`，避免 `io.ReadAll` 对多 MB 会话反复扩容拷贝。长度仅作提示，chunked、虚假长度、超限声明均回退到逐字节读到 EOF。
+
+### Fixed
+- **日志页启动窗口丢日志**：原实现先取历史再建 SSE，中间产生的日志完全丢失。现先订阅后取历史，按 `时间|级别|消息` 去重合并。
+- **日志 SSE 心跳定时器泄漏**：循环内 `time.After` 每轮新建定时器且到期前无法回收，日志密集时每行泄漏一个；改用复用的 `time.Ticker`，与用量流一致。
+- **日志自动滚动打断阅读**：原为需手动开关的模式，上翻历史时新日志仍把视图拽到底部。现由滚动位置驱动，上翻自动暂停、回到底部自动恢复。
+- **实时事件列表徽章错位**：模型 ID 长短不一导致状态徽章与延迟漂移。改为固定列宽 grid，模型名是唯一弹性轨道。
+
+### Changed
+- **`chat.go` 按职责拆分（2291 → 939 行）**：拆出 `chat_combo.go`、`chat_auth.go`、`chat_tokensaver.go`、`chat_usage.go`、`chat_messages.go`、`chat_embeddings.go`。函数数量与拆分前完全一致。
+- **`server.go` 按资源拆分（1956 → 395 行）**：拆出 `settings.go`、`providers.go`、`combos.go`、`apikeys.go`、`proxypools.go`、`models.go`。
+
+### Known Limitations
+- **Cloudflare Quick Tunnel 下 SSE 仍不可用**：实测 8KB 预填充发送完毕后 6 秒仍收不到首字节（`gotFirstChunk: false`），该模式对 `text/event-stream` 为整包缓冲而非阈值缓冲，任何预填充量都无法击穿。需改用 Named Tunnel、DNS Only 或内网直连。API 调用不受影响。
+
 ## [1.7.3] - 2026-10-21
 
 ### Fixed
@@ -192,6 +218,10 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.7.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.3...v1.7.4
+[1.7.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.2...v1.7.3
+[1.7.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.1...v1.7.2
+[1.7.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.6.1...v1.7.0
 [1.6.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.5.1...v1.6.0
