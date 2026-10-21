@@ -18,7 +18,7 @@ import (
 // It provides fast local token estimation across all providers and models, with optional
 // upstream forwarding when connected to official Anthropic credentials.
 func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return

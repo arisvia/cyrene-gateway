@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -189,7 +188,7 @@ func (s *Server) handleGeminiGenerateContent(w http.ResponseWriter, r *http.Requ
 
 	isStream := action == "streamGenerateContent" || r.URL.Query().Get("alt") == "sse" || r.Header.Get("Accept") == "text/event-stream"
 
-	rawBody, err := io.ReadAll(r.Body)
+	rawBody, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return

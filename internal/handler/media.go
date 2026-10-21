@@ -4,12 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/arisvia/cyrene-gateway/internal/auth"
-	"github.com/arisvia/cyrene-gateway/internal/db"
-	"github.com/arisvia/cyrene-gateway/internal/media"
-	"github.com/arisvia/cyrene-gateway/internal/model"
-	"github.com/arisvia/cyrene-gateway/internal/provider"
-	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,6 +11,13 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/auth"
+	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/media"
+	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
+	"github.com/arisvia/cyrene-gateway/internal/translator"
 )
 
 // extractRoutingFields parses a JSON body, detects case-conflicting routing
@@ -100,7 +101,7 @@ func (s *Server) checkMediaModelAccess(w http.ResponseWriter, r *http.Request, m
 
 // handleImageGeneration handles POST /v1/images/generations
 func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return
@@ -166,7 +167,7 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 
 // handleAudioSpeech handles POST /v1/audio/speech (TTS)
 func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return
@@ -274,7 +275,7 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 
 // handleVideoGenerations handles POST /v1/videos/generations
 func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return
@@ -376,7 +377,7 @@ func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleWebFetch handles POST /v1/web/fetch
 func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return
@@ -427,7 +428,7 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 
 // handleWebSearch handles POST /v1/search
 func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
-	bodyBytes, err := io.ReadAll(r.Body)
+	bodyBytes, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return

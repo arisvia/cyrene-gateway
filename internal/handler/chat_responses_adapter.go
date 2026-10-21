@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/arisvia/cyrene-gateway/internal/translator"
@@ -169,7 +168,7 @@ func (a *responsesResponseAdapter) Finish() {
 // into Chat Completions format, routes through the universal gateway core, and converts
 // the result back into Responses API format (both non-stream and SSE stream).
 func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
-	rawBody, err := io.ReadAll(r.Body)
+	rawBody, err := readRequestBody(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 		return
