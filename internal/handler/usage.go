@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"sort"
 	"strconv"
@@ -9,11 +10,51 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/db"
 )
 
+// usageStatsTTL bounds how stale the dashboard KPIs may be. Several open
+// dashboards each refresh on every SSE event; without this the same multi-table
+// aggregation runs dozens of times per second for an identical answer.
+const usageStatsTTL = 2 * time.Second
+
+type usageStatsEntry struct {
+	payload []byte
+	expires time.Time
+}
+
+// cachedUsageStats returns the serialized stats for a period, recomputing only
+// when the entry is older than usageStatsTTL. It returns nil on a cache miss so
+// the caller builds the payload itself.
+func (s *Server) cachedUsageStats(period string) []byte {
+	s.usageStatsMu.Lock()
+	defer s.usageStatsMu.Unlock()
+	entry, ok := s.usageStatsCache[period]
+	if !ok || time.Now().After(entry.expires) {
+		return nil
+	}
+	return entry.payload
+}
+
+func (s *Server) storeUsageStats(period string, payload []byte) {
+	s.usageStatsMu.Lock()
+	defer s.usageStatsMu.Unlock()
+	if s.usageStatsCache == nil {
+		s.usageStatsCache = make(map[string]usageStatsEntry)
+	}
+	s.usageStatsCache[period] = usageStatsEntry{payload: payload, expires: time.Now().Add(usageStatsTTL)}
+}
+
 // handleUsageStats returns aggregated usage statistics.
 func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	period := r.URL.Query().Get("period")
 	if period == "" {
 		period = "7d"
+	}
+
+	if cached := s.cachedUsageStats(period); cached != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Cyrene-Cache", "hit")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(cached)
+		return
 	}
 
 	totalLifetime, _ := s.DB.GetTotalRequestsLifetime()
@@ -120,7 +161,16 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 
 	stats["byKey"] = history.ByKey
 	stats["byEndpoint"] = history.ByEndpoint
-	writeJSON(w, http.StatusOK, stats)
+
+	payload, err := json.Marshal(stats)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode usage stats"})
+		return
+	}
+	s.storeUsageStats(period, payload)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
 }
 
 // handleUsageHistory returns raw usage history records.

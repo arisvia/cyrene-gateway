@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +43,11 @@ type Server struct {
 	onRestart   func()
 	RestartFunc func() error
 	restarting  atomic.Bool
+
+	// usageStatsCache collapses the burst of /api/usage/stats calls that several
+	// open dashboards produce on every SSE event into one DB read per TTL.
+	usageStatsMu    sync.Mutex
+	usageStatsCache map[string]usageStatsEntry
 }
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {

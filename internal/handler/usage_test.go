@@ -185,3 +185,64 @@ func TestUsageHistoryFilterIsCanonicalIDOnly(t *testing.T) {
 		t.Errorf("alias filter matched canonical rows, want the id taken verbatim: %s", got)
 	}
 }
+
+func TestUsageStatsCacheCollapsesRepeatedReads(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		database, err := db.Open(":memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer database.Close()
+		srv := &Server{DB: database}
+
+		save := func(model string) {
+			t.Helper()
+			if err := database.SaveUsageEntry(&db.UsageEntry{
+				Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+				Provider:  "p", Model: model, APIKey: "k", Endpoint: "/v1/messages",
+				PromptTokens: 1, CompletionTokens: 1,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		fetch := func() (string, string) {
+			t.Helper()
+			w := httptest.NewRecorder()
+			srv.handleUsageStats(w, httptest.NewRequest("GET", "/api/usage/stats?period=7d", nil))
+			if w.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", w.Code, w.Body.String())
+			}
+			return w.Body.String(), w.Header().Get("X-Cyrene-Cache")
+		}
+
+		save("first")
+		body, cache := fetch()
+		if cache != "" {
+			t.Errorf("first read served from cache: %q", cache)
+		}
+		if !strings.Contains(body, "first") {
+			t.Fatalf("first read lost its data: %s", body)
+		}
+
+		// A second read inside the TTL must reuse the payload even though the
+		// underlying rows changed, otherwise the cache buys nothing.
+		save("second")
+		body, cache = fetch()
+		if cache != "hit" {
+			t.Errorf("second read missed cache, header %q", cache)
+		}
+		if strings.Contains(body, "second") {
+			t.Errorf("cached payload recomputed: %s", body)
+		}
+
+		// Once the TTL lapses the new row must appear.
+		time.Sleep(usageStatsTTL + time.Second)
+		body, cache = fetch()
+		if cache != "" {
+			t.Errorf("read after TTL still cached: %q", cache)
+		}
+		if !strings.Contains(body, "second") {
+			t.Errorf("stale payload survived the TTL: %s", body)
+		}
+	})
+}

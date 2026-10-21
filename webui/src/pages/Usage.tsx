@@ -9,6 +9,14 @@ import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, time
 import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
 import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
 
+// One gateway request emits several events (accepted → routing → streaming →
+// completed). Identity comes from requestId; the fallback keeps anonymous
+// events from collapsing into a single row.
+function eventKey(e: LiveUsageEvent): string {
+  if (e.requestId) return e.requestId
+  return `${e.provider || ''}:${e.model || ''}:${e.endpoint || ''}:${e.timestamp || ''}`
+}
+
 const Usage: Component = () => {
   const { t } = useI18n()
   const periods = () => [
@@ -29,13 +37,20 @@ const Usage: Component = () => {
   let es: EventSource | null = null
   let refreshTimer: number | null = null
 
+  // A busy gateway emits many events per second. Coalesce them into one refresh
+  // and skip work the user cannot see: hidden tab, or paging through history
+  // (reloading page N>1 under the cursor would yank rows away mid-read).
   function scheduleRefresh() {
     if (refreshTimer !== null) return
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null
-      store.loadRequestDetails(store.requestDetailsPagination().page, 10)
+      if (document.hidden) return
+      const page = store.requestDetailsPagination().page || 1
+      if (page <= 1) {
+        store.loadRequestDetails(1, 10)
+      }
       store.loadUsage(period())
-    }, 400)
+    }, 1000)
   }
   const timeUnits = () => timeUnitsFor(t)
 
@@ -43,8 +58,23 @@ const Usage: Component = () => {
     setHoveredPoint(null)
     return store.loadUsage(period())
   }
+  // Returning to a hidden tab would otherwise show stale numbers until the next
+  // event lands, which can be minutes on an idle gateway.
+  function onVisible() {
+    if (document.hidden) return
+    if (refreshTimer !== null) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
+    store.loadUsage(period())
+    if ((store.requestDetailsPagination().page || 1) <= 1) {
+      store.loadRequestDetails(1, 10)
+    }
+  }
+
   onMount(() => {
     load()
+    document.addEventListener('visibilitychange', onVisible)
     store.loadRequestDetails(1, 10).then(() => {
       if (liveEvents().length === 0 && store.requestDetails().length > 0) {
         setLiveEvents(store.requestDetails().slice(0, 10).map(rd => ({
@@ -67,6 +97,7 @@ const Usage: Component = () => {
       clearTimeout(refreshTimer)
       refreshTimer = null
     }
+    document.removeEventListener('visibilitychange', onVisible)
     es?.close()
     es = null
   })
@@ -90,7 +121,14 @@ const Usage: Component = () => {
               const withoutCurrent = list.filter(item => (item.requestId || `${item.provider || ''}:${item.model || ''}`) !== key)
               return [d, ...withoutCurrent].slice(0, 24)
             })
-            setLiveEvents(list => [d, ...list].slice(0, 30))
+            // One request emits accepted → routing → streaming → completed. Keep a
+            // single row per request and update it in place so the list does not
+            // churn through 30 DOM rows for every stage of every request.
+            setLiveEvents(list => {
+              const key = eventKey(d)
+              const withoutCurrent = list.filter(item => eventKey(item) !== key)
+              return [d, ...withoutCurrent].slice(0, 30)
+            })
             if (d.type === 'completed' || d.type === 'failed' || d.type === 'request') {
               scheduleRefresh()
             }
