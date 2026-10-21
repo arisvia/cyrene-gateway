@@ -2,6 +2,14 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.3] - 2026-10-21
+
+### Fixed
+- **大请求体上传被 30 秒读超时截断（ReadTimeout）**：`ReadTimeout` 覆盖整个请求体读取，经 Cloudflare 隧道上传 1.6MB 会话（1063 条消息 + 14 个 tools）必然超过 30 秒，客户端收到 `400 failed to read request body`。读超时放宽至 5 分钟，`ReadHeaderTimeout` 仍约束 Slowloris，`MaxBytesReader` 仍限制体积。
+- **长流被 5 分钟写超时截断（WriteTimeout）**：排队数分钟后才开始生成的长请求会撞上固定的写超时。改为不设绝对上限，改由 `NewStallTimeoutReader` 按无数据静默判定，避免误杀正常长流。
+- **Qoder 排队预算与上游节拍不匹配**：上游 `retryAfterSeconds=30`，而预算仅 120 秒，20 次重试上限永远无法达到，第 4 次等待后即放弃。预算提升至 10 分钟、上限 40 次。
+- **演练场吞掉流中错误帧（`event: error`）**：SSE 读取只解析 `data:` 行，忽略 `event:` 名称，排队超时等中途失败被静默丢弃，界面表现为长时间等待后空白。现正确识别错误事件并抛出，JSON 解析失败也不再掩盖该错误。
+
 ## [1.7.2] - 2026-10-20
 
 ### Fixed
