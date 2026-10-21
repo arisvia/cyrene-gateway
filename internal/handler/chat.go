@@ -26,6 +26,15 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
 
+// Literal keys used to gate JSON decoding on the SSE passthrough path. Most
+// streamed lines carry neither, so a byte scan avoids two full unmarshals per
+// line without changing which lines get parsed.
+var (
+	usageKey     = []byte(`"usage"`)
+	deltaKey     = []byte(`"delta"`)
+	newlineBytes = []byte("\n")
+)
+
 func isHopByHopHeader(h string) bool {
 	h = strings.ToLower(h)
 	switch h {
@@ -1678,33 +1687,42 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			}
 			line := scanner.Bytes()
 			if data, _, ok0 := translator.ParseSSEDataLine(line); ok0 {
-				if u := usage.ExtractFromClaudeSSE(data); u.TotalTokens > 0 {
-					if u.PromptTokens > 0 {
-						totalUsage.PromptTokens = u.PromptTokens
+				// Most lines are content_block_delta and carry no usage at all.
+				// Parsing every line twice was the dominant cost of this loop on
+				// long streams. Both keys are literal in the payload, so a byte
+				// scan gates the full unmarshal without changing behaviour.
+				if bytes.Contains(data, usageKey) {
+					if u := usage.ExtractFromClaudeSSE(data); u.TotalTokens > 0 {
+						if u.PromptTokens > 0 {
+							totalUsage.PromptTokens = u.PromptTokens
+						}
+						if u.CompletionTokens > 0 {
+							totalUsage.CompletionTokens = u.CompletionTokens
+						}
+						if u.CachedTokens > 0 {
+							totalUsage.CachedTokens = u.CachedTokens
+						}
+						totalUsage.TotalTokens = totalUsage.PromptTokens + totalUsage.CompletionTokens
 					}
-					if u.CompletionTokens > 0 {
-						totalUsage.CompletionTokens = u.CompletionTokens
-					}
-					if u.CachedTokens > 0 {
-						totalUsage.CachedTokens = u.CachedTokens
-					}
-					totalUsage.TotalTokens = totalUsage.PromptTokens + totalUsage.CompletionTokens
 				}
-				var ev struct {
-					Type  string `json:"type"`
-					Delta struct {
-						Type string `json:"type"`
-						Text string `json:"text"`
-					} `json:"delta"`
-				}
-				if err := json.Unmarshal(data, &ev); err == nil && ev.Delta.Text != "" {
-					totalStreamChars += len(ev.Delta.Text)
-					if outBuilder.Len() < 16384 {
-						outBuilder.WriteString(ev.Delta.Text)
+				if bytes.Contains(data, deltaKey) {
+					var ev struct {
+						Type  string `json:"type"`
+						Delta struct {
+							Type string `json:"type"`
+							Text string `json:"text"`
+						} `json:"delta"`
+					}
+					if err := json.Unmarshal(data, &ev); err == nil && ev.Delta.Text != "" {
+						totalStreamChars += len(ev.Delta.Text)
+						if outBuilder.Len() < 16384 {
+							outBuilder.WriteString(ev.Delta.Text)
+						}
 					}
 				}
 			}
-			fmt.Fprintf(w, "%s\n", line)
+			w.Write(line)
+			w.Write(newlineBytes)
 			flusher.Flush()
 		}
 		if scanErr := scanner.Err(); scanErr != nil {

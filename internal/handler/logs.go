@@ -160,6 +160,12 @@ func (s *Server) handleSystemLogsStream(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	writeSSE(w, flusher, "connected", `{"ok":true}`)
 
+	// A ticker is reused across iterations. time.After allocates a fresh timer on
+	// every loop pass and none of them can be collected until they fire, so a
+	// busy log stream leaked one timer per log line.
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -169,7 +175,7 @@ func (s *Server) handleSystemLogsStream(w http.ResponseWriter, r *http.Request) 
 		case rec := <-ch:
 			data, _ := json.Marshal(rec)
 			writeSSE(w, flusher, "log", string(data))
-		case <-time.After(30 * time.Second):
+		case <-heartbeat.C:
 			writeSSE(w, flusher, "ping", `{}`)
 		}
 	}
