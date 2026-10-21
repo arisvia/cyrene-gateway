@@ -9,12 +9,34 @@ interface LogItem {
   msg: string
   attrs?: Record<string, unknown>
   searchIndex?: string
+  // Derived once at ingest: formatting 300 rows with Intl on every flush was the
+  // dominant per-frame cost, and the attrs join re-ran on every re-render.
+  timeText?: string
+  attrsText?: string
+}
+
+function formatLogTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0')
+}
+
+function formatAttrs(attrs: Record<string, unknown> | undefined): string {
+  if (!attrs) return ''
+  const parts: string[] = []
+  for (const [k, v] of Object.entries(attrs)) {
+    parts.push(`${k}=${typeof v === 'object' && v !== null ? JSON.stringify(v) : v}`)
+  }
+  return parts.join(' ')
 }
 
 function processLogItem(item: LogItem): LogItem {
+  const attrsText = formatAttrs(item.attrs)
   return {
     ...item,
-    searchIndex: `${item.msg} ${item.attrs ? JSON.stringify(item.attrs) : ''}`.toLowerCase(),
+    timeText: formatLogTime(item.time),
+    attrsText,
+    searchIndex: `${item.msg} ${attrsText}`.toLowerCase(),
   }
 }
 
@@ -30,11 +52,31 @@ const LogsPage: Component = () => {
   let es: EventSource | null = null
   let pendingBuffer: LogItem[] = []
   let flushTimer: number | null = null
+  // Set while a programmatic scroll is in flight so the scroll handler does not
+  // mistake it for the user scrolling away from the tail.
+  let selfScroll = false
+
+  function atBottom(): boolean {
+    if (!scrollContainer) return true
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainer
+    return scrollHeight - scrollTop - clientHeight < 24
+  }
 
   function scrollToBottom() {
-    if (autoScroll() && scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
-    }
+    if (!scrollContainer) return
+    selfScroll = true
+    scrollContainer.scrollTop = scrollContainer.scrollHeight
+    // Reset on the next frame, after the scroll event has fired.
+    requestAnimationFrame(() => { selfScroll = false })
+  }
+
+  // Following the tail is a property of the scroll position, not a mode the user
+  // must remember to toggle. Scrolling up pauses it, returning to the bottom
+  // resumes it.
+  function onScroll() {
+    if (selfScroll) return
+    const bottom = atBottom()
+    if (bottom !== autoScroll()) setAutoScroll(bottom)
   }
 
   function flushBuffer() {
@@ -42,12 +84,13 @@ const LogsPage: Component = () => {
     if (pendingBuffer.length === 0) return
     const incoming = pendingBuffer
     pendingBuffer = []
+    const stick = autoScroll()
     setLogs(prev => {
       const next = prev.concat(incoming)
       if (next.length > 2000) return next.slice(-2000)
       return next
     })
-    scrollToBottom()
+    if (stick) scrollToBottom()
   }
 
   function scheduleFlush() {
@@ -67,21 +110,9 @@ const LogsPage: Component = () => {
 
   let disposed = false
   onMount(async () => {
-    // 1. 先载入最近的历史内存日志
-    try {
-      const res = await api('/api/system/logs') as { logs?: LogItem[] } | null
-      if (disposed) return
-      if (res?.logs) {
-        setLogs(res.logs.map(processLogItem))
-        scrollToBottom()
-      }
-    } catch (e: unknown) {
-      if (disposed) return
-      console.warn('[logs] failed to load initial logs:', e)
-    }
-
-    if (disposed) return
-    // 2. 建立 SSE 实时流
+    // Subscribe before loading history: any line emitted between the history read
+    // and the stream opening used to be lost entirely. Buffered lines are merged
+    // in below and de-duplicated by timestamp+message.
     es = new EventSource('/api/system/logs/stream', { withCredentials: true })
     es.onopen = () => {
       setConnected(true)
@@ -102,6 +133,24 @@ const LogsPage: Component = () => {
 
     es.onerror = () => {
       setConnected(false)
+    }
+
+    // 1. 载入最近的历史内存日志
+    try {
+      const res = await api('/api/system/logs') as { logs?: LogItem[] } | null
+      if (disposed) return
+      const history = (res?.logs || []).map(processLogItem)
+      if (history.length > 0) {
+        setLogs(prev => {
+          const seen = new Set(history.map(l => `${l.time}|${l.level}|${l.msg}`))
+          const extra = prev.filter(l => !seen.has(`${l.time}|${l.level}|${l.msg}`))
+          return history.concat(extra)
+        })
+      }
+      scrollToBottom()
+    } catch (e: unknown) {
+      if (disposed) return
+      console.warn('[logs] failed to load initial logs:', e)
     }
   })
 
@@ -145,15 +194,6 @@ const LogsPage: Component = () => {
     }
   }
 
-  const formatTime = (iso: string) => {
-    try {
-      const d = new Date(iso)
-      return d.toLocaleTimeString('zh-CN', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0')
-    } catch {
-      return iso
-    }
-  }
-
   return (
     <div class="space-y-4 flex flex-col min-h-[calc(100dvh-140px)] lg:h-[calc(100dvh-140px)] stagger">
       <PageHeader
@@ -165,7 +205,11 @@ const LogsPage: Component = () => {
             <Button
               size="sm"
               variant={autoScroll() ? 'primary' : 'secondary'}
-              onClick={() => setAutoScroll(!autoScroll())}
+              onClick={() => {
+                const next = !autoScroll()
+                setAutoScroll(next)
+                if (next) scrollToBottom()
+              }}
             >
               {autoScroll() ? t('logs.autoScrollOn') : t('logs.autoScrollOff')}
             </Button>
@@ -205,6 +249,7 @@ const LogsPage: Component = () => {
       {/* 实时终端日志视窗 */}
       <div
         ref={scrollContainer}
+        onScroll={onScroll}
         class="flex-1 min-h-48 max-h-[70dvh] lg:min-h-0 lg:max-h-none bg-surface-inset border border-subtle rounded-2xl p-3 sm:p-4 font-mono text-xs overflow-y-auto space-y-1.5 selection:bg-accent/30"
       >
         <Show
@@ -221,16 +266,14 @@ const LogsPage: Component = () => {
           <For each={displayedLogs()}>
             {log => (
               <div class="grid grid-cols-[auto_1fr] sm:grid-cols-[auto_auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-1 leading-relaxed hover:bg-hover/50 px-1.5 py-1 rounded transition-colors wrap-anywhere">
-                <span class="text-faint shrink-0 select-none">{formatTime(log.time)}</span>
+                <span class="text-faint shrink-0 select-none">{log.timeText}</span>
                 <span class={`px-1.5 py-0.5 rounded text-xs shrink-0 uppercase select-none ${levelColor(log.level)}`}>
                   [{log.level}]
                 </span>
                 <div class="min-w-0 col-span-2 sm:col-span-1">
                   <span class="text-foreground">{log.msg}</span>
-                  <Show when={log.attrs && Object.keys(log.attrs).length > 0}>
-                    <span class="text-muted ml-2">
-                      {Object.entries(log.attrs!).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' ')}
-                    </span>
+                  <Show when={log.attrsText}>
+                    <span class="text-muted ml-2">{log.attrsText}</span>
                   </Show>
                 </div>
               </div>

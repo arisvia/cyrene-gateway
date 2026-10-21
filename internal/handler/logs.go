@@ -41,19 +41,32 @@ func NewLogRingBuffer(maxSize int) *LogRingBuffer {
 
 func (b *LogRingBuffer) Add(rec LogRecord) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if len(b.records) >= b.maxSize {
-		b.records = b.records[1:]
+		// Shift in place. Reslicing (records[1:]) moves the slice header forward
+		// and forces append to reallocate and copy the whole ring once capacity
+		// runs out, which happens constantly under a busy log stream.
+		copy(b.records, b.records[1:])
+		b.records = b.records[:len(b.records)-1]
 	}
 	b.records = append(b.records, rec)
-	b.mu.Unlock()
 
-	// Broadcast to active SSE subscribers
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	// Broadcast to active SSE subscribers. A subscriber that cannot keep up
+	// drops its oldest queued line rather than the newest one: a log tail is
+	// only useful up to the present, so dropping the tail would be backwards.
 	for ch := range b.subs {
 		select {
 		case ch <- rec:
 		default:
+			select {
+			case <-ch:
+			default:
+			}
+			select {
+			case ch <- rec:
+			default:
+			}
 		}
 	}
 }

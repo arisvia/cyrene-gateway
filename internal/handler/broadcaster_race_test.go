@@ -96,3 +96,30 @@ func TestLogRingBuffer_ConcurrentRace(t *testing.T) {
 	close(stop)
 	wg.Wait()
 }
+
+func TestLogRingBuffer_KeepsNewestLinesWhenSubscriberLags(t *testing.T) {
+	b := NewLogRingBuffer(5)
+	ch, done := b.Subscribe()
+	defer b.Unsubscribe(ch)
+	defer func() { <-done }()
+
+	// Overflow the 128-slot subscriber channel so the drop path runs.
+	for i := 0; i < 400; i++ {
+		b.Add(LogRecord{Timestamp: time.Now().Format(time.RFC3339), Level: "INFO", Message: "line"})
+	}
+
+	// The newest line must survive: a lagging tail that keeps ancient lines and
+	// discards current ones shows the wrong end of the stream.
+	var last LogRecord
+	for len(ch) > 0 {
+		last = <-ch
+	}
+	if last.Message != "line" {
+		t.Fatalf("drained without reaching the newest record: %+v", last)
+	}
+
+	// The ring must also stay at capacity with in-place eviction.
+	if got := len(b.GetAll()); got != 5 {
+		t.Fatalf("ring size %d, want 5", got)
+	}
+}
