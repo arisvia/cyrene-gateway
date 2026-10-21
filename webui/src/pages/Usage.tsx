@@ -456,30 +456,34 @@ const Usage: Component = () => {
                 <For each={liveEvents()}>
                   {e => (
                     <div class="flex flex-col gap-1.5 py-2 px-2.5 rounded-lg border border-subtle/50 bg-surface/30 hover:bg-surface/70 transition-colors">
-                      <div class="flex items-center gap-2 text-xs min-w-0">
-                        <span class="text-faint font-mono text-[10px] shrink-0">{fmtTime(e.timestamp, timeUnits())}</span>
-                        <div class="truncate flex items-baseline gap-1" title={e.model || e.endpoint || '-'}>
-                          <span class="font-medium text-foreground text-[11px]">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
+                      {/* Fixed badge/latency columns keep both edges aligned no matter
+                          how long the model id or status text is. */}
+                      <div class="grid grid-cols-[auto_minmax(0,1fr)_3.75rem_4rem] items-center gap-x-2 text-xs">
+                        <span class="text-faint font-mono text-[10px] whitespace-nowrap">{fmtTime(e.timestamp, timeUnits())}</span>
+                        <div class="flex items-baseline gap-1 min-w-0 overflow-hidden" title={e.model || e.endpoint || '-'}>
+                          <span class="font-medium text-foreground text-[11px] truncate">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
                           <Show when={Boolean(e.model && resolveModelDisplayName(modelNameMap(), e.model) !== e.model)}>
-                            <span class="text-[9px] text-faint font-mono truncate">({e.model})</span>
+                            <span class="text-[9px] text-faint font-mono truncate hidden sm:inline">({e.model})</span>
                           </Show>
                         </div>
-                        <Badge
-                          tone={e.status === 'ok' ? 'green' : e.status === 'routing' ? 'blue' : e.status === 'canceled' ? 'amber' : 'red'}
-                          class="shrink-0 text-[10px] px-1.5 py-0"
-                        >
-                          {e.status || '-'}
-                        </Badge>
-                        <Show when={e.latencyMs != null}>
-                          <span class="ml-auto font-mono text-[10px] text-faint shrink-0">{e.latencyMs}ms</span>
-                        </Show>
+                        <div class="flex justify-end min-w-0">
+                          <Badge
+                            tone={e.status === 'ok' ? 'green' : e.status === 'routing' ? 'blue' : e.status === 'canceled' ? 'amber' : 'red'}
+                            class="text-[10px] px-1.5 py-0 max-w-full truncate"
+                          >
+                            {e.status || '-'}
+                          </Badge>
+                        </div>
+                        <span class="text-right font-mono text-[10px] text-faint tabular-nums whitespace-nowrap">
+                          {e.latencyMs != null ? `${e.latencyMs}ms` : ''}
+                        </span>
                       </div>
-                      <div class="flex items-center justify-between text-[10px] text-faint">
-                        <span class="font-mono truncate max-w-[220px]" title={e.endpoint}>{e.endpoint || '/v1/chat/completions'}</span>
+                      <div class="flex items-center justify-between gap-2 text-[10px] text-faint">
+                        <span class="font-mono truncate min-w-0" title={e.endpoint}>{e.endpoint || '/v1/chat/completions'}</span>
                         <Show when={(e.promptTokens || 0) > 0 || (e.completionTokens || 0) > 0}>
-                          <div class="flex items-center gap-2 font-mono shrink-0">
-                            <span>in: <span class="text-foreground">{fmtNum(e.promptTokens ?? 0)}</span></span>
-                            <span>out: <span class="text-foreground">{fmtNum(e.completionTokens ?? 0)}</span></span>
+                          <div class="flex items-center gap-2 font-mono whitespace-nowrap shrink-0">
+                            <span>in: <span class="text-foreground tabular-nums">{fmtNum(e.promptTokens ?? 0)}</span></span>
+                            <span>out: <span class="text-foreground tabular-nums">{fmtNum(e.completionTokens ?? 0)}</span></span>
                           </div>
                         </Show>
                       </div>
