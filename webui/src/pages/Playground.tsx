@@ -520,6 +520,7 @@ const Playground: Component = () => {
     const rawChunks: unknown[] = []
 
     try {
+      let pendingEvent = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -531,30 +532,45 @@ const Playground: Component = () => {
 
         for (const line of lines) {
           const trimmed = line.trim()
+          // SSE frames carry an optional "event:" name before their data line.
+          // The gateway reports mid-stream failures as `event: error` (queue
+          // timeout, upstream abort); ignoring it made the UI sit on a blank
+          // answer until the stream closed.
+          if (trimmed.startsWith('event:')) {
+            pendingEvent = trimmed.slice(6).trim()
+            continue
+          }
           if (!trimmed || !trimmed.startsWith('data:')) continue
           const dataStr = trimmed.slice(5).trim()
+          const eventName = pendingEvent
+          pendingEvent = ''
           if (dataStr === '[DONE]') continue
 
+          let parsed: unknown
           try {
-            const parsed: unknown = JSON.parse(dataStr)
-            rawChunks.push(parsed)
-            if (!servedModel) {
-              servedModel = str(dig(parsed, 'model')) ?? str(dig(parsed, 'modelVersion')) ?? ''
-            }
-            const delta = extractSSEDelta(activeProto, parsed)
-            if (delta.content || delta.reasoning) {
-              if (delta.content) accumulatedContent += delta.content
-              if (delta.reasoning) accumulatedReasoning += delta.reasoning
-
-              if (firstTokenTime === null) {
-                firstTokenTime = performance.now()
-                onUpdate({ content: accumulatedContent, reasoning: accumulatedReasoning }, { servedModel, firstToken: true })
-              } else {
-                onUpdate({ content: accumulatedContent, reasoning: accumulatedReasoning }, { servedModel })
-              }
-            }
+            parsed = JSON.parse(dataStr)
           } catch {
-            // ignore non-json chunk
+            continue // ignore non-json chunk
+          }
+          if (eventName === 'error') {
+            const msg = str(dig(parsed, 'error', 'message')) ?? str(dig(parsed, 'error')) ?? dataStr
+            throw new Error(msg)
+          }
+          rawChunks.push(parsed)
+          if (!servedModel) {
+            servedModel = str(dig(parsed, 'model')) ?? str(dig(parsed, 'modelVersion')) ?? ''
+          }
+          const delta = extractSSEDelta(activeProto, parsed)
+          if (delta.content || delta.reasoning) {
+            if (delta.content) accumulatedContent += delta.content
+            if (delta.reasoning) accumulatedReasoning += delta.reasoning
+
+            if (firstTokenTime === null) {
+              firstTokenTime = performance.now()
+              onUpdate({ content: accumulatedContent, reasoning: accumulatedReasoning }, { servedModel, firstToken: true })
+            } else {
+              onUpdate({ content: accumulatedContent, reasoning: accumulatedReasoning }, { servedModel })
+            }
           }
         }
       }

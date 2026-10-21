@@ -9,13 +9,27 @@ import (
 	"time"
 )
 
+// newHTTPServer configures the listener for an LLM gateway: uploads can be
+// large (a long conversation plus tool schemas easily exceeds 1MB) and
+// responses are long-lived SSE streams.
+//
+// ReadTimeout is deliberately generous rather than tight: it covers the whole
+// request body, and a slow client behind a tunnel needs more than the old 30s
+// to push a multi-megabyte conversation. Slowloris is still bounded by
+// ReadHeaderTimeout, and MaxBytesReader caps the body itself.
+//
+// WriteTimeout is 0 (no absolute deadline) because a fixed deadline kills
+// legitimate long streams — a queued request that later starts generating can
+// run for minutes. Hung streams are detected per-read by
+// provider.NewStallTimeoutReader instead, which is the correct signal: it fires
+// on silence, not on total elapsed time.
 func newHTTPServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      5 * time.Minute,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      0,
 		IdleTimeout:       120 * time.Second,
 	}
 }

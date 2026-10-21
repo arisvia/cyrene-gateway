@@ -107,8 +107,8 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
-	maxQueueAttempts := 20
-	maxQueueWaitBudget := 120 * time.Second
+	maxQueueAttempts := 40
+	maxQueueWaitBudget := 10 * time.Minute
 	queueWaited := time.Duration(0)
 
 	var (
