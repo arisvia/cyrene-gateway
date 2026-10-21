@@ -38,15 +38,20 @@ const Usage: Component = () => {
   let refreshTimer: number | null = null
 
   // A busy gateway emits many events per second. Coalesce them into one refresh
-  // and skip work the user cannot see: hidden tab, or paging through history
-  // (reloading page N>1 under the cursor would yank rows away mid-read).
+  // and skip work the user cannot see: hidden tab, the overview tab (which never
+  // renders the details table), or paging through history (reloading page N>1
+  // under the cursor would yank rows away mid-read).
+  function shouldReloadDetails(): boolean {
+    if (subTab() !== 'details') return false
+    return (store.requestDetailsPagination().page || 1) <= 1
+  }
+
   function scheduleRefresh() {
     if (refreshTimer !== null) return
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null
       if (document.hidden) return
-      const page = store.requestDetailsPagination().page || 1
-      if (page <= 1) {
+      if (shouldReloadDetails()) {
         store.loadRequestDetails(1, 10)
       }
       store.loadUsage(period())
@@ -67,9 +72,18 @@ const Usage: Component = () => {
       refreshTimer = null
     }
     store.loadUsage(period())
-    if ((store.requestDetailsPagination().page || 1) <= 1) {
+    if (shouldReloadDetails()) {
       store.loadRequestDetails(1, 10)
     }
+  }
+
+  // Details refreshes are skipped while the overview tab is showing, so entering
+  // the details tab must fetch a fresh page instead of rendering a stale one.
+  function selectSubTab(next: 'overview' | 'details') {
+    if (next === 'details' && subTab() !== 'details') {
+      store.loadRequestDetails(1, 10)
+    }
+    setSubTab(next)
   }
 
   onMount(() => {
@@ -246,7 +260,7 @@ const Usage: Component = () => {
           <div class="flex items-center gap-2.5 flex-wrap">
             <SegmentedControl
               value={subTab()}
-              onChange={setSubTab}
+              onChange={selectSubTab}
               options={[
                 { value: 'overview', label: t('usage.overview') },
                 { value: 'details', label: `${t('usage.requestDetails')} (${store.requestDetailsPagination().totalItems || 0})` },

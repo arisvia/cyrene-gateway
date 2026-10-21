@@ -44,7 +44,13 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
   onMount(() => {
     hitTimer = setInterval(() => {
       const now = Date.now()
-      setActiveHits(previous => Object.fromEntries(Object.entries(previous).filter(([, hit]) => hit.expiresAt > now)))
+      setActiveHits(previous => {
+        const kept = Object.entries(previous).filter(([, hit]) => hit.expiresAt > now)
+        // Returning the same reference keeps the graph from re-rendering every
+        // second while nothing has actually expired.
+        if (kept.length === Object.keys(previous).length) return previous
+        return Object.fromEntries(kept)
+      })
     }, 1_000)
   })
 
