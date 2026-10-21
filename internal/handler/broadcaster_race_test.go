@@ -100,8 +100,12 @@ func TestLogRingBuffer_ConcurrentRace(t *testing.T) {
 func TestLogRingBuffer_KeepsNewestLinesWhenSubscriberLags(t *testing.T) {
 	b := NewLogRingBuffer(5)
 	ch, done := b.Subscribe()
-	defer b.Unsubscribe(ch)
-	defer func() { <-done }()
+	// Unsubscribe must run before the done wait: it is what closes done, and
+	// defers run LIFO, so a single defer would block forever.
+	defer func() {
+		b.Unsubscribe(ch)
+		<-done
+	}()
 
 	// Overflow the 128-slot subscriber channel so the drop path runs.
 	for i := 0; i < 400; i++ {

@@ -82,6 +82,9 @@ const LogsPage: Component = () => {
   function flushBuffer() {
     flushTimer = null
     if (pendingBuffer.length === 0) return
+    // Rendering 300 rows for a tab nobody is looking at is pure waste. Keep
+    // buffering and let visibilitychange flush once on return.
+    if (document.hidden) return
     const incoming = pendingBuffer
     pendingBuffer = []
     const stick = autoScroll()
@@ -94,8 +97,19 @@ const LogsPage: Component = () => {
   }
 
   function scheduleFlush() {
+    // No timer while hidden: onVisible flushes on return, so a background tab
+    // does not wake every 100ms to throw the work away.
+    if (document.hidden) return
     if (flushTimer === null) {
       flushTimer = window.setTimeout(flushBuffer, 100)
+    }
+  }
+
+  // Catch up on everything buffered while the tab was in the background.
+  function onVisible() {
+    if (document.hidden) return
+    if (pendingBuffer.length > 0) {
+      flushBuffer()
     }
   }
 
@@ -110,6 +124,7 @@ const LogsPage: Component = () => {
 
   let disposed = false
   onMount(async () => {
+    document.addEventListener('visibilitychange', onVisible)
     // Subscribe before loading history: any line emitted between the history read
     // and the stream opening used to be lost entirely. Buffered lines are merged
     // in below and de-duplicated by timestamp+message.
@@ -125,6 +140,10 @@ const LogsPage: Component = () => {
       try {
         const item = processLogItem(JSON.parse(e.data) as LogItem)
         pendingBuffer.push(item)
+        // A tab left hidden for hours would otherwise grow this without bound.
+        if (pendingBuffer.length > 2000) {
+          pendingBuffer = pendingBuffer.slice(-2000)
+        }
         scheduleFlush()
       } catch (err: unknown) {
         console.error('[logs] parse error:', err)
@@ -156,6 +175,7 @@ const LogsPage: Component = () => {
 
   onCleanup(() => {
     disposed = true
+    document.removeEventListener('visibilitychange', onVisible)
     pendingBuffer = []
     if (flushTimer !== null) {
       clearTimeout(flushTimer)
