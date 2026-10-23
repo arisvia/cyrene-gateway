@@ -41,6 +41,9 @@ func setupTestServer(t *testing.T) (*Server, *db.DB) {
 		AllowPrivateNetworks: true,
 	}
 	srv := NewServer(database, cfg)
+	// Async catalog sync must finish before the DB closes or the next test
+	// mutates the global provider registry.
+	t.Cleanup(srv.waitBackground)
 	return srv, database
 }
 

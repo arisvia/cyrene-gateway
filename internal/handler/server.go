@@ -45,6 +45,24 @@ type Server struct {
 	// open dashboards produce on every SSE event into one DB read per TTL.
 	usageStatsMu    sync.Mutex
 	usageStatsCache map[string]usageStatsEntry
+
+	// background tracks fire-and-forget work (catalog sync after a provider
+	// write) so tests can wait for it instead of racing a live goroutine.
+	background sync.WaitGroup
+}
+
+// goBackground runs fn asynchronously while keeping it observable to tests.
+func (s *Server) goBackground(fn func()) {
+	s.background.Add(1)
+	go func() {
+		defer s.background.Done()
+		fn()
+	}()
+}
+
+// waitBackground blocks until every async task started via goBackground returns.
+func (s *Server) waitBackground() {
+	s.background.Wait()
 }
 
 func NewServer(database *db.DB, cfg *config.Config) *Server {

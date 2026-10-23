@@ -117,7 +117,7 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	dto := pc.ToDTO()
 	pcCopy := *pc
 	// Trigger async dynamic model catalog discovery for the newly added connection
-	go s.syncConnectionModels(&pcCopy)
+	s.goBackground(func() { s.syncConnectionModels(&pcCopy) })
 
 	writeJSON(w, http.StatusCreated, dto)
 }
@@ -200,7 +200,7 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 	dto := existing.ToDTO()
 	existingCopy := *existing
 	// Trigger async dynamic model catalog discovery for updated connection
-	go s.syncConnectionModels(&existingCopy)
+	s.goBackground(func() { s.syncConnectionModels(&existingCopy) })
 
 	writeJSON(w, http.StatusOK, dto)
 }

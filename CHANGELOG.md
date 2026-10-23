@@ -2,6 +2,11 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.6] - 2026-10-23
+
+### Fixed
+- **测试数据竞争**：`handleUpdateProvider` 等处以 `go s.syncConnectionModels(...)` 起后台目录同步，goroutine 会活过测试函数，在下一个测试改写 `provider.Registry` 时并发读该 map，`go test -race` 偶发失败。现统一经 `Server.goBackground` 登记，测试清理阶段 `waitBackground` 等待其结束。
+
 ## [1.7.5] - 2026-10-23
 
 ### Fixed
@@ -231,6 +236,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.7.6]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.5...v1.7.6
 [1.7.5]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.4...v1.7.5
 [1.7.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.3...v1.7.4
 [1.7.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.2...v1.7.3
