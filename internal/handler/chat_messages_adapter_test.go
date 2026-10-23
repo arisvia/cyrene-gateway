@@ -310,3 +310,17 @@ func TestMessagesToOpenAIAdapter_Stream_ToolCalls(t *testing.T) {
 		t.Errorf("expected message_stop, got:\n%s", res)
 	}
 }
+
+func TestAnthropicAdapter_ForwardsSSEKeepaliveComment(t *testing.T) {
+	rec := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	adapter := newAnthropicResponseAdapter(rec, true, "m")
+
+	adapter.Write([]byte(": ping - queue waiting\n\n"))
+
+	if !strings.Contains(rec.body.String(), ": ping - queue waiting") {
+		t.Fatalf("keepalive comment must reach the client, got %q", rec.body.String())
+	}
+	if rec.flushes == 0 {
+		t.Error("keepalive must be flushed immediately")
+	}
+}

@@ -57,6 +57,9 @@ func (a *responsesResponseAdapter) WriteHeader(statusCode int) {
 		a.w.Header().Set("X-Accel-Buffering", "no")
 		a.w.WriteHeader(statusCode)
 		a.headerWritten = true
+		if a.flusher != nil {
+			a.flusher.Flush()
+		}
 	}
 }
 
@@ -104,6 +107,16 @@ func (a *responsesResponseAdapter) Write(p []byte) (int, error) {
 					a.finished = true
 					a.scanBuf = nil
 					return len(p), nil
+				}
+				continue
+			}
+
+			// SSE comment frames (": ping") are keepalives. Forward them verbatim,
+			// otherwise a long upstream queue wait looks like a dead origin to
+			// Cloudflare and the edge answers 524 before the model answers.
+			if isSSEComment(line) {
+				if err := forwardSSEComment(a.w, a.flusher, line); err != nil {
+					return 0, err
 				}
 			}
 		}

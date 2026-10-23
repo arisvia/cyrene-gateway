@@ -296,37 +296,104 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	// Select best available connection (or respect specific connection if requested)
-	var conn *model.ProviderConnection
+	// An explicit connection pin from the client narrows the pool to one account.
+	var pinned *model.ProviderConnection
 	if targetConnID := r.Header.Get("X-Cyrene-Connection-ID"); targetConnID != "" {
 		for i := range conns {
 			if conns[i].ID == targetConnID && conns[i].IsActive {
-				conn = &conns[i]
+				pinned = &conns[i]
 				break
 			}
 		}
 	}
-	if conn == nil {
-		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil)
+
+	// Walk the pool until an account serves the request. Without this loop a
+	// single exhausted or throttled account failed the client's request even
+	// when other accounts for the same provider had capacity.
+	tried := make(map[string]bool)
+	var lastStatus int
+	var lastBody []byte
+	var lastProvider string
+
+	for {
+		var conn *model.ProviderConnection
+		if pinned != nil {
+			// The client pinned a specific account: never silently serve from a
+			// different one. A failure here is reported, not failed over.
+			if tried[pinned.ID] {
+				break
+			}
+			conn = pinned
+		} else {
+			conn = s.selectAvailableConnection(conns, modelInfo.Model, tried)
+		}
+		if conn == nil {
+			break
+		}
+		tried[conn.ID] = true
+		s.tryRefreshToken(conn)
+
+		retryable, status, body := s.attemptSingleModelChat(w, r, req, rawBody, modelInfo, providerInfo, conn)
+		if !retryable {
+			// Either the response was already streamed/proxied, or a terminal
+			// error was written. Nothing left to do.
+			return
+		}
+		lastStatus, lastBody, lastProvider = status, body, conn.Provider
+		if pinned != nil {
+			// Pinned: nothing to fail over to, the error surfaces below.
+			break
+		}
+		slog.Warn("Account unavailable, failing over to the next one",
+			slog.String("provider", modelInfo.Provider),
+			slog.String("model", modelInfo.Model),
+			slog.String("connection", conn.ID),
+			slog.Int("status", status),
+		)
+		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
 	}
-	if conn == nil {
+
+	if lastStatus == 0 {
+		if len(tried) == 0 {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
+			})
+			return
+		}
+		// Every attempt failed without producing an HTTP status (specialized
+		// executors report their own terminal frames or a bare retryable flag).
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
+			"error": fmt.Sprintf("all accounts unavailable for provider: %s", modelInfo.Provider),
 		})
 		return
 	}
+	// Every account failed the same way: surface the last upstream error.
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(lastStatus)
+	w.Write(wrapErrorWithHint(lastStatus, lastBody, lastProvider))
+}
 
-	// Phase 9: Pre-check OAuth token refresh
-	s.tryRefreshToken(conn)
-
+// attemptSingleModelChat runs one request against one connection.
+//
+// retryable=true means this account failed in a way another account might not
+// repeat (quota exhausted, throttled, transport error) and nothing has been
+// written to w, so the caller may try again. retryable=false means the response
+// is complete — either the body was proxied or a terminal error was written.
+func (s *Server) attemptSingleModelChat(
+	w http.ResponseWriter,
+	r *http.Request,
+	req ChatCompletionRequest,
+	rawBody []byte,
+	modelInfo model.ModelInfo,
+	providerInfo provider.ProviderInfo,
+	conn *model.ProviderConnection,
+) (retryable bool, status int, errBody []byte) {
 	// --- Special protocol paths: Qoder (COSY) & Antigravity (Cloud Code) ---
 	if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
-		s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
-		return
+		return s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo), 0, nil
 	}
 	if modelInfo.Provider == "antigravity" {
-		s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
-		return
+		return s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo), 0, nil
 	}
 
 	upstreamStream := req.Stream || providerInfo.ForceStream
@@ -338,7 +405,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
+		return false, 0, nil
 	}
 
 	slog.Info("Proxying request",
@@ -361,11 +428,14 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	client := s.getHTTPClient(clientTimeout)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
-		slog.Error("Upstream request failed", "error", err, "provider", modelInfo.Provider)
+		if r.Context().Err() != nil {
+			return false, 0, nil
+		}
+		slog.Error("Upstream request failed", "error", err, "provider", modelInfo.Provider, "connection", conn.ID)
 		latencyMs := time.Since(start).Milliseconds()
 		s.publishRequestEvent(r, RequestEvent{Type: "failed", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "502", Endpoint: endpoint, LatencyMs: latencyMs})
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
-		return
+		// Transport failures are per-account as often as per-network.
+		return true, http.StatusBadGateway, []byte("upstream request failed: " + err.Error())
 	}
 	defer resp.Body.Close()
 
@@ -390,10 +460,12 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))
 				resp, err = client.Do(retryReq)
 				if err != nil {
+					if r.Context().Err() != nil {
+						return false, 0, nil
+					}
 					latencyMs := time.Since(start).Milliseconds()
 					s.publishRequestEvent(r, RequestEvent{Type: "failed", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "502", Endpoint: endpoint, LatencyMs: latencyMs})
-					writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed after refresh"})
-					return
+					return true, http.StatusBadGateway, []byte("upstream request failed after refresh: " + err.Error())
 				}
 				defer resp.Body.Close()
 			}
@@ -444,12 +516,17 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			s.Metrics.ObserveRequest(modelInfo.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
 		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
+
+		// Account-scoped failures (quota exhausted, throttled) are worth another
+		// account; request-scoped 4xx are not.
+		if provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
+			return true, resp.StatusCode, errBody
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		// Wrap error with actionable hint (Phase 26 Error UX)
-		hinted := wrapErrorWithHint(resp.StatusCode, errBody, modelInfo.Provider)
-		w.Write(hinted)
-		return
+		w.Write(wrapErrorWithHint(resp.StatusCode, errBody, modelInfo.Provider))
+		return false, 0, nil
 	}
 
 	// Reset error state on success
@@ -472,6 +549,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		Prompt:       extractPromptSummary(req.Messages),
 	}
 	s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
+	return false, 0, nil
 }
 
 // proxyResponse handles streaming and non-streaming response proxying with format translation.
@@ -485,7 +563,174 @@ func (s *Server) proxyResponse(w http.ResponseWriter, r *http.Request, resp *htt
 		s.proxyNonStreaming(w, resp, format, model, uc)
 		return
 	}
+	if !isSSE {
+		// The client asked for SSE but the upstream ignored stream=true. Parsing a
+		// plain JSON body as SSE would drop the answer and end with a bogus
+		// "stream ended before completion" error, so synthesize one chunk instead.
+		s.streamFromJSONResponse(w, resp, format, model, uc)
+		return
+	}
 	s.proxyStreaming(w, r, resp, format, model, uc)
+}
+
+// extractUsageByFormat pulls token accounting out of an upstream body regardless
+// of the dialect it speaks.
+func extractUsageByFormat(format translator.Format, body []byte) usage.Usage {
+	switch format {
+	case translator.FormatAnthropic:
+		return usage.ExtractFromClaude(body)
+	case translator.FormatGemini:
+		return usage.ExtractFromGemini(body)
+	case translator.FormatResponses:
+		return usage.ExtractFromResponses(body)
+	default:
+		return usage.ExtractFromOpenAI(body)
+	}
+}
+
+// streamFromJSONResponse converts a non-SSE upstream body into a single-chunk SSE
+// stream so a streaming client still receives the answer.
+func (s *Server) streamFromJSONResponse(w http.ResponseWriter, resp *http.Response, format translator.Format, model string, uc *usageContext) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
+		return
+	}
+	if format != translator.FormatOpenAI {
+		translated, terr := translator.TranslateResponse(format, body, model)
+		if terr != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid upstream response: " + terr.Error()})
+			return
+		}
+		body = translated
+	}
+
+	u := extractUsageByFormat(translator.FormatOpenAI, body)
+	uc.Response = extractOpenAIMessageText(body)
+	s.recordUsage(uc, u)
+
+	flusher, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Cyrene-Served-Model", model)
+	w.WriteHeader(http.StatusOK)
+
+	var full struct {
+		ID      string `json:"id"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Error   any    `json:"error"`
+		Choices []struct {
+			Index        int             `json:"index"`
+			Message      json.RawMessage `json:"message"`
+			FinishReason string          `json:"finish_reason"`
+		} `json:"choices"`
+		Usage json.RawMessage `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &full); err != nil {
+		fmt.Fprintf(w, "data: {\"error\":{\"message\":%q}}\n\ndata: [DONE]\n\n", "invalid upstream response: "+err.Error())
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return
+	}
+	if full.Error != nil {
+		fmt.Fprintf(w, "data: {\"error\":%s}\n\ndata: [DONE]\n\n", mustJSON(full.Error))
+		if flusher != nil {
+			flusher.Flush()
+		}
+		return
+	}
+
+	id := full.ID
+	if id == "" {
+		id = fmt.Sprintf("chatcmpl-%d", time.Now().UnixMilli())
+	}
+	created := full.Created
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	servedModel := full.Model
+	if servedModel == "" {
+		servedModel = model
+	}
+
+	for _, choice := range full.Choices {
+		delta := map[string]any{"role": "assistant"}
+		var msg struct {
+			Content          json.RawMessage `json:"content"`
+			ReasoningContent string          `json:"reasoning_content"`
+			ToolCalls        json.RawMessage `json:"tool_calls"`
+		}
+		if len(choice.Message) > 0 {
+			_ = json.Unmarshal(choice.Message, &msg)
+		}
+		if len(msg.Content) > 0 && string(msg.Content) != "null" {
+			delta["content"] = msg.Content
+		}
+		if msg.ReasoningContent != "" {
+			delta["reasoning_content"] = msg.ReasoningContent
+		}
+		if len(msg.ToolCalls) > 0 && string(msg.ToolCalls) != "null" {
+			delta["tool_calls"] = msg.ToolCalls
+		}
+		chunk, _ := json.Marshal(map[string]any{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": servedModel,
+			"choices": []any{map[string]any{
+				"index": choice.Index, "delta": delta, "finish_reason": choice.FinishReason,
+			}},
+		})
+		fmt.Fprintf(w, "data: %s\n\n", chunk)
+	}
+	if len(full.Usage) > 0 && string(full.Usage) != "null" {
+		chunk, _ := json.Marshal(map[string]any{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": servedModel,
+			"choices": []any{}, "usage": full.Usage,
+		})
+		fmt.Fprintf(w, "data: %s\n\n", chunk)
+	}
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	if flusher != nil {
+		flusher.Flush()
+	}
+}
+
+// extractOpenAIMessageText returns the assistant text of a non-streaming OpenAI
+// body, used for usage bookkeeping.
+func extractOpenAIMessageText(body []byte) string {
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content any `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return ""
+	}
+	if len(resp.Choices) > 0 {
+		if str, ok := resp.Choices[0].Message.Content.(string); ok {
+			return str
+		}
+		return ""
+	}
+	if len(resp.Content) > 0 {
+		return resp.Content[0].Text
+	}
+	return ""
+}
+
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("null")
+	}
+	return b
 }
 
 type chatStreamChunk struct {
@@ -705,17 +950,7 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 	}
 
 	// Extract usage before translation
-	var u usage.Usage
-	switch format {
-	case translator.FormatAnthropic:
-		u = usage.ExtractFromClaude(body)
-	case translator.FormatGemini:
-		u = usage.ExtractFromGemini(body)
-	case translator.FormatResponses:
-		u = usage.ExtractFromResponses(body)
-	default:
-		u = usage.ExtractFromOpenAI(body)
-	}
+	u := extractUsageByFormat(format, body)
 	if format != translator.FormatOpenAI {
 		translated, err := translator.TranslateResponse(format, body, model)
 		if err != nil {
@@ -731,24 +966,8 @@ func (s *Server) proxyNonStreaming(w http.ResponseWriter, resp *http.Response, f
 		writeJSON(w, http.StatusBadGateway, map[string]json.RawMessage{"error": protocolError.Error})
 		return
 	}
-	var respObj struct {
-		Choices []struct {
-			Message struct {
-				Content any `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(body, &respObj); err == nil {
-		if len(respObj.Choices) > 0 {
-			if str, ok := respObj.Choices[0].Message.Content.(string); ok {
-				uc.Response = str
-			}
-		} else if len(respObj.Content) > 0 {
-			uc.Response = respObj.Content[0].Text
-		}
+	if text := extractOpenAIMessageText(body); text != "" {
+		uc.Response = text
 	}
 
 	if u.TotalTokens > 0 {

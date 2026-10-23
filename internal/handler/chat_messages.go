@@ -277,7 +277,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
-		w.Write(errBody)
+		w.Write(wrapErrorWithHint(resp.StatusCode, errBody, modelInfo.Provider))
 		return
 	}
 
@@ -314,7 +314,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
 		defer stallReader.Close()
 		scanner := bufio.NewScanner(stallReader)
-		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineBytes)
 		var totalUsage usage.Usage
 		var outBuilder strings.Builder
 		var totalStreamChars int
@@ -389,6 +389,13 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		if scanErr := scanner.Err(); scanErr != nil {
 			slog.Warn("Messages passthrough SSE scan error", "error", scanErr, "model", modelInfo.Model)
+			// Without a terminal frame the client only sees the stream stop and
+			// cannot distinguish truncation from a clean end.
+			if uc != nil {
+				uc.Status = http.StatusBadGateway
+			}
+			fmt.Fprintf(w, "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":%q}}\n\n", scanErr.Error())
+			flusher.Flush()
 		}
 		uc.Response = outBuilder.String()
 		if totalUsage.TotalTokens > 0 {

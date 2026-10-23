@@ -183,3 +183,33 @@ func TestGemini_Stream(t *testing.T) {
 		t.Fatalf("expected response body to contain usageMetadata, got: %s", bodyStr)
 	}
 }
+
+func TestGeminiAdapter_ForwardsSSEKeepaliveComment(t *testing.T) {
+	rec := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	adapter := newGeminiResponseAdapter(rec, true, "m")
+
+	adapter.Write([]byte(": ping - queue waiting\n\n"))
+
+	if !strings.Contains(rec.body.String(), ": ping - queue waiting") {
+		t.Fatalf("keepalive comment must reach the client, got %q", rec.body.String())
+	}
+	if rec.flushes == 0 {
+		t.Error("keepalive must be flushed immediately")
+	}
+}
+
+func TestGeminiAdapter_KeepaliveDoesNotBreakEventStream(t *testing.T) {
+	rec := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	adapter := newGeminiResponseAdapter(rec, true, "m")
+
+	adapter.Write([]byte(": ping - queue waiting\n\n"))
+	adapter.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n"))
+
+	out := rec.body.String()
+	if !strings.Contains(out, ": ping - queue waiting\n\n") {
+		t.Fatalf("comment frame must stay well-formed, got %q", out)
+	}
+	if !strings.Contains(out, "hi") {
+		t.Fatalf("data frame after the keepalive must still be translated, got %q", out)
+	}
+}

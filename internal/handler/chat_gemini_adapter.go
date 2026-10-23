@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/arisvia/cyrene-gateway/internal/rtk"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 )
 
@@ -22,7 +23,6 @@ type geminiResponseAdapter struct {
 	statusCode    int
 	isStream      bool
 	headerWritten bool
-	isSSE         bool
 }
 
 func newGeminiResponseAdapter(w http.ResponseWriter, isStream bool, model string) *geminiResponseAdapter {
@@ -58,6 +58,9 @@ func (a *geminiResponseAdapter) WriteHeader(statusCode int) {
 		a.w.Header().Set("X-Accel-Buffering", "no")
 		a.w.WriteHeader(statusCode)
 		a.headerWritten = true
+		if a.flusher != nil {
+			a.flusher.Flush()
+		}
 	}
 }
 
@@ -80,7 +83,6 @@ func (a *geminiResponseAdapter) Write(p []byte) (int, error) {
 			a.scanBuf = a.scanBuf[idx+1:]
 
 			if data, isDone, ok := translator.ParseSSEDataLine(line); ok || isDone {
-				a.isSSE = true
 				var chunk []byte
 				if isDone {
 					chunk = []byte("[DONE]")
@@ -93,6 +95,16 @@ func (a *geminiResponseAdapter) Write(p []byte) (int, error) {
 					if a.flusher != nil {
 						a.flusher.Flush()
 					}
+				}
+				continue
+			}
+
+			// SSE comment frames (": ping") keep the connection alive while the
+			// upstream queues. Dropping them makes the edge see an idle origin
+			// and answer 524 before the first token arrives.
+			if isSSEComment(line) {
+				if err := forwardSSEComment(a.w, a.flusher, line); err != nil {
+					return 0, err
 				}
 			}
 		}
@@ -204,6 +216,24 @@ func (s *Server) handleGeminiGenerateContent(w http.ResponseWriter, r *http.Requ
 		reqMap = make(map[string]any)
 	}
 
+	// Gemini exposes several operations under the same model path. Only the
+	// generateContent family is a chat completion; the others have their own
+	// response shapes and must not be forwarded as generation requests.
+	switch action {
+	case "countTokens":
+		s.handleGeminiCountTokens(w, r, reqMap, modelStr)
+		return
+	case "embedContent", "batchEmbedContents":
+		s.handleGeminiEmbedContent(w, r, reqMap, modelStr, action == "batchEmbedContents")
+		return
+	case "", "generateContent", "streamGenerateContent":
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("unsupported method %q for model %s", action, modelStr),
+		})
+		return
+	}
+
 	chatReqMap, err := translator.GeminiToOpenAIRequest(reqMap, modelStr)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse Gemini request: %v", err)})
@@ -238,4 +268,133 @@ func (s *Server) handleGeminiGenerateContent(w http.ResponseWriter, r *http.Requ
 	newReq.Header.Set("X-Cyrene-Original-Endpoint", endpointPrefix+modelAction)
 	s.handleChatCompletions(adapter, newReq)
 	adapter.Finish()
+}
+
+// handleGeminiCountTokens answers :countTokens with a local estimate. Gemini
+// expects {"totalTokens": N}; routing it through generation would return a
+// candidates payload the SDK cannot parse.
+func (s *Server) handleGeminiCountTokens(w http.ResponseWriter, r *http.Request, reqMap map[string]any, modelStr string) {
+	var sb strings.Builder
+	if sys, ok := reqMap["systemInstruction"].(map[string]any); ok {
+		sb.WriteString(geminiPartsText(sys["parts"]))
+	}
+	if contents, ok := reqMap["contents"].([]any); ok {
+		for _, c := range contents {
+			cm, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			sb.WriteString(geminiPartsText(cm["parts"]))
+		}
+	}
+	if tools, ok := reqMap["tools"]; ok {
+		if b, err := json.Marshal(tools); err == nil {
+			sb.Write(b)
+		}
+	}
+
+	total := rtk.EstimateTextTokens(sb.String())
+	if total < 1 {
+		total = 1
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"totalTokens": total})
+}
+
+// geminiPartsText concatenates the text of a Gemini parts array.
+func geminiPartsText(raw any) string {
+	parts, ok := raw.([]any)
+	if !ok {
+		return ""
+	}
+	var sb strings.Builder
+	for _, p := range parts {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		if t, ok := pm["text"].(string); ok {
+			sb.WriteString(t)
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// handleGeminiEmbedContent answers :embedContent and :batchEmbedContents by
+// translating to the OpenAI embeddings shape and translating the reply back.
+func (s *Server) handleGeminiEmbedContent(w http.ResponseWriter, r *http.Request, reqMap map[string]any, modelStr string, batch bool) {
+	var inputs []string
+	if batch {
+		reqs, _ := reqMap["requests"].([]any)
+		for _, rq := range reqs {
+			rm, ok := rq.(map[string]any)
+			if !ok {
+				continue
+			}
+			if cm, ok := rm["content"].(map[string]any); ok {
+				inputs = append(inputs, strings.TrimSpace(geminiPartsText(cm["parts"])))
+			}
+		}
+	} else {
+		if cm, ok := reqMap["content"].(map[string]any); ok {
+			inputs = append(inputs, strings.TrimSpace(geminiPartsText(cm["parts"])))
+		}
+	}
+	if len(inputs) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content.parts is required"})
+		return
+	}
+
+	embReq := map[string]any{"model": modelStr, "input": inputs}
+	body, err := json.Marshal(embReq)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode embeddings request"})
+		return
+	}
+
+	rec := newCaptureResponseWriter()
+	newReq, err := http.NewRequestWithContext(r.Context(), "POST", "/v1/embeddings", bytes.NewReader(body))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create proxy request"})
+		return
+	}
+	newReq.Header = r.Header.Clone()
+	newReq.URL.RawQuery = r.URL.RawQuery
+	newReq.Header.Set("Content-Type", "application/json")
+	s.handleEmbeddings(rec, newReq)
+
+	if status := rec.Status(); status < 200 || status >= 300 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		w.Write(rec.body.Bytes())
+		return
+	}
+
+	var parsed struct {
+		Data []struct {
+			Embedding []float64 `json:"embedding"`
+		} `json:"data"`
+		Usage struct {
+			PromptTokens int `json:"prompt_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(rec.body.Bytes(), &parsed); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid embeddings response"})
+		return
+	}
+
+	embeddings := make([]any, 0, len(parsed.Data))
+	for _, d := range parsed.Data {
+		embeddings = append(embeddings, map[string]any{"values": d.Embedding})
+	}
+
+	if batch {
+		writeJSON(w, http.StatusOK, map[string]any{"embeddings": embeddings})
+		return
+	}
+	out := map[string]any{}
+	if len(embeddings) > 0 {
+		out["embedding"] = embeddings[0]
+	}
+	writeJSON(w, http.StatusOK, out)
 }

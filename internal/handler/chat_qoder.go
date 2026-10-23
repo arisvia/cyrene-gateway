@@ -13,6 +13,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,7 +31,10 @@ type qoderPeekedBody struct {
 }
 
 // handleQoderChat executes a chat request against Qoder's COSY-signed endpoint.
-func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, modelInfo model.ModelInfo, conn *model.ProviderConnection, providerInfo provider.ProviderInfo) {
+// It returns retryable=true when this account failed in a way another account
+// could survive and nothing has been written to w yet, so the caller may retry
+// with the next connection.
+func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, modelInfo model.ModelInfo, conn *model.ProviderConnection, providerInfo provider.ProviderInfo) (retryable bool) {
 	psd := conn.Data.ProviderSpecificData
 	userID := ""
 	machineID := ""
@@ -44,10 +48,8 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		rawToken = conn.Data.APIKey
 	}
 	if rawToken == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "qoder credential is missing; connect the account via OAuth or add a Personal Access Token (pt-...)",
-		})
-		return
+		// Missing credential on this account only; another may be usable.
+		return true
 	}
 
 	clientTimeout := 5 * time.Minute
@@ -62,19 +64,13 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	resolved, err := provider.ResolveQoderCredentialFor(conn.Provider, rawToken, userID, client)
 	if err != nil {
 		slog.Warn("Qoder PAT exchange failed", slog.String("connection", conn.ID), "error", err)
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": fmt.Sprintf("qoder PAT exchange failed: %v", err),
-		})
-		return
+		return true
 	}
 	if resolved.UserID == "" {
 		resolved.UserID = userID
 	}
 	if resolved.UserID == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{
-			"error": "qoder credential is missing userId; reconnect the account via OAuth",
-		})
-		return
+		return true
 	}
 
 	ideVersion, _ := conn.Data.ProviderSpecificData["ideVersion"].(string)
@@ -176,9 +172,25 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	// waitQueue blocks for the upstream-suggested interval, emitting one
 	// keepalive per second so neither the client nor an intermediate proxy
 	// times the idle stream out. Returns false when the client went away.
+	//
+	// Non-streaming callers cannot be kept alive by comment frames (they are
+	// waiting on a single JSON body), so a queue wait would leave the connection
+	// silent until the edge gives up with a 524. They get an immediate 503 with
+	// Retry-After instead.
 	waitQueue := func(retrySec, attempt int) bool {
 		if retrySec <= 0 {
 			retrySec = provider.DefaultQoderQueueRetrySeconds
+		}
+		if !isStreaming {
+			w.Header().Set("Retry-After", strconv.Itoa(retrySec))
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": map[string]any{
+					"message": fmt.Sprintf("qoder model %s is queued upstream; retry in %ds", qoderKey, retrySec),
+					"type":    "qoder_queue_wait",
+					"code":    503,
+				},
+			})
+			return false
 		}
 		commitStreamingHeaders()
 		slog.Info("Qoder model queued, waiting before transparent retry",
@@ -209,19 +221,22 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 
 	for attempt := 0; attempt < maxQueueAttempts; attempt++ {
 		if r.Context().Err() != nil {
-			return
+			return false
 		}
 		res, key, err := sendAttempt(attempt > 0)
 		if err != nil {
-			slog.Error("Qoder upstream request failed", "error", err)
+			if r.Context().Err() != nil {
+				return false
+			}
+			slog.Error("Qoder upstream request failed", "error", err, "connection", conn.ID)
 			msg := "qoder upstream request failed: " + err.Error()
 			if headersCommitted {
 				fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"upstream_error\",\"code\":502}}\n\n", msg)
 				flusher.Flush()
-			} else {
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": msg})
+				return false
 			}
-			return
+			// Transport failure is per-account as often as per-network.
+			return true
 		}
 
 		qoderKey = key
@@ -234,7 +249,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			// Check if this error status represents queue waiting (10605 / isQueued)
 			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(string(errBody)); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
 				if !waitQueue(retrySec, attempt) {
-					return
+					return false
 				}
 				continue
 			}
@@ -282,12 +297,16 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			if headersCommitted {
 				fmt.Fprintf(w, "event: error\ndata: %s\n\n", string(errBody))
 				flusher.Flush()
-			} else {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(res.StatusCode)
-				w.Write(errBody)
+				return false
 			}
-			return
+			// Account-scoped failure: another account may still serve this.
+			if provider.CheckFallbackError(res.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
+				return true
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(res.StatusCode)
+			w.Write(errBody)
+			return false
 		}
 
 		// Status is 200: peek the first data frame to detect an in-stream
@@ -301,7 +320,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		for {
 			if r.Context().Err() != nil {
 				res.Body.Close()
-				return
+				return false
 			}
 			line, readErr := peekReader.ReadString('\n')
 			peeked.WriteString(line)
@@ -321,7 +340,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(rawLine); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
 				res.Body.Close()
 				if !waitQueue(retrySec, attempt) {
-					return
+					return false
 				}
 				continue
 			}
@@ -346,10 +365,10 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			// terminal error event; closing silently would look like a hang.
 			fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"qoder_queue_timeout\",\"code\":503}}\n\n", msg)
 			flusher.Flush()
-		} else {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": msg})
+			return false
 		}
-		return
+		// Queued out on this account; another account may have capacity.
+		return true
 	}
 	defer resp.Body.Close()
 
@@ -372,18 +391,19 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	// 在网关侧聚合 chunks 后拼成标准 chat.completion JSON 返回。
 	if !req.Stream {
 		s.proxyQoderNonStreaming(w, r, resp, qoderKey, uc, conn)
-		return
+		return false
 	}
 
 	// Stream with envelope unwrapping
 	s.proxyQoderStreaming(w, r, resp, qoderKey, uc, conn)
+	return false
 }
 
 // proxyQoderNonStreaming aggregates the upstream SSE envelope into a single
 // OpenAI chat.completion JSON object for stream=false clients.
 func (s *Server) proxyQoderNonStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext, conn *model.ProviderConnection) {
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineBytes)
 
 	var lastUsage usage.Usage
 	type toolState struct {
@@ -538,7 +558,7 @@ func (s *Server) proxyQoderStreaming(w http.ResponseWriter, r *http.Request, res
 	stallReader := provider.NewStallTimeoutReader(resp.Body, provider.DefaultStreamStallTimeout)
 	defer stallReader.Close()
 	scanner := bufio.NewScanner(stallReader)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineBytes)
 
 	var (
 		lastUsage   usage.Usage

@@ -99,6 +99,16 @@ func (a *anthropicResponseAdapter) Write(p []byte) (int, error) {
 						a.flusher.Flush()
 					}
 				}
+				continue
+			}
+
+			// SSE comment frames (": ping") keep the stream alive while the
+			// upstream queues. Drop them and Cloudflare answers 524 on the
+			// idle-looking origin, so forward them verbatim.
+			if isSSEComment(line) {
+				if err := forwardSSEComment(a.w, a.flusher, line); err != nil {
+					return 0, err
+				}
 			}
 		}
 		return len(p), nil

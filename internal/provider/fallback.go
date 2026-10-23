@@ -27,6 +27,11 @@ const (
 
 	CooldownLong  = 2 * time.Minute
 	CooldownShort = 5 * time.Second
+
+	// CooldownQuota parks an account whose own quota is used up. Retrying it
+	// seconds later cannot succeed, so it stays out of the rotation long enough
+	// for the other accounts to carry the load.
+	CooldownQuota = 15 * time.Minute
 )
 
 // ErrorRule defines a classification rule for upstream errors.
@@ -49,9 +54,29 @@ var ErrorRules = []ErrorRule{
 	{Text: "improperly formed request", CooldownMs: 0}, // Non-fallback
 	{Text: "freetiererror", CooldownMs: 0},             // Non-fallback: unauthenticated free tier blocked upstream
 	{Text: "only be used from within opencode", CooldownMs: 0},
+
+	// Quota exhaustion must be matched before the generic rate-limit rules: the
+	// account is out of credits, not briefly throttled, so it has to leave the
+	// rotation for a long time instead of backing off for a couple of seconds.
+	// Antigravity reports "RESOURCE_EXHAUSTED" / "rateLimitExceeded" per window,
+	// CodeBuddy reports "usage limit" / "insufficient credits".
+	{Text: "resource_exhausted", CooldownMs: CooldownQuota},
+	{Text: "resource exhausted", CooldownMs: CooldownQuota},
+	// Google reports the enum spelling without spaces; the prose form
+	// "rate limit exceeded" stays on the backoff path below because it usually
+	// means a momentary throttle rather than exhausted credits.
+	{Text: "ratelimitexceeded", CooldownMs: CooldownQuota},
+	{Text: "rate_limit_exceeded", CooldownMs: CooldownQuota},
+	{Text: "quota exceeded", CooldownMs: CooldownQuota},
+	{Text: "usage limit", CooldownMs: CooldownQuota},
+	{Text: "insufficient credit", CooldownMs: CooldownQuota},
+	{Text: "insufficient balance", CooldownMs: CooldownQuota},
+	{Text: "daily limit", CooldownMs: CooldownQuota},
+	{Text: "weekly limit", CooldownMs: CooldownQuota},
+	{Text: "5-hour limit", CooldownMs: CooldownQuota},
+
 	{Text: "rate limit", Backoff: true},
 	{Text: "too many requests", Backoff: true},
-	{Text: "quota exceeded", Backoff: true},
 	{Text: "capacity", Backoff: true},
 	{Text: "overloaded", Backoff: true},
 
@@ -174,23 +199,17 @@ func SelectCredential(conns []model.ProviderConnection, modelName string, exclud
 // SelectCredentialWithQuota extends SelectCredential with quota awareness.
 // For dual-auth providers (AuthModes includes both "oauth" and "apikey"),
 // OAuth connections are preferred over API key connections (9router accountFallback parity).
+//
+// Connections are grouped into priority tiers (ascending). Only the first tier that
+// still has an eligible connection is used, and requests rotate round-robin inside
+// that tier so equal-priority accounts share the load instead of the first row
+// absorbing all traffic.
 func SelectCredentialWithQuota(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker) *model.ProviderConnection {
 	now := time.Now()
 
-	// Sort: prefer OAuth connections over API key for dual-auth fallback.
-	sorted := make([]model.ProviderConnection, len(conns))
-	copy(sorted, conns)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		iOAuth := sorted[i].AuthType == "oauth" || sorted[i].AuthType == "access_token"
-		jOAuth := sorted[j].AuthType == "oauth" || sorted[j].AuthType == "access_token"
-		if iOAuth != jOAuth {
-			return iOAuth
-		}
-		return false
-	})
-
-	for i := range sorted {
-		c := &sorted[i]
+	eligible := make([]*model.ProviderConnection, 0, len(conns))
+	for i := range conns {
+		c := &conns[i]
 
 		// Skip excluded connections (already tried and failed)
 		if excludeIDs != nil && excludeIDs[c.ID] {
@@ -227,10 +246,52 @@ func SelectCredentialWithQuota(conns []model.ProviderConnection, modelName strin
 			}
 		}
 
-		return c
+		eligible = append(eligible, c)
 	}
 
-	return nil
+	if len(eligible) == 0 {
+		return nil
+	}
+
+	// Order: OAuth ahead of API keys (dual-auth fallback parity), then ascending
+	// priority. Sort is stable so the caller's ordering still breaks exact ties
+	// deterministically.
+	sort.SliceStable(eligible, func(i, j int) bool {
+		iOAuth, jOAuth := isOAuthConnection(eligible[i]), isOAuthConnection(eligible[j])
+		if iOAuth != jOAuth {
+			return iOAuth
+		}
+		return eligible[i].Priority < eligible[j].Priority
+	})
+
+	tier := eligible[0].Priority
+	tierEnd := 1
+	for tierEnd < len(eligible) && eligible[tierEnd].Priority == tier {
+		tierEnd++
+	}
+	tierConns := eligible[:tierEnd]
+
+	// The sort hoists OAuth, so inside a tier they form a prefix: rotate only among
+	// OAuth accounts when the tier has any, otherwise among the API-key ones.
+	pool := tierConns
+	oauthCount := 0
+	for oauthCount < len(tierConns) && isOAuthConnection(tierConns[oauthCount]) {
+		oauthCount++
+	}
+	if oauthCount > 0 {
+		pool = tierConns[:oauthCount]
+	}
+
+	if len(pool) == 1 {
+		return pool[0]
+	}
+
+	key := pool[0].Provider + "|" + strconv.Itoa(tier)
+	return pool[credentialRoundRobin.next(key, len(pool))]
+}
+
+func isOAuthConnection(c *model.ProviderConnection) bool {
+	return c.AuthType == "oauth" || c.AuthType == "access_token"
 }
 
 // ApplyErrorState updates a connection's data after an upstream error.

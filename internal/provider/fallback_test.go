@@ -298,3 +298,129 @@ func TestFormatRetryAfter(t *testing.T) {
 		t.Error("expected non-empty for future time")
 	}
 }
+
+func TestSelectCredentialRotatesWithinEqualPriorityTier(t *testing.T) {
+	credentialRoundRobin.reset()
+	t.Cleanup(credentialRoundRobin.reset)
+
+	conns := []model.ProviderConnection{
+		{ID: "a", Provider: "antigravity", AuthType: "oauth", IsActive: true, Priority: 0},
+		{ID: "b", Provider: "antigravity", AuthType: "oauth", IsActive: true, Priority: 0},
+	}
+
+	counts := map[string]int{}
+	for range 10 {
+		got := SelectCredential(conns, "gemini-3-pro", nil)
+		if got == nil {
+			t.Fatal("expected a connection")
+		}
+		counts[got.ID]++
+	}
+	if counts["a"] != 5 || counts["b"] != 5 {
+		t.Errorf("equal-priority tier must split evenly, got %v", counts)
+	}
+}
+
+func TestSelectCredentialKeepsPriorityOrderAcrossTiers(t *testing.T) {
+	credentialRoundRobin.reset()
+	t.Cleanup(credentialRoundRobin.reset)
+
+	conns := []model.ProviderConnection{
+		{ID: "primary", Provider: "antigravity", AuthType: "oauth", IsActive: true, Priority: 0},
+		{ID: "backup-1", Provider: "antigravity", AuthType: "oauth", IsActive: true, Priority: 10},
+		{ID: "backup-2", Provider: "antigravity", AuthType: "oauth", IsActive: true, Priority: 10},
+	}
+
+	for range 6 {
+		if got := SelectCredential(conns, "gemini-3-pro", nil); got == nil || got.ID != "primary" {
+			t.Fatalf("lower priority value must always win, got %v", got)
+		}
+	}
+
+	// Primary cooling down → the backup tier load-balances instead of pinning one row.
+	conns[0].Data.RateLimitedUntil = time.Now().Add(time.Minute).UTC().Format(time.RFC3339)
+	counts := map[string]int{}
+	for range 10 {
+		got := SelectCredential(conns, "gemini-3-pro", nil)
+		if got == nil {
+			t.Fatal("expected a backup connection")
+		}
+		counts[got.ID]++
+	}
+	if counts["backup-1"] != 5 || counts["backup-2"] != 5 {
+		t.Errorf("backup tier must split evenly, got %v", counts)
+	}
+}
+
+func TestSelectCredentialSkipsTierThatIsFullyOverQuota(t *testing.T) {
+	credentialRoundRobin.reset()
+	t.Cleanup(credentialRoundRobin.reset)
+
+	conns := []model.ProviderConnection{
+		{ID: "full", Provider: "codebuddy", AuthType: "oauth", IsActive: true, Priority: 0,
+			Data: model.ConnectionData{QuotaLimit: 100, QuotaPeriod: "daily"}},
+		{ID: "spare", Provider: "codebuddy", AuthType: "oauth", IsActive: true, Priority: 10},
+	}
+	quota := func(id, period string) int {
+		if id == "full" {
+			return 100
+		}
+		return 0
+	}
+
+	for range 4 {
+		got := SelectCredentialWithQuota(conns, "m", nil, quota)
+		if got == nil || got.ID != "spare" {
+			t.Fatalf("exhausted tier must fall through to the next one, got %v", got)
+		}
+	}
+}
+
+func TestDualAuthSelection_OAuthWinsEvenWithWorsePriority(t *testing.T) {
+	credentialRoundRobin.reset()
+	t.Cleanup(credentialRoundRobin.reset)
+
+	// 9router parity: dual-auth pools prefer OAuth across the whole pool, so an
+	// OAuth account with a larger priority number still outranks an API key.
+	conns := []model.ProviderConnection{
+		{ID: "conn-apikey", Provider: "kimi", AuthType: "api-key", IsActive: true, Priority: 0,
+			Data: model.ConnectionData{APIKey: "sk-test"}},
+		{ID: "conn-oauth", Provider: "kimi", AuthType: "oauth", IsActive: true, Priority: 50,
+			Data: model.ConnectionData{AccessToken: "oauth_token"}},
+	}
+
+	for range 4 {
+		selected := SelectCredential(conns, "kimi-k2", nil)
+		if selected == nil || selected.ID != "conn-oauth" {
+			t.Fatalf("OAuth must outrank API key regardless of priority, got %v", selected)
+		}
+	}
+}
+
+func TestCheckFallbackError_QuotaExhaustionParksAccount(t *testing.T) {
+	cases := []struct{ name, body string }{
+		{"antigravity RESOURCE_EXHAUSTED", `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You have exhausted your capacity on this model."}}`},
+		{"google enum", `{"error":{"status":"RATE_LIMIT_EXCEEDED"}}`},
+		{"google enum underscored", `{"error":{"status":"rate_limit_exceeded"}}`},
+		{"codebuddy usage limit", `{"error":{"message":"You have reached your usage limit for today"}}`},
+		{"quota exceeded", `{"error":{"message":"quota exceeded for this project"}}`},
+		{"insufficient balance", `{"error":{"message":"insufficient balance"}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := CheckFallbackError(429, c.body, 0)
+			if !got.ShouldFallback {
+				t.Fatal("quota exhaustion must fail over to another account")
+			}
+			if got.Cooldown != CooldownQuota {
+				t.Errorf("expected %v park cooldown, got %v", CooldownQuota, got.Cooldown)
+			}
+		})
+	}
+
+	// A momentary throttle stays on the short exponential path.
+	got := CheckFallbackError(429, `{"error":{"message":"rate limit reached, slow down"}}`, 0)
+	if got.Cooldown != 2*time.Second || got.NewBackoffLevel != 1 {
+		t.Errorf("plain rate limit must keep short backoff, got %v level=%d", got.Cooldown, got.NewBackoffLevel)
+	}
+}

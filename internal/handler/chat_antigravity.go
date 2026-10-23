@@ -20,6 +20,10 @@ import (
 )
 
 // handleAntigravityChat handles inference requests via Google Cloud Code Assist (Antigravity).
+// It returns retryable=true when the account itself failed in a way another
+// account could survive (quota exhausted, rate limited). In that case nothing has
+// been written to w yet, so the caller may retry with the next connection. A false
+// return means the response is already complete.
 func (s *Server) handleAntigravityChat(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -28,14 +32,14 @@ func (s *Server) handleAntigravityChat(
 	modelInfo model.ModelInfo,
 	conn *model.ProviderConnection,
 	providerInfo provider.ProviderInfo,
-) {
+) (retryable bool) {
 	token := conn.Data.AccessToken
 	if token == "" && conn.Data.APIKey != "" {
 		token = conn.Data.APIKey
 	}
 	if token == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "antigravity token missing"})
-		return
+		// No usable credential on this account: another one may have one.
+		return true
 	}
 
 	clientTimeout := 3 * time.Minute
@@ -204,8 +208,13 @@ func (s *Server) handleAntigravityChat(
 	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: conn.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 	resp, err := client.Do(upReq)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "antigravity upstream connection failed: " + err.Error()})
-		return
+		if r.Context().Err() != nil {
+			return false
+		}
+		// Transport failures are per-account as often as per-network; let the
+		// caller try the next account before surfacing a 502.
+		slog.Warn("Antigravity upstream connection failed", "error", err, "connection", conn.ID)
+		return true
 	}
 	defer resp.Body.Close()
 
@@ -219,8 +228,7 @@ func (s *Server) handleAntigravityChat(
 		if refreshErr == nil {
 			if err := s.persistRefreshedCredentials(conn, refreshResult); err != nil {
 				slog.Error("Failed to persist refreshed Antigravity credentials", "error", err)
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to persist refreshed credentials"})
-				return
+				return true
 			}
 			token = conn.Data.AccessToken
 			retryReq, retryErr := http.NewRequestWithContext(r.Context(), "POST", upstreamURL, bytes.NewReader(envelopeBytes))
@@ -276,10 +284,17 @@ func (s *Server) handleAntigravityChat(
 			s.Metrics.ObserveRequest(conn.Provider, modelInfo.Model, endpoint, resp.StatusCode, time.Since(start).Seconds(), nil)
 		}
 		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: conn.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: statusStr, LatencyMs: latencyMs})
+
+		// The account itself is out of quota or throttled: another account in the
+		// pool may still serve this request, so let the caller retry before the
+		// client sees the failure.
+		if provider.CheckFallbackError(resp.StatusCode, string(respBody), conn.Data.BackoffLevel).ShouldFallback {
+			return true
+		}
 		writeJSON(w, resp.StatusCode, map[string]any{
 			"error": fmt.Sprintf("antigravity upstream error (HTTP %d): %s", resp.StatusCode, string(respBody)),
 		})
-		return
+		return false
 	}
 
 	uc := &usageContext{
@@ -298,6 +313,7 @@ func (s *Server) handleAntigravityChat(
 	} else {
 		s.proxyAntigravityStreaming(w, r, resp, modelInfo.Model, uc)
 	}
+	return false
 }
 
 // defaultThinkingAgSignature is the base64-encoded dummy thought signature ("skip_thought_signature_validator")
@@ -603,6 +619,13 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 			s.recordUsage(uc, lastUsage)
 			return
 		default:
+		}
+		line := scanner.Bytes()
+		if isSSEComment(line) {
+			if err := forwardSSEComment(w, flusher, line); err != nil {
+				return
+			}
+			continue
 		}
 		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
 		if !ok || isDone {

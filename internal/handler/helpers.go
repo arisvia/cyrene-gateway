@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"runtime/debug"
 	"strings"
 
@@ -73,4 +75,67 @@ func wrapErrorWithHint(statusCode int, errBody []byte, providerID string) []byte
 		},
 	})
 	return out
+}
+
+// isSSEComment reports whether an SSE line is a comment/keepalive frame, i.e. it
+// starts with ':' (": ping", ": keepalive"). Proxies must forward these so an
+// idle-looking stream is not mistaken for a dead origin.
+func isSSEComment(line []byte) bool {
+	trimmed := bytes.TrimSpace(line)
+	return len(trimmed) > 0 && trimmed[0] == ':'
+}
+
+// forwardSSEComment relays an SSE comment/keepalive frame to the client and
+// flushes immediately. The terminating blank line is appended here because the
+// adapter loops consume lines one at a time; without it the frame would be
+// unterminated and buffered by the edge until the next real event.
+func forwardSSEComment(w http.ResponseWriter, flusher http.Flusher, line []byte) error {
+	if _, err := w.Write(append(append([]byte{}, bytes.TrimSpace(line)...), '\n', '\n')); err != nil {
+		return err
+	}
+	if flusher != nil {
+		flusher.Flush()
+	}
+	return nil
+}
+
+// maxSSELineBytes caps a single SSE line. Upstreams occasionally emit one huge
+// frame (a multi-megabyte tool argument or reasoning blob); a 1MB cap made the
+// scanner abort silently and the stream just stopped, so allow more headroom.
+const maxSSELineBytes = 8 * 1024 * 1024
+
+// captureResponseWriter records a handler's status, headers and body in memory so
+// one protocol surface can delegate to another in-process (Gemini embedContent →
+// /v1/embeddings) without a loopback HTTP round trip.
+type captureResponseWriter struct {
+	header http.Header
+	body   bytes.Buffer
+	status int
+}
+
+func newCaptureResponseWriter() *captureResponseWriter {
+	return &captureResponseWriter{header: make(http.Header)}
+}
+
+func (c *captureResponseWriter) Header() http.Header { return c.header }
+
+func (c *captureResponseWriter) WriteHeader(status int) {
+	if c.status == 0 {
+		c.status = status
+	}
+}
+
+func (c *captureResponseWriter) Write(p []byte) (int, error) {
+	if c.status == 0 {
+		c.status = http.StatusOK
+	}
+	return c.body.Write(p)
+}
+
+// Status returns the recorded status, defaulting to 200 like net/http.
+func (c *captureResponseWriter) Status() int {
+	if c.status == 0 {
+		return http.StatusOK
+	}
+	return c.status
 }

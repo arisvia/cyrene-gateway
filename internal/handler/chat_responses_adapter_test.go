@@ -396,3 +396,32 @@ func TestResponsesAdapterNonStreamStatus(t *testing.T) {
 		}
 	}
 }
+
+// flushRecorder records flushes so a test can prove keepalives actually reach the
+// client instead of being buffered until the first token arrives.
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+	flushes int
+	body    strings.Builder
+}
+
+func (f *flushRecorder) Write(p []byte) (int, error) {
+	f.body.Write(p)
+	return f.ResponseRecorder.Write(p)
+}
+
+func (f *flushRecorder) Flush() { f.flushes++ }
+
+func TestResponsesAdapter_ForwardsSSEKeepaliveComment(t *testing.T) {
+	rec := &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+	adapter := newResponsesResponseAdapter(rec, true, "m")
+
+	adapter.Write([]byte(": qoder model dfmodel queued (code 10605), waiting 30s then retry (1/40)\n\n"))
+
+	if !strings.Contains(rec.body.String(), ": qoder model dfmodel queued") {
+		t.Fatalf("keepalive comment must reach the client, got %q", rec.body.String())
+	}
+	if rec.flushes == 0 {
+		t.Error("keepalive must be flushed immediately, otherwise the edge sees an idle origin")
+	}
+}

@@ -109,16 +109,26 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		// Phase 9: Pre-check OAuth token refresh
 		s.tryRefreshToken(conn)
 
-		// Qoder and Antigravity use specialized protocols and executors
+		// Qoder and Antigravity use specialized protocols and executors. They
+		// report retryable when the account (not the request) is at fault, so a
+		// combo step can move on instead of returning an empty response.
 		if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
 			slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
-			s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
-			return
+			if retryable := s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
+				return
+			}
+			lastError = fmt.Sprintf("qoder account unavailable: %s", conn.ID)
+			lastStatus = 503
+			continue
 		}
 		if modelInfo.Provider == "antigravity" {
 			slog.Info("Combo delegating to Antigravity executor", slog.String("model", modelInfo.Model))
-			s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo)
-			return
+			if retryable := s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
+				return
+			}
+			lastError = fmt.Sprintf("antigravity account unavailable: %s", conn.ID)
+			lastStatus = 503
+			continue
 		}
 
 		upstreamStream := req.Stream || providerInfo.ForceStream

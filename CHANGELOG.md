@@ -2,6 +2,19 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.5] - 2026-10-23
+
+### Fixed
+- **账号额度耗尽不会切到下一个账号，客户端直接失败**：单模型路径（`handleSingleModelChat`）选完连接只发一次请求，上游报错就直接回给客户端，从不重试其它账号——`provider.ExecuteAttempt` 的 `ShouldFallback` 分类器早已存在却没有任何调用方。现改为在连接池内循环重试：每次失败按 `CheckFallbackError` 判定，账号级失败（额度耗尽、限流、传输错误、缺凭据）换下一个账号，请求级 4xx（上下文超长、参数错误）立即返回不扩散。Qoder 与 Antigravity 两个专用处理器改为返回 `retryable` 而非直接写错误体。
+- **额度耗尽只冷却 30 秒，等于没生效**：错误文本规则只有 `quota exceeded` 一条，Antigravity 实际返回 `RESOURCE_EXHAUSTED` / `RATE_LIMIT_EXCEEDED`，CodeBuddy 返回 `usage limit`，全部落到默认的 30 秒瞬时冷却，账号几秒后又回到轮转里继续失败。现新增 `CooldownQuota = 15m` 并优先匹配真实配额耗尽文案（`resource_exhausted`、`ratelimit_exceeded`、`rate_limit_exceeded`、`usage limit`、`insufficient balance/credit`、`daily/weekly/5-hour limit`）；普通 `rate limit` 仍走 2s 起的指数退避，避免把瞬时限流误判成额度耗尽。
+- **上游忽略 `stream:true` 时流式请求丢答案**：客户端要流式但上游回普通 JSON 时，`proxyResponse` 按 `Content-Type` 判定仍走 `proxyStreaming`，把 JSON 当 SSE 解析，最终吐出 `upstream stream ended before completion: EOF`，上游完整回答被丢弃。现新增 `streamFromJSONResponse`，把非 SSE 响应合成为单帧 chunk + usage 帧 + `[DONE]`，三条适配端点都能拿到内容。
+- **非流式 Qoder 排队必然 524**：注释帧保活只在 `req.Stream` 为真时生效，非流式请求排队期间零字节输出，Cloudflare 100 秒后返回 524。现非流式路径遇到 `10605` 立即返回 `503` 并带 `Retry-After`，让客户端自行重试而不是空等到边缘超时。10 分钟 / 40 次预算对流式路径保持不变。
+- **Gemini 端点把 `:countTokens`、`:embedContent` 当生成请求转发**：两者被 `handleGeminiGenerateContent` 统一送进生成链路，返回 `candidates` 而非 `totalTokens` / embeddings，SDK 无法解析。现按 action 分流：`countTokens` 走本地估算返回 `{"totalTokens":N}`，`embedContent` / `batchEmbedContents` 转 `/v1/embeddings` 后转回 Gemini 形状，未知 action 返回 400。
+- **SSE 单行超限导致流静默中断**：`/v1/messages` 原生透传、Qoder 流式与非流式三处 `bufio.Scanner` 上限 1MB，超大 tool 参数或 reasoning 帧会触发 `token too long`，循环静默结束，客户端只看到流突然断开。上限提至 8MB（`maxSSELineBytes`），且 scanner 报错时补发 `event: error` 终止帧。
+- **`/v1/messages` 上游错误缺少可操作提示**：与 `/v1/chat/completions` 不一致，现统一经 `wrapErrorWithHint` 附加 `hint` 字段。
+- **Qoder 排队期间经协议适配端点调用被 Cloudflare 判 524**：`handleQoderChat` 在排队等待时每秒写 `: ping` 注释帧保活，但 `/v1/responses`、`/v1/messages`、`/v1beta/models/*`（Gemini）三个适配器只解析 `data:` 行，注释帧被直接丢弃且不 flush，下游 100 秒收不到任何字节，边缘返回 524。Antigravity 流式转发同样丢弃注释帧。现统一经 `forwardSSEComment` 原样转发注释帧并立即 flush（自动补终止空行），四处流式路径的响应头也改为写出即 flush。
+- **同优先级账号并不负载均衡，流量全压在第一个账号**：`SelectCredentialWithQuota` 只按 OAuth 优先做稳定排序后取首个可用连接，同优先级时列表顺序固定，导致同池第二个账号几乎零消耗（表现为一个账号 100%、另一个 0%）。现改为按优先级分层，仅在最高可用层内做进程内轮询，同层多账号按请求均摊；某层全部冷却/配额耗尽时自动落到下一层。
+
 ## [1.7.4] - 2026-10-21
 
 ### Performance
@@ -218,6 +231,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.7.5]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.4...v1.7.5
 [1.7.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.3...v1.7.4
 [1.7.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.1...v1.7.2
