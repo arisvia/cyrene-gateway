@@ -2,6 +2,20 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.0] - 2026-10-27
+
+### Added
+- **同账号微退避重试（In-place Micro-Retry）与 KV Cache 保护**：在单模型路径中引入 200ms 短延时原地重试，对瞬态网络故障或 5xx 优先同凭证重试，避免过早跨账号轮替击穿数十万 Token 的上游 KV Cache。
+- **Prompt 级内联指令（In-turn Directives）无痕解析**：支持在对话末尾用户消息中内联指令（如 `@cg-model:openai/gpt-4o`、`@cg-effort:high`、`@ocr-effort-up`、`@ocr-effort-down`），网关自动提取并剥离指令文本，动态重载当轮模型与思考深度。
+- **OpenAI 双鉴权（Dual-Auth）与 Codex 提供商彻底整合**：将独立的 `codex` 移出注册表，由 `openai` 提供商统一承接 API Key 直连与 ChatGPT/Codex responses 官方 OAuth，根据授权类型自动分流。
+- **Tool Result 多模态图像转换支持**：`openAIToClaude` 工具调用结果支持嵌套 `image_url` 与 Base64 图像块，对齐 Claude 官方多模态工具输入规范。
+
+### Fixed
+- **API Key 提取与严格鉴权模式兼容性修复**：修复 `ExtractAPIKey` 对带有首尾空白或大小写 `bearer` 前缀的 Bearer Header 解析失败问题，统一返回标准 OpenAI 格式的鉴权错误体。
+- **免密模式下前端控制台获取 `/v1/models` 被误拦截**：支持同源（`Sec-Fetch-Site: same-origin`）请求在未开启强制登录时免鉴权拉取模型列表。
+- **Combo 模型非终态请求级 4xx 错误容灾流转**：当组合内前序模型遇到请求级错误（如上下文超长）时，自动尝试下一个可用模型而非直接向客户端返回失败。
+- **Antigravity 客户端指纹对齐**：更新 User-Agent 指纹至 `antigravity/hub/2.24.0 darwin/arm64`。
+
 ## [1.7.7] - 2026-10-26
 
 ### Changed
@@ -255,6 +269,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.8.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.7...v1.8.0
 [1.7.7]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.6...v1.7.7
 [1.7.6]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.5...v1.7.6
 [1.7.5]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.4...v1.7.5
