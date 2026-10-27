@@ -209,19 +209,19 @@ func ExtractAPIKey(r *http.Request) string {
 	if r == nil {
 		return ""
 	}
-	if h := r.Header.Get("Authorization"); h != "" {
-		if after, ok := strings.CutPrefix(h, "Bearer "); ok {
-			return after
+	if h := strings.TrimSpace(r.Header.Get("Authorization")); h != "" {
+		if len(h) >= 7 && strings.EqualFold(h[:7], "bearer ") {
+			return strings.TrimSpace(h[7:])
 		}
 		return h
 	}
-	if k := r.Header.Get("x-api-key"); k != "" {
+	if k := strings.TrimSpace(r.Header.Get("x-api-key")); k != "" {
 		return k
 	}
-	if k := r.Header.Get("x-goog-api-key"); k != "" {
+	if k := strings.TrimSpace(r.Header.Get("x-goog-api-key")); k != "" {
 		return k
 	}
-	return r.URL.Query().Get("key")
+	return strings.TrimSpace(r.URL.Query().Get("key"))
 }
 
 // ClientIP extracts the IP address from a host:port string.

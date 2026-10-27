@@ -177,6 +177,44 @@ func TestAPIKeyAuth_StrictGatewayMode(t *testing.T) {
 			t.Errorf("expected capturedKey ID %s, got %v", validKey.ID, capturedKey)
 		}
 	}
+
+	// Case 4: Key exists in DB but signature invalid (e.g. secret rotated) -> still passes
+	{
+		unsigKey := &model.APIKey{
+			ID:        "key-unsig-1",
+			Key:       "cg-oldkeypayload.invalidsignature",
+			Name:      "Rotated Secret User",
+			IsActive:  true,
+			ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+		}
+		if err := database.CreateAPIKey(unsigKey); err != nil {
+			t.Fatalf("failed to create key: %v", err)
+		}
+		capturedKey = nil
+		req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", "Bearer "+unsigKey.Key)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for DB key with mismatched signature, got %d", rec.Code)
+		}
+		if capturedKey == nil || capturedKey.ID != unsigKey.ID {
+			t.Errorf("expected capturedKey ID %s, got %v", unsigKey.ID, capturedKey)
+		}
+	}
+
+	// Case 5: Same-origin browser request to GET /v1/models without API key when login disabled
+	{
+		req := httptest.NewRequest("GET", "/v1/models", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
+		req.Host = "localhost:20128"
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for same-origin dashboard request, got %d", rec.Code)
+		}
+	}
 }
 
 // TestAPIKeyAuth_GeminiSurface locks the Gemini inbound surface: official Google

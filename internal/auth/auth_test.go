@@ -151,6 +151,7 @@ func TestExtractAPIKey(t *testing.T) {
 		want string
 	}{
 		{"bearer token", req("/v1/chat/completions", map[string]string{"Authorization": "Bearer sk-test123"}), "sk-test123"},
+		{"bearer lowercase and trimmed", req("/v1/chat/completions", map[string]string{"Authorization": "bearer   sk-test-lower  "}), "sk-test-lower"},
 		{"bare authorization", req("/v1/chat/completions", map[string]string{"Authorization": "sk-raw"}), "sk-raw"},
 		{"anthropic x-api-key", req("/v1/messages", map[string]string{"x-api-key": "sk-ant"}), "sk-ant"},
 		{"gemini x-goog-api-key", req("/v1beta/models/gemini:generateContent", map[string]string{"x-goog-api-key": "AIza-sdk"}), "AIza-sdk"},

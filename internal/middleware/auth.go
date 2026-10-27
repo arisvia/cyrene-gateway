@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/url"
@@ -42,7 +43,9 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 					cookie, err := r.Cookie("auth_token")
 					hasValidCookie := err == nil && cookie.Value != "" && auth.VerifySessionToken(cookie.Value, passwordHash)
 					hasValidHeader := r.Header.Get("X-Cyrene-Auth-Token") != "" && auth.VerifySessionToken(r.Header.Get("X-Cyrene-Auth-Token"), passwordHash)
-					if hasValidCookie || hasValidHeader {
+					isBrowserDashboard := r.Header.Get("Sec-Fetch-Site") == "same-origin" &&
+						!settings.RequireLogin && !auth.IsPublicWANRequest(r)
+					if hasValidCookie || hasValidHeader || isBrowserDashboard {
 						next.ServeHTTP(w, r)
 						return
 					}
@@ -57,22 +60,16 @@ func APIKeyAuth(database *db.DB) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			// Validate signature first (fast path)
-			if !auth.VerifyAPIKeySignature(keyStr) {
-				if requireKey {
-					writeAuthError(w, http.StatusUnauthorized, "invalid API key signature")
-					return
-				}
-				// Open gateway mode: unverified key treated as anonymous caller
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Validate against database
+			// Fast path signature check; fallback to database lookup to survive secret rotation
+			validSig := auth.VerifyAPIKeySignature(keyStr)
 			keyObj, err := database.GetAPIKeyByKey(keyStr)
 			if err != nil || keyObj == nil || !keyObj.IsActive {
 				if requireKey {
-					writeAuthError(w, http.StatusUnauthorized, "invalid or inactive API key")
+					if !validSig {
+						writeAuthError(w, http.StatusUnauthorized, "invalid API key signature")
+					} else {
+						writeAuthError(w, http.StatusUnauthorized, "invalid or inactive API key")
+					}
 					return
 				}
 				// Open gateway mode: unknown/inactive key treated as anonymous caller
@@ -293,5 +290,12 @@ func isPublicPath(path string) bool {
 func writeAuthError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write([]byte(`{"error":"` + msg + `"}`))
+	resp, _ := json.Marshal(map[string]any{
+		"error": map[string]string{
+			"message": msg,
+			"type":    "invalid_request_error",
+			"code":    "invalid_api_key",
+		},
+	})
+	w.Write(resp)
 }
