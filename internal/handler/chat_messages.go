@@ -131,6 +131,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown provider: %s", modelInfo.Provider)})
 		return
 	}
+	// If the provider does not support native Anthropic Messages API (e.g. Qoder, Antigravity, OpenAI, DeepSeek),
+	// delegate directly to handleMessagesViaChat BEFORE selecting a connection.
+	// Calling selectAvailableConnection here and then again in handleSingleModelChat advances
+	// the round-robin counter twice per request, collapsing equal-priority load balancing.
+	if providerInfo.APIType != "anthropic" || modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" || modelInfo.Provider == "antigravity" {
+		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
+		return
+	}
 
 	conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
 	if err != nil || len(conns) == 0 {
@@ -156,13 +164,10 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		baseURL = conn.Data.BaseURL
 		effectiveAPIType = providerInfo.APIType
 	}
-	// If upstream provider does not speak native Anthropic format (e.g. Qoder, Antigravity, OpenAI, DeepSeek),
-	// route via Chat Completions adapter with bidirectional translation.
-	if effectiveAPIType != "anthropic" || baseURL == "" || modelInfo.Provider == "qoder" || modelInfo.Provider == "antigravity" {
+	if effectiveAPIType != "anthropic" || baseURL == "" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
 		return
 	}
-
 	// Set the resolved model name
 	reqBody["model"] = modelInfo.Model
 
@@ -177,6 +182,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	s.applyTokenSaver(reqBody, "anthropic", modelInfo.Provider, r)
 	s.applyLoopGuard(reqBody, bodyBytes, "anthropic", reqBody["tools"] != nil)
 	if s.autoPromptCacheEnabled() {
 		translator.AutoInjectClaudeCacheControl(reqBody, true)

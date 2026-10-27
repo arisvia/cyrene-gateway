@@ -199,3 +199,60 @@ func TestSingleModel_PinnedConnectionDoesNotFailOver(t *testing.T) {
 		t.Errorf("pinned request must not be served by another account, got %d hits", otherHits.Load())
 	}
 }
+
+func TestMessagesViaChat_RotatesEvenlyAcrossEqualPriorityAccounts(t *testing.T) {
+	var hitsA, hitsB atomic.Int32
+	serverA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitsA.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "chatcmpl-a", "object": "chat.completion", "model": "gemini-2.5-flash",
+			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "from-a"}, "finish_reason": "stop"}},
+			"usage":   map[string]any{"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer serverA.Close()
+
+	serverB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitsB.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "chatcmpl-b", "object": "chat.completion", "model": "gemini-2.5-flash",
+			"choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": "from-b"}, "finish_reason": "stop"}},
+			"usage":   map[string]any{"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7},
+		})
+	}))
+	defer serverB.Close()
+
+	srv, database := setupTestServer(t)
+	for _, c := range []*model.ProviderConnection{
+		{ID: "conn-a", Provider: "openai", AuthType: "api-key", IsActive: true, Priority: 0,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			Data: model.ConnectionData{APIKey: "sk-a", BaseURL: serverA.URL + "/chat/completions"}},
+		{ID: "conn-b", Provider: "openai", AuthType: "api-key", IsActive: true, Priority: 0,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			Data: model.ConnectionData{APIKey: "sk-b", BaseURL: serverB.URL + "/chat/completions"}},
+	} {
+		if err := database.CreateConnection(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Send 6 /v1/messages requests to openai provider (APIType "openai" triggers handleMessagesViaChat)
+	for i := range 6 {
+		body := `{"model":"openai/gpt-4o","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`
+		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d failed with status %d: %s", i, rec.Code, rec.Body.String())
+		}
+	}
+
+	// Both accounts must alternate evenly (3 and 3), not 6 and 0
+	if hitsA.Load() != 3 || hitsB.Load() != 3 {
+		t.Fatalf("expected 3 hits each on equal priority accounts, got A=%d, B=%d", hitsA.Load(), hitsB.Load())
+	}
+}
