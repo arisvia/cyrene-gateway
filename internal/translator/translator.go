@@ -272,11 +272,11 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 				})
 				continue
 			}
-			// Tool results become user messages with tool_result content
+			// Tool results become user messages with tool_result content (supports text + image_url blocks)
 			toolBlock := map[string]any{
 				"type":        "tool_result",
 				"tool_use_id": msg["tool_call_id"],
-				"content":     extractText(msg["content"]),
+				"content":     convertToolResultContent(msg["content"]),
 			}
 			if isError, ok := msg["is_error"].(bool); ok && isError {
 				toolBlock["is_error"] = true
@@ -712,6 +712,64 @@ func convertMessageToClaude(msg map[string]any) map[string]any {
 		"role":    claudeRole,
 		"content": blocks,
 	}
+}
+
+// convertToolResultContent converts OpenAI tool result content into Claude format.
+// Strings are passed through. Arrays containing text or image_url blocks are converted
+// to Claude text or image blocks (9router#5125 parity).
+func convertToolResultContent(content any) any {
+	if content == nil {
+		return ""
+	}
+	if str, ok := content.(string); ok {
+		return str
+	}
+	arr, ok := content.([]any)
+	if !ok {
+		return extractText(content)
+	}
+
+	var blocks []map[string]any
+	for _, item := range arr {
+		p, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		pType, _ := p["type"].(string)
+		switch pType {
+		case "text":
+			if t, ok := p["text"].(string); ok && t != "" {
+				blocks = append(blocks, map[string]any{"type": "text", "text": t})
+			}
+		case "image_url":
+			if imgURL, ok := p["image_url"].(map[string]any); ok {
+				url, _ := imgURL["url"].(string)
+				if strings.HasPrefix(url, "data:") {
+					mediaType, data := parseDataURI(url)
+					blocks = append(blocks, map[string]any{
+						"type":   "image",
+						"source": map[string]any{"type": "base64", "media_type": mediaType, "data": data},
+					})
+				} else if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+					blocks = append(blocks, map[string]any{
+						"type":   "image",
+						"source": map[string]any{"type": "url", "url": url},
+					})
+				}
+			}
+		case "image":
+			if source, ok := p["source"].(map[string]any); ok {
+				blocks = append(blocks, map[string]any{
+					"type":   "image",
+					"source": source,
+				})
+			}
+		}
+	}
+	if len(blocks) == 0 {
+		return extractText(content)
+	}
+	return blocks
 }
 
 func convertToolChoiceToClaude(tc any) map[string]any {
@@ -1320,11 +1378,15 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 						idx = int(f)
 					}
 				}
+				callID, _ := cb["id"].(string)
+				if callID == "" {
+					callID = "call_" + uuid.New().String()[:12]
+				}
 				delta := map[string]any{
 					"tool_calls": []any{
 						map[string]any{
 							"index": idx,
-							"id":    cb["id"],
+							"id":    callID,
 							"type":  "function",
 							"function": map[string]any{
 								"name":      cb["name"],

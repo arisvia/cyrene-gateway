@@ -145,6 +145,76 @@ func TestOpenAIToClaude_PreserveCacheControl(t *testing.T) {
 	}
 }
 
+func TestOpenAIToClaude_ToolResultWithImage(t *testing.T) {
+	body := map[string]any{
+		"model": "gpt-4",
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"tool_calls": []any{
+					map[string]any{
+						"id":   "call_img_1",
+						"type": "function",
+						"function": map[string]any{
+							"name":      "generate_chart",
+							"arguments": "{}",
+						},
+					},
+				},
+			},
+			map[string]any{
+				"role":         "tool",
+				"tool_call_id": "call_img_1",
+				"content": []any{
+					map[string]any{"type": "text", "text": "Here is the chart:"},
+					map[string]any{
+						"type": "image_url",
+						"image_url": map[string]any{
+							"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := openAIToClaude("claude-sonnet-4-20250514", body, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := result["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	toolMsg := msgs[1].(map[string]any)
+	if toolMsg["role"] != "user" {
+		t.Fatalf("expected user role for tool message, got %v", toolMsg["role"])
+	}
+	contents := toolMsg["content"].([]any)
+	if len(contents) != 1 {
+		t.Fatalf("expected 1 tool_result block, got %d", len(contents))
+	}
+	tb := contents[0].(map[string]any)
+	if tb["type"] != "tool_result" || tb["tool_use_id"] != "call_img_1" {
+		t.Fatalf("unexpected tool_result block: %+v", tb)
+	}
+	parts := tb["content"].([]map[string]any)
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts in tool_result content, got %d: %+v", len(parts), parts)
+	}
+	if parts[0]["type"] != "text" || parts[0]["text"] != "Here is the chart:" {
+		t.Errorf("expected text part, got: %+v", parts[0])
+	}
+	if parts[1]["type"] != "image" {
+		t.Errorf("expected image part, got: %+v", parts[1])
+	}
+	src := parts[1]["source"].(map[string]any)
+	if src["type"] != "base64" || src["media_type"] != "image/png" {
+		t.Errorf("expected base64 image/png, got: %+v", src)
+	}
+}
+
 func TestOpenAIToGeminiRequest(t *testing.T) {
 	body := map[string]any{
 		"model": "gpt-4",
