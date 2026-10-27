@@ -155,6 +155,21 @@ func proxyEndpoint(u *url.URL) (string, error) {
 	return net.JoinHostPort(u.Hostname(), port), nil
 }
 
+// ValidateProxyURL parses and validates the scheme, host, and port for an operator proxy endpoint.
+func ValidateProxyURL(rawURL string) (*url.URL, error) {
+	if rawURL == "" {
+		return nil, errors.New("proxy URL cannot be empty")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL: %w", err)
+	}
+	if _, err := proxyEndpoint(parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}
+
 func (t *safeTransport) dialProxyTunnel(ctx context.Context, network string, proxy *url.URL, target string) (result net.Conn, err error) {
 	endpoint, err := proxyEndpoint(proxy)
 	if err != nil {

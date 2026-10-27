@@ -1274,6 +1274,16 @@ func TestProxyPoolCreateValidation(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing proxyUrl, got %d", w.Code)
 	}
+
+	// Invalid scheme in proxyUrl
+	body = `{"name":"test","proxyUrl":"ftp://127.0.0.1:21"}`
+	req = newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid proxyUrl scheme, got %d", w.Code)
+	}
 }
 
 func TestProxyPoolDeleteConflict(t *testing.T) {

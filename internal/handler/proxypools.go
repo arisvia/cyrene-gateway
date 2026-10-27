@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func (s *Server) handleListProxyPools(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +45,10 @@ func (s *Server) handleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ProxyURL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxyUrl is required"})
+		return
+	}
+	if _, err := provider.ValidateProxyURL(req.ProxyURL); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid proxyUrl: " + err.Error()})
 		return
 	}
 	if !validProxyTypes[req.Type] {
@@ -101,6 +106,10 @@ func (s *Server) handleUpdateProxyPool(w http.ResponseWriter, r *http.Request) {
 	if req.ProxyURL != nil {
 		if *req.ProxyURL == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxyUrl is required"})
+			return
+		}
+		if _, err := provider.ValidateProxyURL(*req.ProxyURL); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid proxyUrl: " + err.Error()})
 			return
 		}
 		existing.Data.ProxyURL = *req.ProxyURL
