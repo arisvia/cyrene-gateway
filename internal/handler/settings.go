@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"maps"
 	"net/http"
+	"slices"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/db"
@@ -45,9 +46,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "admin password must be configured before enabling login requirement"})
 		return
 	}
-
 	// Guard: cannot disable login requirement when accessing from public WAN or tunnel domain
-	if !settings.RequireLogin && auth.IsPublicWANRequest(r) {
+	if current != nil && current.RequireLogin && !settings.RequireLogin && auth.IsPublicWANRequest(r) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot disable login requirement when accessing from public WAN"})
 		return
 	}
@@ -55,7 +55,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
 	}
-	if s.Cache != nil {
+	if s.Cache != nil && current != nil && cacheAffectingSettingsChanged(current, &settings) {
 		s.Cache.Clear()
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
@@ -97,9 +97,8 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "admin password must be configured before enabling login requirement"})
 		return
 	}
-
 	// Guard: cannot disable login requirement when accessing from public WAN or tunnel domain
-	if !updated.RequireLogin && auth.IsPublicWANRequest(r) {
+	if current.RequireLogin && !updated.RequireLogin && auth.IsPublicWANRequest(r) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot disable login requirement when accessing from public WAN"})
 		return
 	}
@@ -107,7 +106,7 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save settings"})
 		return
 	}
-	if s.Cache != nil {
+	if s.Cache != nil && cacheAffectingSettingsChanged(current, &updated) {
 		s.Cache.Clear()
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
@@ -119,6 +118,26 @@ func (s *Server) handleGetCacheStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Cache.Stats())
+}
+
+func cacheAffectingSettingsChanged(a, b *db.Settings) bool {
+	if a == nil || b == nil {
+		return true
+	}
+	if a.ResponseCacheEnabled != b.ResponseCacheEnabled ||
+		a.ResponseCacheTTL != b.ResponseCacheTTL ||
+		a.ResponseCacheAll != b.ResponseCacheAll ||
+		a.RTKEnabled != b.RTKEnabled ||
+		a.CavemanEnabled != b.CavemanEnabled ||
+		a.CavemanLevel != b.CavemanLevel ||
+		a.PonytailEnabled != b.PonytailEnabled ||
+		a.PonytailLevel != b.PonytailLevel ||
+		a.LoopGuardEnabled != b.LoopGuardEnabled ||
+		a.AutoPromptCache != b.AutoPromptCache ||
+		!slices.Equal(a.TokenSaverExclude, b.TokenSaverExclude) {
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleClearCache(w http.ResponseWriter, r *http.Request) {

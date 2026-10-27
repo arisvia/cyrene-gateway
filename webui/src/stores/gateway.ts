@@ -424,11 +424,16 @@ function createGatewayStore() {
   }
 
   // ── settings ──
-  async function saveSettings(patch: Record<string, unknown>) {
+  async function saveSettings(patch: Record<string, unknown>, options?: { silent?: boolean }) {
     await apiPatch('/api/settings', patch)
-    toast.success(t('toast.saveSettingsSuccess'))
-    await pendingLoads.settings
-    await loadSettings()
+    if (!options?.silent) {
+      toast.success(t('toast.saveSettingsSuccess'))
+    }
+    setSettings(s => ({ ...s, ...patch }))
+    if (!options?.silent) {
+      await pendingLoads.settings
+      await loadSettings()
+    }
   }
   async function setPassword(password: string) {
     const res = await apiPost<{ ok?: boolean; error?: string }>('/api/auth/password', { password })

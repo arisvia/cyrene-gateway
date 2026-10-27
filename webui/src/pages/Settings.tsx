@@ -5,7 +5,7 @@ import AppearancePanel from '@/components/settings/AppearancePanel'
 import { useSystemOps } from '@/stores/systemOps'
 import SystemOpsPanel from '@/components/settings/SystemOps'
 import {
-  Card, Badge, Button, IconButton, Input, Select, Toggle, Field, Empty, confirm, PageHeader, SegmentedControl, StatusPulse, TabTransition, Skeleton, LoadState, UnsavedChangesBar,
+  Card, Badge, Button, IconButton, Input, Select, Toggle, Field, Empty, PageHeader, SegmentedControl, StatusPulse, TabTransition, Skeleton, LoadState, confirm,
   IconLock, IconKey, IconZap, IconSparkles, IconInfo,
   IconRotateCcw,
 } from '@/components/ui'
@@ -45,63 +45,70 @@ const Settings: Component = () => {
   const { restarting } = useSystemOps()
   const toast = useToast()
   const [saving, setSaving] = createSignal(false)
-  const [local, setLocal] = createSignal<Record<string, unknown>>({ ...store.settings() })
-  const [initialized, setInitialized] = createSignal(store.loaded.settings)
-  const [edited, setEdited] = createSignal(false)
   const [pw, setPw] = createSignal('')
   const [hasPw, setHasPw] = createSignal(!!store.settings().hasPassword)
+  const initialized = () => store.loaded.settings
 
   createEffect(on([store.settings, () => store.loaded.settings], ([settings, ready]) => {
     if (ready) {
-      if (!edited()) setLocal({ ...settings })
       setHasPw(!!settings.hasPassword)
-      setInitialized(true)
     }
   }))
+
   // 响应缓存状态
   const [cacheStats, setCacheStats] = createSignal<CacheStats | null>(null)
   const [clearingCache, setClearingCache] = createSignal(false)
   const [refreshingStats, setRefreshingStats] = createSignal(false)
 
-  // TokenSaver 排除项状态
   // 设置分类 Tab
   type ActiveTabType = 'gateway' | 'appearance' | 'data' | 'ops'
   const [activeTab, setActiveTab] = createSignal<ActiveTabType>('gateway')
-  async function handleTabChange(tab: ActiveTabType) {
-    if (activeTab() === 'gateway' && dirty()) {
-      const ok = await confirm({
-        title: t('common.unsavedChangesTitle'),
-        message: t('common.unsavedChangesMessage'),
-        confirmText: t('common.discardAndLeave'),
-        cancelText: t('common.stayAndSave'),
-        variant: 'warning',
-      })
-      if (!ok) return
-      setLocal({ ...(store.settings() || {}) })
-    }
+  function handleTabChange(tab: ActiveTabType) {
     setActiveTab(tab)
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }
 
+  // Auto-save setting change directly via PATCH /api/settings
+  const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
+  async function updateSetting(patch: Record<string, unknown>) {
+    setSaving(true)
+    try {
+      await store.saveSettings(patch, { silent: true })
+    } catch {
+      // toast surfaced by api.ts
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function updateSettingDebounced(k: string, v: unknown, delay = 400) {
+    clearTimeout(debounceTimers[k])
+    debounceTimers[k] = setTimeout(() => {
+      delete debounceTimers[k]
+      void updateSetting({ [k]: v })
+    }, delay)
+  }
+
   const [excludeInput, setExcludeInput] = createSignal('')
   const excludedProviders = () => {
-    const list = local().tokenSaverExclude
+    const list = store.settings().tokenSaverExclude
     return Array.isArray(list) ? (list as string[]) : []
   }
-  const addExcludeProvider = (providerName: string) => {
+  const addExcludeProvider = async (providerName: string) => {
     const trimmed = providerName.trim()
     if (!trimmed) return
     const current = excludedProviders()
     if (!current.includes(trimmed)) {
-      set('tokenSaverExclude', [...current, trimmed])
+      await updateSetting({ tokenSaverExclude: [...current, trimmed] })
     }
     setExcludeInput('')
   }
-  const removeExcludeProvider = (providerName: string) => {
+  const removeExcludeProvider = async (providerName: string) => {
     const current = excludedProviders()
-    set('tokenSaverExclude', current.filter(p => p !== providerName))
+    await updateSetting({ tokenSaverExclude: current.filter(p => p !== providerName) })
   }
   const quickSuggestions = () => {
     const configured = store.providers().map(p => p.provider)
@@ -151,52 +158,9 @@ const Settings: Component = () => {
 
   onMount(() => {
     void store.loadSettings()
-    if (store.providers().length === 0) {
-      void store.loadProvidersOnly()
-    }
+    void store.loadProvidersOnly()
     void fetchCacheStats()
   })
-
-  const dirty = () => {
-    const orig = store.settings()
-    const ignored = new Set(['hasPassword', 'passwordHash'])
-    const keys = new Set([...Object.keys(local()), ...Object.keys(orig)])
-    for (const k of keys) {
-      if (ignored.has(k)) continue
-      const lv = local()[k]
-      const ov = orig[k]
-      if (Array.isArray(lv) || Array.isArray(ov)) {
-        if (JSON.stringify(lv ?? []) !== JSON.stringify(ov ?? [])) return true
-      } else if (lv !== ov) {
-        return true
-      }
-    }
-    return false
-  }
-
-  const set = (k: string, v: unknown) => {
-    setEdited(true)
-    setLocal(l => ({ ...l, [k]: v }))
-  }
-
-  async function save() {
-    setSaving(true)
-    try {
-      const payload = { ...local() }
-      delete payload.hasPassword
-      delete payload.passwordHash
-      await store.saveSettings(payload)
-      if (!store.loadErrors.settings) {
-        setEdited(false)
-        setLocal({ ...store.settings() })
-        setHasPw(!!store.settings().hasPassword)
-      }
-    } catch {
-      // Error surfaced by api.ts
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function changePassword() {
     if (pw().length < 8) {
@@ -220,9 +184,10 @@ const Settings: Component = () => {
         subtitle={t('settings.subtitle')}
         actions={
           <Show when={activeTab() === 'gateway'}>
-            <Button variant="primary" loading={saving()} disabled={!initialized() || !dirty()} onClick={save} class="shrink-0">
-              {dirty() ? t('common.save') : t('common.saved')}
-            </Button>
+            <div class="flex items-center gap-1.5 text-xs text-faint">
+              <StatusPulse status={saving() ? 'idle' : 'active'} tone={saving() ? 'amber' : 'green'} size="xs" />
+              <span>{saving() ? t('common.saving') : t('common.saved')}</span>
+            </div>
           </Show>
         }
       />
@@ -281,8 +246,8 @@ const Settings: Component = () => {
               <IconLock size={16} class="text-accent shrink-0" />
               <h3 class="text-sm font-semibold">{t('settings.access.cardTitle')}</h3>
             </div>
-            <Badge tone={local().requireLogin || local().requireApiKey ? 'blue' : 'gray'}>
-              {local().requireLogin || local().requireApiKey ? t('settings.access.protected') : t('settings.access.open')}
+            <Badge tone={store.settings().requireLogin || store.settings().requireApiKey ? 'blue' : 'gray'}>
+              {store.settings().requireLogin || store.settings().requireApiKey ? t('settings.access.protected') : t('settings.access.open')}
             </Badge>
           </div>
           <div class="p-4 rounded-xl bg-surface-inset space-y-4">
@@ -301,7 +266,7 @@ const Settings: Component = () => {
               </Field>
               <Toggle
                 ariaLabel={t('settings.access.requireLogin')}
-                checked={store.isWan() || !!local().requireLogin}
+                checked={store.isWan() || !!store.settings().requireLogin}
                 disabled={store.isWan() || !hasPw()}
                 onChange={v => {
                   if (store.isWan()) return
@@ -309,7 +274,7 @@ const Settings: Component = () => {
                     toast.warning(t('toast.setAdminPasswordFirst'))
                     return
                   }
-                  set('requireLogin', v)
+                  void updateSetting({ requireLogin: v })
                 }}
               />
             </div>
@@ -318,7 +283,11 @@ const Settings: Component = () => {
               <Field label={t('settings.access.requireApiKey')} hint={t('settings.access.requireApiKeyHint')}>
                 <span />
               </Field>
-              <Toggle ariaLabel={t('settings.access.requireApiKey')} checked={!!local().requireApiKey} onChange={v => set('requireApiKey', v)} />
+              <Toggle
+                ariaLabel={t('settings.access.requireApiKey')}
+                checked={!!store.settings().requireApiKey}
+                onChange={v => updateSetting({ requireApiKey: v })}
+              />
             </div>
 
             <div class="pt-3 border-t border-subtle/50">
@@ -326,8 +295,8 @@ const Settings: Component = () => {
                 <Input
                   type="number"
                   class="w-full! sm:w-36! mt-1"
-                  value={String(local().apiKeyRpm ?? 0)}
-                  onInput={v => set('apiKeyRpm', Number(v) || 0)}
+                  value={String(store.settings().apiKeyRpm ?? 0)}
+                  onInput={v => updateSettingDebounced('apiKeyRpm', Number(v) || 0)}
                 />
               </Field>
             </div>
@@ -440,22 +409,25 @@ const Settings: Component = () => {
               </Field>
               <Toggle
                 ariaLabel={t('settings.cache.enabled')}
-                checked={!!local().responseCacheEnabled}
+                checked={!!store.settings().responseCacheEnabled}
                 onChange={v => {
-                  set('responseCacheEnabled', v)
-                  if (v && !local().responseCacheTTL) set('responseCacheTTL', 3600)
+                  if (v && !store.settings().responseCacheTTL) {
+                    void updateSetting({ responseCacheEnabled: true, responseCacheTTL: 3600 })
+                  } else {
+                    void updateSetting({ responseCacheEnabled: v })
+                  }
                 }}
               />
             </div>
 
-            <Show when={!!local().responseCacheEnabled}>
+            <Show when={!!store.settings().responseCacheEnabled}>
               <div class="space-y-3 pt-3 border-t border-subtle/50">
                 <Field label={t('settings.cache.ttl')} hint={t('settings.cache.ttlHint')}>
                   <Input
                     type="number"
                     class="w-full! sm:w-36! mt-1"
-                    value={String(local().responseCacheTTL ?? 3600)}
-                    onInput={v => set('responseCacheTTL', Math.max(1, Number(v) || 3600))}
+                    value={String(store.settings().responseCacheTTL ?? 3600)}
+                    onInput={v => updateSettingDebounced('responseCacheTTL', Math.max(1, Number(v) || 3600))}
                   />
                 </Field>
                 <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
@@ -464,8 +436,8 @@ const Settings: Component = () => {
                   </Field>
                   <Toggle
                     ariaLabel={t('settings.cache.enableAllRequests')}
-                    checked={!!local().responseCacheAll}
-                    onChange={v => set('responseCacheAll', v)}
+                    checked={!!store.settings().responseCacheAll}
+                    onChange={v => updateSetting({ responseCacheAll: v })}
                   />
                 </div>
               </div>
@@ -490,7 +462,11 @@ const Settings: Component = () => {
               <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
                 <span />
               </Field>
-              <Toggle ariaLabel={t('settings.tokenSaver.rtkTitle')} checked={!!local().rtkEnabled} onChange={v => set('rtkEnabled', v)} />
+              <Toggle
+                ariaLabel={t('settings.tokenSaver.rtkTitle')}
+                checked={!!store.settings().rtkEnabled}
+                onChange={v => updateSetting({ rtkEnabled: v })}
+              />
             </div>
 
             {/* Caveman 极简表达 */}
@@ -501,20 +477,23 @@ const Settings: Component = () => {
                 </Field>
                 <Toggle
                   ariaLabel={t('settings.tokenSaver.cavemanTitle')}
-                  checked={!!local().cavemanEnabled}
+                  checked={!!store.settings().cavemanEnabled}
                   onChange={v => {
-                    set('cavemanEnabled', v)
-                    if (v && !local().cavemanLevel) set('cavemanLevel', 'lite')
+                    if (v && !store.settings().cavemanLevel) {
+                      void updateSetting({ cavemanEnabled: true, cavemanLevel: 'lite' })
+                    } else {
+                      void updateSetting({ cavemanEnabled: v })
+                    }
                   }}
                 />
               </div>
-              <Show when={!!local().cavemanEnabled}>
+              <Show when={!!store.settings().cavemanEnabled}>
                 <div class="pl-3 sm:pl-4 border-l-2 border-accent/40">
                   <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.cavemanHint')}>
                     <Select
-                      value={String(local().cavemanLevel || 'lite')}
+                      value={String(store.settings().cavemanLevel || 'lite')}
                       options={cavemanOptions()}
-                      onChange={v => set('cavemanLevel', v)}
+                      onChange={v => updateSetting({ cavemanLevel: v })}
                       class="w-full mt-1"
                     />
                   </Field>
@@ -530,26 +509,30 @@ const Settings: Component = () => {
                 </Field>
                 <Toggle
                   ariaLabel={t('settings.tokenSaver.ponytailTitle')}
-                  checked={!!local().ponytailEnabled}
+                  checked={!!store.settings().ponytailEnabled}
                   onChange={v => {
-                    set('ponytailEnabled', v)
-                    if (v && !local().ponytailLevel) set('ponytailLevel', 'lite')
+                    if (v && !store.settings().ponytailLevel) {
+                      void updateSetting({ ponytailEnabled: true, ponytailLevel: 'lite' })
+                    } else {
+                      void updateSetting({ ponytailEnabled: v })
+                    }
                   }}
                 />
               </div>
-              <Show when={!!local().ponytailEnabled}>
+              <Show when={!!store.settings().ponytailEnabled}>
                 <div class="pl-3 sm:pl-4 border-l-2 border-accent/40">
                   <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.ponytailHint')}>
                     <Select
-                      value={String(local().ponytailLevel || 'lite')}
+                      value={String(store.settings().ponytailLevel || 'lite')}
                       options={ponytailOptions()}
-                      onChange={v => set('ponytailLevel', v)}
+                      onChange={v => updateSetting({ ponytailLevel: v })}
                       class="w-full mt-1"
                     />
                   </Field>
                 </div>
               </Show>
             </div>
+
             {/* 循环守卫 */}
             <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
               <Field label={t('settings.tokenSaver.loopGuardTitle')} hint={t('settings.tokenSaver.loopGuardHint')}>
@@ -557,10 +540,11 @@ const Settings: Component = () => {
               </Field>
               <Toggle
                 ariaLabel={t('settings.tokenSaver.loopGuardTitle')}
-                checked={!!local().loopGuardEnabled}
-                onChange={v => set('loopGuardEnabled', v)}
+                checked={!!store.settings().loopGuardEnabled}
+                onChange={v => updateSetting({ loopGuardEnabled: v })}
               />
             </div>
+
             {/* 自动提示词缓存打点 */}
             <div class="flex items-start justify-between gap-4 pt-3 border-t border-subtle/50">
               <Field label={t('settings.tokenSaver.autoPromptCacheTitle')} hint={t('settings.tokenSaver.autoPromptCacheHint')}>
@@ -568,8 +552,8 @@ const Settings: Component = () => {
               </Field>
               <Toggle
                 ariaLabel={t('settings.tokenSaver.autoPromptCacheTitle')}
-                checked={!!local().autoPromptCache}
-                onChange={v => set('autoPromptCache', v)}
+                checked={!!store.settings().autoPromptCache}
+                onChange={v => updateSetting({ autoPromptCache: v })}
               />
             </div>
           </div>
@@ -621,7 +605,7 @@ const Settings: Component = () => {
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
-                    addExcludeProvider(excludeInput())
+                    void addExcludeProvider(excludeInput())
                   }
                 }}
               />
@@ -671,7 +655,7 @@ const Settings: Component = () => {
         )}
       </TabTransition>
 
-      {/* ── 底部通用系统与存储信息 ── */}
+      {/* ── 底部状态信息 ── */}
       <Card class="p-4 text-xs text-faint">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -724,13 +708,6 @@ const Settings: Component = () => {
           </Card>
         </div>
       </Show>
-      {/* 浮动未保存操作底栏 */}
-      <UnsavedChangesBar
-        show={activeTab() === 'gateway' && dirty()}
-        loading={saving()}
-        onSave={save}
-        onReset={() => setLocal({ ...(store.settings() || {}) })}
-      />
     </div>
   )
 }

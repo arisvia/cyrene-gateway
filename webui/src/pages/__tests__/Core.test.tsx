@@ -9,9 +9,10 @@ import Settings from '@/pages/Settings'
 import { LoadState } from '@/components/ui'
 import { createSignal } from 'solid-js'
 
+
 vi.mock('@/lib/api', () => ({
   api: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiPatch: vi.fn(), apiDelete: vi.fn(), setOnUnauthorized: vi.fn(),
- }))
+}))
 const mockToast = vi.hoisted(() => ({
   toasts: () => [],
   success: vi.fn(),
@@ -28,7 +29,7 @@ vi.mock('@/lib/toast', () => ({
   clear: vi.fn(),
 }))
 
-import { api } from '@/lib/api'
+import { api, apiPatch } from '@/lib/api'
 
 const tick = () => new Promise(r => setTimeout(r, 30))
 
@@ -155,8 +156,6 @@ describe('Settings 页', () => {
     mount(Settings)
     expect(document.querySelector('[role="status"][aria-busy="true"]')).toBeTruthy()
     expect(document.querySelector('button[role="switch"]')).toBeNull()
-    const saveButton = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.includes('全部已保存'))
-    expect(saveButton?.disabled).toBe(true)
 
     settings.reject(new Error('offline'))
     await waitFor(() => expect(document.body.textContent).toContain('加载失败，请重试'))
@@ -217,19 +216,24 @@ describe('Settings 页', () => {
     }
   })
 
-  it('支持在设置页中交互式添加与移除排除提供商并触发保存状态变更', async () => {
+  it('支持在设置页中交互式添加与移除排除提供商并即时自动保存', async () => {
+    let currentSettings = {
+      requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
+      rtkEnabled: true,
+      tokenSaverExclude: ['deepseek'],
+    }
     vi.mocked(api).mockImplementation((path: string) => {
       if (path === '/api/settings') {
-        return Promise.resolve({
-          requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
-          rtkEnabled: true,
-          tokenSaverExclude: ['deepseek'],
-        })
+        return Promise.resolve(currentSettings)
       }
       return Promise.resolve(null)
     })
-
-    await useGatewayStore().loadSettings()
+    vi.mocked(apiPatch).mockImplementation((path: string, body?: unknown) => {
+      if (path === '/api/settings' && body && typeof body === 'object') {
+        currentSettings = { ...currentSettings, ...body }
+      }
+      return Promise.resolve(null as never)
+    })
     mount(Settings)
     await tick()
 
@@ -249,8 +253,6 @@ describe('Settings 页', () => {
     await tick()
 
     expect(document.body.textContent).toContain('ollama')
-    // 脏检查生效，按钮变为 保存修改
-    expect(document.body.textContent).toContain('保存修改')
 
     // 点击移除 deepseek
     const removeBtns = Array.from(document.body.querySelectorAll('button[title="移除排除"]'))
@@ -265,6 +267,16 @@ describe('Settings 页', () => {
     expect(chips).not.toContain('deepseek')
   })
 
+  it('设置项即时自动保存并在表单刷新后展示最新值', async () => {
+    vi.mocked(api).mockResolvedValue({ hasPassword: true, apiKeyRpm: 5 })
+    const store = useGatewayStore()
+    await store.loadSettings()
+    mount(Settings)
+    const rpm = document.querySelector<HTMLInputElement>('input[type="number"]')!
+    expect(rpm.value).toBe('5')
+    expect(document.body.textContent).toContain('全部已保存')
+  })
+
   it('未编辑的缓存表单在后台刷新后显示最新设置', async () => {
     vi.mocked(api).mockResolvedValue({ hasPassword: true, apiKeyRpm: 5 })
     const store = useGatewayStore()
@@ -277,26 +289,6 @@ describe('Settings 页', () => {
     refresh.resolve({ hasPassword: true, apiKeyRpm: 10 })
     await waitFor(() => expect(rpm.value).toBe('10'))
     expect(document.body.textContent).toContain('全部已保存')
-  })
-
-  it('缓存表单可立即编辑，延迟刷新与后续重载不会覆盖草稿', async () => {
-    vi.mocked(api).mockResolvedValue({ hasPassword: true, apiKeyRpm: 5 })
-    const store = useGatewayStore()
-    await store.loadSettings()
-    const refresh = Promise.withResolvers<Record<string, unknown>>()
-    vi.mocked(api).mockImplementation(path => path === '/api/settings' ? refresh.promise : Promise.resolve(null))
-    mount(Settings)
-    const rpm = document.querySelector<HTMLInputElement>('input[type="number"]')!
-    expect(rpm.value).toBe('5')
-    expect(document.querySelector('[role="status"][aria-busy="true"]')).toBeNull()
-    fireEvent.input(rpm, { target: { value: '99' } })
-    refresh.resolve({ hasPassword: true, apiKeyRpm: 10 })
-    await waitFor(() => expect(store.settings().apiKeyRpm).toBe(10))
-    expect(rpm.value).toBe('99')
-    vi.mocked(api).mockResolvedValue({ hasPassword: true, apiKeyRpm: 20 })
-    await store.loadSettings()
-    expect(rpm.value).toBe('99')
-    expect(document.body.textContent).toContain('保存修改')
   })
 
   it('未设置密码时禁用要求登录开关以防锁死，并给出警示文案', async () => {
