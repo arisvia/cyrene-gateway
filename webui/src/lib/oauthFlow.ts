@@ -100,7 +100,7 @@ export function useOAuthFlow(deps: OAuthFlowDeps) {
         if (authRes?.authorizeUrl) {
           window.open(authRes.authorizeUrl, '_blank')
           toast.info(t('toast.oauthWindowOpened', { name: deps.displayName() }))
-          if (p === 'antigravity') {
+          if (p === 'antigravity' || p === 'claude' || p === 'openai') {
             setDeviceFlow({
               verificationUri: authRes.authorizeUrl,
               state: authRes.state,

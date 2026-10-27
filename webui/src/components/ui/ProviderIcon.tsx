@@ -122,7 +122,6 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   windsurf: getProviderAsset('windsurf')!,
   trae: getProviderAsset('trae')!,
   tencent: getProviderAsset('tencent')!,
-  codex: getProviderAsset('codex')!,
   'stability-ai': getProviderAsset('stability')!,
   stability: getProviderAsset('stability')!,
   'brave-search': getProviderAsset('brave')!,

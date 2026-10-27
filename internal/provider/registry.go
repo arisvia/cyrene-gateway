@@ -46,6 +46,8 @@ type ProviderInfo struct {
 	// a different base URL / API type.
 	ApiKeyBaseURL string `json:"apiKeyBaseUrl,omitempty"`
 	ApiKeyAPIType string `json:"apiKeyApiType,omitempty"`
+	OAuthBaseURL  string `json:"oauthBaseUrl,omitempty"`
+	OAuthAPIType  string `json:"oauthApiType,omitempty"`
 	// Transport config (Phase 30): explicit upstream adaptation ported from
 	// 9router registry transport blocks. When set, these override the
 	// format-derived defaults in ResolveTransport.
@@ -73,6 +75,13 @@ type ProviderInfo struct {
 func (p ProviderInfo) EffectiveBaseURL(connAuthType string, hasAPIKey bool) (baseURL, apiType string) {
 	baseURL = p.BaseURL
 	apiType = p.APIType
+	if connAuthType == "oauth" && p.OAuthBaseURL != "" {
+		baseURL = p.OAuthBaseURL
+		if p.OAuthAPIType != "" {
+			apiType = p.OAuthAPIType
+		}
+		return baseURL, apiType
+	}
 	if hasAPIKey && p.ApiKeyBaseURL != "" {
 		baseURL = p.ApiKeyBaseURL
 		if p.ApiKeyAPIType != "" {

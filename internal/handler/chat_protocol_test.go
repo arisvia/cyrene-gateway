@@ -217,32 +217,32 @@ func TestProtocolAggregateReadFailure(t *testing.T) {
 	}
 }
 
-func TestProtocolCodexEndpoint(t *testing.T) {
+func TestProtocolOpenAIOAuthResponsesEndpoint(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
 		if r.URL.Path != "/responses" || body["input"] == nil || body["messages"] != nil || body["stream"] != true || body["store"] != false {
-			t.Errorf("incorrect Codex request: %s %v", r.URL.Path, body)
+			t.Errorf("incorrect OpenAI Responses request: %s %v", r.URL.Path, body)
 		}
-		if r.Header.Get("Authorization") != "Bearer test-key" {
+		if r.Header.Get("Authorization") != "Bearer test-oauth-token" {
 			t.Errorf("missing upstream auth")
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"codex-answer\"}\n\n")
+		fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"openai-oauth-answer\"}\n\n")
 		fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":11,\"output_tokens\":7,\"total_tokens\":18}}}\n\n")
 	}))
 	t.Cleanup(upstream.Close)
 	srv, database := setupTestServer(t)
-	if err := database.CreateConnection(&model.ProviderConnection{ID: "codex-test", Provider: "codex", AuthType: "api-key", IsActive: true, Data: model.ConnectionData{APIKey: "test-key", BaseURL: upstream.URL + "/responses"}}); err != nil {
+	if err := database.CreateConnection(&model.ProviderConnection{ID: "openai-oauth-test", Provider: "openai", AuthType: "oauth", IsActive: true, Data: model.ConnectionData{AccessToken: "test-oauth-token", BaseURL: upstream.URL + "/responses"}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, stream := range []bool{false, true} {
 		w := httptest.NewRecorder()
-		body := fmt.Sprintf(`{"model":"codex/model","input":"hello","stream":%t}`, stream)
+		body := fmt.Sprintf(`{"model":"openai/gpt-5.4","input":"hello","stream":%t}`, stream)
 		srv.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(body)))
-		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "codex-answer") || !strings.Contains(w.Body.String(), `"total_tokens":18`) {
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "openai-oauth-answer") || !strings.Contains(w.Body.String(), `"total_tokens":18`) {
 			t.Fatalf("HTTP %d: %s", w.Code, w.Body.String())
 		}
 		if stream && !strings.Contains(w.Body.String(), "event: response.completed") {

@@ -97,6 +97,31 @@ func TestSanitizeGithubRequest(t *testing.T) {
 	}
 }
 
+func TestSanitizeOpenAIRequest(t *testing.T) {
+	body := map[string]any{
+		"max_tokens": float64(2048),
+	}
+	sanitizeOpenAIRequest("gpt-5.6", body)
+	if _, ok := body["max_tokens"]; ok {
+		t.Error("max_tokens should have been removed for gpt-5.6")
+	}
+	if body["max_completion_tokens"] != float64(2048) {
+		t.Errorf("expected max_completion_tokens=2048, got %v", body["max_completion_tokens"])
+	}
+
+	// gpt-4o should leave max_tokens intact
+	body4o := map[string]any{
+		"max_tokens": float64(1024),
+	}
+	sanitizeOpenAIRequest("gpt-4o", body4o)
+	if body4o["max_tokens"] != float64(1024) {
+		t.Errorf("expected max_tokens intact for gpt-4o, got %v", body4o["max_tokens"])
+	}
+	if _, ok := body4o["max_completion_tokens"]; ok {
+		t.Error("max_completion_tokens should not be injected for gpt-4o")
+	}
+}
+
 func TestClaudeOAuthHeaders(t *testing.T) {
 	info, ok := Registry["claude"]
 	if !ok {

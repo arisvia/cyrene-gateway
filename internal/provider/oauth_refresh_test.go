@@ -174,23 +174,22 @@ func TestRefreshCredentials_PermanentError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	origProfile := refreshProfiles["codex"]
-	refreshProfiles["codex"] = refreshProfile{
+	origProfile := refreshProfiles["openai"]
+	refreshProfiles["openai"] = refreshProfile{
 		url:        srv.URL,
 		bodyFormat: "json",
 	}
-	defer func() { refreshProfiles["codex"] = origProfile }()
+	defer func() { refreshProfiles["openai"] = origProfile }()
 
 	conn := &model.ProviderConnection{
 		ID:       "conn-4",
-		Provider: "codex",
+		Provider: "openai",
 		Data: model.ConnectionData{
-			RefreshToken: "codex_rt",
-			AccessToken:  "codex_at_old",
+			RefreshToken: "openai_rt",
+			AccessToken:  "openai_at_old",
 		},
 	}
-
-	_, err := RefreshCredentials("codex", conn, srv.Client())
+	_, err := RefreshCredentials("openai", conn, srv.Client())
 	if err == nil {
 		t.Fatal("expected error for invalid_grant")
 	}
@@ -206,20 +205,20 @@ func TestRefreshCredentials_TransientError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	origProfile := refreshProfiles["codex"]
-	refreshProfiles["codex"] = refreshProfile{url: srv.URL, bodyFormat: "json"}
-	defer func() { refreshProfiles["codex"] = origProfile }()
+	origProfile := refreshProfiles["openai"]
+	refreshProfiles["openai"] = refreshProfile{url: srv.URL, bodyFormat: "json"}
+	defer func() { refreshProfiles["openai"] = origProfile }()
 
 	conn := &model.ProviderConnection{
 		ID:       "conn-5",
-		Provider: "codex",
+		Provider: "openai",
 		Data: model.ConnectionData{
-			RefreshToken: "codex_rt",
-			AccessToken:  "codex_at_old",
+			RefreshToken: "openai_rt",
+			AccessToken:  "openai_at_old",
 		},
 	}
 
-	_, err := RefreshCredentials("codex", conn, srv.Client())
+	_, err := RefreshCredentials("openai", conn, srv.Client())
 	if err == nil {
 		t.Fatal("expected error for 500")
 	}
@@ -254,8 +253,8 @@ func TestClassifyRefreshError(t *testing.T) {
 }
 
 func TestGetRefreshLead(t *testing.T) {
-	if GetRefreshLead("codex") != 5*24*time.Hour {
-		t.Error("codex should have 5-day lead time")
+	if GetRefreshLead("openai") != 5*24*time.Hour {
+		t.Error("openai should have 5-day lead time")
 	}
 	if GetRefreshLead("kimi") != 5*time.Minute {
 		t.Error("kimi should have 5-minute lead time")
@@ -266,16 +265,16 @@ func TestGetRefreshLead(t *testing.T) {
 }
 
 func TestShouldRefresh_WithLeadOverride(t *testing.T) {
-	// Codex has 5-day lead; a token expiring in 3 days should trigger refresh.
+	// OpenAI has 5-day lead; a token expiring in 3 days should trigger refresh.
 	conn := &model.ProviderConnection{
-		Provider: "codex",
+		Provider: "openai",
 		Data: model.ConnectionData{
 			RefreshToken: "rt",
 			ExpiresAt:    time.Now().Add(3 * 24 * time.Hour).UTC().Format(time.RFC3339),
 		},
 	}
 	if !ShouldRefresh(conn) {
-		t.Error("codex token expiring in 3 days should trigger refresh (5-day lead)")
+		t.Error("openai token expiring in 3 days should trigger refresh (5-day lead)")
 	}
 
 	// A token expiring in 6 days should NOT trigger.

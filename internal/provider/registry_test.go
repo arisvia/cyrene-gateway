@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -10,11 +11,10 @@ import (
 // aggregators/free tiers, and brand pairs. Registry IDs are stable.
 func TestRegistryCompleteness(t *testing.T) {
 	expectedProviders := []string{
-		// Curated coding providers (13)
-		"claude", "codex", "github", "grok-cli", "cursor", "qoder",
+		// Curated coding providers (12)
+		"claude", "github", "grok-cli", "cursor", "qoder",
 		"codebuddy", "kimi", "antigravity", "opencode", "openrouter",
 		"glm", "glm-cn",
-		// Direct vendor APIs (8)
 		"anthropic", "openai", "gemini", "vertex", "tencent",
 		"xai", "alicode", "alicode-cn",
 		// E2E-verified (4)
@@ -39,7 +39,7 @@ func TestRegistryCategories(t *testing.T) {
 
 	expectedCats := map[string]int{
 		"apikey":   14,
-		"oauth":    12,
+		"oauth":    11,
 		"freeTier": 4,
 		"custom":   2,
 	}
@@ -128,9 +128,7 @@ func TestRegistryOfficialNames(t *testing.T) {
 		"opencode":     "OpenCode",
 		"opencode-go":  "OpenCode Go",
 		"claude":       "Claude Code",
-		"codex":        "OpenAI Codex",
 		"github":       "GitHub Copilot",
-		"openrouter":   "OpenRouter",
 		"alicode":      "Alibaba (Intl)",
 		"alicode-cn":   "Alibaba (CN)",
 		// 区域拆分提供商统一：国际 = 官方产品线名 + (Intl)，国内 = 产品线名 + (CN)。
@@ -172,7 +170,7 @@ func TestRegistryOfficialNames(t *testing.T) {
 // TestRegistryDualAuth verifies Phase 36 T4/T5 dual-auth entries: claude,
 // codex and qoder advertise [oauth, apikey]; qoder moved free→oauth.
 func TestRegistryDualAuth(t *testing.T) {
-	for _, id := range []string{"claude", "codex", "qoder"} {
+	for _, id := range []string{"claude", "qoder"} {
 		p, ok := Registry[id]
 		if !ok {
 			t.Errorf("Missing provider %q", id)
@@ -199,9 +197,32 @@ func TestRegistryDualAuth(t *testing.T) {
 	}
 }
 
+func TestOpenAIDualAuth(t *testing.T) {
+	p, ok := Registry["openai"]
+	if !ok {
+		t.Fatal("Missing provider openai")
+	}
+	if !slices.Contains(p.AuthModes, "oauth") || !slices.Contains(p.AuthModes, "api-key") {
+		t.Errorf("openai AuthModes = %v, want both oauth and api-key", p.AuthModes)
+	}
+	if p.OAuthBaseURL != "https://chatgpt.com/backend-api/codex/responses" || p.OAuthAPIType != "responses" {
+		t.Errorf("openai OAuth endpoint mismatch: %s / %s", p.OAuthBaseURL, p.OAuthAPIType)
+	}
+
+	// Test EffectiveBaseURL
+	uAPI, fmtAPI := p.EffectiveBaseURL("api-key", true)
+	if uAPI != p.BaseURL || fmtAPI != p.APIType {
+		t.Errorf("EffectiveBaseURL(api-key) = (%s, %s), want (%s, %s)", uAPI, fmtAPI, p.BaseURL, p.APIType)
+	}
+	uOAuth, fmtOAuth := p.EffectiveBaseURL("oauth", false)
+	if uOAuth != p.OAuthBaseURL || fmtOAuth != p.OAuthAPIType {
+		t.Errorf("EffectiveBaseURL(oauth) = (%s, %s), want (%s, %s)", uOAuth, fmtOAuth, p.OAuthBaseURL, p.OAuthAPIType)
+	}
+}
+
 func TestRegistryOAuthProviders(t *testing.T) {
 	// Providers with standard OAuth token endpoints
-	oauthWithToken := []string{"claude", "github", "kimi", "codex"}
+	oauthWithToken := []string{"claude", "github", "kimi"}
 	for _, id := range oauthWithToken {
 		p, ok := Registry[id]
 		if !ok {

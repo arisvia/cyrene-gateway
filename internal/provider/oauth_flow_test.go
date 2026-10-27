@@ -53,7 +53,7 @@ func TestGetProviderFlowType(t *testing.T) {
 		{"codebuddy", FlowDeviceCode},
 		{"codebuddy-cn", FlowDeviceCode},
 		{"claude", FlowAuthorizationCodePKCE},
-		{"codex", FlowAuthorizationCodePKCE},
+		{"openai", FlowAuthorizationCodePKCE},
 		{"nonexistent", ""},
 	}
 
@@ -106,9 +106,9 @@ func TestBuildAuthorizeURL_Antigravity(t *testing.T) {
 	}
 }
 
-func TestBuildAuthorizeURL_Codex(t *testing.T) {
+func TestBuildAuthorizeURL_OpenAI(t *testing.T) {
 	pkce, _ := GeneratePKCE()
-	url, err := BuildAuthorizeURL("codex", "http://localhost:8080/callback", pkce)
+	url, err := BuildAuthorizeURL("openai", "http://localhost:8080/callback", pkce)
 	if err != nil {
 		t.Fatalf("BuildAuthorizeURL failed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestBuildAuthorizeURL_UnknownProvider(t *testing.T) {
 }
 
 func TestImportToken_PlainToken(t *testing.T) {
-	result, err := ImportToken("codex", "sk-plain-token-123")
+	result, err := ImportToken("openai", "sk-plain-token-123")
 	if err != nil {
 		t.Fatalf("ImportToken failed: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestImportToken_JWT(t *testing.T) {
 	payload := "eyJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJleHAiOjk5OTk5OTk5OTl9"
 	token := "eyJhbGciOiJSUzI1NiJ9." + payload + ".sig"
 
-	result, err := ImportToken("codex", token)
+	result, err := ImportToken("openai", token)
 	if err != nil {
 		t.Fatalf("ImportToken failed: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestImportToken_JWT(t *testing.T) {
 }
 
 func TestImportToken_Empty(t *testing.T) {
-	_, err := ImportToken("codex", "")
+	_, err := ImportToken("openai", "")
 	if err == nil {
 		t.Error("should return error for empty token")
 	}
@@ -500,7 +500,7 @@ func TestDeviceCodeResponse_JSONCamelCase(t *testing.T) {
 }
 
 func TestMapTokenResponse_MalformedIDToken(t *testing.T) {
-	for _, pid := range []string{"codex", "grok-cli", "gemini", "antigravity"} {
+	for _, pid := range []string{"openai", "grok-cli", "gemini", "antigravity"} {
 		raw := map[string]any{
 			"access_token": "at_123",
 			"id_token":     "not-a-valid-jwt-without-dots",
@@ -518,11 +518,11 @@ func TestSessionStore_ReaperAndExpiry(t *testing.T) {
 
 	StoreSession(stateActive, &OAuthSession{
 		CreatedAt: time.Now(),
-		Provider:  "codex",
+		Provider:  "openai",
 	})
 	StoreSession(stateExpired, &OAuthSession{
 		CreatedAt: time.Now().Add(-15 * time.Minute),
-		Provider:  "codex",
+		Provider:  "openai",
 	})
 
 	if _, ok := GetSession(stateExpired); ok {
@@ -530,7 +530,7 @@ func TestSessionStore_ReaperAndExpiry(t *testing.T) {
 	}
 
 	sess, ok := GetSession(stateActive)
-	if !ok || sess == nil || sess.Provider != "codex" {
+	if !ok || sess == nil || sess.Provider != "openai" {
 		t.Errorf("expected active session, got %+v", sess)
 	}
 

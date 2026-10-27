@@ -162,7 +162,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
-		effectiveAPIType = providerInfo.APIType
+		if effectiveAPIType == "" {
+			effectiveAPIType = providerInfo.APIType
+		}
 	}
 	if effectiveAPIType != "anthropic" || baseURL == "" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)

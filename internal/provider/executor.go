@@ -84,7 +84,9 @@ func PrepareUpstreamRequest(
 	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
-		effectiveAPIType = providerInfo.APIType
+		if effectiveAPIType == "" {
+			effectiveAPIType = providerInfo.APIType
+		}
 	}
 	if baseURL == "" {
 		return nil, "", fmt.Errorf("no base URL configured for provider: %s", modelInfo.Provider)
@@ -121,7 +123,7 @@ func PrepareUpstreamRequest(
 		bodyMap["stream_options"] = options
 	}
 
-	if modelInfo.Provider == "codex" {
+	if modelInfo.Provider == "openai" && conn != nil && conn.AuthType == "oauth" {
 		if tools, ok := bodyMap["tools"].([]any); ok {
 			for _, tool := range tools {
 				if tm, ok := tool.(map[string]any); ok {
@@ -140,6 +142,9 @@ func PrepareUpstreamRequest(
 	if modelInfo.Provider == "github" {
 		sanitizeGithubRequest(modelInfo.Model, bodyMap)
 	}
+	if modelInfo.Provider == "openai" || strings.HasPrefix(modelInfo.Provider, "custom-openai") {
+		sanitizeOpenAIRequest(modelInfo.Model, bodyMap)
+	}
 	ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
 	// The sanitizers above may replace the system message, so the guard text is
 	// composed after them and reaches the upstream in the surviving shape.
@@ -156,7 +161,7 @@ func PrepareUpstreamRequest(
 	if targetFormat == translator.FormatAnthropic && req.AutoPromptCache {
 		translator.AutoInjectClaudeCacheControl(translated, true)
 	}
-	if modelInfo.Provider == "codex" {
+	if modelInfo.Provider == "openai" && conn != nil && conn.AuthType == "oauth" {
 		translated["store"] = false
 		if _, ok := translated["instructions"]; !ok {
 			translated["instructions"] = ""
@@ -350,14 +355,30 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 
 func sanitizeGithubRequest(model string, bodyMap map[string]any) {
 	m := strings.ToLower(model)
-	if strings.Contains(m, "gpt-5") || strings.Contains(m, "o1") || strings.Contains(m, "o3") || strings.Contains(m, "o4") {
+	if strings.Contains(m, "gpt-5") || strings.Contains(m, "gpt-6") || strings.Contains(m, "o1") || strings.Contains(m, "o3") || strings.Contains(m, "o4") {
 		if maxTokens, ok := bodyMap["max_tokens"]; ok {
-			bodyMap["max_completion_tokens"] = maxTokens
+			if _, hasComp := bodyMap["max_completion_tokens"]; !hasComp {
+				bodyMap["max_completion_tokens"] = maxTokens
+			}
 			delete(bodyMap, "max_tokens")
 		}
 	}
 	if eff, ok := bodyMap["reasoning_effort"].(string); ok && strings.ToLower(eff) == "none" {
 		delete(bodyMap, "reasoning_effort")
+	}
+}
+
+// sanitizeOpenAIRequest normalizes parameters for modern OpenAI models (9router#7c42d8f8 parity).
+// Current OpenAI models (gpt-5.x, gpt-6.x, o-series) reject max_tokens with HTTP 400.
+func sanitizeOpenAIRequest(model string, bodyMap map[string]any) {
+	m := strings.ToLower(model)
+	if strings.Contains(m, "gpt-5") || strings.Contains(m, "gpt-6") || strings.Contains(m, "o1") || strings.Contains(m, "o3") || strings.Contains(m, "o4") {
+		if maxTokens, ok := bodyMap["max_tokens"]; ok {
+			if _, hasComp := bodyMap["max_completion_tokens"]; !hasComp {
+				bodyMap["max_completion_tokens"] = maxTokens
+			}
+			delete(bodyMap, "max_tokens")
+		}
 	}
 }
 

@@ -22,7 +22,7 @@ const RefreshLeadTime = 5 * time.Minute
 
 // Per-provider refresh lead overrides (mirrors 9router REFRESH_LEAD_MS).
 var refreshLeadOverrides = map[string]time.Duration{
-	"codex":        5 * 24 * time.Hour, // 432000000ms — codex tokens are long-lived
+	"openai":       5 * 24 * time.Hour,
 	"kimi":         5 * time.Minute,
 	"xai":          5 * time.Minute,
 	"google":       5 * time.Minute,
@@ -147,7 +147,7 @@ var refreshProfiles = map[string]refreshProfile{
 	"xai": {
 		// xAI uses OIDC discovery; URL resolved dynamically.
 	},
-	"codex": {
+	"openai": {
 		bodyFormat: "json",
 	},
 	"gemini": {

@@ -171,7 +171,7 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 		params.Set("code_challenge", pkce.CodeChallenge)
 		params.Set("code_challenge_method", "S256")
 		params.Set("state", pkce.State)
-	case "codex":
+	case "openai":
 		params.Set("response_type", "code")
 		params.Set("client_id", info.ClientID)
 		params.Set("redirect_uri", redirectURI)
@@ -847,7 +847,7 @@ func mapTokenResponse(providerID string, raw map[string]any) *TokenExchangeResul
 
 	// Provider-specific email extraction
 	switch providerID {
-	case "codex":
+	case "openai":
 		if idToken := getString(raw, "id_token"); idToken != "" {
 			parts := strings.Split(idToken, ".")
 			if len(parts) >= 2 {

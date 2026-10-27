@@ -51,6 +51,10 @@ func (s *Server) handleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	if providerID == "antigravity" {
 		redirectURI = "http://127.0.0.1:51121/oauth-callback"
+	} else if providerID == "claude" {
+		redirectURI = "https://claude.ai/oauth/callback"
+	} else if providerID == "openai" {
+		redirectURI = "http://localhost:1455/auth/callback"
 	} else if redirectURI == "" {
 		redirectURI = "http://localhost:8080/callback"
 	}
