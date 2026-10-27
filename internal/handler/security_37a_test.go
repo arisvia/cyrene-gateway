@@ -171,7 +171,31 @@ func TestInitialPasswordSetupAndSessionIssuance(t *testing.T) {
 		t.Fatalf("expected 401 for unauthenticated password change after init, got %d", hackerW.Code)
 	}
 
-	// 5. Attempting to disable requireLogin from WAN must be blocked with 400
+	// 5. Enabling API key requirement from WAN without touching requireLogin must succeed (the reported bug)
+	apiKeyBody := `{"requireApiKey":true}`
+	apiKeyReq := httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(apiKeyBody))
+	apiKeyReq.RemoteAddr = wanIP
+	apiKeyReq.Header.Set("Content-Type", "application/json")
+	apiKeyReq.AddCookie(sessionCookie)
+	apiKeyW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(apiKeyW, apiKeyReq)
+	if apiKeyW.Code != http.StatusOK {
+		t.Fatalf("expected 200 when enabling requireApiKey on WAN while requireLogin is false, got %d: %s", apiKeyW.Code, apiKeyW.Body.String())
+	}
+
+	// 6. Enabling requireLogin from WAN with authenticated session should succeed
+	enableBody := `{"requireLogin":true}`
+	enableReq := httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(enableBody))
+	enableReq.RemoteAddr = wanIP
+	enableReq.Header.Set("Content-Type", "application/json")
+	enableReq.AddCookie(sessionCookie)
+	enableW := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(enableW, enableReq)
+	if enableW.Code != http.StatusOK {
+		t.Fatalf("expected 200 when enabling requireLogin on WAN, got %d: %s", enableW.Code, enableW.Body.String())
+	}
+
+	// 6. Attempting to disable requireLogin from WAN must now be blocked with 400
 	patchBody := `{"requireLogin":false}`
 	patchReq := httptest.NewRequest("PATCH", "/api/settings", strings.NewReader(patchBody))
 	patchReq.RemoteAddr = wanIP
