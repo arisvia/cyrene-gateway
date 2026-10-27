@@ -145,6 +145,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// In-turn prompt directives (@cg-model:..., @cg-effort:..., @ocr-...)
+	if updatedBody, dirRes, err := provider.ScrubDirectivesFromRawJSON(rawBody); err == nil && dirRes.HasOverrides {
+		rawBody = updatedBody
+		_ = json.Unmarshal(rawBody, &req)
+	}
+
 	if req.Model == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
 		return
@@ -427,6 +433,28 @@ func (s *Server) attemptSingleModelChat(
 	}
 	client := s.getHTTPClient(clientTimeout)
 	resp, err := client.Do(upstreamReq)
+	if err != nil && r.Context().Err() == nil {
+		// In-place micro-retry for transient network errors (preserves upstream KV cache)
+		time.Sleep(200 * time.Millisecond)
+		if retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
+			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
+			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+		); retryErr == nil {
+			resp, err = client.Do(retryReq)
+		}
+	} else if err == nil && (resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout || resp.StatusCode == http.StatusServiceUnavailable) && r.Context().Err() == nil {
+		// In-place micro-retry for transient 5xx errors before failover
+		resp.Body.Close()
+		time.Sleep(200 * time.Millisecond)
+		if retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
+			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
+			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+		); retryErr == nil {
+			resp, err = client.Do(retryReq)
+		}
+	}
 	if err != nil {
 		if r.Context().Err() != nil {
 			return false, 0, nil
@@ -438,7 +466,6 @@ func (s *Server) attemptSingleModelChat(
 		return true, http.StatusBadGateway, []byte("upstream request failed: " + err.Error())
 	}
 	defer resp.Body.Close()
-
 	// Phase 9: On-401 retry with token refresh
 	if resp.StatusCode == http.StatusUnauthorized && conn.Data.RefreshToken != "" {
 		errBody, _ := io.ReadAll(resp.Body)
