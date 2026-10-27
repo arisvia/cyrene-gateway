@@ -2,6 +2,25 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.7] - 2026-10-26
+
+### Changed
+- **设置面板重构为即时无感自动保存（Auto-Save）**：移除本地临时草稿状态（`local()`）、脏检查（`dirty()`）、切页弹窗确认与底部浮动保存条。所有开关与下拉配置变动即时通过 `PATCH /api/settings` 持久化，数字输入框经 400ms 防抖自动提交；在页面右上角提供轻量级的已保存脉冲指示。
+- **后端配置缓存失效精细化**：`handlePutSettings` 与 `handlePatchSettings` 原先无条件清空所有响应缓存，现精细化为仅当影响模型输出或缓存策略的字段（如 `RTK`、`Caveman`、`AutoPromptCache`、`ResponseCache*`、`TokenSaverExclude`）发生实际变更时才触发 `Cache.Clear()`，避免修改 RPM 等元数据时误清空生产热点缓存。
+- **升级 Go 运行时与核心依赖**：升级 Go 编译器与运行时工具链至 `go1.27.3`；依赖 `modernc.org/sqlite` 升级至 `v1.61.0`（包含 `libc v1.79.0`、`go-strftime v1.1.0`）、`github.com/prometheus/common` 升级至 `v0.72.1`。
+
+### Fixed
+- **Prometheus `/metrics` 端点公网越权暴露加固**：通过 `middleware.MetricsAuth` 实施安全管控，本机回环自由抓取，外部公网访问强制要求控制台有效 Session 或 Bearer AuthSecret，杜绝内部运行指标、模型名与用量计数外泄。
+- **上游错误日志镜像至 Web 日志流的敏感数据脱敏**：在 `BroadcastLogHandler` 中引入 `sanitizeLogAttr`，对入库广播的 `attrs` 中包含 token、secret、password、authorization 等敏感属性自动打码脱敏，并对超过 1024 字符的异常长文本自动截断，防止上游回显的用户提示词或内部诊断溢出至前端日志面板。
+- **RTK 对 OpenAI 与 Gemini 工具输出的报错保护增强**：在 `internal/rtk/rtk.go` 中引入 `isToolOutputError`，统一识别各协议中包含 `error:`、`Traceback`、`Exception`、`exit code 1` 等报错堆栈的工具输出，在当前活跃轮次中 100% 保留不截断，确保智能体能获得完整的报错排查上下文。
+- **Antigravity 单模型白名单 `TokenSaverExclude` 匹配修复**：此前 Antigravity 请求未在 `innerRequest` 中透传 `model` 字段，导致单模型白名单排除规则失效。现已在 TokenSaver 过滤前补充模型 ID 传递。
+- **Anthropic 原生直通请求（`/v1/messages`）遗漏 TokenSaver 与 RTK 压缩管线**：`handleMessages` 原先仅对 `handleMessagesViaChat` 转发路径生效 TokenSaver，原生 Anthropic 直通请求未调用 `applyTokenSaver`，导致通过 Claude 官方端点调用的会话无法享受 RTK 工具压缩与 Terse 提示词注入。现已补齐调用。
+- **RTK 对 Gemini `functionResponse` 仅匹配 `content` 键、忽略 `result` 键**：Antigravity 等转换器生成的工具响应结构为 `{"result": ...}`，此前未被压缩。现已扩展匹配 `resp["result"]` 字段。
+- **公网/隧道下保存设置误报“cannot disable login requirement”阻断保存**：后端防降级校验原先写成了 `if !settings.RequireLogin && IsPublicWANRequest(r)`，当数据库中历史初始状态 `RequireLogin` 为 `false` 且用户经 Cloudflare 隧道访问时，前端保存任何设置（如开启 API Key 鉴权）都会无辜触发该拦截。现修复后端为仅在“原先开启且尝试关闭”时拦截（`current.RequireLogin && !updated.RequireLogin`），保留 Localhost 免密与公网安全约束的同时，支持公网正常修改其它系统设置。
+- **Anthropic 协议适配端点（`/v1/messages`）转发非 Anthropic 供应商时轮询计数器步进两次导致多账号负载不均衡**：`handleMessages` 原先在委托给 `handleMessagesViaChat` 之前先调用了 `selectAvailableConnection` 推进了一次轮询游标；随后在 `handleSingleModelChat` 中又推进了一次。对于 2 个相同优先级的账号（如 Antigravity），每次请求游标增加 2，模 2 结果恒等于 0，导致流量 100% 压在第一个账号上，第二账号始终 0 消耗。现改为在 `handleMessages` 前期直接基于供应商特征（非 `anthropic` APIType 或 Qoder / Antigravity 等专用协议）委托，避免二次选择凭证。
+- **Antigravity 消息转换对空文本生成空 text part 导致 Vertex 400 报错**：`convertOpenAIToGeminiContents` 原先无条件构造 `[]map[string]any{{"text": text}}`。当 assistant 轮次仅包含 thinking 或 tool_calls 时，`text` 为空字符串，下游 Vertex 判定为缺少字段并返回 `messages.N.content.0.text.text: Field required` (HTTP 400)。现改为仅在 `text != ""` 时追加 text part，system 轮次同步增加非空检查。
+- **代理池配置接受无效 URL 导致运行时拨号失败**：`handleCreateProxyPool` 与 `handleUpdateProxyPool` 原先仅校验字符串非空，未检查 scheme 与主机端口合法性。现新增 `provider.ValidateProxyURL`，创建和更新时对 scheme（仅允许 http/https/socks5/socks5h）及 endpoint 格式进行校验，非法 URL 返回 400。
+
 ## [1.7.6] - 2026-10-23
 
 ### Fixed
@@ -236,6 +255,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.7.7]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.6...v1.7.7
 [1.7.6]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.5...v1.7.6
 [1.7.5]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.4...v1.7.5
 [1.7.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.3...v1.7.4
