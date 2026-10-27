@@ -503,3 +503,42 @@ func TestCompressMessages_TurnAware_AnthropicErrors(t *testing.T) {
 		t.Errorf("latest active error was incorrectly truncated: %s", latestBlock)
 	}
 }
+
+func TestCompressMessages_GeminiFunctionResponse_ResultKey(t *testing.T) {
+	var lines []string
+	for i := range 400 {
+		lines = append(lines, "line "+strconv.Itoa(i)+" of function result data with enough length")
+	}
+	content := strings.Join(lines, "\n")
+
+	body := map[string]any{
+		"contents": []any{
+			map[string]any{
+				"role": "user",
+				"parts": []any{
+					map[string]any{
+						"functionResponse": map[string]any{
+							"name": "lookup",
+							"response": map[string]any{
+								"result": content,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Fatalf("expected savings from Gemini functionResponse with result key, got %d", saved)
+	}
+
+	contents := body["contents"].([]any)
+	part := contents[0].(map[string]any)["parts"].([]any)[0].(map[string]any)
+	resp := part["functionResponse"].(map[string]any)["response"].(map[string]any)
+	compressed := resp["result"].(string)
+	if !strings.Contains(compressed, "lines omitted") {
+		t.Errorf("expected omission marker in Gemini compressed result, got: %s", compressed)
+	}
+}

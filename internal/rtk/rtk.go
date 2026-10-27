@@ -48,6 +48,10 @@ func CompressMessages(body map[string]any, enabled bool) int {
 			// OpenAI tool message: {role:"tool", content:"string"} or content parts
 			role, _ := msg["role"].(string)
 			if role == "tool" {
+				// Preserve active errors in latest turn (e.g. error/exit code output)
+				if !isHistorical && isToolOutputError(msg["content"]) {
+					continue
+				}
 				if content, ok := msg["content"].(string); ok {
 					compressed := compressText(content, isHistorical)
 					if len(compressed) < len(content) {
@@ -147,11 +151,21 @@ func CompressMessages(body map[string]any, enabled bool) int {
 				if !ok {
 					continue
 				}
+				// Preserve active errors in latest turn for Gemini function response
+				if !isHistorical && (isToolOutputError(resp["error"]) || isToolOutputError(resp["content"]) || isToolOutputError(resp["result"])) {
+					continue
+				}
 				if content, ok := resp["content"].(string); ok {
 					compressed := compressText(content, isHistorical)
 					if len(compressed) < len(content) {
 						saved += len(content) - len(compressed)
 						resp["content"] = compressed
+					}
+				} else if result, ok := resp["result"].(string); ok {
+					compressed := compressText(result, isHistorical)
+					if len(compressed) < len(result) {
+						saved += len(result) - len(compressed)
+						resp["result"] = compressed
 					}
 				}
 			}
@@ -165,6 +179,43 @@ var (
 	ansiRegex    = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 	multiNLRegex = regexp.MustCompile(`\n{3,}`)
 )
+
+// isToolOutputError detects error markers in tool outputs to prevent collapsing active failures.
+func isToolOutputError(v any) bool {
+	if v == nil {
+		return false
+	}
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	switch val := v.(type) {
+	case string:
+		return hasErrorKeywords(val)
+	case map[string]any:
+		if errVal, ok := val["error"]; ok && errVal != nil {
+			return true
+		}
+	case []any:
+		for _, item := range val {
+			if m, ok := item.(map[string]any); ok {
+				if t, ok := m["text"].(string); ok && hasErrorKeywords(t) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func hasErrorKeywords(str string) bool {
+	if len(str) == 0 {
+		return false
+	}
+	lower := strings.ToLower(str)
+	return strings.HasPrefix(lower, "error:") || strings.Contains(lower, "traceback (most recent call last)") ||
+		strings.Contains(lower, "exception:") || strings.Contains(lower, "command failed") ||
+		strings.Contains(lower, "exit code 1") || strings.Contains(lower, "exit status 1")
+}
 
 // cleanAndCompactText performs lossless pre-compression on tool result text:
 // 1. Strips terminal ANSI color and cursor escape sequences.

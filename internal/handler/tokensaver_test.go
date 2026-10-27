@@ -1,11 +1,17 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
 func TestApplyTokenSaver_FallbackAndExclusion(t *testing.T) {
@@ -215,5 +221,79 @@ func TestApplyTokenSaver_HeaderOverride(t *testing.T) {
 	res2 := body2["messages"].([]any)[0].(map[string]any)["content"].(string)
 	if strings.Contains(res2, "lines omitted") {
 		t.Errorf("expected X-Cyrene-Tool-Slimmer: 0 to force-disable RTK compression")
+	}
+}
+
+func TestMessagesPassthrough_TokenSaverIntegration(t *testing.T) {
+	var capturedBody string
+	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		capturedBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":10,"output_tokens":5}}`))
+	}))
+	defer mockUpstream.Close()
+
+	srv, database := setupTestServer(t)
+	st, _ := database.GetSettings()
+	st.RTKEnabled = true
+	database.SaveSettings(st)
+
+	conn := &model.ProviderConnection{
+		ID:       "ant-native",
+		Provider: "anthropic",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-ant-test",
+			BaseURL: mockUpstream.URL,
+		},
+	}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	var lines []string
+	for i := range 300 {
+		lines = append(lines, "stack trace line "+strconv.Itoa(i)+" with lots of output padding")
+	}
+	historicalOutput := strings.Join(lines, "\n")
+
+	reqMap := map[string]any{
+		"model":      "anthropic/claude-sonnet-4-20250514",
+		"max_tokens": 100,
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{
+						"type":    "tool_result",
+						"content": historicalOutput,
+					},
+				},
+			},
+			map[string]any{
+				"role":    "assistant",
+				"content": "got it",
+			},
+			map[string]any{
+				"role":    "user",
+				"content": "now continue",
+			},
+		},
+	}
+	reqBytes, _ := json.Marshal(reqMap)
+
+	req := httptest.NewRequest("POST", "/v1/messages", bytes.NewReader(reqBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if !strings.Contains(capturedBody, "historical tool output omitted by Cyrene Gateway") {
+		t.Errorf("expected native messages passthrough to execute RTK compression on historical tool_result, body: %s", capturedBody)
 	}
 }
