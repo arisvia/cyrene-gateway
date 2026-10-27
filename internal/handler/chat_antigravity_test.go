@@ -491,16 +491,62 @@ func TestAntigravityConvertOpenAIToGeminiContents(t *testing.T) {
 		t.Errorf("expected role model, got %s", modelContent["role"])
 	}
 	parts, ok := modelContent["parts"].([]map[string]any)
-	if !ok || len(parts) < 2 {
-		t.Fatalf("expected at least 2 parts (text + functionCall), got %+v", modelContent["parts"])
+	if !ok || len(parts) != 1 {
+		t.Fatalf("expected 1 part (functionCall only when text is empty), got %+v", modelContent["parts"])
 	}
-	fcPart := parts[1]
+	fcPart := parts[0]
 	if fcPart["thoughtSignature"] != defaultThinkingAgSignature {
 		t.Errorf("expected thoughtSignature %q, got %v", defaultThinkingAgSignature, fcPart["thoughtSignature"])
 	}
 	fc, ok := fcPart["functionCall"].(map[string]any)
 	if !ok || fc["name"] != "get_weather" {
 		t.Errorf("expected functionCall get_weather, got %+v", fc)
+	}
+}
+
+func TestAntigravityConvertOpenAIToGeminiContents_OmitEmptyTextParts(t *testing.T) {
+	messages := []Message{
+		{
+			Role:    "system",
+			Content: json.RawMessage(`""`),
+		},
+		{
+			Role:    "user",
+			Content: json.RawMessage(`"hello"`),
+		},
+		{
+			Role:    "assistant",
+			Content: json.RawMessage(`""`),
+			ToolCalls: json.RawMessage(`[
+				{
+					"id": "call_1",
+					"type": "function",
+					"function": {
+						"name": "lookup",
+						"arguments": "{}"
+					}
+				}
+			]`),
+		},
+	}
+
+	contents, systemParts := convertOpenAIToGeminiContents(messages)
+	if len(systemParts) != 0 {
+		t.Fatalf("expected 0 systemParts for empty text, got %+v", systemParts)
+	}
+	if len(contents) != 2 {
+		t.Fatalf("expected 2 contents (user and model), got %d: %+v", len(contents), contents)
+	}
+	modelTurn := contents[1]
+	parts := modelTurn["parts"].([]map[string]any)
+	if len(parts) != 1 {
+		t.Fatalf("expected model turn to omit empty text part and have only 1 part, got %d: %+v", len(parts), parts)
+	}
+	if parts[0]["functionCall"] == nil {
+		t.Fatalf("expected functionCall part, got %+v", parts[0])
+	}
+	if _, hasText := parts[0]["text"]; hasText {
+		t.Fatalf("part should not have text key: %+v", parts[0])
 	}
 }
 

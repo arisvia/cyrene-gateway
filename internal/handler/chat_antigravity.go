@@ -134,8 +134,10 @@ func (s *Server) handleAntigravityChat(
 	targetModel, tier, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
 
 	if !isImage {
+		innerRequest["model"] = modelInfo.Model
 		s.applyLoopGuard(innerRequest, rawBody, "gemini", req.Tools != nil)
 		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider, r)
+		delete(innerRequest, "model")
 	}
 	if isImage {
 		genConfig["maxOutputTokens"] = 8192
@@ -372,7 +374,9 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 		text := parseMessageContent(msg.Content)
 
 		if role == "system" || role == "developer" {
-			systemParts = append(systemParts, map[string]any{"text": text})
+			if text != "" {
+				systemParts = append(systemParts, map[string]any{"text": text})
+			}
 			continue
 		}
 		if role == "tool" {
@@ -405,8 +409,9 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 			role = "model"
 		}
 
-		parts := []map[string]any{
-			{"text": text},
+		var parts []map[string]any
+		if text != "" {
+			parts = append(parts, map[string]any{"text": text})
 		}
 
 		// Backfill thoughtSignature for tool calling history on Gemini 3+
