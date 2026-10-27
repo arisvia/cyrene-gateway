@@ -242,6 +242,43 @@ func DashboardAuth(database *db.DB) func(http.Handler) http.Handler {
 	}
 }
 
+// MetricsAuth protects Prometheus scrape endpoint.
+// Requests from trusted local/private IP pass freely; WAN callers require dashboard session or bearer auth secret.
+func MetricsAuth(database *db.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !auth.IsPublicWANRequest(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			settings, err := database.GetSettings()
+			if err != nil {
+				writeAuthError(w, http.StatusInternalServerError, "database error")
+				return
+			}
+			token := ""
+			if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+				token = cookie.Value
+			}
+			if token == "" {
+				authHeader := r.Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") {
+					candidate := strings.TrimPrefix(authHeader, "Bearer ")
+					if candidate == auth.GetSecret() || (strings.Contains(candidate, ".") && auth.VerifySessionToken(candidate, settings.PasswordHash)) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+			if token != "" && auth.VerifySessionToken(token, settings.PasswordHash) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			writeAuthError(w, http.StatusUnauthorized, "unauthorized")
+		})
+	}
+}
+
 func isPublicPath(path string) bool {
 	publicPaths := []string{
 		"/api/health",

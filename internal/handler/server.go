@@ -107,9 +107,8 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 	}
 	s.registerRoutes()
 	s.registerMediaRoutes()
-	// Prometheus scrape endpoint (public; no session required)
-	s.Router.Handle("GET /metrics", s.Metrics.Handler())
-
+	// Prometheus scrape endpoint (protected by MetricsAuth: local or authenticated WAN)
+	s.Router.Handle("GET /metrics", middleware.MetricsAuth(database)(s.Metrics.Handler()))
 	s.Handler = middleware.Chain(mux,
 		middleware.Recovery,
 		middleware.SecurityHeaders,
