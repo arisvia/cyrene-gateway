@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -113,7 +114,7 @@ func (h *BroadcastLogHandler) Enabled(ctx context.Context, level slog.Level) boo
 func (h *BroadcastLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	attrs := make(map[string]any)
 	r.Attrs(func(a slog.Attr) bool {
-		attrs[a.Key] = a.Value.Any()
+		attrs[a.Key] = sanitizeLogAttr(a.Key, a.Value.Any())
 		return true
 	})
 
@@ -133,6 +134,25 @@ func (h *BroadcastLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 
 func (h *BroadcastLogHandler) WithGroup(name string) slog.Handler {
 	return &BroadcastLogHandler{base: h.base.WithGroup(name)}
+}
+
+func sanitizeLogAttr(key string, val any) any {
+	lowerKey := strings.ToLower(key)
+	// Redact known secret fields; avoid broad "token" substring that would falsely mask prompt_tokens / completion_tokens
+	if lowerKey == "token" || lowerKey == "access_token" || lowerKey == "refresh_token" ||
+		lowerKey == "auth_token" || lowerKey == "device_token" || strings.HasSuffix(lowerKey, "_secret") ||
+		strings.Contains(lowerKey, "secret") || strings.Contains(lowerKey, "password") ||
+		strings.Contains(lowerKey, "authorization") || strings.Contains(lowerKey, "api_key") ||
+		strings.Contains(lowerKey, "apikey") {
+		return "[REDACTED]"
+	}
+	// Cap massive string values in logs (e.g. raw error bodies echoing prompts)
+	if str, ok := val.(string); ok {
+		if len(str) > 1024 {
+			return str[:1024] + "... [truncated]"
+		}
+	}
+	return val
 }
 
 // handleSystemLogs returns the recent in-memory server logs.
