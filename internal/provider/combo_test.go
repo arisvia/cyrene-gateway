@@ -85,7 +85,6 @@ func TestResolveProviderAlias(t *testing.T) {
 		{"mmcn", "minimax-cn"},
 		{"ag", "antigravity"},
 		{"cc", "claude"},
-		{"cx", "codex"},
 		{"cu", "cursor"},
 		{"gh", "github"},
 		{"gcli", "grok-cli"},

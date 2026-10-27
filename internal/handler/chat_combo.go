@@ -221,15 +221,23 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		// Check if should fallback
 		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
+		isLastModel := (i == len(models)-1)
 		if !fallbackResult.ShouldFallback {
-			// Non-fallbackable error, return immediately
-			s.recordComboFailure(r, combo.Name, resp.StatusCode, string(errBody), start, extractPromptSummary(req.Messages))
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(resp.StatusCode)
-			w.Write(errBody)
-			return
+			// Request-scoped 4xx (e.g. context length exceeded, invalid param on this model).
+			// 9router#5057: try next model in combo instead of aborting the entire combo,
+			// unless this was already the final model.
+			if isLastModel {
+				s.recordComboFailure(r, combo.Name, resp.StatusCode, string(errBody), start, extractPromptSummary(req.Messages))
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(resp.StatusCode)
+				w.Write(errBody)
+				return
+			}
+			slog.Warn("Combo model returned request-scoped error, advancing to next model",
+				slog.String("model", modelStr),
+				slog.Int("status", resp.StatusCode),
+			)
 		}
-
 		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
 		slog.Warn("Combo model failed, trying next",
 			slog.String("model", modelStr),

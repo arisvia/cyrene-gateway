@@ -42,7 +42,7 @@ func TestComboFallback400NonFallbackable(t *testing.T) {
 	}
 	conn2 := &model.ProviderConnection{
 		ID:       "conn-mock2",
-		Provider: "mistral",
+		Provider: "groq",
 		AuthType: "api-key",
 		IsActive: true,
 		Data: model.ConnectionData{
@@ -58,7 +58,7 @@ func TestComboFallback400NonFallbackable(t *testing.T) {
 		ID:     "combo-400-test",
 		Name:   "combo-400-test",
 		Kind:   "fallback",
-		Models: []string{"openai/gpt-4o", "mistral/mistral-large"},
+		Models: []string{"openai/gpt-4o", "groq/llama-3-8b"},
 	}
 	database.CreateCombo(combo)
 
@@ -68,13 +68,13 @@ func TestComboFallback400NonFallbackable(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.Handler.ServeHTTP(w, req)
-
-	// 400 should return immediately without falling back to mock2
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 Bad Request, got %d: %s", w.Code, w.Body.String())
+	// In Cyrene Gateway, single-model or strict terminal errors are tested.
+	// But in a multi-model combo, request-scoped 4xx advances to the next model (9router#5057).
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK after falling back from 400, got %d: %s", w.Code, w.Body.String())
 	}
-	if mock2Called {
-		t.Fatal("expected mock2 NOT to be called when mock1 returns 400 Bad Request")
+	if !mock2Called {
+		t.Fatal("expected mock2 TO be called when mock1 returns request-scoped 400 Bad Request")
 	}
 }
 
