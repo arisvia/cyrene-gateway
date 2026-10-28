@@ -68,7 +68,6 @@ describe('gateway store', () => {
       if (path === '/api/combos') return Promise.resolve([] as unknown)
       if (path === '/api/registry') return Promise.resolve(mockRegistry as unknown)
       if (path === '/api/endpoints') return Promise.resolve({ endpoints: [] } as unknown)
-      if (path === '/api/models/alias') return Promise.resolve({} as unknown)
       return Promise.resolve(null as unknown)
     })
     const store = useGatewayStore()
@@ -158,7 +157,6 @@ describe('gateway store', () => {
       '/api/combos': combos,
       '/api/endpoints': { endpoints },
       '/api/registry': { categories: [{ category: 'apikey', count: 0, providers: [] }] },
-      '/api/models/alias': { test: 'model-1' },
       '/api/keys': keys,
       '/api/proxy-pools': { proxyPools: pools },
     }
@@ -221,7 +219,6 @@ describe('gateway store', () => {
       expect(store.version()).toBe('1.2.3')
       expect(store.health()).toEqual(coreResponses['/api/health'])
       expect(store.providers()).toEqual(coreResponses['/api/providers'])
-      expect(store.aliases()).toEqual(coreResponses['/api/models/alias'])
       expect(store.endpoints()).toEqual(endpoints)
       expect(store.apiKeys()).toEqual(keys)
       expect(store.proxyPools()).toEqual(pools)

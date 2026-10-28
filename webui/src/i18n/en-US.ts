@@ -993,8 +993,6 @@ export const enUS: TranslationDict = {
     deleteComboSuccess: 'Model combo deleted',
     saveProxyPoolSuccess: 'Proxy pool "{name}" saved',
     deleteProxyPoolSuccess: 'Proxy pool deleted',
-    addAliasSuccess: 'Set alias "{alias}" → {target}',
-    deleteAliasSuccess: 'Removed alias "{alias}"',
     saveSettingsSuccess: 'Settings saved',
   },
     api: {

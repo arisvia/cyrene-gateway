@@ -470,7 +470,7 @@ func TestMediaReviewCanonicalModelGoldenPaths(t *testing.T) {
 		{"/v1/videos/generations", "xai", "grok-2-video", "xai"},
 	} {
 		target := endpoint.provider + "/" + endpoint.model
-		for _, requested := range []string{endpoint.model, target, endpoint.prefix + "/" + endpoint.model, "media-alias"} {
+		for _, requested := range []string{endpoint.model, target, endpoint.prefix + "/" + endpoint.model} {
 			for _, modelField := range []string{"model", "MODEL"} {
 				t.Run(endpoint.path+"/"+requested+"/"+modelField, func(t *testing.T) {
 					calls := 0
@@ -493,9 +493,6 @@ func TestMediaReviewCanonicalModelGoldenPaths(t *testing.T) {
 							t.Errorf("unrelated field lost precision: %s", body["seed"])
 						}
 					})
-					if err := srv.DB.KVSet(model.KVScopeAliases, "media-alias", target); err != nil {
-						t.Fatal(err)
-					}
 					body := `{"` + modelField + `":"` + requested + `","PROVIDER":"` + endpoint.provider + `","prompt":"test","input":"speech","voice":"alloy","seed":9007199254740993}`
 					req := httptest.NewRequest(http.MethodPost, endpoint.path, strings.NewReader(body))
 					req.Header.Set("Authorization", "Bearer "+key)
@@ -528,10 +525,7 @@ func TestMediaModelWhitelist(t *testing.T) {
 				want          int
 			}{
 				{"denied_request", endpoint.target, []string{"deepseek/*"}, http.StatusForbidden},
-				{"allowed_alias_denied_target", "media-alias", []string{"media-alias"}, http.StatusForbidden},
-				{"denied_alias_allowed_target", "media-alias", []string{endpoint.target}, http.StatusForbidden},
 				{"allowed_target", endpoint.target, []string{endpoint.target}, http.StatusOK},
-				{"allowed_alias_and_target", "media-alias", []string{"media-alias", endpoint.target}, http.StatusOK},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					calls := 0
@@ -550,9 +544,6 @@ func TestMediaModelWhitelist(t *testing.T) {
 							}
 						}
 					})
-					if err := srv.DB.KVSet(model.KVScopeAliases, "media-alias", endpoint.target); err != nil {
-						t.Fatal(err)
-					}
 					w := httptest.NewRecorder()
 					srv.Handler.ServeHTTP(w, mediaTestRequest(t, endpoint.path, tc.request, endpoint.provider, key))
 					if w.Code != tc.want {
@@ -601,7 +592,7 @@ func TestMediaProviderOnlyVideoWhitelist(t *testing.T) {
 }
 
 func TestMediaSTTResolvedModelPreservesUpload(t *testing.T) {
-	for _, requested := range []string{"openai/whisper-1", "oai/whisper-1", "speech-alias"} {
+	for _, requested := range []string{"openai/whisper-1", "oai/whisper-1"} {
 		t.Run(requested, func(t *testing.T) {
 			calls := 0
 			srv, key := setupMediaAuthTest(t, []string{requested, "openai/whisper-1"}, func(r *http.Request) {
@@ -630,9 +621,6 @@ func TestMediaSTTResolvedModelPreservesUpload(t *testing.T) {
 					t.Errorf("upload changed: filename=%q bytes=%v", header.Filename, got)
 				}
 			})
-			if err := srv.DB.KVSet(model.KVScopeAliases, "speech-alias", "openai/whisper-1"); err != nil {
-				t.Fatal(err)
-			}
 			w := httptest.NewRecorder()
 			srv.Handler.ServeHTTP(w, mediaTestRequest(t, "/v1/audio/transcriptions", requested, "", key))
 			if w.Code != http.StatusOK || calls != 1 {
@@ -644,26 +632,23 @@ func TestMediaSTTResolvedModelPreservesUpload(t *testing.T) {
 
 func TestMediaResolvedDisabledModel(t *testing.T) {
 	for _, tc := range []struct {
-		name, path, target, provider string
+		name, path, request, target, provider string
 	}{
-		{"image", "/v1/images/generations", "openai/dall-e-3", ""},
-		{"tts", "/v1/audio/speech", "openai/tts-1", ""},
-		{"stt", "/v1/audio/transcriptions", "openai/whisper-1", ""},
-		{"video", "/v1/videos/generations", "xai/grok-2-video", ""},
-		{"video_explicit_provider", "/v1/videos/generations", "xai/grok-2-video", "xai"},
-		{"search", "/v1/search", "antigravity/gemini-2.5-flash", "antigravity"},
+		{"image", "/v1/images/generations", "oai/dall-e-3", "openai/dall-e-3", ""},
+		{"tts", "/v1/audio/speech", "oai/tts-1", "openai/tts-1", ""},
+		{"stt", "/v1/audio/transcriptions", "oai/whisper-1", "openai/whisper-1", ""},
+		{"video", "/v1/videos/generations", "xai/grok-2-video", "xai/grok-2-video", ""},
+		{"video_explicit_provider", "/v1/videos/generations", "xai/grok-2-video", "xai/grok-2-video", "xai"},
+		{"search", "/v1/search", "ag/gemini-2.5-flash", "antigravity/gemini-2.5-flash", "antigravity"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			srv, key := setupMediaAuthTest(t, nil, func(*http.Request) { calls++ })
-			if err := srv.DB.KVSet(model.KVScopeAliases, "disabled-alias", tc.target); err != nil {
-				t.Fatal(err)
-			}
 			if err := srv.DB.KVSet(model.KVScopeDisabledModels, tc.target, "true"); err != nil {
 				t.Fatal(err)
 			}
 			w := httptest.NewRecorder()
-			srv.Handler.ServeHTTP(w, mediaTestRequest(t, tc.path, "disabled-alias", tc.provider, key))
+			srv.Handler.ServeHTTP(w, mediaTestRequest(t, tc.path, tc.request, tc.provider, key))
 			if w.Code != http.StatusForbidden || calls != 0 || !strings.Contains(w.Body.String(), "model is disabled") {
 				t.Errorf("want disabled 403 and zero upstream requests, got %d and %d: %s", w.Code, calls, w.Body.String())
 			}
@@ -744,12 +729,9 @@ func TestMediaExplicitProviderCannotBypassWhitelist(t *testing.T) {
 	} {
 		t.Run(tc.path+"/"+tc.target, func(t *testing.T) {
 			calls := 0
-			srv, key := setupMediaAuthTest(t, []string{"media-alias", tc.target}, func(*http.Request) { calls++ })
-			if err := srv.DB.KVSet(model.KVScopeAliases, "media-alias", tc.target); err != nil {
-				t.Fatal(err)
-			}
+			srv, key := setupMediaAuthTest(t, []string{tc.target}, func(*http.Request) { calls++ })
 			w := httptest.NewRecorder()
-			srv.Handler.ServeHTTP(w, mediaTestRequest(t, tc.path, "media-alias", tc.provider, key))
+			srv.Handler.ServeHTTP(w, mediaTestRequest(t, tc.path, tc.target, tc.provider, key))
 			if w.Code != http.StatusForbidden || calls != 0 {
 				t.Errorf("want 403 and zero upstream requests, got %d and %d: %s", w.Code, calls, w.Body.String())
 			}

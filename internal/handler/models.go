@@ -49,19 +49,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		return disabledMap[fullID] != "" || disabledMap[bareID] != ""
 	}
 
-	// Add aliases as models (filtering out disabled ones)
-	aliases, _ := s.DB.KVList("aliases")
-	for alias := range aliases {
-		if isModelDisabled(alias, alias) {
-			continue
-		}
-		models = append(models, ModelEntry{
-			ID:      alias,
-			Object:  "model",
-			OwnedBy: "cyrene-gateway",
-		})
-	}
-
 	// Add combo names as models (filtering out disabled ones)
 	combos, _ := s.DB.ListCombos()
 	for _, c := range combos {

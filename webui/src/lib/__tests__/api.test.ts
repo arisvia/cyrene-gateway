@@ -127,10 +127,10 @@ describe('api lib', () => {
     })
     global.fetch = mockFetch
 
-    await apiDelete('/api/models/alias', { alias: 'test-alias' })
+    await apiDelete('/api/providers/openai/models', { id: 'test-model' })
     const call = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(call[1].method).toBe('DELETE')
     expect((call[1].headers as Record<string, string>)['Content-Type']).toBe('application/json')
-    expect(call[1].body).toBe(JSON.stringify({ alias: 'test-alias' }))
+    expect(call[1].body).toBe(JSON.stringify({ id: 'test-model' }))
   })
 })

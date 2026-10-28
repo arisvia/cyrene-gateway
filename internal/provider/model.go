@@ -59,9 +59,8 @@ func ParseModel(modelStr string) model.ModelInfo {
 
 // ResolveModel resolves a model string to full ModelInfo using:
 // 1. Explicit provider prefix (e.g. "openai/gpt-4o")
-// 2. Alias resolution from KV store
-// 3. Dynamic search in cached models of active connections
-// 4. Fallback: prefix-based inference
+// 2. Dynamic search in cached models of active connections
+// 3. Fallback: prefix-based inference
 func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	parsed := ParseModel(modelStr)
 
@@ -78,26 +77,7 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	}
 
 	if database != nil {
-		// 2. Try model alias from KV store (scope="aliases")
-		aliases, err := database.KVList(model.KVScopeAliases)
-		if err != nil {
-			slog.Warn("Failed to list model aliases from DB", slog.String("error", err.Error()))
-		} else {
-			if target, ok := aliases[modelStr]; ok {
-				resolved := ParseModel(target)
-				if resolved.Provider != "" {
-					return resolved, nil
-				}
-			}
-			if target, ok := aliases[parsed.Model]; ok {
-				resolved := ParseModel(target)
-				if resolved.Provider != "" {
-					return resolved, nil
-				}
-			}
-		}
-
-		// 3. Dynamic lookup across cached models of active providers
+		// 2. Dynamic lookup across cached models of active providers
 		caches, err := database.KVList(model.KVScopeProviderModelCache)
 		if err != nil {
 			slog.Warn("Failed to list provider model cache from DB", slog.String("error", err.Error()))

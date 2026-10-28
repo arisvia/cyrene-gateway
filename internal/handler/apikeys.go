@@ -104,50 +104,6 @@ func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
-func (s *Server) handleListAliases(w http.ResponseWriter, r *http.Request) {
-	aliases, err := s.DB.KVList("aliases")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
-		return
-	}
-	writeJSON(w, http.StatusOK, aliases)
-}
-
-func (s *Server) handleSetAlias(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Alias  string `json:"alias"`
-		Target string `json:"target"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
-	if req.Alias == "" || req.Target == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "alias and target required"})
-		return
-	}
-	if err := s.DB.KVSet("aliases", req.Alias, req.Target); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to set alias"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
-}
-
-func (s *Server) handleDeleteAlias(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Alias string `json:"alias"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
-	if err := s.DB.KVDelete("aliases", req.Alias); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete alias"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
-}
-
 func (s *Server) handleListDisabledModels(w http.ResponseWriter, r *http.Request) {
 	disabled, err := s.DB.KVList("disabledModels")
 	if err != nil {

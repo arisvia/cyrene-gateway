@@ -64,7 +64,6 @@ function createGatewayStore() {
 
   const [registryCategories, setRegistryCategories] = createSignal<RegistryCategory[]>(getInitialRegistry())
   const [settings, setSettings] = createSignal<Record<string, unknown>>({})
-  const [aliases, setAliases] = createSignal<Record<string, string>>({})
   const [requireLogin, setRequireLogin] = createSignal(false)
   const [authenticated, setAuthenticated] = createSignal(true)
   const [authChecked, setAuthChecked] = createSignal(false)
@@ -164,7 +163,6 @@ function createGatewayStore() {
           }
         }),
         loadEndpoints(),
-        api<Record<string, string>>('/api/models/alias').then(a => setAliases(a || {})),
         loadKeys(),
         loadProxyPools(),
       ])
@@ -406,23 +404,6 @@ function createGatewayStore() {
     await pendingLoads.pools
     await loadProxyPools()
   }
-  // ── aliases ──
-  async function addAlias(alias: string, target: string) {
-    await apiPost('/api/models/alias', { alias, target })
-    toast.success(t('toast.addAliasSuccess', { alias, target }))
-    setAliases(a => ({ ...a, [alias]: target }))
-  }
-
-  async function deleteAlias(alias: string) {
-    await apiDelete('/api/models/alias', { alias })
-    toast.success(t('toast.deleteAliasSuccess', { alias }))
-    setAliases(a => {
-      const next = { ...a }
-      delete next[alias]
-      return next
-    })
-  }
-
   // ── settings ──
   async function saveSettings(patch: Record<string, unknown>, options?: { silent?: boolean }) {
     await apiPatch('/api/settings', patch)
@@ -544,7 +525,7 @@ function createGatewayStore() {
   return {
     requireLogin, authenticated, authChecked, hasPassword, isWan, checkAuth, login, logout,
     version, health, providers, setProviders, combos, apiKeys, proxyPools, endpoints,
-    registryCategories, registryList, settings, aliases,
+    registryCategories, registryList, settings,
     usageStats, usageChart, requestDetails, requestDetailsPagination,
     providerUsage, usageLogs, quotaEntries, activeConnections,
     loaded, loadErrors, usagePeriod,
@@ -554,7 +535,6 @@ function createGatewayStore() {
     createKey, updateKey, deleteKey,
     saveCombo, deleteCombo,
     saveProxyPool, toggleProxyPool, deleteProxyPool,
-    addAlias, deleteAlias,
     saveSettings, setPassword,
     updateProvider, testBatch, refreshModels,
     loadProviderModels, addProviderModel, deleteProviderModel,

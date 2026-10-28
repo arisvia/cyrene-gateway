@@ -991,8 +991,6 @@ export const zhCN = {
     deleteComboSuccess: '模型组合已删除',
     saveProxyPoolSuccess: '代理池「{name}」已保存',
     deleteProxyPoolSuccess: '代理池已删除',
-    addAliasSuccess: '已设置别名「{alias}」→ {target}',
-    deleteAliasSuccess: '已移除别名「{alias}」',
     saveSettingsSuccess: '系统设置已保存',
   },
   api: {

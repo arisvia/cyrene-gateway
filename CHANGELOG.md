@@ -10,6 +10,7 @@
 
 ### Changed
 - **历史兼容垫片彻底移除**：登录口令校验严格化 Argon2id（删除旧 HMAC 回退与就地升级分支，现库已全量 Argon2id 核实）；`organization_name` 蛇形键的双读与 CAS 条件一并拆除（现行写入方唯一使用驼峰键且现库零命中）；前端废弃 IndexedDB 库的一次性清理逻辑随批次退役。
+- **KV 模型别名层整体拆除（命名统一规范全名）**：删除 `ResolveModel` 的别名解析层级、`/v1/models` 别名陈列、`/api/models/alias` 三条管理路由与前端悬空接线（现库存量 0 行、控制台无入口）；客户端点名与用量统计自此只有一套名字——`provider/model` 全名，提供商短别名维持既有"仅输入糖、入口即规范化"契约不扩大。
 
 ### Fixed
 - **Qoder 与 CodeBuddy (Intl) 测试连接 404 误报**：Qoder OAuth 设备令牌改为沿用真实聊天链路的 COSY 签名探测模型列表端点，不再在 SSE 聊天地址后拼接不存在的路径；CodeBuddy Intl 改探与模型同步同源的 `/v3/config` 账户配置端点。
