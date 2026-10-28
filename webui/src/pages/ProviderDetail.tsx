@@ -110,7 +110,7 @@ const ProviderDetail: Component = () => {
       .filter(p => p.provider === targetId)
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
   }
-  const allAccountsActive = () => accounts().length > 0 && accounts().every(a => a.isActive)
+  const allAccountsActive = () => accounts().length === 0 ? (conn()?.isActive ?? false) : accounts().every(a => a.isActive)
 
   const providerDisplayName = () => regInfo()?.name || conn()?.provider || t('providerDetail.details')
 
