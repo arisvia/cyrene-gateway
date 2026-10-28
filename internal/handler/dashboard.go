@@ -31,7 +31,7 @@ const (
 //  1. Local directory (-dashboard flag) — file server for dev (vite dist or dev output)
 //  2. Downloaded panel from -panel-url:
 //     a. dist.zip → extracted to version-scoped cache directory
-//     b. single HTML → cached as file (legacy support)
+//     b. single HTML panel → cached as file
 //  3. Embedded webui/dist (Vue 3 + Vite build output)
 type DashboardHandler struct {
 	cfg      *config.Config
@@ -68,7 +68,7 @@ func (d *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Tier 2b: Legacy single-HTML cache
+	// Tier 2b: Single-HTML panel cache
 	if path == "" || path == "index.html" {
 		if cached := d.readCache(); cached != nil {
 			if !slices.Contains(dashboardEncodings(r.Header), "identity") {
@@ -275,7 +275,7 @@ func dashboardEncodingQuality(value string) int {
 // TryDownload fetches the panel from PanelURL and caches it locally.
 // Supports two formats:
 //   - *.zip → extracted to a version-scoped directory (third-party panel distribution)
-//   - anything else → treated as single HTML file (legacy)
+//   - anything else → treated as single HTML file
 //
 // Called at startup; non-fatal on failure.
 func (d *DashboardHandler) TryDownload() {
@@ -320,7 +320,7 @@ func (d *DashboardHandler) TryDownload() {
 		return
 	}
 
-	// Legacy single-HTML path
+	// Single-HTML panel path
 	if err := d.writeCache(data); err != nil {
 		slog.Warn("Failed to cache panel", "error", err)
 		return

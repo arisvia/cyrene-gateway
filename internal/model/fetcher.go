@@ -43,7 +43,8 @@ func (c *CachedModels) IsExpired() bool {
 // which normalizer to use.
 //
 // cfg (Phase 36 T6) selects the endpoint and auth scheme: cfg.URL empty means
-// derive "<baseURL>/models" (legacy behavior); cfg.Auth is "bearer"
+// derive "<baseURL>/models" (the default for most providers); cfg.Auth is
+// "bearer"
 // (default), "none" (public catalog), "query" (?key=<token>, gemini) or
 // "raw" (token verbatim in cfg.AuthHeader).
 func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken string, cfg ModelsFetchConfig) ([]ModelMetadata, error) {

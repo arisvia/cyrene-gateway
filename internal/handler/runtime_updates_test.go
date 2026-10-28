@@ -371,7 +371,7 @@ func TestRuntimeResetClearsOnlyHealthAndLocks(t *testing.T) {
 }
 
 func TestRuntimeProfileEnrichment(t *testing.T) {
-	for _, mode := range []string{"normal", "custom-name", "admin", "config-only", "name", "email", "organization", "legacy-organization", "access-token", "refresh-token", "deleted"} {
+	for _, mode := range []string{"normal", "custom-name", "admin", "config-only", "name", "email", "organization", "access-token", "refresh-token", "deleted"} {
 		t.Run(mode, func(t *testing.T) {
 			srv, database := setupTestServer(t)
 			upstream, entered, release := blockedRuntimeUpstream(t, http.StatusOK, `{"name":"Profile Name","email":"profile@example.test","organization_name":"Profile Org","userQuota":{"total":100,"used":10}}`)
@@ -419,8 +419,6 @@ func TestRuntimeProfileEnrichment(t *testing.T) {
 					admin.Email = "admin@example.test"
 				case "organization":
 					admin.Data.ProviderSpecificData["organizationName"] = "Admin Org"
-				case "legacy-organization":
-					admin.Data.ProviderSpecificData["organization_name"] = "Admin Org"
 				case "access-token":
 					admin.Data.AccessToken = "admin-access"
 				case "refresh-token":
@@ -460,7 +458,7 @@ func TestRuntimeProfileEnrichment(t *testing.T) {
 				if got.Data.AccessToken != "admin-access" || got.Data.RefreshToken != "admin-refresh" {
 					t.Error("profile enrichment overwrote replacement credentials")
 				}
-			} else if got.Name != admin.Name || got.Email != admin.Email || got.Data.AccessToken != admin.Data.AccessToken || got.Data.RefreshToken != admin.Data.RefreshToken || got.Data.ProviderSpecificData["organizationName"] != admin.Data.ProviderSpecificData["organizationName"] || got.Data.ProviderSpecificData["organization_name"] != admin.Data.ProviderSpecificData["organization_name"] {
+			} else if got.Name != admin.Name || got.Email != admin.Email || got.Data.AccessToken != admin.Data.AccessToken || got.Data.RefreshToken != admin.Data.RefreshToken || got.Data.ProviderSpecificData["organizationName"] != admin.Data.ProviderSpecificData["organizationName"] {
 				t.Errorf("stale enrichment changed administrator profile or credentials: %+v", got)
 			}
 			if rec.Code != http.StatusConflict || strings.Contains(rec.Body.String(), "profile@example.test") || strings.Contains(rec.Body.String(), "Profile Org") {

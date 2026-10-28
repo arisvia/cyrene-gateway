@@ -5,7 +5,6 @@ import {
   getStoredWallpaper,
   saveStoredWallpaper,
   clearStoredWallpaper,
-  cleanupLegacyStorage,
   fetchRemoteImageDataUrl,
   processAndCompressImage,
   type WallpaperConfig,
@@ -57,7 +56,6 @@ function createCustomBgStore(): BackgroundStore {
 
   async function init() {
     try {
-      cleanupLegacyStorage()
       const cfg = getWallpaperConfig()
       setConfig(cfg)
       if (cfg.enabled) {

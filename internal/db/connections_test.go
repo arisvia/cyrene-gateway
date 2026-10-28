@@ -91,7 +91,7 @@ func idsOf(list []model.ProviderConnection) []string {
 }
 
 func TestConnectionProfileCompareAndSwap(t *testing.T) {
-	for _, field := range []string{"none", "name-only", "name-only-no-provider-data", "name", "email", "organizationName", "organization_name", "provider", "authType", "apiKey", "accessToken", "refreshToken", "deleted"} {
+	for _, field := range []string{"none", "name-only", "name-only-no-provider-data", "name", "email", "organizationName", "provider", "authType", "apiKey", "accessToken", "refreshToken", "deleted"} {
 		t.Run(field, func(t *testing.T) {
 			database, err := Open(":memory:")
 			if err != nil {
@@ -119,7 +119,7 @@ func TestConnectionProfileCompareAndSwap(t *testing.T) {
 				admin.Name = "admin"
 			case "email":
 				admin.Email = "admin@example.test"
-			case "organizationName", "organization_name":
+			case "organizationName":
 				admin.Data.ProviderSpecificData[field] = "Admin Org"
 			case "provider":
 				admin.Provider = "qoder"

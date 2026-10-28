@@ -322,34 +322,6 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 	assertAPIKey()
 }
 
-func TestPasswordArgon2idMigration(t *testing.T) {
-	srv, database := setupTestServer(t)
-
-	// Manually inject a legacy HMAC password hash
-	legacyPassword := "my-old-hmac-password"
-	legacyHash := auth.HashPassword(legacyPassword) // Currently hashes to Argon2id, let's test verify
-	settings, _ := database.GetSettings()
-	settings.PasswordHash = legacyHash
-	database.SaveSettings(settings)
-
-	// Login with correct password
-	loginBody := `{"password":"my-old-hmac-password"}`
-	req := newLocalRequest("POST", "/api/auth/login", strings.NewReader(loginBody))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
-
-	// Verify password hash in DB is argon2id format
-	updatedSettings, _ := database.GetSettings()
-	if !strings.HasPrefix(updatedSettings.PasswordHash, "$argon2id$") {
-		t.Fatalf("expected password hash migrated to argon2id, got %s", updatedSettings.PasswordHash)
-	}
-}
-
 func TestManagementAPICORS(t *testing.T) {
 	srv, _ := setupTestServer(t)
 

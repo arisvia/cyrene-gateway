@@ -283,7 +283,7 @@ func VerifySessionToken(token, passwordHash string) bool {
 	return claims.Authenticated && time.Now().Unix() < claims.ExpiresAt
 }
 
-// --- Password Hashing (Argon2id + legacy HMAC fallback) ---
+// --- Password Hashing (Argon2id) ---
 
 const (
 	argonMemory      = 64 * 1024 // 64 MB
@@ -316,16 +316,14 @@ func HashPassword(password string) string {
 		base64.RawStdEncoding.EncodeToString(hash))
 }
 
-// VerifyPassword checks a password against a stored hash (supports Argon2id and legacy HMAC migration).
+// VerifyPassword checks a password against a stored Argon2id hash. Legacy
+// HMAC-shaped hashes are no longer accepted (clean cutover; stored hashes are
+// re-hashed on password change).
 func VerifyPassword(password, storedHash string) bool {
-	if strings.HasPrefix(storedHash, "$argon2id$") {
-		return verifyArgon2id(password, storedHash)
+	if !strings.HasPrefix(storedHash, "$argon2id$") {
+		return false
 	}
-	// Fallback to legacy HMAC hash verification
-	mac := hmac.New(sha256.New, getSecret())
-	mac.Write([]byte("password:" + password))
-	legacyHash := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(legacyHash), []byte(storedHash))
+	return verifyArgon2id(password, storedHash)
 }
 
 func verifyArgon2id(password, storedHash string) bool {

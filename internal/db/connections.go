@@ -172,7 +172,6 @@ func (d *DB) UpdateConnectionProfile(original *model.ProviderConnection, name, e
 		return err
 	}
 	oldOrg, _ := original.Data.ProviderSpecificData["organizationName"].(string)
-	oldLegacyOrg, _ := original.Data.ProviderSpecificData["organization_name"].(string)
 	err = connectionUpdateResult(d.conn.Exec(
 		`UPDATE providerConnections SET name=?, email=?, data=json_patch(data, ?), updatedAt=?
 			WHERE id=? AND provider=? AND authType=?
@@ -180,11 +179,10 @@ func (d *DB) UpdateConnectionProfile(original *model.ProviderConnection, name, e
 			AND COALESCE(json_extract(data, '$.refreshToken'), '')=?
 			AND COALESCE(json_extract(data, '$.apiKey'), '')=?
 			AND COALESCE(name, '')=? AND COALESCE(email, '')=?
-			AND COALESCE(json_extract(data, '$.providerSpecificData.organizationName'), '')=?
-			AND COALESCE(json_extract(data, '$.providerSpecificData.organization_name'), '')=?`,
+			AND COALESCE(json_extract(data, '$.providerSpecificData.organizationName'), '')=?`,
 		name, email, string(patch), time.Now().UTC().Format(time.RFC3339),
 		original.ID, original.Provider, original.AuthType, original.Data.AccessToken,
-		original.Data.RefreshToken, original.Data.APIKey, original.Name, original.Email, oldOrg, oldLegacyOrg,
+		original.Data.RefreshToken, original.Data.APIKey, original.Name, original.Email, oldOrg,
 	))
 	if errors.Is(err, ErrNotFound) {
 		var exists int

@@ -111,8 +111,6 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 		}
 		if org, ok := conn.Data.ProviderSpecificData["organizationName"].(string); ok && org != "" {
 			orgName = org
-		} else if org, ok := conn.Data.ProviderSpecificData["organization_name"].(string); ok && org != "" {
-			orgName = org
 		}
 	}
 

@@ -118,16 +118,6 @@ export async function clearStoredWallpaper(): Promise<void> {
   }
 }
 
-// 自动清理之前测试时留下的废弃库 'cyrene_gateway_ui'
-export function cleanupLegacyStorage(): void {
-  if (typeof window === 'undefined') return
-  try {
-    if (window.indexedDB && indexedDB.deleteDatabase) {
-      indexedDB.deleteDatabase('cyrene_gateway_ui')
-    }
-  } catch {}
-}
-
 /**
  * 远程图片拉取并转为 Base64 Data URL：
  * 采用 no-referrer 策略绕过绝大部分图床/CDN 防盗链限制。
