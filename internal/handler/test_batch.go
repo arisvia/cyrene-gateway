@@ -235,7 +235,11 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 		} else if conn.Provider == "codebuddy" && providerInfo.ModelsURL != "" {
 			// CodeBuddy (Intl) has no /models on its chat base; probe the
 			// authenticated account catalog (/v3/config) that model sync uses.
+			// A user base-URL override wins, derived like handleRefreshModels.
 			targetURL = providerInfo.ModelsURL
+			if conn.Data.BaseURL != "" {
+				targetURL = provider.BuildModelsURL(baseURL)
+			}
 			testBody = nil
 		} else if conn.Provider == "opencode" || conn.Provider == "opencode-go" {
 			targetURL = baseURL

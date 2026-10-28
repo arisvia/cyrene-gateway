@@ -672,9 +672,10 @@ func TestQoderOAuthDeviceTokenConnectionProbesModelList(t *testing.T) {
 func TestCodebuddyIntlConnectionProbesAccountCatalog(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	var catalogHits atomic.Int32
+	var expectedPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v3/config" {
-			t.Errorf("unexpected probe path %q, want /v3/config", r.URL.Path)
+		if r.URL.Path != expectedPath {
+			t.Errorf("unexpected probe path %q, want %q", r.URL.Path, expectedPath)
 			http.NotFound(w, r)
 			return
 		}
@@ -697,14 +698,36 @@ func TestCodebuddyIntlConnectionProbesAccountCatalog(t *testing.T) {
 	provider.Registry["codebuddy"] = mockInfo
 	defer func() { provider.Registry["codebuddy"] = orig }()
 
-	conn := &model.ProviderConnection{
-		Provider: "codebuddy", AuthType: "oauth",
-		Data: model.ConnectionData{AccessToken: "jwt-intl-conn"},
-	}
-	result := srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, srv.getHTTPClient(30*time.Second))
-	if !result.OK || catalogHits.Load() != 1 {
-		t.Errorf("codebuddy intl test result=%+v, catalog hits=%d", result, catalogHits.Load())
-	}
+	t.Run("registry catalog", func(t *testing.T) {
+		expectedPath = "/v3/config"
+		conn := &model.ProviderConnection{
+			Provider: "codebuddy", AuthType: "oauth",
+			Data: model.ConnectionData{AccessToken: "jwt-intl-conn"},
+		}
+		before := catalogHits.Load()
+		result := srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, srv.getHTTPClient(30*time.Second))
+		if !result.OK || catalogHits.Load() != before+1 {
+			t.Errorf("codebuddy intl test result=%+v, catalog hits=%d", result, catalogHits.Load()-before)
+		}
+	})
+
+	// A BaseURL override must be probed like model sync derives it, never the
+	// public registry catalog with the mirror's token.
+	t.Run("base URL override", func(t *testing.T) {
+		expectedPath = "/v2/models"
+		conn := &model.ProviderConnection{
+			Provider: "codebuddy", AuthType: "oauth",
+			Data: model.ConnectionData{
+				AccessToken: "jwt-intl-conn",
+				BaseURL:     upstream.URL + "/v2/chat/completions",
+			},
+		}
+		before := catalogHits.Load()
+		result := srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, srv.getHTTPClient(30*time.Second))
+		if !result.OK || catalogHits.Load() != before+1 {
+			t.Errorf("override probe result=%+v, hits=%d", result, catalogHits.Load()-before)
+		}
+	})
 }
 
 func TestRuntimeDirectClientReusesTransport(t *testing.T) {
