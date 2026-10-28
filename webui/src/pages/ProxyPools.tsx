@@ -93,7 +93,6 @@ const ProxyPools: Component = () => {
                       <Show when={p.strictProxy}><Badge tone="amber">{t('proxies.strict')}</Badge></Show>
                     </div>
                     <div class="mt-1 text-xs text-faint font-mono truncate">{p.proxyUrl}</div>
-                    </Show>
                   </div>
                   <div class="flex flex-wrap items-center gap-1.5 shrink-0">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>{t('common.edit')}</Button>

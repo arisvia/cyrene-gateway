@@ -219,6 +219,7 @@ function createGatewayStore() {
     }
     name?: string
     proxyUrl?: string
+    type?: string
     strictProxy?: boolean
   }
 
