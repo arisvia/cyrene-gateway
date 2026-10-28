@@ -8,7 +8,7 @@ Cyrene Gateway 是一个自托管的 **LLM API 网关**:把众多 AI 提供商(O
 
 - **统一 API 协议网关**：全面兼容 OpenAI 标准协议（`/v1/chat/completions`、`/v1/embeddings`、`/v1/images/generations`、`/v1/audio/*`、`/v1/models`、`/v1/responses`）及 Anthropic 原生协议（`/v1/messages`）。
 - **全能力提供商市场**：聚合主流 LLM（OpenAI、Anthropic、Gemini、Qoder、OpenCode 等）与纯媒体/搜索服务（ElevenLabs、Stability AI、Tavily、Exa）；支持 API Key、OAuth（PKCE/设备码/Token 导入）、免密公共端点与 Cookie 认证。
-- **智能调度与故障容灾**：支持多模型 Combo 轮转（Fallback、Round-Robin、Sticky 策略）；凭证池按优先级、模型锁与配额自动挑选；内置指数退避冷却（2s～5m）。
+- **智能调度与故障容灾**：支持多模型 Combo 轮转（Fallback、Round-Robin、Sticky 策略）；凭证池按优先级、模型锁与配额自动挑选；携带显式会话标识（`prompt_cache_key`、`metadata.user_id`、`X-Cyrene-Session-ID` 等）的请求在会话内钉住同一账号以保活上游 KV 缓存，跨会话仍均衡轮转；内置指数退避冷却（2s～5m）。
 - **思考推理自适应映射**：下游标准化透传 `reasoning_effort` 与 `thinking` 参数，自适应转译至各主流大模型（Gemini 3.8/3.7、Claude 3.7、Qwen 等）。
 - **生产级出站安全 (SSRF)**：所有出站流量经 `SafeHTTPClient` 实施拨号期 IP 严格过滤，防范私网探测、云元数据逃逸及 DNS 重绑定；支持轮询调度出站 HTTP/SOCKS 代理池。
 - **用量监控与会话防护**：逐请求 Token 记账（含 reasoning/cached 消耗）与成本估算；内置 Loopguard 智能打断死循环；提供实时 SSE 事件流看板。

@@ -139,7 +139,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// Resolve the affinity key from the Anthropic body and propagate it via the
 	// request header: the via-chat delegation translates the body and drops
 	// metadata.user_id, so the header is the only carrier for both branches.
-	sessionKey := r.Header.Get("X-Cyrene-Session-ID")
+	sessionKey := provider.BoundSessionKey(r.Header.Get("X-Cyrene-Session-ID"))
 	if sessionKey == "" {
 		sessionKey = provider.SessionKeyFromBodyMap(reqBody)
 		if sessionKey != "" {

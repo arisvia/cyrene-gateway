@@ -51,7 +51,8 @@ func (a *sessionAffinity) get(key string, now time.Time) (string, bool) {
 func (a *sessionAffinity) bind(key, connID string, now time.Time) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if len(a.entries) >= sessionAffinityMaxEntry {
+	// Rebinding an existing session never grows the table; skip the eviction sweep.
+	if _, exists := a.entries[key]; !exists && len(a.entries) >= sessionAffinityMaxEntry {
 		a.evictLocked(now)
 	}
 	a.entries[key] = affinityEntry{connID: connID, seen: now}
