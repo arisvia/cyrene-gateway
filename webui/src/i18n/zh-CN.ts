@@ -276,7 +276,7 @@ export const zhCN = {
       quickAddConfigured: "快速添加已配提供商:",
       title: '令牌节省引擎',
       rtkTitle: 'RTK 压缩',
-      rtkHint: '无损清洗工具输出并对超长结果实施首尾智能截断（保留前 120 行与后 60 行）',
+      rtkHint: '工具输出压缩:先无损清洗(ANSI 色码/冗余空行/JSON 紧凑化);超长结果按轮次首尾截断并留显式省略标记——当前轮仅超 250 行或 16KiB 才截(保留前 120 与后 60 行),历史轮超 80 行或 4KiB 即压缩(保留前 30 与后 20 行);当前轮的报错输出永不压缩',
       cavemanTitle: 'Caveman 极简表达',
       cavemanHint: '注入极简表达指令（洞穴人模式），压制客套寒暄，大幅削减回复 Token',
       compressionLevel: '压缩级别',

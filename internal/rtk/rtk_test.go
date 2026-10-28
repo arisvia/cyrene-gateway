@@ -504,6 +504,74 @@ func TestCompressMessages_TurnAware_AnthropicErrors(t *testing.T) {
 	}
 }
 
+func TestCompressMessages_TurnAware_PanicTracePreserved(t *testing.T) {
+	// A 300-line Go panic trace in the LATEST turn exceeds the active-turn line
+	// threshold (250), so it would be middle-dropped unless the widened error
+	// keyword whitelist (panic:/fatal:/exit status N/...) recognizes it first.
+	var lines []string
+	for i := range 300 {
+		lines = append(lines, "goroutine "+strconv.Itoa(i)+" [running]: main.worker(0xdead) /src/app/main.go:42 +0x1c")
+	}
+	panicTrace := "panic: runtime error: invalid memory address or nil pointer dereference\n" + strings.Join(lines, "\n") + "\nexit status 2"
+
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "user", "content": "run it"},
+			map[string]any{"role": "assistant", "content": "running"},
+			map[string]any{"role": "tool", "content": panicTrace}, // historical
+			map[string]any{"role": "assistant", "content": "again"},
+			map[string]any{"role": "tool", "content": panicTrace}, // latest active turn
+		},
+	}
+
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Fatalf("expected historical panic trace to be collapsed, got savings %d", saved)
+	}
+
+	msgs := body["messages"].([]any)
+	hist := msgs[2].(map[string]any)["content"].(string)
+	latest := msgs[4].(map[string]any)["content"].(string)
+
+	if !strings.Contains(hist, "historical tool output omitted by Cyrene Gateway") {
+		t.Errorf("historical panic trace should be collapsed, got: %s", hist[:min(len(hist), 120)])
+	}
+	if latest != panicTrace {
+		t.Errorf("latest-turn panic trace must be preserved byte-identical, expected %d bytes got %d", len(panicTrace), len(latest))
+	}
+}
+
+func TestHasErrorKeywords_ActiveFailureMarkers(t *testing.T) {
+	// The whitelist decides which latest-turn outputs are never compressed.
+	// Missing a real failure marker is a semantic-loss bug; false positives only
+	// skip compression, so the list is checked to cover the common toolchain
+	// failure shapes.
+	for _, s := range []string{
+		"panic: runtime error: index out of range",
+		"FATAL: database system is shut down",
+		"some build output\nexit status 7\n",
+		"tool exited with code 137",
+		"bash: jq: command not found",
+		"Permission denied (publickey)",
+		"FAILED tests/test_api.py::test_create - assert 500 == 200",
+		"Error: something went wrong",
+		"Traceback (most recent call last):\n  File x",
+	} {
+		if !hasErrorKeywords(s) {
+			t.Errorf("expected failure marker detection for: %q", s)
+		}
+	}
+	for _, s := range []string{
+		"all 42 tests passed",
+		"0 failed, 0 errors",
+		strings.Repeat("clean output line\n", 20),
+	} {
+		if hasErrorKeywords(s) {
+			t.Errorf("expected benign output to pass through compression: %q", s)
+		}
+	}
+}
+
 func TestCompressMessages_GeminiFunctionResponse_ResultKey(t *testing.T) {
 	var lines []string
 	for i := range 400 {

@@ -18,8 +18,11 @@ const (
 
 // CompressMessages compresses tool_result content in-place within an OpenAI,
 // Anthropic, or Gemini shaped request body. It implements turn-aware slimming:
-// preserving full context for the latest active turn while aggressively collapsing
-// stale historical tool results. Returns bytes saved or 0.
+// the latest active turn is preserved whole below generous thresholds (≤250
+// lines / ≤16 KiB) and its failing outputs are never touched, while stale
+// historical tool results collapse aggressively (>80 lines / >4 KiB keep only
+// head 30 + tail 20 lines) behind an explicit omission marker. Returns bytes
+// saved or 0.
 func CompressMessages(body map[string]any, enabled bool) int {
 	if !enabled || body == nil {
 		return 0
@@ -212,9 +215,24 @@ func hasErrorKeywords(str string) bool {
 		return false
 	}
 	lower := strings.ToLower(str)
-	return strings.HasPrefix(lower, "error:") || strings.Contains(lower, "traceback (most recent call last)") ||
-		strings.Contains(lower, "exception:") || strings.Contains(lower, "command failed") ||
-		strings.Contains(lower, "exit code 1") || strings.Contains(lower, "exit status 1")
+	if strings.HasPrefix(lower, "error:") {
+		return true
+	}
+	// Bias toward preserving: a false positive only skips compression of one
+	// active-turn output, while a miss drops the middle of a live failure that
+	// the agent still needs (panic traces, nonzero exits, toolchain fatals).
+	for _, kw := range []string{
+		"traceback (most recent call last)",
+		"exception:", "command failed", "command not found",
+		"panic:", "fatal:", "exit status ", "exit code ",
+		"permission denied", "segmentation fault", "core dumped",
+		"failed:", "failed ", "test failed", "with code ",
+	} {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanAndCompactText performs lossless pre-compression on tool result text:

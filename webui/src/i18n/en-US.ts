@@ -278,7 +278,7 @@ export const enUS: TranslationDict = {
       quickAddConfigured: "Quick add configured providers:",
       title: 'Token Saver Engine',
       rtkTitle: 'RTK Compression',
-      rtkHint: 'Losslessly cleans tool outputs and truncates long results (keeps first 120 and last 60 lines)',
+      rtkHint: 'Tool-output slimming: lossless cleaning first (ANSI codes, redundant blank lines, JSON minification); oversized results are head/tail-truncated with an explicit omission marker - the active turn only above 250 lines / 16 KiB (keeps first 120 + last 60 lines), history above 80 lines / 4 KiB (keeps first 30 + last 20). Failing outputs in the active turn are never compressed',
       cavemanTitle: 'Caveman Compression Mode',
       cavemanHint: 'Strips filler, pleasantries, and preambles, enforcing concise core logic (saves 25%~40% output tokens)',
       compressionLevel: 'Compression Level',
