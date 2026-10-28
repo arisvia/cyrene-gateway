@@ -14,6 +14,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/rtk"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
@@ -159,6 +160,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The first eligible account decides the branch: connections that are not
+	// native Anthropic (API-key OpenAI-shape overrides, Qoder, Antigravity)
+	// delegate to the chat pipeline, which walks its own account pool.
 	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
@@ -166,22 +170,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	// Ensure fresh credentials for OAuth / Copilot connections
 	s.tryRefreshToken(conn)
-
-	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
-	if conn.Data.BaseURL != "" {
-		baseURL = conn.Data.BaseURL
-		if effectiveAPIType == "" {
-			effectiveAPIType = providerInfo.APIType
-		}
-	}
+	baseURL, effectiveAPIType := effectiveAnthropicTarget(providerInfo, conn)
 	if effectiveAPIType != "anthropic" || baseURL == "" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
 		return
 	}
-	// Set the resolved model name
+
+	// Body preparation is account-independent: mutate and marshal once.
 	reqBody["model"] = modelInfo.Model
 
 	// Strip output_config.format for non-official Anthropic endpoints to prevent 400 Bad Request
@@ -202,8 +198,83 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	translatedBody, _ := json.Marshal(reqBody)
 
+	// Walk the account pool: an account-scoped failure (429/quota/5xx/transport)
+	// retries on the next account instead of failing the client — parity with the
+	// chat pipeline's failover loop.
+	tried := map[string]bool{conn.ID: true}
+	var lastStatus int
+	var lastBody []byte
+	for cur := conn; cur != nil; {
+		retryable, status, body := s.attemptMessagesPassthrough(w, r, reqBody, translatedBody, modelInfo, providerInfo, cur, stream)
+		if !retryable {
+			// Either the response was proxied or a terminal error was written.
+			return
+		}
+		lastStatus, lastBody = status, body
+		slog.Warn("Messages account unavailable, failing over to the next one",
+			slog.String("provider", modelInfo.Provider),
+			slog.String("model", modelInfo.Model),
+			slog.String("connection", cur.ID),
+			slog.Int("status", status),
+		)
+		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/messages")})
+		cur = nil
+		for {
+			next := s.selectAvailableConnection(conns, modelInfo.Model, tried, sessionKey)
+			if next == nil {
+				break
+			}
+			tried[next.ID] = true
+			s.tryRefreshToken(next)
+			if b, e := effectiveAnthropicTarget(providerInfo, next); e == "anthropic" && b != "" {
+				cur = next
+				break
+			}
+		}
+	}
+	if lastStatus == 0 {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": fmt.Sprintf("no eligible accounts for provider: %s", modelInfo.Provider),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(lastStatus)
+	w.Write(wrapErrorWithHint(lastStatus, lastBody, modelInfo.Provider))
+}
+
+// effectiveAnthropicTarget resolves a connection's effective base URL and API
+// type (dual-auth routing plus user overrides) for the native passthrough.
+func effectiveAnthropicTarget(providerInfo provider.ProviderInfo, conn *model.ProviderConnection) (string, string) {
+	baseURL, apiType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
+	if conn.Data.BaseURL != "" {
+		baseURL = conn.Data.BaseURL
+		if apiType == "" {
+			apiType = providerInfo.APIType
+		}
+	}
+	return baseURL, apiType
+}
+
+// attemptMessagesPassthrough executes one native Anthropic Messages passthrough
+// on a single account. retryable=true means the account failed in a way another
+// account might not repeat (quota, throttle, transport) and NOTHING was written
+// to w, so the caller may try the next account. retryable=false means the
+// response is complete — proxied to the client or a terminal error written.
+func (s *Server) attemptMessagesPassthrough(
+	w http.ResponseWriter,
+	r *http.Request,
+	reqBody map[string]any,
+	translatedBody []byte,
+	modelInfo model.ModelInfo,
+	providerInfo provider.ProviderInfo,
+	conn *model.ProviderConnection,
+	stream bool,
+) (retryable bool, status int, errBody []byte) {
+	baseURL, _ := effectiveAnthropicTarget(providerInfo, conn)
+
 	// Phase 30: resolve transport for URL building + auth injection.
-	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+	transport := provider.ResolveTransport(providerInfo, baseURL, "anthropic", conn)
 	targetURL := provider.BuildTransportURL(transport, modelInfo.Model, stream)
 	if targetURL == "" {
 		targetURL = strings.TrimRight(baseURL, "/") + "/v1/messages"
@@ -248,10 +319,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
 		slog.Error("Messages upstream request failed", "error", err, "provider", modelInfo.Provider, "url", targetURL)
-		writeJSON(w, http.StatusBadGateway, map[string]string{
-			"error": fmt.Sprintf("upstream request failed: %v", err),
-		})
-		return
+		provider.ApplyErrorState(conn, http.StatusBadGateway, err.Error())
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+		return true, http.StatusBadGateway, []byte(fmt.Sprintf("upstream request failed: %v", err))
 	}
 	defer resp.Body.Close()
 
@@ -294,10 +364,15 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 		s.publishRequestEvent(r, RequestEvent{Type: "request", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, LatencyMs: int64(latencyMs)})
 
+		// Account-scoped failures (quota exhausted, throttled, upstream 5xx)
+		// are worth another account; request-scoped 4xx are terminal.
+		if provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
+			return true, resp.StatusCode, errBody
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		w.Write(wrapErrorWithHint(resp.StatusCode, errBody, modelInfo.Provider))
-		return
+		return false, 0, nil
 	}
 
 	provider.ResetAccountState(conn)
@@ -489,4 +564,6 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(resp.StatusCode)
 		w.Write(respBody)
 	}
+
+	return false, 0, nil
 }

@@ -103,150 +103,163 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
-		if conn == nil {
-			lastError = fmt.Sprintf("all accounts rate-limited for: %s", modelInfo.Provider)
-			lastStatus = 503
-			continue
-		}
-
-		// Phase 9: Pre-check OAuth token refresh
-		s.tryRefreshToken(conn)
-
-		// Qoder and Antigravity use specialized protocols and executors. They
-		// report retryable when the account (not the request) is at fault, so a
-		// combo step can move on instead of returning an empty response.
-		if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
-			slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
-			if retryable := s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
-				return
-			}
-			lastError = fmt.Sprintf("qoder account unavailable: %s", conn.ID)
-			lastStatus = 503
-			continue
-		}
-		if modelInfo.Provider == "antigravity" {
-			slog.Info("Combo delegating to Antigravity executor", slog.String("model", modelInfo.Model))
-			if retryable := s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
-				return
-			}
-			lastError = fmt.Sprintf("antigravity account unavailable: %s", conn.ID)
-			lastStatus = 503
-			continue
-		}
-
-		upstreamStream := req.Stream || providerInfo.ForceStream
-		upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
-			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
-			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
-		)
-		if err != nil {
-			lastError = err.Error()
-			lastStatus = http.StatusBadRequest
-			continue
-		}
-
-		endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
-		s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
-
-		clientTimeout := 5 * time.Minute
-		if upstreamStream {
-			clientTimeout = 0
-		}
-		client := s.getHTTPClient(clientTimeout)
-		resp, err := client.Do(upstreamReq)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
-				slog.Info("Client canceled combo request", slog.String("model", modelStr))
-				return
-			}
-			lastError = fmt.Sprintf("upstream request failed: %v", err)
-			lastStatus = 502
-			s.Combos.RecordModelFailure(modelStr)
-			slog.Warn("Combo model failed", slog.String("model", modelStr), "error", err)
-			provider.ApplyErrorState(conn, 502, err.Error())
-			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-			continue
-		}
-		// Success (2xx) - check for zero usable content on non-final models (9router #4750 parity)
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			isLastModel := (i == len(models)-1)
-			if !isLastModel {
-				respBytes, err := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				if err == nil {
-					if isZeroUsableContent(respBytes, resp.Header.Get("Content-Type")) {
-						slog.Warn("Combo model returned HTTP 200 with zero usable content, falling back to next model",
-							slog.String("model", modelStr),
-							slog.Int("attempt", i+1),
-						)
-						s.Combos.RecordModelFailure(modelStr)
-						lastStatus = resp.StatusCode
-						lastError = "upstream returned HTTP 200 with zero usable content"
-						s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
-						continue
-					}
-					// Reconstruct response body with read bytes
-					resp.Body = io.NopCloser(bytes.NewReader(respBytes))
+		// Walk the account pool for this model: an account-scoped failure
+		// (quota, throttle, transport) retries on the next account before the
+		// combo advances to the next model — parity with the chat pipeline.
+		tried := make(map[string]bool)
+	accountLoop:
+		for {
+			conn := s.selectAvailableConnection(conns, modelInfo.Model, tried, sessionKey)
+			if conn == nil {
+				if len(tried) == 0 {
+					lastError = fmt.Sprintf("all accounts rate-limited for: %s", modelInfo.Provider)
+					lastStatus = 503
 				}
+				break
+			}
+			tried[conn.ID] = true
+
+			// Phase 9: Pre-check OAuth token refresh
+			s.tryRefreshToken(conn)
+
+			// Qoder and Antigravity use specialized protocols and executors. They
+			// report retryable when the account (not the request) is at fault, so
+			// the next account gets a chance before the combo moves on.
+			if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
+				slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
+				if retryable := s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
+					return
+				}
+				lastError = fmt.Sprintf("qoder account unavailable: %s", conn.ID)
+				lastStatus = 503
+				continue
+			}
+			if modelInfo.Provider == "antigravity" {
+				slog.Info("Combo delegating to Antigravity executor", slog.String("model", modelInfo.Model))
+				if retryable := s.handleAntigravityChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
+					return
+				}
+				lastError = fmt.Sprintf("antigravity account unavailable: %s", conn.ID)
+				lastStatus = 503
+				continue
 			}
 
-			slog.Info("Combo model succeeded", slog.String("model", modelStr))
-			s.Combos.RecordModelLatency(modelStr, time.Since(start).Milliseconds())
-			provider.ResetAccountState(conn)
-			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-			s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
-			uc := &usageContext{
-				RequestID:    ensureRequestID(r),
-				Provider:     modelInfo.Provider,
-				Model:        modelInfo.Model,
-				ConnectionID: conn.ID,
-				APIKey:       extractRequestAPIKey(r),
-				Endpoint:     resolveRequestEndpoint(r, "/v1/chat/completions"),
-				StartedAt:    start,
-				Status:       resp.StatusCode,
-				Prompt:       extractPromptSummary(req.Messages),
+			upstreamStream := req.Stream || providerInfo.ForceStream
+			upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
+				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
+				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+			)
+			if err != nil {
+				// Request-build failures repeat on every account of this model.
+				lastError = err.Error()
+				lastStatus = http.StatusBadRequest
+				break accountLoop
 			}
-			s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
-			resp.Body.Close()
-			return
-		}
-		// Error response - read body for error classification
-		errBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
 
-		lastStatus = resp.StatusCode
-		lastError = string(errBody)
+			endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
+			s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
-		// Apply and persist error state for this connection
-		s.Combos.RecordModelFailure(modelStr)
-		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
-		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-		// Check if should fallback
-		fallbackResult := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
-		isLastModel := (i == len(models)-1)
-		if !fallbackResult.ShouldFallback {
-			// Request-scoped 4xx (e.g. context length exceeded, invalid param on this model).
-			// 9router#5057: try next model in combo instead of aborting the entire combo,
-			// unless this was already the final model.
-			if isLastModel {
-				s.recordComboFailure(r, combo.Name, resp.StatusCode, string(errBody), start, extractPromptSummary(req.Messages))
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(resp.StatusCode)
-				w.Write(errBody)
+			clientTimeout := 5 * time.Minute
+			if upstreamStream {
+				clientTimeout = 0
+			}
+			client := s.getHTTPClient(clientTimeout)
+			resp, err := client.Do(upstreamReq)
+			if err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
+					slog.Info("Client canceled combo request", slog.String("model", modelStr))
+					return
+				}
+				lastError = fmt.Sprintf("upstream request failed: %v", err)
+				lastStatus = 502
+				slog.Warn("Combo account transport failed, trying next account", slog.String("model", modelStr), "error", err)
+				provider.ApplyErrorState(conn, 502, err.Error())
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+				continue
+			}
+			// Success (2xx) - check for zero usable content on non-final models (9router #4750 parity)
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				isLastModel := (i == len(models)-1)
+				if !isLastModel {
+					respBytes, err := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					if err == nil {
+						if isZeroUsableContent(respBytes, resp.Header.Get("Content-Type")) {
+							slog.Warn("Combo model returned HTTP 200 with zero usable content, falling back to next model",
+								slog.String("model", modelStr),
+								slog.Int("attempt", i+1),
+							)
+							lastStatus = resp.StatusCode
+							lastError = "upstream returned HTTP 200 with zero usable content"
+							s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
+							break accountLoop
+						}
+						// Reconstruct response body with read bytes
+						resp.Body = io.NopCloser(bytes.NewReader(respBytes))
+					}
+				}
+
+				slog.Info("Combo model succeeded", slog.String("model", modelStr), slog.String("connection", conn.ID))
+				s.Combos.RecordModelLatency(modelStr, time.Since(start).Milliseconds())
+				provider.ResetAccountState(conn)
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+				s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
+				uc := &usageContext{
+					RequestID:    ensureRequestID(r),
+					Provider:     modelInfo.Provider,
+					Model:        modelInfo.Model,
+					ConnectionID: conn.ID,
+					APIKey:       extractRequestAPIKey(r),
+					Endpoint:     resolveRequestEndpoint(r, "/v1/chat/completions"),
+					StartedAt:    start,
+					Status:       resp.StatusCode,
+					Prompt:       extractPromptSummary(req.Messages),
+				}
+				s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
+				resp.Body.Close()
 				return
 			}
-			slog.Warn("Combo model returned request-scoped error, advancing to next model",
+			// Error response - read body for error classification
+			errBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			lastStatus = resp.StatusCode
+			lastError = string(errBody)
+
+			provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			// Account-scoped failures (quota, throttle, 5xx) get the next account
+			// on the SAME model; request-scoped 4xx repeat everywhere, so advance
+			// to the next model (9router#5057 parity) — or surface them on the wire
+			// when this already was the final model.
+			if !provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
+				if i == len(models)-1 {
+					s.Combos.RecordModelFailure(modelStr)
+					s.recordComboFailure(r, combo.Name, resp.StatusCode, string(errBody), start, extractPromptSummary(req.Messages))
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(resp.StatusCode)
+					w.Write(errBody)
+					return
+				}
+				slog.Warn("Combo model returned request-scoped error, advancing to next model",
+					slog.String("model", modelStr),
+					slog.Int("status", resp.StatusCode),
+				)
+				break accountLoop
+			}
+			s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
+			slog.Warn("Combo account failed, trying next account for the same model",
 				slog.String("model", modelStr),
+				slog.String("connection", conn.ID),
 				slog.Int("status", resp.StatusCode),
 			)
 		}
-		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
-		slog.Warn("Combo model failed, trying next",
-			slog.String("model", modelStr),
-			slog.Int("status", resp.StatusCode),
-		)
+		if len(tried) > 0 {
+			// Every account of this model failed; mark the model itself failed
+			// so rotation advances for subsequent requests.
+			s.Combos.RecordModelFailure(modelStr)
+		}
 	}
 	if lastStatus == 0 {
 		lastStatus = 503

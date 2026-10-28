@@ -132,10 +132,14 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "all accounts rate-limited"})
 		return
 	}
+	s.tryRefreshToken(conn)
 
-	baseURL := providerInfo.BaseURL
+	baseURL, effectiveAPIType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
 	if conn.Data.BaseURL != "" {
 		baseURL = conn.Data.BaseURL
+		if effectiveAPIType == "" {
+			effectiveAPIType = providerInfo.APIType
+		}
 	}
 
 	// Forward with resolved model name while preserving all client parameters (dimensions, encoding_format, etc.)
@@ -160,9 +164,16 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if conn.Data.APIKey != "" {
-		upstreamReq.Header.Set("Authorization", "Bearer "+conn.Data.APIKey)
+	// Unified credential path (AGENTS §7): transport headers + ApplyAuth resolve
+	// API-key, OAuth bearer, and provider-specific auth per effective format —
+	// the old manual `Bearer conn.Data.APIKey` silently sent OAuth-only
+	// connections (and openai dual-auth) to upstream unauthenticated.
+	transport := provider.ResolveTransport(providerInfo, baseURL, effectiveAPIType, conn)
+	for k, v := range transport.Headers {
+		upstreamReq.Header.Set(k, v)
 	}
+	creds := provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model)
+	provider.ApplyAuth(upstreamReq, transport, creds)
 	upstreamReq.Header.Set("Content-Type", "application/json")
 
 	startTime := time.Now()
@@ -173,6 +184,13 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		errBody, _ := io.ReadAll(resp.Body)
+		resp.Body = io.NopCloser(bytes.NewReader(errBody))
+		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+	}
 
 	latencyMs := int(time.Since(startTime).Milliseconds())
 	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)

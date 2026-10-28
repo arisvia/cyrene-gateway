@@ -2,16 +2,18 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.8.1] - 2026-10-28
+## [1.8.2] - 2026-10-28
 
 ### Added
 - **会话亲和负载均衡(上游 KV 缓存保护)**:携带显式会话标识的请求(`prompt_cache_key`/`session_id`/`conversation_id`、Anthropic `metadata.user_id`,或 `X-Cyrene-Session-ID` 头)在多轮对话中钉住同一账号,保证上游前缀缓存高命中,长会话不再逐轮全价重付 prompt token;绑定账号进入冷却、模型锁或配额上限时无缝迁移并重绑,故障转移与配额语义零改动。跨会话仍按优先级等权均衡;无会话标识的请求完全不受影响——刻意不以消息内容猜测会话,避免无关对话被误钉同一账号。
+- **全路径账号级容灾统一**:Anthropic Messages 原生直通与 Combo 步骤现与聊天管线共享同账号换号语义——账号级故障(429/配额/5xx/网络)自动改试下一账号,Combo 会先耗尽同模型全部账号再降级到下一模型,请求级 4xx 仍立即跳模型;单账号被限流不再直接打穿到客户端,也不再误伤健康模型的轮换计数。
 
 ### Fixed
 - **Qoder 与 CodeBuddy (Intl) 测试连接 404 误报**：Qoder OAuth 设备令牌改为沿用真实聊天链路的 COSY 签名探测模型列表端点，不再在 SSE 聊天地址后拼接不存在的路径；CodeBuddy Intl 改探与模型同步同源的 `/v3/config` 账户配置端点。
 - **提供商详情页顶部开关改为组级批量控制**：一键同时启用或停用该提供商名下全部账号，顶部徽标按全启用/部分启用/全停用三态显示，消除多账号场景下仅影响单条连接的歧义。
 - **"限流冷却中"徽标到期不灭**：账号行徽标改为与后端调度一致的"截止时间晚于当前时刻"判据并随时钟自动熄灭；此前只要字符串残留（未成功调用过或未点重置冷却）就永久显示，误导为账号仍在轮换隔离。
 - **上游客户端指纹版本升级**：CodeBuddy CLI/IDE 指纹对齐官方 `2.177.1`（原 `2.108.1` 落后约 70 个 minor），Qoder CLI 请求 UA 升至 `qodercli/1.1.80`，降低陈旧客户端指纹触发上游风控误判的概率。
+- **Embeddings 端点鉴权收口**：`/v1/embeddings` 统一走 transport 与 `ResolveCredentials` 注入并支持令牌预刷新；此前 OAuth 型账号会携带空 Authorization 裸奔上游。
 
 ## [1.8.0] - 2026-10-27
 
@@ -280,7 +282,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
-[1.8.1]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.0...v1.8.1
+[1.8.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.0...v1.8.2
 [1.8.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.7...v1.8.0
 [1.7.7]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.6...v1.7.7
 [1.7.6]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.5...v1.7.6
