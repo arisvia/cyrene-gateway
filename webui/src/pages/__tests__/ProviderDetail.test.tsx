@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@solidjs/testing-lib
 import { createMemoryHistory, MemoryRouter, Route } from '@solidjs/router'
 import { t } from '@/i18n'
 import { clearToasts, toast } from '@/lib/toast'
-import { useGatewayStore } from '@/stores/gateway'
+import { useGatewayStore, resetGatewayStoreForTesting } from '@/stores/gateway'
 import type { Provider, RegistryProvider } from '@/types/domain'
 import ProviderDetail from '@/pages/ProviderDetail'
 import Providers from '@/pages/Providers'
@@ -485,5 +485,46 @@ describe('ProviderDetail model switch optimistic state', () => {
     settle(json({ ok: true }))
     await flush()
     expect(view.getByRole('switch', { name: /gpt-test/ }).getAttribute('aria-checked')).toBe('false')
+  })
+})
+
+describe('ProviderDetail header group state hydration', () => {
+  it('reflects the loaded connection until the provider list hydrates, then shows the tri-state', async () => {
+    resetGatewayStoreForTesting()
+    const { promise: listPending, resolve: releaseList } = Promise.withResolvers<Response>()
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === '/api/providers') return listPending
+      if (path === '/api/registry') return json({ categories: [{ category: 'oauth', count: 1, providers: [registry] }], total: 1 })
+      if (path.endsWith('/models')) return json(modelsPayload)
+      if (path.startsWith('/api/providers/')) return json(connections.find(c => path === `/api/providers/${c.id}`) ?? connections[0])
+      if (path === '/api/auth/status') return json({ requireLogin: false, authenticated: true })
+      return json(null)
+    }))
+
+    const history = createMemoryHistory()
+    history.set({ value: '/providers/selected' })
+    render(() => (
+      <MemoryRouter history={history}>
+        <Route path="/providers" component={Providers} />
+        <Route path="/providers/:id" component={ProviderDetail} />
+      </MemoryRouter>
+    ))
+    await flush()
+
+    // Detail loaded but store.providers() still pending: header must mirror
+    // the loaded connection, not a false "all disabled" group state.
+    const headerToggle = () => within(screen.getByRole('banner')).getByRole('switch', { name: new RegExp(`^${t('common.enabled')}: `) })
+    expect(headerToggle().getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByText(t('common.enabled'))).toBeTruthy()
+
+    // Hydrated pool: selected active, sibling disabled → partial group state.
+    releaseList(json([
+      { ...connections[0], isActive: false },
+      connections[1],
+    ]))
+    await flush()
+    expect(screen.getByText(t('providers.partiallyEnabled', { active: 1, total: 2 }))).toBeTruthy()
+    expect(headerToggle().getAttribute('aria-checked')).toBe('false')
   })
 })

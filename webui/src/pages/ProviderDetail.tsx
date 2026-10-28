@@ -402,11 +402,12 @@ const ProviderDetail: Component = () => {
                   checked={allAccountsActive()}
                   onChange={async () => {
                     const next = !allAccountsActive()
-                    for (const acc of accounts()) {
-                      if (acc.isActive !== next) await store.toggleProvider(acc)
+                    try {
+                      await Promise.all(accounts().filter(acc => acc.isActive !== next).map(acc => store.toggleProvider(acc)))
+                    } finally {
+                      await store.loadProvidersOnly()
+                      await load()
                     }
-                    await store.loadProvidersOnly()
-                    await load()
                   }}
                 />
               </div>
