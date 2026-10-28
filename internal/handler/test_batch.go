@@ -197,17 +197,31 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 		})
 	default:
 		if conn.Provider == "qoder" || conn.Provider == "qoder-cn" {
-			// For Qoder PAT, exchange and test via model list or userInfo
-			if provider.IsQoderPAT(creds.APIKey) {
-				resolved, err := provider.ResolveQoderCredentialFor(conn.Provider, creds.APIKey, "", client)
-				if err != nil {
-					return testResult{OK: false, Error: "Qoder PAT 兑换失败: " + err.Error()}
-				}
-				qoderCredential = resolved
-				targetURL = provider.QoderModelListURL(conn.Provider, resolved.AccessToken)
-			} else {
-				targetURL = strings.TrimRight(baseURL, "/") + "/api/v1/models/chat"
+			// Both credential shapes probe the COSY-signed model list, mirroring
+			// the chat path: the OAuth device token (dt-...) passes through with
+			// the stored userId; a PAT (pt-...) is exchanged for a job token and
+			// userId. The registry base URL is the SSE chat endpoint — deriving a
+			// probe URL from it always 404s.
+			rawToken := conn.Data.AccessToken
+			if rawToken == "" {
+				rawToken = creds.APIKey
 			}
+			if rawToken == "" {
+				return testResult{OK: false, Error: "Qoder credential missing: add a PAT or re-authorize via OAuth"}
+			}
+			psdUserID := ""
+			if conn.Data.ProviderSpecificData != nil {
+				psdUserID, _ = conn.Data.ProviderSpecificData["userId"].(string)
+			}
+			resolved, err := provider.ResolveQoderCredentialFor(conn.Provider, rawToken, psdUserID, client)
+			if err != nil {
+				return testResult{OK: false, Error: "Qoder PAT 兑换失败: " + err.Error()}
+			}
+			if resolved.UserID == "" {
+				resolved.UserID = psdUserID
+			}
+			qoderCredential = resolved
+			targetURL = provider.QoderModelListURL(conn.Provider, resolved.AccessToken)
 			testBody = nil
 		} else if conn.Provider == "codebuddy-cn" {
 			// CodeBuddy CN only accepts streaming chat completions and has no /models endpoint.
@@ -218,6 +232,11 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 				"stream":     true,
 				"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
 			})
+		} else if conn.Provider == "codebuddy" && providerInfo.ModelsURL != "" {
+			// CodeBuddy (Intl) has no /models on its chat base; probe the
+			// authenticated account catalog (/v3/config) that model sync uses.
+			targetURL = providerInfo.ModelsURL
+			testBody = nil
 		} else if conn.Provider == "opencode" || conn.Provider == "opencode-go" {
 			targetURL = baseURL
 			if !strings.HasSuffix(targetURL, "/chat/completions") {

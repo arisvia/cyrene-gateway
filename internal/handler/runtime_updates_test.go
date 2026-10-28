@@ -619,6 +619,94 @@ func TestQoderConnectionUsesRegionalCOSYCredential(t *testing.T) {
 	}
 }
 
+func TestQoderOAuthDeviceTokenConnectionProbesModelList(t *testing.T) {
+	for _, tc := range []struct{ provider, modelHost string }{
+		{"qoder", "api3.qoder.sh"},
+		{"qoder-cn", "gateway.qoder.com.cn"},
+	} {
+		t.Run(tc.provider, func(t *testing.T) {
+			srv, _ := setupTestServer(t)
+			var models, exchanges atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/v1/jobToken/exchange" {
+					exchanges.Add(1)
+					http.NotFound(w, r)
+					return
+				}
+				if r.Host != tc.modelHost {
+					t.Errorf("request escaped region: host=%q, want %q", r.Host, tc.modelHost)
+					http.Error(w, "wrong region", http.StatusBadRequest)
+					return
+				}
+				if r.URL.Path != "/algo/api/v2/model/list" {
+					t.Errorf("device-token probe must not derive URLs from the SSE chat base, got %q", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				models.Add(1)
+				if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer COSY.") || r.Header.Get("Cosy-User") != "oauth-user" {
+					t.Errorf("model request lacks COSY authentication: %v", r.Header)
+					http.Error(w, "missing COSY authentication", http.StatusUnauthorized)
+					return
+				}
+				_, _ = io.WriteString(w, `{"data":[]}`)
+			}))
+			defer upstream.Close()
+			client := upstream.Client()
+			client.Transport = runtimeRewriteTransport{base: client.Transport, destination: upstream.URL}
+			conn := &model.ProviderConnection{
+				Provider: tc.provider, AuthType: "oauth",
+				Data: model.ConnectionData{
+					AccessToken:          "dt-oauth-" + generateID(),
+					ProviderSpecificData: map[string]any{"userId": "oauth-user"},
+				},
+			}
+			result := srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, client)
+			if !result.OK || models.Load() != 1 || exchanges.Load() != 0 {
+				t.Errorf("device-token test result=%+v, model probes=%d exchanges=%d", result, models.Load(), exchanges.Load())
+			}
+		})
+	}
+}
+
+func TestCodebuddyIntlConnectionProbesAccountCatalog(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	var catalogHits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v3/config" {
+			t.Errorf("unexpected probe path %q, want /v3/config", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		catalogHits.Add(1)
+		if got := r.Header.Get("Authorization"); got != "Bearer jwt-intl-conn" {
+			t.Errorf("catalog probe auth header = %q, want bearer access token", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"code":0,"data":{"chat":{"free":{"hy3":{}}}}}`)
+	}))
+	defer upstream.Close()
+
+	orig, ok := provider.Registry["codebuddy"]
+	if !ok {
+		t.Fatal("codebuddy missing from registry")
+	}
+	mockInfo := orig
+	mockInfo.BaseURL = upstream.URL + "/v2/chat/completions"
+	mockInfo.ModelsURL = upstream.URL + "/v3/config"
+	provider.Registry["codebuddy"] = mockInfo
+	defer func() { provider.Registry["codebuddy"] = orig }()
+
+	conn := &model.ProviderConnection{
+		Provider: "codebuddy", AuthType: "oauth",
+		Data: model.ConnectionData{AccessToken: "jwt-intl-conn"},
+	}
+	result := srv.testConnection(httptest.NewRequest("POST", "/test", nil), conn, srv.getHTTPClient(30*time.Second))
+	if !result.OK || catalogHits.Load() != 1 {
+		t.Errorf("codebuddy intl test result=%+v, catalog hits=%d", result, catalogHits.Load())
+	}
+}
+
 func TestRuntimeDirectClientReusesTransport(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	first, second := srv.getHTTPClient(time.Second), srv.getHTTPClient(2*time.Second)
