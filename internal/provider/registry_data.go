@@ -117,7 +117,7 @@ func init() {
 		DeviceCodeURL: "https://copilot.tencent.com/v2/plugin/auth/state",
 		TokenURL:      "https://copilot.tencent.com/v2/plugin/auth/token",
 		Headers: map[string]string{
-			"User-Agent":          "CLI/2.108.1 CodeBuddy/2.108.1",
+			"User-Agent":          "CLI/2.177.1 CodeBuddy/2.177.1",
 			"X-Product":           "SaaS",
 			"X-IDE-Type":          "CLI",
 			"X-IDE-Name":          "CLI",
@@ -142,7 +142,7 @@ func init() {
 		DeviceCodeURL: "https://www.codebuddy.ai/v2/plugin/auth/state",
 		TokenURL:      "https://www.codebuddy.ai/v2/plugin/auth/token",
 		Headers: map[string]string{
-			"User-Agent":          "CLI/2.108.1 CodeBuddy/2.108.1",
+			"User-Agent":          "CLI/2.177.1 CodeBuddy/2.177.1",
 			"X-Product":           "SaaS",
 			"X-Domain":            "www.codebuddy.ai",
 			"x-requested-with":    "XMLHttpRequest",

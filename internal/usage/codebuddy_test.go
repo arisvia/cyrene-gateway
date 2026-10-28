@@ -15,7 +15,7 @@ func TestFetchCodebuddy(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer cb-test-token" {
 			t.Errorf("expected Bearer cb-test-token, got %q", got)
 		}
-		if got := r.Header.Get("User-Agent"); got != "CLI/2.108.1 CodeBuddy/2.108.1" {
+		if got := r.Header.Get("User-Agent"); got != "CLI/2.177.1 CodeBuddy/2.177.1" {
 			t.Errorf("unexpected User-Agent: %q", got)
 		}
 		if got := r.Header.Get("x-codebuddy-request"); got != "1" {

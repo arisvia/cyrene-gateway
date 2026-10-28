@@ -500,8 +500,8 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK on live config fetch, got %d: %s", w.Code, w.Body.String())
 	}
-	if receivedUA != "CLI/2.108.1 CodeBuddy/2.108.1" {
-		t.Errorf("expected User-Agent CLI/2.108.1 CodeBuddy/2.108.1, got %q", receivedUA)
+	if receivedUA != "CLI/2.177.1 CodeBuddy/2.177.1" {
+		t.Errorf("expected User-Agent CLI/2.177.1 CodeBuddy/2.177.1, got %q", receivedUA)
 	}
 	if receivedDomain != "www.codebuddy.ai" {
 		t.Errorf("expected X-Domain www.codebuddy.ai, got %q", receivedDomain)

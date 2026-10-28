@@ -395,11 +395,11 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 	case "codebuddy-cn":
 		refreshURL = "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
 		domain = "copilot.tencent.com"
-		userAgent = "CLI/2.108.1 CodeBuddy/2.108.1"
+		userAgent = "CLI/2.177.1 CodeBuddy/2.177.1"
 	default: // codebuddy (intl)
 		refreshURL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
 		domain = "www.codebuddy.ai"
-		userAgent = "CLI/2.108.1 CodeBuddy/2.108.1"
+		userAgent = "CLI/2.177.1 CodeBuddy/2.177.1"
 	}
 
 	req, err := http.NewRequest("POST", refreshURL, strings.NewReader("{}"))

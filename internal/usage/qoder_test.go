@@ -20,7 +20,7 @@ func TestFetchQoder(t *testing.T) {
 			t.Errorf("expected Bearer jt-test-token, got %q", got)
 		}
 		for header, want := range map[string]string{
-			"User-Agent": "qodercli/1.0.0", "Cosy-Version": "1.26.0", "Cosy-ClientType": "5", "Accept": "application/json",
+			"User-Agent": "qodercli/1.1.80", "Cosy-Version": "1.26.0", "Cosy-ClientType": "5", "Accept": "application/json",
 		} {
 			if got := r.Header.Get(header); got != want {
 				t.Errorf("expected %s: %q, got %q", header, want, got)

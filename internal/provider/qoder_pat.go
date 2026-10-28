@@ -191,7 +191,7 @@ func qoderExchangeJobToken(providerID, pat string, client *http.Client) (jobToke
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "qodercli/1.0.0")
+	req.Header.Set("User-Agent", "qodercli/1.1.80")
 	req.Header.Set("Cosy-Version", qoderIDEVersion)
 	req.Header.Set("Cosy-ClientType", qoderClientType)
 
@@ -248,7 +248,7 @@ func qoderFetchUserID(providerID, jobToken string, client *http.Client) string {
 	}
 	req.Header.Set("Authorization", "Bearer "+jobToken)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "qodercli/1.0.0")
+	req.Header.Set("User-Agent", "qodercli/1.1.80")
 
 	resp, err := client.Do(req)
 	if err != nil {

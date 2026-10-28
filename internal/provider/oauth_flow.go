@@ -425,11 +425,11 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 	case "codebuddy", "codebuddy-cn":
 		platform := "CLI"
 		domain := "copilot.tencent.com"
-		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
+		userAgent := "CLI/2.177.1 CodeBuddy/2.177.1"
 		if providerID == "codebuddy" {
 			platform = "ide"
 			domain = "www.codebuddy.ai"
-			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
+			userAgent = "IDE/2.177.1 CodeBuddy/2.177.1"
 		}
 		targetURL := info.DeviceCodeURL + "?platform=" + platform
 		req, reqErr := http.NewRequest("POST", targetURL, strings.NewReader("{}"))
@@ -607,10 +607,10 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 
 	case "codebuddy", "codebuddy-cn":
 		domain := "copilot.tencent.com"
-		userAgent := "CLI/2.108.1 CodeBuddy/2.108.1"
+		userAgent := "CLI/2.177.1 CodeBuddy/2.177.1"
 		if providerID == "codebuddy" {
 			domain = "www.codebuddy.ai"
-			userAgent = "IDE/2.108.1 CodeBuddy/2.108.1"
+			userAgent = "IDE/2.177.1 CodeBuddy/2.177.1"
 		}
 		pollURL := info.TokenURL + "?state=" + url.QueryEscape(deviceCode)
 		req, reqErr := http.NewRequest("GET", pollURL, nil)

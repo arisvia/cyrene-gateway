@@ -168,7 +168,7 @@ func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
 	if format != "openai" {
 		t.Errorf("expected openai format, got %s", format)
 	}
-	if req.Header.Get("User-Agent") != "CLI/2.108.1 CodeBuddy/2.108.1" {
+	if req.Header.Get("User-Agent") != "CLI/2.177.1 CodeBuddy/2.177.1" {
 		t.Errorf("unexpected User-Agent: %s", req.Header.Get("User-Agent"))
 	}
 	if req.Header.Get("X-Domain") != "www.codebuddy.ai" {
