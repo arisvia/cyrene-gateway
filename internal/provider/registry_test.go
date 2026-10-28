@@ -356,3 +356,12 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyCodexAliasResolvesToOpenAI(t *testing.T) {
+	if got := ResolveProviderAlias("codex"); got != "openai" {
+		t.Errorf("ResolveProviderAlias(codex) = %q, want openai", got)
+	}
+	if _, ok := GetProvider("codex"); ok {
+		t.Error("codex must not exist as a canonical provider after the merge")
+	}
+}

@@ -160,11 +160,35 @@ func (d *DB) migrate() error {
 	if err := d.ensureAPIKeyColumns(); err != nil {
 		return fmt.Errorf("ensure apiKeys columns: %w", err)
 	}
+	if err := d.migrateCodexIntoOpenAI(); err != nil {
+		return err
+	}
 	// Set schema version
 	_, err := d.conn.Exec(
 		`INSERT OR REPLACE INTO _meta (key, value) VALUES ('schema_version', '3')`,
 	)
 	return err
+}
+
+// migrateCodexIntoOpenAI reassigns legacy standalone "codex" connections to the
+// unified "openai" provider. The Codex OAuth route (chatgpt.com/backend-api/
+// codex/responses) is now openai's OAuthBaseURL, so forcing authType='oauth'
+// preserves the upstream endpoint and bearer behavior for every codex row —
+// including api-key ones, whose raw key still wins in ResolveCredentials.
+// Guarded by a _meta marker so it runs exactly once.
+func (d *DB) migrateCodexIntoOpenAI() error {
+	var done string
+	if err := d.conn.QueryRow(`SELECT value FROM _meta WHERE key='codex_merged_openai'`).Scan(&done); err == nil && done == "1" {
+		return nil
+	}
+	if _, err := d.conn.Exec(`UPDATE providerConnections SET provider='openai', authType='oauth' WHERE provider='codex'`); err != nil {
+		return fmt.Errorf("merge codex connections into openai: %w", err)
+	}
+	_, err := d.conn.Exec(`INSERT OR REPLACE INTO _meta (key, value) VALUES ('codex_merged_openai', '1')`)
+	if err != nil {
+		return fmt.Errorf("record codex merge migration: %w", err)
+	}
+	return nil
 }
 
 func (d *DB) ensureAPIKeyColumns() error {
