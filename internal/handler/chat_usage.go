@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
@@ -153,7 +154,19 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	}
 }
 
-// selectAvailableConnection picks the best connection using priority, cooldown, model locks, and quota.
-func (s *Server) selectAvailableConnection(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool) *model.ProviderConnection {
-	return provider.SelectCredentialWithQuota(conns, modelName, excludeIDs, s.quotaChecker())
+// selectAvailableConnection picks the best connection using priority, cooldown,
+// model locks, and quota. A non-empty sessionKey pins consecutive turns of one
+// conversation to the same account to keep upstream prompt KV caches warm.
+func (s *Server) selectAvailableConnection(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, sessionKey string) *model.ProviderConnection {
+	return provider.SelectCredentialSticky(conns, modelName, excludeIDs, s.quotaChecker(), sessionKey)
+}
+
+// requestSessionKey resolves the affinity key for a request: an explicit client
+// hint wins (length-bounded before it can enter the routing table), otherwise
+// the conversation identity embedded in the raw body.
+func requestSessionKey(r *http.Request, rawBody []byte) string {
+	if v := r.Header.Get("X-Cyrene-Session-ID"); v != "" {
+		return provider.BoundSessionKey(v)
+	}
+	return provider.SessionKeyFromRawBody(rawBody)
 }

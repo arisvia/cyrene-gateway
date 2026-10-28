@@ -28,6 +28,8 @@ func newLocalRequest(method, target string, body io.Reader) *http.Request {
 
 func setupTestServer(t *testing.T) (*Server, *db.DB) {
 	t.Helper()
+	// Session affinity is process-global routing state; isolate tests from it.
+	provider.ResetSessionAffinity()
 	database, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)

@@ -205,48 +205,19 @@ func SelectCredential(conns []model.ProviderConnection, modelName string, exclud
 // that tier so equal-priority accounts share the load instead of the first row
 // absorbing all traffic.
 func SelectCredentialWithQuota(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker) *model.ProviderConnection {
-	now := time.Now()
+	pool := eligiblePool(conns, modelName, excludeIDs, quotaFn, time.Now())
+	return pickFromPool(pool)
+}
 
+// eligiblePool returns the active rotation pool: the first priority tier (OAuth
+// prefix within it) that still holds eligible connections, or nil when none do.
+func eligiblePool(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker, now time.Time) []*model.ProviderConnection {
 	eligible := make([]*model.ProviderConnection, 0, len(conns))
 	for i := range conns {
 		c := &conns[i]
-
-		// Skip excluded connections (already tried and failed)
-		if excludeIDs != nil && excludeIDs[c.ID] {
-			continue
+		if connEligible(c, modelName, excludeIDs, quotaFn, now) {
+			eligible = append(eligible, c)
 		}
-
-		// Skip inactive
-		if !c.IsActive {
-			continue
-		}
-
-		// Skip rate-limited (cooldown not expired)
-		if c.Data.RateLimitedUntil != "" {
-			until, err := time.Parse(time.RFC3339, c.Data.RateLimitedUntil)
-			if err == nil && until.After(now) {
-				continue
-			}
-		}
-
-		// Skip model-locked connections
-		if modelName != "" && IsModelLockActive(c, modelName) {
-			continue
-		}
-
-		// Skip over-quota connections
-		if c.Data.QuotaLimit > 0 && quotaFn != nil {
-			period := c.Data.QuotaPeriod
-			if period == "" {
-				period = "daily"
-			}
-			used := quotaFn(c.ID, period)
-			if used >= c.Data.QuotaLimit {
-				continue
-			}
-		}
-
-		eligible = append(eligible, c)
 	}
 
 	if len(eligible) == 0 {
@@ -281,13 +252,96 @@ func SelectCredentialWithQuota(conns []model.ProviderConnection, modelName strin
 	if oauthCount > 0 {
 		pool = tierConns[:oauthCount]
 	}
+	return pool
+}
 
+// pickFromPool rotates round-robin inside the active pool.
+func pickFromPool(pool []*model.ProviderConnection) *model.ProviderConnection {
+	if len(pool) == 0 {
+		return nil
+	}
 	if len(pool) == 1 {
 		return pool[0]
 	}
-
-	key := pool[0].Provider + "|" + strconv.Itoa(tier)
+	key := pool[0].Provider + "|" + strconv.Itoa(pool[0].Priority)
 	return pool[credentialRoundRobin.next(key, len(pool))]
+}
+
+// connEligible reports whether a connection may serve a request right now:
+// not excluded (already tried), active, out of cooldown, unlocked for the
+// model, and under its quota.
+func connEligible(c *model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker, now time.Time) bool {
+	// Skip excluded connections (already tried and failed)
+	if excludeIDs != nil && excludeIDs[c.ID] {
+		return false
+	}
+
+	// Skip inactive
+	if !c.IsActive {
+		return false
+	}
+
+	// Skip rate-limited (cooldown not expired)
+	if c.Data.RateLimitedUntil != "" {
+		until, err := time.Parse(time.RFC3339, c.Data.RateLimitedUntil)
+		if err == nil && until.After(now) {
+			return false
+		}
+	}
+
+	// Skip model-locked connections
+	if modelName != "" && IsModelLockActive(c, modelName) {
+		return false
+	}
+
+	// Skip over-quota connections
+	if c.Data.QuotaLimit > 0 && quotaFn != nil {
+		period := c.Data.QuotaPeriod
+		if period == "" {
+			period = "daily"
+		}
+		if used := quotaFn(c.ID, period); used >= c.Data.QuotaLimit {
+			return false
+		}
+	}
+
+	return true
+}
+
+// SelectCredentialSticky is SelectCredentialWithQuota plus session affinity:
+// consecutive turns of the same conversation resolve to the same account so the
+// upstream prompt KV cache stays warm (the omnicell-router idea — most routers
+// round-robin conversations apart and pay full prompt cost every turn).
+//
+// A binding only survives while the account is inside the ACTIVE priority-tier
+// pool: if it cools down, locks, exhausts quota, or gets excluded mid-request,
+// selection falls back to the normal ordering and rebinds. Crucially, when a
+// higher tier recovers (its connections re-enter the pool), the conversation
+// migrates back — priority semantics are never traded away for cache warmth,
+// and the sliding TTL cannot strand a session on a backup tier forever.
+func SelectCredentialSticky(conns []model.ProviderConnection, modelName string, excludeIDs map[string]bool, quotaFn QuotaChecker, sessionKey string) *model.ProviderConnection {
+	if sessionKey == "" {
+		return SelectCredentialWithQuota(conns, modelName, excludeIDs, quotaFn)
+	}
+
+	now := time.Now()
+	pool := eligiblePool(conns, modelName, excludeIDs, quotaFn, now)
+	if len(pool) == 0 {
+		return nil
+	}
+
+	key := pool[0].Provider + "|" + sessionKey
+	if id, ok := credentialAffinity.get(key, now); ok {
+		for _, c := range pool {
+			if c.ID == id {
+				return c
+			}
+		}
+	}
+
+	chosen := pickFromPool(pool)
+	credentialAffinity.bind(key, chosen.ID, now)
+	return chosen
 }
 
 func isOAuthConnection(c *model.ProviderConnection) bool {

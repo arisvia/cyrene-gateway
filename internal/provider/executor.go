@@ -391,42 +391,13 @@ func stableCodebuddyUUID(key string) string {
 }
 
 func applyCodebuddyConversationHeaders(req *http.Request, bodyMap map[string]any) {
-	var conversationKey string
-	for _, key := range []string{"session_id", "prompt_cache_key", "conversation_id"} {
-		if val, ok := bodyMap[key].(string); ok && val != "" {
-			conversationKey = val
-			break
-		}
-	}
+	// Canonical conversation identity. Upstream tagging additionally accepts the
+	// first user message as a last resort (routing affinity deliberately does
+	// not, so similar openings of unrelated chats never share an account).
+	conversationKey := SessionKeyFromBodyMap(bodyMap)
 	if conversationKey == "" {
-		if msgs, ok := bodyMap["messages"].([]any); ok {
-			for _, m := range msgs {
-				if msgMap, ok := m.(map[string]any); ok {
-					if role, _ := msgMap["role"].(string); role == "user" {
-						switch c := msgMap["content"].(type) {
-						case string:
-							if c != "" {
-								conversationKey = "cbai:" + c
-							}
-						case []any:
-							var parts []string
-							for _, b := range c {
-								if bMap, ok := b.(map[string]any); ok {
-									if text, ok := bMap["text"].(string); ok && text != "" {
-										parts = append(parts, text)
-									}
-								}
-							}
-							if len(parts) > 0 {
-								conversationKey = "cbai:" + strings.Join(parts, "\n")
-							}
-						}
-						if conversationKey != "" {
-							break
-						}
-					}
-				}
-			}
+		if first := FirstUserText(bodyMap); first != "" {
+			conversationKey = "cbai:" + first
 		}
 	}
 

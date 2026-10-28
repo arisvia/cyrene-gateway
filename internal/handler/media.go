@@ -677,7 +677,7 @@ func (s *Server) resolveMediaCredentials(providerID string) (*model.ProviderConn
 		return nil, media.Credentials{}
 	}
 
-	conn := s.selectAvailableConnection(conns, "", nil)
+	conn := s.selectAvailableConnection(conns, "", nil, "")
 	if conn == nil {
 		return nil, media.Credentials{}
 	}

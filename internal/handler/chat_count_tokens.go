@@ -52,7 +52,7 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	// If the model belongs to an active official Anthropic connection, attempt upstream counting
 	if modelInfo, err := provider.ResolveModel(modelStr, s.DB); err == nil && (modelInfo.Provider == "anthropic" || modelInfo.Provider == "claude") {
 		if conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider); err == nil && len(conns) > 0 {
-			if conn := s.selectAvailableConnection(conns, modelInfo.Model, nil); conn != nil {
+			if conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, ""); conn != nil {
 				providerInfo, _ := provider.GetProvider(modelInfo.Provider)
 				baseURL := providerInfo.BaseURL
 				if conn.Data.BaseURL != "" {

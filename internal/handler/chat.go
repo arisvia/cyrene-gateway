@@ -316,6 +316,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// Walk the pool until an account serves the request. Without this loop a
 	// single exhausted or throttled account failed the client's request even
 	// when other accounts for the same provider had capacity.
+	sessionKey := requestSessionKey(r, rawBody)
 	tried := make(map[string]bool)
 	var lastStatus int
 	var lastBody []byte
@@ -331,7 +332,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			}
 			conn = pinned
 		} else {
-			conn = s.selectAvailableConnection(conns, modelInfo.Model, tried)
+			conn = s.selectAvailableConnection(conns, modelInfo.Model, tried, sessionKey)
 		}
 		if conn == nil {
 			break

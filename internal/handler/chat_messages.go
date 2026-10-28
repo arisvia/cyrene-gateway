@@ -135,6 +135,17 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// delegate directly to handleMessagesViaChat BEFORE selecting a connection.
 	// Calling selectAvailableConnection here and then again in handleSingleModelChat advances
 	// the round-robin counter twice per request, collapsing equal-priority load balancing.
+	//
+	// Resolve the affinity key from the Anthropic body and propagate it via the
+	// request header: the via-chat delegation translates the body and drops
+	// metadata.user_id, so the header is the only carrier for both branches.
+	sessionKey := r.Header.Get("X-Cyrene-Session-ID")
+	if sessionKey == "" {
+		sessionKey = provider.SessionKeyFromBodyMap(reqBody)
+		if sessionKey != "" {
+			r.Header.Set("X-Cyrene-Session-ID", sessionKey)
+		}
+	}
 	if providerInfo.APIType != "anthropic" || modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" || modelInfo.Provider == "antigravity" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
 		return
@@ -148,7 +159,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
+	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),

@@ -19,6 +19,10 @@ import (
 
 // handleComboChat processes a combo request with fallback/round-robin strategy.
 func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte, combo *model.Combo) {
+	// One conversation stays on one account per provider across combo steps and
+	// re-dispatches, keeping upstream prompt KV caches warm.
+	sessionKey := requestSessionKey(r, rawBody)
+
 	// Determine strategy from combo kind or global settings
 	strategy := provider.StrategyFallback
 	switch combo.Kind {
@@ -99,7 +103,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			continue
 		}
 
-		conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
+		conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
 		if conn == nil {
 			lastError = fmt.Sprintf("all accounts rate-limited for: %s", modelInfo.Provider)
 			lastStatus = 503

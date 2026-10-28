@@ -127,7 +127,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil)
+	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, "")
 	if conn == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "all accounts rate-limited"})
 		return

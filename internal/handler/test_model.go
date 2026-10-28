@@ -52,7 +52,7 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if conn == nil {
-		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil)
+		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil, "")
 	}
 	if conn == nil {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "all connections rate-limited"})
