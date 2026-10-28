@@ -205,3 +205,32 @@ func TestEmbeddingsOAuthConnectionSendsBearer(t *testing.T) {
 		t.Fatalf("OAuth embeddings request must carry the access token, got %q", authHeader)
 	}
 }
+
+// Dedicated-handler providers (antigravity) ship with an empty registry base
+// URL; the OpenAI-style /embeddings proxy cannot construct a target for them.
+// Must fail with a clean 400 instead of dialing the relative "/embeddings".
+func TestEmbeddingsEmptyBaseURLRejectsCleanly(t *testing.T) {
+	const pid = "audit-emb-emptybase"
+	provider.Registry[pid] = provider.ProviderInfo{ID: pid, Name: pid, BaseURL: "", APIType: "openai", AuthType: "oauth"}
+	defer delete(provider.Registry, pid)
+
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "emb-eb", Provider: pid, AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "tok"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("POST", "/v1/embeddings", strings.NewReader(`{"model":"`+pid+`/m","input":"hi"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("empty base URL must yield 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "no base URL") {
+		t.Fatalf("400 body must explain the cause, got %s", w.Body.String())
+	}
+}

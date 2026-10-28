@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -158,6 +159,13 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	baseURL = strings.TrimSuffix(baseURL, "/chat/completions")
 	baseURL = strings.TrimSuffix(baseURL, "/completions")
 	targetURL := strings.TrimRight(baseURL, "/") + "/embeddings"
+	if baseURL == "" {
+		// The OpenAI-style /embeddings proxy needs an absolute base; providers
+		// that only speak through dedicated handlers (or per-connection
+		// overrides) cannot serve it. Fail clean instead of dialing "/embeddings".
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider %s has no base URL for embeddings; set a connection base URL override", modelInfo.Provider)})
+		return
+	}
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
@@ -180,7 +188,12 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	client := s.getHTTPClient(2 * time.Minute)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
+		slog.Error("embeddings upstream request failed",
+			slog.String("target", targetURL),
+			slog.String("connection", conn.ID),
+			slog.String("error", err.Error()),
+		)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("upstream request failed: %v", err)})
 		return
 	}
 	defer resp.Body.Close()
