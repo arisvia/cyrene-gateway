@@ -26,6 +26,11 @@ const ProviderDetail: Component = () => {
   const [saving, setSaving] = createSignal(false)
   const [testing, setTesting] = createSignal(false)
   const [tab, setTab] = createSignal<'overview' | 'models' | 'chat'>('overview')
+  // Clock signal so expired cooldown badges retire on time instead of
+  // lingering until the next store reload or a successful call.
+  const [nowTick, setNowTick] = createSignal(Date.now())
+  const cooldownTimer = window.setInterval(() => setNowTick(Date.now()), 30_000)
+  onCleanup(() => window.clearInterval(cooldownTimer))
   // Chat 测试状态
   const [selectedModel, setSelectedModel] = createSignal('')
   const [prompt, setPrompt] = createSignal('')
@@ -506,10 +511,9 @@ const ProviderDetail: Component = () => {
                       <For each={accounts()}>
                         {(acc, idx) => {
                           const isCurrent = () => acc.id === c().id
-                          const cooling = () => !!acc.data?.rateLimitedUntil
-
+                          const cooling = () => !!acc.data?.rateLimitedUntil && new Date(String(acc.data.rateLimitedUntil)).getTime() > nowTick()
                           return (
-                            <div
+                          <div
                               role="button"
                               tabIndex={0}
                               aria-label={t('providerDetail.selectAccount', { name: getAccountDisplayName(acc, idx()) })}

@@ -528,3 +528,14 @@ describe('ProviderDetail header group state hydration', () => {
     expect(headerToggle().getAttribute('aria-checked')).toBe('false')
   })
 })
+
+describe('ProviderDetail cooldown badge expiry', () => {
+  it('renders the badge only while rateLimitedUntil is in the future', async () => {
+    connections = [
+      { id: 'first', provider: 'github', name: 'Primary account', authType: 'oauth', priority: 1, isActive: true, data: { rateLimitedUntil: '2999-01-01T00:00:00Z' } },
+      { id: 'selected', provider: 'github', name: 'Selected account', authType: 'oauth', priority: 7, isActive: true, data: { rateLimitedUntil: '2000-01-01T00:00:00Z' } },
+    ]
+    await openPage('detail')
+    expect(screen.getAllByText(t('providerDetail.coolingBadge'))).toHaveLength(1)
+  })
+})
