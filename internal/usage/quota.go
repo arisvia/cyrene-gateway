@@ -62,7 +62,7 @@ func quotaHTTPClient(client *http.Client) *http.Client {
 
 // quotaFetchers maps provider id → fetcher. Only apikey-path providers with a
 // real upstream quota endpoint are wired here (Phase 31); OAuth-only quota
-// (gemini CLI, claude, codex, kimi) lands with the OAuth framework (Phase 33-34).
+// (gemini CLI, claude, openai, kimi) lands with the OAuth framework (Phase 33-34).
 var quotaFetchers = map[string]QuotaFetcher{
 	"deepseek":     fetchDeepseek,
 	"glm":          fetchGLM,

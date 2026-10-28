@@ -6,7 +6,6 @@
 
 ### Fixed
 - **Qoder 与 CodeBuddy (Intl) 测试连接 404 误报**：Qoder OAuth 设备令牌改为沿用真实聊天链路的 COSY 签名探测模型列表端点，不再在 SSE 聊天地址后拼接不存在的路径；CodeBuddy Intl 改探与模型同步同源的 `/v3/config` 账户配置端点。
-- **Codex 并入 OpenAI 后的旧连接与模型别名兼容**：启动时一次性迁移将库内遗留的 `codex` 连接改写为统一 `openai` 提供商并锁定 OAuth 分流，保持原 ChatGPT/Codex 上游端点不变；客户端 `codex/模型` 前缀点名经遗留别名继续解析，修复合并后调用报 `503 no active credentials for provider: openai` 的问题。
 - **提供商详情页顶部开关改为组级批量控制**：一键同时启用或停用该提供商名下全部账号，顶部徽标按全启用/部分启用/全停用三态显示，消除多账号场景下仅影响单条连接的歧义。
 
 ## [1.8.0] - 2026-10-27

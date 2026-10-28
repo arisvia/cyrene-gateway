@@ -280,7 +280,7 @@ func TestShouldRefresh_WithLeadOverride(t *testing.T) {
 	// A token expiring in 6 days should NOT trigger.
 	conn.Data.ExpiresAt = time.Now().Add(6 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	if ShouldRefresh(conn) {
-		t.Error("codex token expiring in 6 days should NOT trigger refresh")
+		t.Error("openai token expiring in 6 days should NOT trigger refresh")
 	}
 }
 

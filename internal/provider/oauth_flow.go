@@ -277,7 +277,7 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 	default:
-		// Standard form-encoded exchange (codex, gemini, antigravity, etc.)
+		// Standard form-encoded exchange (openai, gemini, antigravity, etc.)
 		params := url.Values{
 			"grant_type":   {"authorization_code"},
 			"code":         {code},

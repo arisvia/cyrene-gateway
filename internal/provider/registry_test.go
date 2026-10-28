@@ -167,8 +167,8 @@ func TestRegistryOfficialNames(t *testing.T) {
 	}
 }
 
-// TestRegistryDualAuth verifies Phase 36 T4/T5 dual-auth entries: claude,
-// codex and qoder advertise [oauth, apikey]; qoder moved free→oauth.
+// TestRegistryDualAuth verifies Phase 36 T4/T5 dual-auth entries: claude and
+// qoder advertise [oauth, api-key]; qoder moved free→oauth.
 func TestRegistryDualAuth(t *testing.T) {
 	for _, id := range []string{"claude", "qoder"} {
 		p, ok := Registry[id]
@@ -354,14 +354,5 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 		default:
 			t.Errorf("provider %q needs an explicit branch in sanitizeCodebuddyRequest", id)
 		}
-	}
-}
-
-func TestLegacyCodexAliasResolvesToOpenAI(t *testing.T) {
-	if got := ResolveProviderAlias("codex"); got != "openai" {
-		t.Errorf("ResolveProviderAlias(codex) = %q, want openai", got)
-	}
-	if _, ok := GetProvider("codex"); ok {
-		t.Error("codex must not exist as a canonical provider after the merge")
 	}
 }

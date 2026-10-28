@@ -97,25 +97,12 @@ var Registry map[string]ProviderInfo
 // aliasMap is built once for fast lookup
 var aliasMap map[string]string
 
-// legacyAliases maps retired provider IDs to their merge target so existing
-// client "provider/model" strings (e.g. codex/gpt-5-codex) keep resolving.
-// Like every alias, they only name an upstream inside a request; stored data
-// is migrated to the canonical ID (see db.migrateCodexIntoOpenAI).
-var legacyAliases = map[string]string{
-	"codex": "openai",
-}
-
 func buildAliasMap() map[string]string {
 	m := make(map[string]string, len(Registry)*2)
 	for id, p := range Registry {
 		m[id] = id
 		if p.Alias != "" && p.Alias != id {
 			m[p.Alias] = id
-		}
-	}
-	for from, to := range legacyAliases {
-		if _, exists := m[from]; !exists {
-			m[from] = to
 		}
 	}
 	return m
