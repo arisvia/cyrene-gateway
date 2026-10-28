@@ -110,6 +110,7 @@ const ProviderDetail: Component = () => {
       .filter(p => p.provider === targetId)
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
   }
+  const allAccountsActive = () => accounts().length > 0 && accounts().every(a => a.isActive)
 
   const providerDisplayName = () => regInfo()?.name || conn()?.provider || t('providerDetail.details')
 
@@ -383,7 +384,9 @@ const ProviderDetail: Component = () => {
             }
             badge={
               <div class="flex items-center gap-2 flex-wrap">
-                <Badge tone={c().isActive ? 'green' : 'gray'}>{c().isActive ? t('common.enabled') : t('common.disabled')}</Badge>
+                <Badge tone={allAccountsActive() ? 'green' : accounts().some(a => a.isActive) ? 'amber' : 'gray'}>
+                  {allAccountsActive() ? t('common.enabled') : accounts().some(a => a.isActive) ? t('providers.partiallyEnabled', { active: accounts().filter(a => a.isActive).length, total: accounts().length }) : t('common.disabled')}
+                </Badge>
                 <AuthBadge authType={c().authType} />
                 <span class="text-xs text-faint font-mono px-1.5 py-0.5 rounded bg-surface-inset border border-subtle max-w-full wrap-anywhere">
                   {c().provider}
@@ -394,7 +397,18 @@ const ProviderDetail: Component = () => {
             actions={
               <div class="flex flex-wrap items-center gap-3 min-w-0">
                 <Button size="sm" variant="secondary" loading={testing()} onClick={runTest}>{t('providerDetail.testConnection')}</Button>
-                <Toggle ariaLabel={`${t('common.enabled')}: ${providerDisplayName()}`} checked={c().isActive} onChange={() => { store.toggleProvider(c()); load() }} />
+                <Toggle
+                  ariaLabel={`${t('common.enabled')}: ${providerDisplayName()}`}
+                  checked={allAccountsActive()}
+                  onChange={async () => {
+                    const next = !allAccountsActive()
+                    for (const acc of accounts()) {
+                      if (acc.isActive !== next) await store.toggleProvider(acc)
+                    }
+                    await store.loadProvidersOnly()
+                    await load()
+                  }}
+                />
               </div>
             }
           >
