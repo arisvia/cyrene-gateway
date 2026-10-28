@@ -99,11 +99,20 @@ var aliasMap map[string]string
 
 func buildAliasMap() map[string]string {
 	m := make(map[string]string, len(Registry)*2)
-	for id, p := range Registry {
+	for id := range Registry {
 		m[id] = id
-		if p.Alias != "" && p.Alias != id {
-			m[p.Alias] = id
+	}
+	// Aliases are inserted after all canonical ids so a collision is
+	// deterministic and fatal at init: a future Alias shadowing another
+	// provider's id (or alias) would otherwise resolve by map-iteration luck.
+	for id, p := range Registry {
+		if p.Alias == "" || p.Alias == id {
+			continue
 		}
+		if existing, ok := m[p.Alias]; ok {
+			panic("provider registry: alias " + p.Alias + " of " + id + " collides with " + existing)
+		}
+		m[p.Alias] = id
 	}
 	return m
 }

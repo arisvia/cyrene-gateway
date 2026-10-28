@@ -4,12 +4,12 @@
 
 ## [1.8.2] - 2026-10-28
 
-### Changed
-- **历史兼容垫片彻底移除**：登录口令校验严格化 Argon2id（删除旧 HMAC 回退与就地升级分支，现库已全量 Argon2id 核实）；`organization_name` 蛇形键的双读与 CAS 条件一并拆除（现行写入方唯一使用驼峰键且现库零命中）；前端废弃 IndexedDB 库的一次性清理逻辑随批次退役。
-
 ### Added
 - **会话亲和负载均衡(上游 KV 缓存保护)**:携带显式会话标识的请求(`prompt_cache_key`/`session_id`/`conversation_id`、Anthropic `metadata.user_id`,或 `X-Cyrene-Session-ID` 头)在多轮对话中钉住同一账号,保证上游前缀缓存高命中,长会话不再逐轮全价重付 prompt token;绑定账号进入冷却、模型锁或配额上限时无缝迁移并重绑,故障转移与配额语义零改动。跨会话仍按优先级等权均衡;无会话标识的请求完全不受影响——刻意不以消息内容猜测会话,避免无关对话被误钉同一账号。
 - **全路径账号级容灾统一**:Anthropic Messages 原生直通与 Combo 步骤现与聊天管线共享同账号换号语义——账号级故障(429/配额/5xx/网络)自动改试下一账号,Combo 会先耗尽同模型全部账号再降级到下一模型,请求级 4xx 仍立即跳模型;单账号被限流不再直接打穿到客户端,也不再误伤健康模型的轮换计数。
+
+### Changed
+- **历史兼容垫片彻底移除**：登录口令校验严格化 Argon2id（删除旧 HMAC 回退与就地升级分支，现库已全量 Argon2id 核实）；`organization_name` 蛇形键的双读与 CAS 条件一并拆除（现行写入方唯一使用驼峰键且现库零命中）；前端废弃 IndexedDB 库的一次性清理逻辑随批次退役。
 
 ### Fixed
 - **Qoder 与 CodeBuddy (Intl) 测试连接 404 误报**：Qoder OAuth 设备令牌改为沿用真实聊天链路的 COSY 签名探测模型列表端点，不再在 SSE 聊天地址后拼接不存在的路径；CodeBuddy Intl 改探与模型同步同源的 `/v3/config` 账户配置端点。

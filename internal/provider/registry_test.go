@@ -356,3 +356,29 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildAliasMapCollisionGuard(t *testing.T) {
+	original := Registry
+	defer func() { Registry = original }()
+
+	Registry = map[string]ProviderInfo{
+		"bravo":   {ID: "bravo", Alias: "b"},
+		"charlie": {ID: "charlie", Alias: "c"},
+	}
+	m := buildAliasMap()
+	if m["b"] != "bravo" || m["c"] != "charlie" || m["bravo"] != "bravo" {
+		t.Fatalf("alias map missing entries: %+v", m)
+	}
+
+	// An alias shadowing another provider's canonical id must panic at init.
+	Registry = map[string]ProviderInfo{
+		"bravo":   {ID: "bravo", Alias: "charlie"},
+		"charlie": {ID: "charlie"},
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("alias/id collision must panic")
+		}
+	}()
+	buildAliasMap()
+}
