@@ -215,15 +215,11 @@ function createGatewayStore() {
       name?: string
       proxyUrl?: string
       type?: string
-      noProxy?: string
       strictProxy?: boolean
     }
     name?: string
     proxyUrl?: string
-    type?: string
-    noProxy?: string
     strictProxy?: boolean
-    boundConnections?: number
   }
 
   function loadProxyPools() {
@@ -236,9 +232,7 @@ function createGatewayStore() {
         proxyUrl: p.data?.proxyUrl ?? p.proxyUrl ?? '',
         type: p.data?.type ?? p.type ?? 'http',
         isActive: p.isActive ?? true,
-        noProxy: p.data?.noProxy ?? p.noProxy ?? '',
         strictProxy: p.data?.strictProxy ?? p.strictProxy ?? false,
-        boundConnections: p.boundConnections ?? 0,
       }))
       setProxyPools(mapped)
     })
@@ -381,7 +375,7 @@ function createGatewayStore() {
   }
 
   // ── proxy pools ──
-  async function saveProxyPool(payload: { id?: string; name: string; type: string; proxyUrl: string; noProxy?: string; strictProxy?: boolean }) {
+  async function saveProxyPool(payload: { id?: string; name: string; proxyUrl: string; strictProxy?: boolean }) {
     if (payload.id) {
       await apiPut(`/api/proxy-pools/${payload.id}`, payload)
     } else {

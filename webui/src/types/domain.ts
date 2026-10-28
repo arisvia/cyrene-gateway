@@ -76,9 +76,7 @@ export interface ProxyPool {
   proxyUrl: string
   type: string
   isActive: boolean
-  noProxy?: string
   strictProxy?: boolean
-  boundConnections?: number
 }
 
 export interface Endpoint {

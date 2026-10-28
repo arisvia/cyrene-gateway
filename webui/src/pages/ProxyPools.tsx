@@ -2,7 +2,7 @@ import { type Component, For, Show, createSignal, onMount } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import type { ProxyPool } from '@/types/domain'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, Input, Select, Toggle, Modal, Field, Empty, PageHeader, IconGlobe, Skeleton, LoadState, confirm } from '@/components/ui'
+import { Card, Badge, Button, Input, Toggle, Modal, Field, Empty, PageHeader, IconGlobe, Skeleton, LoadState, confirm } from '@/components/ui'
 
 const ProxyPools: Component = () => {
   const store = useGatewayStore()
@@ -10,21 +10,20 @@ const ProxyPools: Component = () => {
   const [open, setOpen] = createSignal(false)
   const [editing, setEditing] = createSignal<ProxyPool | null>(null)
   const [saving, setSaving] = createSignal(false)
-  const [form, setForm] = createSignal({ name: '', proxyUrl: '', type: 'http', noProxy: '', strictProxy: true })
+  const [form, setForm] = createSignal({ name: '', proxyUrl: '', strictProxy: true })
 
   onMount(() => store.loadProxyPools())
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', proxyUrl: '', type: 'http', noProxy: '', strictProxy: true })
+    setForm({ name: '', proxyUrl: '', strictProxy: true })
     setOpen(true)
   }
 
   function openEdit(p: ProxyPool) {
     setEditing(p)
     setForm({
-      name: p.name || '', proxyUrl: p.proxyUrl || '', type: p.type || 'http',
-      noProxy: p.noProxy || '', strictProxy: p.strictProxy ?? true,
+      name: p.name || '', proxyUrl: p.proxyUrl || '', strictProxy: p.strictProxy ?? true,
     })
     setOpen(true)
   }
@@ -94,8 +93,6 @@ const ProxyPools: Component = () => {
                       <Show when={p.strictProxy}><Badge tone="amber">{t('proxies.strict')}</Badge></Show>
                     </div>
                     <div class="mt-1 text-xs text-faint font-mono truncate">{p.proxyUrl}</div>
-                    <Show when={p.noProxy}>
-                      <div class="text-xs text-faint truncate">{t('proxies.noProxyPrefix')}{p.noProxy}</div>
                     </Show>
                   </div>
                   <div class="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -131,17 +128,6 @@ const ProxyPools: Component = () => {
           <Field label={t('proxies.name')}><Input value={form().name} onInput={v => setForm(f => ({ ...f, name: v }))} placeholder="my-proxy" /></Field>
           <Field label={t('proxies.proxyUrl')} hint={t('proxies.proxyUrlHint')}>
             <Input value={form().proxyUrl} onInput={v => setForm(f => ({ ...f, proxyUrl: v }))} placeholder="http://host:port" />
-          </Field>
-          <Field label={t('proxies.type')}>
-            <Select value={form().type} options={[
-              { value: 'http', label: 'HTTP / HTTPS' },
-              { value: 'vercel', label: 'Vercel Edge' },
-              { value: 'cloudflare', label: 'Cloudflare Worker' },
-              { value: 'deno', label: 'Deno Deploy' },
-            ]} onChange={v => setForm(f => ({ ...f, type: v }))} />
-          </Field>
-          <Field label={t('proxies.noProxy')} hint={t('proxies.noProxyHint')}>
-            <Input value={form().noProxy} onInput={v => setForm(f => ({ ...f, noProxy: v }))} placeholder="localhost,127.0.0.1" />
           </Field>
           <Field label={t('proxies.strictProxy')} hint={t('proxies.strictProxyHint')}>
             <Toggle ariaLabel={t('proxies.strictProxy')} checked={form().strictProxy} onChange={v => setForm(f => ({ ...f, strictProxy: v }))} />

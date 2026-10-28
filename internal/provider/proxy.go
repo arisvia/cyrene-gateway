@@ -28,6 +28,7 @@ const defaultProxyTimeout = 2 * time.Minute
 type ProxyManager struct {
 	mu         sync.RWMutex
 	pools      []model.ProxyPool
+	strict     bool
 	counter    atomic.Int64
 	transports map[proxyRoute]*safeTransport
 }
@@ -47,11 +48,18 @@ func NewProxyManager(pools []model.ProxyPool) *ProxyManager {
 }
 
 // UpdatePools refreshes active pools and closes idle connections on routes no
-// longer selectable. In-flight requests are not interrupted.
+// longer selectable. In-flight requests are not interrupted. A pool flagged
+// StrictProxy makes the manager refuse silent direct fallback even after that
+// pool is deactivated: the operator's "never go bare" intent survives until the
+// pool row itself is deleted.
 func (pm *ProxyManager) UpdatePools(pools []model.ProxyPool) {
 	var active []model.ProxyPool
+	strict := false
 	routes := make(map[string]bool)
 	for _, p := range pools {
+		if p.Data.StrictProxy {
+			strict = true
+		}
 		if p.IsActive && p.Data.ProxyURL != "" {
 			active = append(active, p)
 			route, _ := parseProxyRoute(p.Data.ProxyURL)
@@ -64,6 +72,7 @@ func (pm *ProxyManager) UpdatePools(pools []model.ProxyPool) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.pools = active
+	pm.strict = strict
 	for route, transport := range pm.transports {
 		if !routes[route.proxyURL] {
 			delete(pm.transports, route)
@@ -78,6 +87,17 @@ func (pm *ProxyManager) HasProxies() bool {
 	defer pm.mu.RUnlock()
 	return len(pm.pools) > 0
 }
+
+// strictFailTransport is handed out when a strict proxy pool exists but no
+// proxy route is selectable: every request fails at the transport layer with
+// an explicit refusal instead of silently dialing upstream direct.
+type strictFailTransport struct{}
+
+func (strictFailTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("strict proxy mode: no active proxy pool, refusing direct connection")
+}
+
+func (strictFailTransport) CloseIdleConnections() {}
 
 // NextProxy returns the next proxy URL using round-robin rotation.
 // Returns empty string if no proxies are available.
@@ -105,6 +125,9 @@ func (pm *ProxyManager) GetHTTPClient(allowPrivate bool) *http.Client {
 	defer pm.mu.Unlock()
 
 	proxyURL, parsed := parseProxyRoute(pm.nextProxyLocked())
+	if proxyURL == "" && pm.strict {
+		return &http.Client{Transport: strictFailTransport{}, Timeout: defaultProxyTimeout}
+	}
 	route := proxyRoute{proxyURL: proxyURL, allowPrivate: allowPrivate}
 	transport := pm.transports[route]
 	if transport == nil {

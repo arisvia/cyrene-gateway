@@ -135,9 +135,9 @@ type ProxyPool struct {
 type ProxyPoolData struct {
 	Name        string `json:"name"`
 	ProxyURL    string `json:"proxyUrl"`
-	NoProxy     string `json:"noProxy,omitempty"`
 	StrictProxy bool   `json:"strictProxy"`
-	Type        string `json:"type"` // http, vercel, cloudflare, deno
+	// Type is derived from the ProxyURL scheme at write time (http/https/socks5).
+	Type string `json:"type"`
 }
 
 // UsageEntry represents a single usage record

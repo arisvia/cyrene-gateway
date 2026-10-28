@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -31,8 +32,6 @@ func (s *Server) handleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
 		ProxyURL    string `json:"proxyUrl"`
-		NoProxy     string `json:"noProxy"`
-		Type        string `json:"type"`
 		StrictProxy bool   `json:"strictProxy"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -47,12 +46,10 @@ func (s *Server) handleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxyUrl is required"})
 		return
 	}
-	if _, err := provider.ValidateProxyURL(req.ProxyURL); err != nil {
+	parsed, err := provider.ValidateProxyURL(req.ProxyURL)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid proxyUrl: " + err.Error()})
 		return
-	}
-	if !validProxyTypes[req.Type] {
-		req.Type = "http"
 	}
 
 	p := &model.ProxyPool{
@@ -61,9 +58,11 @@ func (s *Server) handleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 		Data: model.ProxyPoolData{
 			Name:        req.Name,
 			ProxyURL:    req.ProxyURL,
-			NoProxy:     req.NoProxy,
 			StrictProxy: req.StrictProxy,
-			Type:        req.Type,
+			// Type is a display label derived from the URL scheme, never
+			// client-supplied: the dialer keys off the scheme, so a hand-picked
+			// label could only ever drift from reality.
+			Type: proxySchemeLabel(parsed),
 		},
 	}
 
@@ -86,9 +85,7 @@ func (s *Server) handleUpdateProxyPool(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        *string `json:"name"`
 		ProxyURL    *string `json:"proxyUrl"`
-		NoProxy     *string `json:"noProxy"`
 		StrictProxy *bool   `json:"strictProxy"`
-		Type        *string `json:"type"`
 		IsActive    *bool   `json:"isActive"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -108,24 +105,16 @@ func (s *Server) handleUpdateProxyPool(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxyUrl is required"})
 			return
 		}
-		if _, err := provider.ValidateProxyURL(*req.ProxyURL); err != nil {
+		parsed, err := provider.ValidateProxyURL(*req.ProxyURL)
+		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid proxyUrl: " + err.Error()})
 			return
 		}
 		existing.Data.ProxyURL = *req.ProxyURL
-	}
-	if req.NoProxy != nil {
-		existing.Data.NoProxy = *req.NoProxy
+		existing.Data.Type = proxySchemeLabel(parsed)
 	}
 	if req.StrictProxy != nil {
 		existing.Data.StrictProxy = *req.StrictProxy
-	}
-	if req.Type != nil {
-		if !validProxyTypes[*req.Type] {
-			existing.Data.Type = "http"
-		} else {
-			existing.Data.Type = *req.Type
-		}
 	}
 	if req.IsActive != nil {
 		existing.IsActive = *req.IsActive
@@ -141,32 +130,10 @@ func (s *Server) handleUpdateProxyPool(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteProxyPool(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	_, err := s.DB.GetProxyPool(id)
-	if err != nil {
+	if _, err := s.DB.GetProxyPool(id); err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "proxy pool not found"})
 		return
 	}
-
-	// Check if any connection is bound to this pool
-	conns, _ := s.DB.ListConnections()
-	boundCount := 0
-	for _, c := range conns {
-		if c.Data.ProviderSpecificData != nil {
-			if poolID, ok := c.Data.ProviderSpecificData["proxyPoolId"]; ok {
-				if poolID == id {
-					boundCount++
-				}
-			}
-		}
-	}
-	if boundCount > 0 {
-		writeJSON(w, http.StatusConflict, map[string]any{
-			"error":                "proxy pool is currently in use",
-			"boundConnectionCount": boundCount,
-		})
-		return
-	}
-
 	if err := s.DB.DeleteProxyPool(id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete proxy pool"})
 		return
@@ -175,7 +142,19 @@ func (s *Server) handleDeleteProxyPool(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
 }
 
-var validProxyTypes = map[string]bool{"http": true, "vercel": true, "cloudflare": true, "deno": true}
+// proxySchemeLabel turns a validated proxy URL's scheme into the display type.
+// The dialer routes purely off the scheme, so this keeps the badge truthful
+// (socks5://… shows socks5) instead of a client-picked label that can drift.
+func proxySchemeLabel(u *url.URL) string {
+	switch u.Scheme {
+	case "socks5", "socks5h":
+		return "socks5"
+	case "https":
+		return "https"
+	default:
+		return "http"
+	}
+}
 
 // refreshProxies re-syncs the in-memory ProxyManager with current database proxy pools.
 func (s *Server) refreshProxies() {

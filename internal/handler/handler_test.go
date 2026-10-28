@@ -1187,6 +1187,30 @@ func TestProxyPoolCRUD(t *testing.T) {
 	if poolData["proxyUrl"] != "http://127.0.0.1:7890" {
 		t.Fatalf("expected proxyUrl, got %v", poolData["proxyUrl"])
 	}
+	if poolData["type"] != "http" {
+		t.Fatalf("http scheme must derive type=http, got %v", poolData["type"])
+	}
+
+	// A socks5 URL derives type=socks5 regardless of the (ignored) client label.
+	socksBody := `{"name":"socks-pool","proxyUrl":"socks5://127.0.0.1:40000","type":"http"}`
+	sreq := newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(socksBody))
+	sreq.Header.Set("Content-Type", "application/json")
+	sw := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(sw, sreq)
+	if sw.Code != http.StatusCreated {
+		t.Fatalf("socks5 create: %d %s", sw.Code, sw.Body.String())
+	}
+	var sResp map[string]any
+	json.Unmarshal(sw.Body.Bytes(), &sResp)
+	sData := sResp["proxyPool"].(map[string]any)["data"].(map[string]any)
+	if sData["type"] != "socks5" {
+		t.Fatalf("socks5 scheme must derive type=socks5, got %v", sData["type"])
+	}
+	if _, has := sData["noProxy"]; has {
+		t.Fatalf("noProxy field must be gone from the model, got %v", sData["noProxy"])
+	}
+	dreq := newLocalRequest("DELETE", "/api/proxy-pools/"+sResp["proxyPool"].(map[string]any)["id"].(string), nil)
+	srv.Handler.ServeHTTP(httptest.NewRecorder(), dreq)
 
 	// List
 	req = newLocalRequest("GET", "/api/proxy-pools", nil)
@@ -1285,44 +1309,6 @@ func TestProxyPoolCreateValidation(t *testing.T) {
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid proxyUrl scheme, got %d", w.Code)
-	}
-}
-
-func TestProxyPoolDeleteConflict(t *testing.T) {
-	srv, database := setupTestServer(t)
-
-	// Create a proxy pool
-	body := `{"name":"bound-proxy","proxyUrl":"http://127.0.0.1:7890"}`
-	req := newLocalRequest("POST", "/api/proxy-pools", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, req)
-
-	var createResp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &createResp)
-	pool := createResp["proxyPool"].(map[string]any)
-	poolID := pool["id"].(string)
-
-	// Create a connection bound to this pool
-	conn := &model.ProviderConnection{
-		ID:       "bound-conn",
-		Provider: "openai",
-		AuthType: "api-key",
-		IsActive: true,
-		Data: model.ConnectionData{
-			APIKey:               "sk-test",
-			ProviderSpecificData: map[string]any{"proxyPoolId": poolID},
-		},
-	}
-	database.CreateConnection(conn)
-
-	// Attempt delete should return 409
-	req = newLocalRequest("DELETE", "/api/proxy-pools/"+poolID, nil)
-	w = httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409 for in-use pool, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

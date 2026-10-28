@@ -146,7 +146,7 @@ describe('gateway store', () => {
     const keys = [{ id: 'key-1', name: 'Test', key: 'test-key', isActive: true }]
     const pools = [{
       id: 'pool-1', name: 'Test proxy', proxyUrl: 'http://proxy.example:8080', type: 'http',
-      isActive: true, noProxy: '', strictProxy: false, boundConnections: 0,
+      isActive: true, strictProxy: false,
     }]
     const settings = { requireApiKey: true }
     const coreResponses = {
