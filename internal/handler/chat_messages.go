@@ -67,6 +67,16 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	stream, _ := reqBody["stream"].(bool)
+	// Resolve the affinity key before any via-chat delegation: the translated
+	// OpenAI body drops prompt_cache_key/session_id/metadata.user_id, so the
+	// request header is the only carrier into the combo and adapter pipelines.
+	sessionKey := provider.BoundSessionKey(r.Header.Get("X-Cyrene-Session-ID"))
+	if sessionKey == "" {
+		sessionKey = provider.SessionKeyFromBodyMap(reqBody)
+		if sessionKey != "" {
+			r.Header.Set("X-Cyrene-Session-ID", sessionKey)
+		}
+	}
 	// If model is a combo, route via Chat Completions adapter
 	if _, isCombo := provider.ResolveCombo(modelStr, s.DB); isCombo {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
@@ -136,17 +146,6 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// delegate directly to handleMessagesViaChat BEFORE selecting a connection.
 	// Calling selectAvailableConnection here and then again in handleSingleModelChat advances
 	// the round-robin counter twice per request, collapsing equal-priority load balancing.
-	//
-	// Resolve the affinity key from the Anthropic body and propagate it via the
-	// request header: the via-chat delegation translates the body and drops
-	// metadata.user_id, so the header is the only carrier for both branches.
-	sessionKey := provider.BoundSessionKey(r.Header.Get("X-Cyrene-Session-ID"))
-	if sessionKey == "" {
-		sessionKey = provider.SessionKeyFromBodyMap(reqBody)
-		if sessionKey != "" {
-			r.Header.Set("X-Cyrene-Session-ID", sessionKey)
-		}
-	}
 	if providerInfo.APIType != "anthropic" || modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" || modelInfo.Provider == "antigravity" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
 		return
