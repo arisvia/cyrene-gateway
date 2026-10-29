@@ -2,6 +2,14 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.3] - 2026-10-29
+
+### Fixed
+- **Combo 链路的会话亲和补全**：命中 Combo 模型的 Anthropic Messages 请求原本先于会话标识解析就移交聊天管线（翻译后的 OpenAI 请求体不携带 `prompt_cache_key`/`session_id`/`metadata.user_id`），多轮对话被轮转打散、上游 KV 缓存保护失效；标识解析现前置到移交之前并经请求头传递。
+- **客户端断连不再误伤账号池**：Anthropic Messages 直通在客户端中途断开时，传输层取消错误不再计入账号冷却并级联故障转移——此前单个用户挂断可把该提供商全部账号逐一切入冷却。
+- **Embeddings 成功后清除错误状态**：`/v1/embeddings` 在 4xx/5xx 持久化限流与退避状态后，后续成功不再清除（对仅提供嵌入流量的账号是永久隔离）；成功现在与聊天管线同步重置。
+- **提供商详情页顶部开关水合窗口期空操作**：`/api/providers` 列表尚在加载时点击顶部组开关只触发刷新、不改变任何账号状态；现回退为直接切换当前已加载连接。
+
 ## [1.8.2] - 2026-10-28
 
 ### Added
@@ -288,6 +296,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.8.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.0...v1.8.2
 [1.8.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.7...v1.8.0
 [1.7.7]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.6...v1.7.7

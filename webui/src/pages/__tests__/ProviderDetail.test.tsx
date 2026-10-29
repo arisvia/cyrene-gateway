@@ -527,6 +527,51 @@ describe('ProviderDetail header group state hydration', () => {
     expect(screen.getByText(t('providers.partiallyEnabled', { active: 1, total: 2 }))).toBeTruthy()
     expect(headerToggle().getAttribute('aria-checked')).toBe('false')
   })
+
+  it('toggles the loaded connection when the header switch is clicked before the provider list hydrates', async () => {
+    resetGatewayStoreForTesting()
+    const { promise: listPending, resolve: releaseList } = Promise.withResolvers<Response>()
+    const puts: Array<{ path: string; body: unknown }> = []
+    let toggled = false
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input)
+      if (path === '/api/providers') return listPending
+      if (path === '/api/registry') return json({ categories: [{ category: 'oauth', count: 1, providers: [registry] }], total: 1 })
+      if (path.endsWith('/models')) return json(modelsPayload)
+      if (path.startsWith('/api/providers/') && init?.method === 'PUT') {
+        puts.push({ path, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+        toggled = true
+        return json({ ...connections[1], isActive: false })
+      }
+      if (path === '/api/providers/selected') return json({ ...connections[1], isActive: !toggled })
+      if (path.startsWith('/api/providers/')) return json(connections.find(c => path === `/api/providers/${c.id}`) ?? connections[0])
+      if (path === '/api/auth/status') return json({ requireLogin: false, authenticated: true })
+      return json(null)
+    }))
+
+    const history = createMemoryHistory()
+    history.set({ value: '/providers/selected' })
+    render(() => (
+      <MemoryRouter history={history}>
+        <Route path="/providers" component={Providers} />
+        <Route path="/providers/:id" component={ProviderDetail} />
+      </MemoryRouter>
+    ))
+    await flush()
+
+    const headerToggle = () => within(screen.getByRole('banner')).getByRole('switch', { name: new RegExp(`^${t('common.enabled')}: `) })
+    expect(headerToggle().getAttribute('aria-checked')).toBe('true')
+
+    // Provider list still pending: the click must not be a silent no-op — it
+    // targets the loaded connection directly.
+    fireEvent.click(headerToggle())
+    await flush()
+    expect(puts).toEqual([{ path: '/api/providers/selected', body: { isActive: false } }])
+
+    releaseList(json([connections[0], { ...connections[1], isActive: false }]))
+    await flush()
+    expect(headerToggle().getAttribute('aria-checked')).toBe('false')
+  })
 })
 
 describe('ProviderDetail cooldown badge expiry', () => {

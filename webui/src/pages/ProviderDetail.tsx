@@ -407,8 +407,18 @@ const ProviderDetail: Component = () => {
                   checked={allAccountsActive()}
                   onChange={async () => {
                     const next = !allAccountsActive()
+                    // The provider list may still be hydrating (accounts() empty):
+                    // fall back to toggling the loaded connection itself so the
+                    // header control is never a silent no-op during that window.
+                    const targets = accounts().filter(acc => acc.isActive !== next)
                     try {
-                      await Promise.all(accounts().filter(acc => acc.isActive !== next).map(acc => store.toggleProvider(acc)))
+                      if (targets.length > 0) {
+                        await Promise.all(targets.map(acc => store.toggleProvider(acc)))
+                      } else if (conn()) {
+                        // toggleProvider flips the passed isActive, so pass the
+                        // inverse of the target state.
+                        await store.toggleProvider({ ...conn()!, isActive: !next })
+                      }
                     } finally {
                       await store.loadProvidersOnly()
                       await load()
