@@ -317,6 +317,11 @@ func (s *Server) attemptMessagesPassthrough(
 	client := s.getHTTPClient(clientTimeout)
 	resp, err := client.Do(upstreamReq)
 	if err != nil {
+		if r.Context().Err() != nil {
+			// The client hung up: never cool down an account (and cascade the
+			// failover walk) for a cancellation that no account caused.
+			return false, 0, nil
+		}
 		slog.Error("Messages upstream request failed", "error", err, "provider", modelInfo.Provider, "url", targetURL)
 		provider.ApplyErrorState(conn, http.StatusBadGateway, err.Error())
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)

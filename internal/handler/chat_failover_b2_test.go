@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -232,5 +234,67 @@ func TestEmbeddingsEmptyBaseURLRejectsCleanly(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "no base URL") {
 		t.Fatalf("400 body must explain the cause, got %s", w.Body.String())
+	}
+}
+
+// A client hang-up must not cool down the account the request happened to sit
+// on: the transport error is the client leaving, not an upstream failure, and
+// the failover walk would otherwise cascade the cooldown across the whole pool.
+func TestMessagesPassthroughClientCancelDoesNotCoolDown(t *testing.T) {
+	hit := make(chan struct{})
+	release := make(chan struct{})
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(hit)
+		select {
+		case <-r.Context().Done(): // the client left
+		case <-release: // teardown
+		}
+	}))
+	defer func() { close(release); mock.Close() }()
+
+	const pid = "audit-msgcancel"
+	provider.Registry[pid] = provider.ProviderInfo{ID: pid, Name: pid, BaseURL: mock.URL, APIType: "anthropic", AuthType: "api-key"}
+	defer delete(provider.Registry, pid)
+
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "msg-cancel", Provider: pid, AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "k1", BaseURL: mock.URL},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	body := `{"model":"` + pid + `/claude-x","max_tokens":16,"messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`
+	req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, req)
+		close(done)
+	}()
+
+	select {
+	case <-hit:
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("upstream was never reached")
+	}
+	cancel()
+	<-done
+	// The aborted upstream connection may linger in the gateway's transport;
+	// cut it so the server-side handler unblocks and Close() returns.
+	mock.CloseClientConnections()
+
+	conn, err := database.GetConnection("msg-cancel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conn.Data.RateLimitedUntil != "" || conn.Data.TestStatus == "error" {
+		t.Fatalf("client cancellation must not cool down the account: rateLimitedUntil=%q testStatus=%q",
+			conn.Data.RateLimitedUntil, conn.Data.TestStatus)
 	}
 }
