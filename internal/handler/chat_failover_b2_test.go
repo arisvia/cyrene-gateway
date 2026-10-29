@@ -298,3 +298,75 @@ func TestMessagesPassthroughClientCancelDoesNotCoolDown(t *testing.T) {
 			conn.Data.RateLimitedUntil, conn.Data.TestStatus)
 	}
 }
+
+// Embeddings persists error state on 4xx/5xx; the success path must clear it
+// again — parity with every sibling path that writes error state. Without the
+// reset, a single 429 leaves the account on an elevated backoff level forever.
+func TestEmbeddingsSuccessResetsErrorState(t *testing.T) {
+	var mu sync.Mutex
+	throttle := true
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		isThrottle := throttle
+		throttle = false
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if isThrottle {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error":{"message":"rate limit exceeded"}}`))
+			return
+		}
+		w.Write([]byte(`{"object":"list","data":[{"object":"embedding","embedding":[0.1],"index":0}],"model":"emb-1","usage":{"prompt_tokens":1,"total_tokens":1}}`))
+	}))
+	defer mock.Close()
+
+	const pid = "audit-emb-reset"
+	provider.Registry[pid] = provider.ProviderInfo{ID: pid, Name: pid, BaseURL: mock.URL + "/v1", APIType: "openai", AuthType: "api-key"}
+	defer delete(provider.Registry, pid)
+
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "emb-reset", Provider: pid, AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "sk-emb"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	post := func() int {
+		req := httptest.NewRequest("POST", "/v1/embeddings", strings.NewReader(`{"model":"`+pid+`/emb-1","input":"hi"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	if code := post(); code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", code)
+	}
+	conn, err := database.GetConnection("emb-reset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conn.Data.RateLimitedUntil == "" || conn.Data.BackoffLevel == 0 || conn.Data.TestStatus != "error" {
+		t.Fatalf("429 must persist error state: rateLimitedUntil=%q backoff=%d testStatus=%q",
+			conn.Data.RateLimitedUntil, conn.Data.BackoffLevel, conn.Data.TestStatus)
+	}
+
+	// Simulate the cooldown expiring (backoff level + status stay stale).
+	conn.Data.RateLimitedUntil = ""
+	if err := database.UpdateConnectionHealth(conn.ID, conn.Data); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := post(); code != http.StatusOK {
+		t.Fatalf("expected 200 after throttle clears, got %d", code)
+	}
+	conn, err = database.GetConnection("emb-reset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conn.Data.BackoffLevel != 0 || conn.Data.TestStatus != "active" || conn.Data.LastError != "" {
+		t.Fatalf("success must reset error state: backoff=%d testStatus=%q lastError=%q",
+			conn.Data.BackoffLevel, conn.Data.TestStatus, conn.Data.LastError)
+	}
+}

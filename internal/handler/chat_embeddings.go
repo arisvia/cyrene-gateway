@@ -203,6 +203,11 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		resp.Body = io.NopCloser(bytes.NewReader(errBody))
 		provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+	} else {
+		// Success clears any throttle/backoff/error state persisted earlier —
+		// parity with every sibling path that writes error state.
+		provider.ResetAccountState(conn)
+		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 	}
 
 	latencyMs := int(time.Since(startTime).Milliseconds())
