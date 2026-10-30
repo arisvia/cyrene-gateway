@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -134,8 +135,8 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(modelInfo.Provider)
-	if conn == nil {
+	conns, first := s.resolveMediaPool(modelInfo.Provider)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
 	}
@@ -144,21 +145,35 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	bodyMap["model"], _ = json.Marshal(modelInfo.Model)
 	bodyBytes, _ = json.Marshal(bodyMap)
 
-	startTime := time.Now()
-	resp, err := s.MediaClient.HandleImageGeneration(r.Context(), modelInfo.Provider, bodyBytes, creds)
-	latencyMs := int(time.Since(startTime).Milliseconds())
-	if err != nil {
-		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/images/generations", "502", latencyMs)
-		slog.Error("Image generation failed", "provider", modelInfo.Provider, "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	cfg := media.GetConfig(modelInfo.Provider, media.KindImage)
+	resp, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/images/generations", conns, first,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleImageGeneration(ctx, modelInfo.Provider, bodyBytes, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, modelInfo.Provider)
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/images/generations", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	if modelInfo.Provider == "antigravity" {
 		// Antigravity streamGenerateContent returns SSE event stream with inlineData
 		s.aggregateAntigravityImageResponse(w, resp)
+		return
+	}
+	if cfg != nil && media.NeedsImageNormalization(cfg.Format) {
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream image response"})
+			return
+		}
+		out, err := media.NormalizeImage(cfg.Format, raw)
+		if err != nil {
+			slog.Error("Image response normalization failed", "provider", modelInfo.Provider, "error", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, json.RawMessage(out))
 		return
 	}
 
@@ -200,25 +215,46 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(modelInfo.Provider)
-	if conn == nil {
+	conns, first := s.resolveMediaPool(modelInfo.Provider)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
 	}
 
 	bodyMap["model"], _ = json.Marshal(modelInfo.Model)
 	bodyBytes, _ = json.Marshal(bodyMap)
-	startTime := time.Now()
-	resp, err := s.MediaClient.HandleTTS(r.Context(), modelInfo.Provider, bodyBytes, creds)
-	latencyMs := int(time.Since(startTime).Milliseconds())
-	if err != nil {
-		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/speech", "502", latencyMs)
-		slog.Error("TTS failed", "provider", modelInfo.Provider, "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+
+	cfg := media.GetConfig(modelInfo.Provider, media.KindTTS)
+	resp, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/audio/speech", conns, first,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleTTS(ctx, modelInfo.Provider, bodyBytes, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, modelInfo.Provider)
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/speech", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
+
+	if cfg != nil && media.NeedsAudioNormalization(cfg.Format) {
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream audio response"})
+			return
+		}
+		audioBytes, mime, err := media.NormalizeAudio(cfg.Format, raw)
+		if err != nil {
+			slog.Error("TTS response normalization failed", "provider", modelInfo.Provider, "error", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		if mime != "" {
+			w.Header().Set("Content-Type", mime)
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		w.Write(audioBytes)
+		return
+	}
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -253,22 +289,38 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(modelInfo.Provider)
-	if conn == nil {
+	conns, first := s.resolveMediaPool(modelInfo.Provider)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
 	}
-	startTime := time.Now()
-	resp, err := s.MediaClient.HandleSTT(r.Context(), modelInfo.Provider, modelInfo.Model, r, creds)
-	latencyMs := int(time.Since(startTime).Milliseconds())
-	if err != nil {
-		s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/transcriptions", "502", latencyMs)
-		slog.Error("STT failed", "provider", modelInfo.Provider, "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+
+	cfg := media.GetConfig(modelInfo.Provider, media.KindSTT)
+	resp, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/audio/transcriptions", conns, first,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleSTT(ctx, modelInfo.Provider, modelInfo.Model, r, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, modelInfo.Provider)
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(modelInfo.Provider, modelInfo.Model, conn.ID, "/v1/audio/transcriptions", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
+
+	if cfg != nil && media.NeedsSTTNormalization(cfg.Format) {
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream transcript response"})
+			return
+		}
+		out, err := media.NormalizeSTT(cfg.Format, raw)
+		if err != nil {
+			slog.Error("STT response normalization failed", "provider", modelInfo.Provider, "error", err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, json.RawMessage(out))
+		return
+	}
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -320,8 +372,8 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(providerID)
-	if conn == nil {
+	conns, first := s.resolveMediaPool(providerID)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
 	}
@@ -331,17 +383,15 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		bodyBytes, _ = json.Marshal(bodyMap)
 	}
 
-	startTime := time.Now()
-	resp, err := s.MediaClient.HandleVideo(r.Context(), providerID, "generations", bodyBytes, creds)
-	latencyMs := int(time.Since(startTime).Milliseconds())
-	if err != nil {
-		s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/videos/generations", "502", latencyMs)
-		slog.Error("Video generation failed", "provider", providerID, "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	resp, status, errBody := s.walkMediaAccounts(r, providerID, modelName, "/v1/videos/generations", conns, first,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleVideo(ctx, providerID, "generations", bodyBytes, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, providerID)
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/videos/generations", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	s.proxyMediaResponse(w, resp)
 }
@@ -359,15 +409,20 @@ func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(providerID)
-	if conn == nil {
+	_, first := s.resolveMediaPool(providerID)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
 	}
 
-	resp, err := s.MediaClient.HandleVideoStatus(r.Context(), providerID, requestID, creds)
-	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	// A job ID is account-bound: one attempt, no pool walk (a 404 on another
+	// account is expected, not a failover signal).
+	resp, _, status, errBody := s.attemptMediaRequest(r, first, providerID, "", "/v1/videos/"+requestID,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleVideoStatus(ctx, providerID, requestID, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, providerID)
 		return
 	}
 	defer resp.Body.Close()
@@ -409,16 +464,18 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, creds := s.resolveMediaCredentials(req.Provider)
-	if conn == nil {
+	conns, first := s.resolveMediaPool(req.Provider)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", req.Provider)})
 		return
 	}
 
-	resp, err := s.MediaClient.HandleWebFetch(r.Context(), req.Provider, bodyBytes, creds)
-	if err != nil {
-		slog.Error("Web fetch failed", "provider", req.Provider, "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	resp, status, errBody := s.walkMediaAccounts(r, req.Provider, "", "/v1/web/fetch", conns, first,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleWebFetch(ctx, req.Provider, bodyBytes, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, req.Provider)
 		return
 	}
 	defer resp.Body.Close()
@@ -482,8 +539,8 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, _ = json.Marshal(bodyMap)
 	}
 
-	conn, creds := s.resolveMediaCredentials(providerID)
-	if conn == nil {
+	conns, first := s.resolveMediaPool(providerID)
+	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
 	}
@@ -493,17 +550,15 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal(q, &queryStr)
 	}
 
-	startTime := time.Now()
-	resp, err := s.MediaClient.HandleWebSearch(r.Context(), providerID, bodyBytes, creds)
-	latencyMs := int(time.Since(startTime).Milliseconds())
-	if err != nil {
-		s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/search", "502", latencyMs)
-		slog.Error("Web search failed", "provider", providerID, "error", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	resp, status, errBody := s.walkMediaAccounts(r, providerID, modelName, "/v1/search", conns, first,
+		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
+			return s.MediaClient.HandleWebSearch(ctx, providerID, bodyBytes, mediaCreds(conn))
+		})
+	if resp == nil {
+		writeMediaTerminal(w, status, errBody, providerID)
 		return
 	}
 	defer resp.Body.Close()
-	s.recordMediaDetail(providerID, modelName, conn.ID, "/v1/search", fmt.Sprintf("%d", resp.StatusCode), latencyMs)
 
 	if providerID == "antigravity" {
 		s.aggregateAntigravitySearchResponse(w, resp, queryStr)
@@ -668,35 +723,6 @@ func (s *Server) handleMediaVoices(w http.ResponseWriter, r *http.Request) {
 	// Return static voice lists for known providers
 	voices := getStaticVoices(providerID)
 	writeJSON(w, http.StatusOK, map[string]any{"provider": providerID, "voices": voices})
-}
-
-// resolveMediaCredentials finds the best connection for a media provider and returns credentials.
-func (s *Server) resolveMediaCredentials(providerID string) (*model.ProviderConnection, media.Credentials) {
-	conns, err := s.DB.ListConnectionsByProvider(providerID)
-	if err != nil || len(conns) == 0 {
-		return nil, media.Credentials{}
-	}
-
-	conn := s.selectAvailableConnection(conns, "", nil, "")
-	if conn == nil {
-		return nil, media.Credentials{}
-	}
-
-	// Pre-check OAuth token refresh
-	s.tryRefreshToken(conn)
-
-	projectID := ""
-	if conn.Data.ProviderSpecificData != nil {
-		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
-			projectID = pid
-		}
-	}
-
-	return conn, media.Credentials{
-		APIKey:      conn.Data.APIKey,
-		AccessToken: conn.Data.AccessToken,
-		ProjectID:   projectID,
-	}
 }
 
 // proxyMediaResponse copies an upstream response to the client.

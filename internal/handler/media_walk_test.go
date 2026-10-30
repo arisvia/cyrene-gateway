@@ -1,0 +1,271 @@
+package handler
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/arisvia/cyrene-gateway/internal/media"
+	"github.com/arisvia/cyrene-gateway/internal/model"
+)
+
+func TestNormalizeImageGemini(t *testing.T) {
+	raw := []byte(`{"candidates":[{"content":{"parts":[{"text":"here you go"},{"inlineData":{"mimeType":"image/png","data":"aW1nMQ=="}}]}}]}`)
+	out, err := media.NormalizeImage("gemini", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Created int64 `json:"created"`
+		Data    []struct {
+			B64 string `json:"b64_json"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Data) != 1 || body.Data[0].B64 != "aW1nMQ==" || body.Created == 0 {
+		t.Fatalf("unexpected normalized body: %s", out)
+	}
+}
+
+func TestNormalizeImageGeminiSnakeCaseAndMulti(t *testing.T) {
+	raw := []byte(`{"candidates":[{"content":{"parts":[{"inline_data":{"mime_type":"image/webp","data":"QQ=="}},{"inline_data":{"mime_type":"image/webp","data":"Qg=="}}]}}]}`)
+	out, err := media.NormalizeImage("gemini", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Data []map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal(out, &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Data) != 2 || body.Data[1]["b64_json"] != "Qg==" {
+		t.Fatalf("multi-image normalization broken: %s", out)
+	}
+}
+
+func TestNormalizeImageGeminiNoImageParts(t *testing.T) {
+	if _, err := media.NormalizeImage("gemini", []byte(`{"candidates":[{"content":{"parts":[{"text":"refused"}]}}]}`)); err == nil {
+		t.Fatal("expected error for image-less gemini response")
+	}
+}
+
+func TestNormalizeImageStability(t *testing.T) {
+	out, err := media.NormalizeImage("stability", []byte(`{"image":"c3Ri","seed":1,"finish_reason":"SUCCESS"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `"b64_json":"c3Ri"`) {
+		t.Fatalf("stability normalization broken: %s", out)
+	}
+}
+
+func TestNormalizeAudioGeminiTTS(t *testing.T) {
+	audio := []byte("fake-lpcm-bytes")
+	env := `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"audio/l16;codec=pcm;rate=24000","data":"` + base64.StdEncoding.EncodeToString(audio) + `"}}]}}]}`
+	out, mime, err := media.NormalizeAudio("gemini-tts", []byte(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != string(audio) || !strings.HasPrefix(mime, "audio/") {
+		t.Fatalf("audio normalization broken: %q %q", out, mime)
+	}
+}
+
+func TestNormalizeSTTDeepgramAndGemini(t *testing.T) {
+	out, err := media.NormalizeSTT("deepgram", []byte(`{"results":{"channels":[{"alternatives":[{"transcript":"hello world"}]}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != `{"text":"hello world"}` {
+		t.Fatalf("deepgram normalization broken: %s", out)
+	}
+	out, err = media.NormalizeSTT("gemini-stt", []byte(`{"candidates":[{"content":{"parts":[{"text":"hello "},{"text":"world"}]}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != `{"text":"hello world"}` {
+		t.Fatalf("gemini stt normalization broken: %s", out)
+	}
+}
+
+// mediaWalkFixture builds a two-account equal-priority provider whose mock
+// fails the FIRST attempt with firstStatus and succeeds afterwards, so the
+// walk must consume exactly two attempts regardless of RR start position.
+func mediaWalkFixture(t *testing.T, firstStatus int) (*Server, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	srv, database := setupTestServer(t)
+	var hits, fails atomic.Int32
+	var failNext atomic.Bool
+	failNext.Store(true)
+	for _, id := range []string{"walk-key-a", "walk-key-b"} {
+		if err := database.CreateConnection(&model.ProviderConnection{
+			ID: id, Provider: "openai", AuthType: "api-key", IsActive: true,
+			Data: model.ConnectionData{APIKey: id},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		hits.Add(1)
+		if failNext.CompareAndSwap(true, false) {
+			fails.Add(1)
+			return &http.Response{
+				StatusCode: firstStatus,
+				Header:     http.Header{"Content-Type": {"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"quota exceeded"}}`)),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"created":1,"data":[{"b64_json":"b2s="}]}`)),
+		}, nil
+	})}
+	return srv, &hits, &fails
+}
+
+func TestMediaImageFailsOverOnQuotaExhausted(t *testing.T) {
+	srv, hits, fails := mediaWalkFixture(t, http.StatusTooManyRequests)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"openai/dall-e-3","prompt":"a cat"}`))
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200 after failover, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"b64_json":"b2s="`) {
+		t.Fatalf("second-account response not proxied: %s", w.Body.String())
+	}
+	if hits.Load() != 2 || fails.Load() != 1 {
+		t.Fatalf("want exactly one retry across two accounts, hits=%d fails=%d", hits.Load(), fails.Load())
+	}
+
+	// Exactly the failed account must be cooled down; the successful one not.
+	conns, err := srv.DB.ListConnectionsByProvider("openai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cooled := 0
+	for _, c := range conns {
+		if c.Data.RateLimitedUntil != "" {
+			cooled++
+		}
+	}
+	if cooled != 1 {
+		t.Fatalf("want exactly one cooled account after failover, got %d", cooled)
+	}
+}
+
+func TestMediaImageTerminal4xxNoFailover(t *testing.T) {
+	srv, hits, _ := mediaWalkFixture(t, http.StatusBadRequest)
+	// Override: the fixture's "quota exceeded" body would classify as
+	// retryable (text keyword), so use a request-scoped error body instead.
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		hits.Add(1)
+		return &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"invalid prompt"}}`)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"openai/dall-e-3","prompt":"a cat"}`))
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("request-scoped 4xx must be terminal, got %d", w.Code)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("terminal 4xx must not walk the pool, hits=%d", hits.Load())
+	}
+}
+
+func TestMediaImagePoolExhaustion(t *testing.T) {
+	srv, _, _ := mediaWalkFixture(t, http.StatusTooManyRequests)
+	// Make the second account fail too: swap transport to always 429.
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"quota"}}`)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"openai/dall-e-3","prompt":"a cat"}`))
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("exhausted pool must surface last upstream status, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMediaTTSNormalizesGeminiAudio(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "tts-gem", Provider: "gemini", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "gem-key"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pcm := []byte("lpcm-audio")
+	env := `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"audio/l16;codec=pcm;rate=24000","data":"` + base64.StdEncoding.EncodeToString(pcm) + `"}}]}}]}`
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(env)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/speech", strings.NewReader(`{"model":"gemini/gemini-2.5-flash-preview-tts","input":"hi","voice":"Kore"}`))
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != string(pcm) {
+		t.Fatalf("raw audio not extracted from envelope: %q", w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "audio/") {
+		t.Fatalf("audio content type missing: %q", ct)
+	}
+}
+
+func TestMediaSTTNormalizesGeminiTranscript(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "stt-gem", Provider: "gemini", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "gem-key"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"hello world"}]}}]}`)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, mediaTestRequest(t, "/v1/audio/transcriptions", "gemini/gemini-2.5-flash", "", ""))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := strings.TrimSpace(w.Body.String()); got != `{"text":"hello world"}` {
+		t.Fatalf("transcript not normalized to OpenAI shape: %s", got)
+	}
+}
