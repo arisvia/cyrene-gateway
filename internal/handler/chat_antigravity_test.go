@@ -356,21 +356,28 @@ func TestAntigravityThinkingTierRouting(t *testing.T) {
 			expectedTarget: "gemini-3.8-flash-low",
 			expectedTier:   "low",
 		},
-		// 4. gemini-3.5-flash high
+		// 4. catalog-miss family keeps the requested tier as suffix
 		{
 			model:          "antigravity/gemini-3.5-flash",
 			effort:         "high",
 			expectedTarget: "gemini-3.5-flash-high",
 			expectedTier:   "high",
 		},
-		// 5. gemini-3.5-flash low -> extra-low
+		// 5. dead extra-low mapping removed: generic suffix, no family table
 		{
 			model:          "antigravity/gemini-3.5-flash",
 			effort:         "low",
-			expectedTarget: "gemini-3.5-flash-extra-low",
+			expectedTarget: "gemini-3.5-flash-low",
 			expectedTier:   "low",
 		},
-		// 6. explicit model suffix preservation
+		// 6. claude families get the same tier suffix treatment
+		{
+			model:          "antigravity/claude-sonnet-5-5",
+			effort:         "low",
+			expectedTarget: "claude-sonnet-5-5-low",
+			expectedTier:   "low",
+		},
+		// 7. explicit model suffix preservation
 		{
 			model:          "gemini-3.8-flash-high",
 			effort:         "low", // model suffix takes precedence

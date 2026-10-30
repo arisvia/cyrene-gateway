@@ -923,35 +923,18 @@ func resolveAntigravityModel(
 		if effectiveTier == "" {
 			effectiveTier = "medium"
 		}
-
-		if cleanModel == "gemini-3.5-flash" {
-			if effectiveTier == "high" {
-				targetModel = "gemini-3.5-flash-high"
-			} else if effectiveTier == "low" {
-				targetModel = "gemini-3.5-flash-extra-low"
-			} else {
-				targetModel = "gemini-3.5-flash-low"
-			}
-		} else if cleanModel == "gemini-3.1-pro" {
-			if effectiveTier == "low" {
-				targetModel = "gemini-3.1-pro-low"
-			} else {
-				targetModel = "gemini-3.1-pro-high"
-			}
+		probe := cleanModel + "-" + effectiveTier
+		if _, ok := availMap[probe]; ok {
+			targetModel = probe
 		} else {
-			probe := cleanModel + "-" + effectiveTier
-			if _, ok := availMap[probe]; ok {
-				targetModel = probe
-			} else {
-				for _, alt := range []string{"medium", "high", "low"} {
-					probeAlt := cleanModel + "-" + alt
-					if _, ok := availMap[probeAlt]; ok {
-						targetModel = probeAlt
-						if tier == "" {
-							tier = alt
-						}
-						break
+			for _, alt := range []string{"medium", "high", "low"} {
+				probeAlt := cleanModel + "-" + alt
+				if _, ok := availMap[probeAlt]; ok {
+					targetModel = probeAlt
+					if tier == "" {
+						tier = alt
 					}
+					break
 				}
 			}
 		}
@@ -969,7 +952,7 @@ func resolveAntigravityModel(
 
 	// 4. Default / Passthrough fallback
 	if targetModel == "" {
-		if tier != "" && !strings.HasSuffix(cleanModel, "-"+tier) && strings.HasPrefix(cleanModel, "gemini-") {
+		if tier != "" && !strings.HasSuffix(cleanModel, "-"+tier) {
 			targetModel = cleanModel + "-" + tier
 		} else {
 			targetModel = cleanModel
