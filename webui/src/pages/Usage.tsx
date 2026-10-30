@@ -6,7 +6,7 @@ import { ProviderAvatar } from '@/components/ui/ProviderIcon'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor, maskKey } from '@/lib/format'
-import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
+import { fetchModelDisplayNameMap, resolveModelDisplayName, canonicalModelId } from '@/lib/models'
 import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
 
 // One gateway request emits several events (accepted → routing → streaming →
@@ -215,7 +215,7 @@ const Usage: Component = () => {
       let displayName = key
       if (dim === 'model') {
         const parts = key.split('|')
-        displayName = resolveModelDisplayName(modelNameMap(), parts[0]) || parts[0]
+        displayName = resolveModelDisplayName(modelNameMap(), parts[0], parts[1]) || parts[0]
       } else if (dim === 'key' && key === 'default') {
         displayName = t('usage.defaultKeyLabel')
       }
@@ -512,10 +512,10 @@ const Usage: Component = () => {
                           how long the model id or status text is. */}
                       <div class="grid grid-cols-[auto_minmax(0,1fr)_3.75rem_4rem] items-center gap-x-2 text-xs">
                         <span class="text-faint font-mono text-[10px] whitespace-nowrap">{fmtTime(e.timestamp, timeUnits())}</span>
-                        <div class="flex items-baseline gap-1 min-w-0 overflow-hidden" title={e.model || e.endpoint || '-'}>
-                          <span class="font-medium text-foreground text-[11px] truncate">{resolveModelDisplayName(modelNameMap(), e.model) || e.endpoint || '-'}</span>
-                          <Show when={Boolean(e.model && resolveModelDisplayName(modelNameMap(), e.model) !== e.model)}>
-                            <span class="text-[9px] text-faint font-mono truncate hidden sm:inline">({e.model})</span>
+                        <div class="flex items-baseline gap-1 min-w-0 overflow-hidden" title={canonicalModelId(e.model, e.provider) || e.endpoint || '-'}>
+                          <span class="font-medium text-foreground text-[11px] truncate">{resolveModelDisplayName(modelNameMap(), e.model, e.provider) || e.endpoint || '-'}</span>
+                          <Show when={Boolean(e.model && resolveModelDisplayName(modelNameMap(), e.model, e.provider) !== e.model)}>
+                            <span class="text-[9px] text-faint font-mono truncate hidden sm:inline">({canonicalModelId(e.model, e.provider)})</span>
                           </Show>
                         </div>
                         <div class="flex justify-end min-w-0">
@@ -574,10 +574,10 @@ const Usage: Component = () => {
                       <tr class="border-b border-subtle/40 last:border-0 hover:bg-hover/30 transition-colors">
                         <td class="py-2.5 text-faint font-mono">{fmtTime(d.timestamp, timeUnits())}</td>
                         <td class="py-2.5 max-w-[260px]">
-                          <div class="flex flex-col min-w-0" title={d.model || '-'}>
-                            <span class="font-medium text-foreground truncate">{resolveModelDisplayName(modelNameMap(), d.model) || d.model || '-'}</span>
-                            <Show when={Boolean(d.model && resolveModelDisplayName(modelNameMap(), d.model) !== d.model)}>
-                              <span class="text-[10px] text-faint font-mono truncate">{d.model}</span>
+                          <div class="flex flex-col min-w-0" title={canonicalModelId(d.model, d.provider) || '-'}>
+                            <span class="font-medium text-foreground truncate">{resolveModelDisplayName(modelNameMap(), d.model, d.provider) || d.model || '-'}</span>
+                            <Show when={Boolean(d.model && resolveModelDisplayName(modelNameMap(), d.model, d.provider) !== d.model)}>
+                              <span class="text-[10px] text-faint font-mono truncate">{canonicalModelId(d.model, d.provider)}</span>
                             </Show>
                           </div>
                         </td>

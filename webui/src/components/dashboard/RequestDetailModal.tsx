@@ -3,7 +3,7 @@ import { Modal, Badge, Button, ProviderAvatar, Spinner, SegmentedControl, IconMe
 import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor } from '@/lib/format'
-import { fetchModelDisplayNameMap, resolveModelDisplayName } from '@/lib/models'
+import { fetchModelDisplayNameMap, resolveModelDisplayName, canonicalModelId } from '@/lib/models'
 import type { RequestDetail } from '@/types/domain'
 interface RequestDetailModalProps {
   item: RequestDetail | null
@@ -71,9 +71,9 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
           <ProviderAvatar provider={props.item?.provider || 'default'} name={props.item?.provider} size="sm" class="shrink-0" />
           <div class="min-w-0">
             <div class="text-sm font-semibold text-text flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-              <span class="min-w-0 break-words [overflow-wrap:anywhere]">{resolveModelDisplayName(modelNameMap(), props.item?.model) || t('common.unknownModel')}</span>
-              <Show when={Boolean(props.item?.model && resolveModelDisplayName(modelNameMap(), props.item?.model) !== props.item?.model)}>
-                <span class="text-xs text-muted font-mono font-normal min-w-0 break-words [overflow-wrap:anywhere]">({props.item?.model})</span>
+              <span class="min-w-0 break-words [overflow-wrap:anywhere]">{resolveModelDisplayName(modelNameMap(), props.item?.model, props.item?.provider) || t('common.unknownModel')}</span>
+              <Show when={Boolean(props.item?.model && resolveModelDisplayName(modelNameMap(), props.item?.model, props.item?.provider) !== props.item?.model)}>
+                <span class="text-xs text-muted font-mono font-normal min-w-0 break-words [overflow-wrap:anywhere]">({canonicalModelId(props.item?.model, props.item?.provider)})</span>
               </Show>
               <Badge tone={props.item?.status === 'ok' ? 'green' : 'red'} class="text-xs shrink-0">
                 {props.item?.status || t('common.unknown')}

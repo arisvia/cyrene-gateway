@@ -6,6 +6,7 @@ import {
   fetchModelDisplayNameMap,
   buildModelDisplayNameMap,
   resolveModelDisplayName,
+  canonicalModelId,
 } from '@/lib/models'
 import type { GatewayModel } from '@/lib/models'
 
@@ -109,5 +110,35 @@ describe('buildModelDisplayNameMap', () => {
   it('falls back to the raw id when no display name exists', () => {
     const map = buildModelDisplayNameMap([{ id: 'openai/dall-e-3' }])
     expect(resolveModelDisplayName(map, 'dall-e-3')).toBe('dall-e-3')
+  })
+
+  it('prefers provider-qualified lookup when provider is provided', () => {
+    const list: GatewayModel[] = [
+      { id: 'antigravity/gemini-2.5-flash', display_name: 'Gemini 2.5 Flash (Antigravity)' },
+      { id: 'gemini/gemini-2.5-flash', display_name: 'Gemini 2.5 Flash' },
+    ]
+    const map = buildModelDisplayNameMap(list)
+    // Bare mirror dropped as ambiguous, but the row's provider pins the name.
+    expect(resolveModelDisplayName(map, 'gemini-2.5-flash', 'antigravity')).toBe('Gemini 2.5 Flash (Antigravity)')
+    expect(resolveModelDisplayName(map, 'gemini-2.5-flash', 'gemini')).toBe('Gemini 2.5 Flash')
+  })
+
+  it('never double-prefixes an already-qualified model id', () => {
+    const map = buildModelDisplayNameMap([
+      { id: 'antigravity/gemini-2.5-flash', display_name: 'Gemini 2.5 Flash (Antigravity)' },
+    ])
+    expect(resolveModelDisplayName(map, 'antigravity/gemini-2.5-flash', 'antigravity')).toBe('Gemini 2.5 Flash (Antigravity)')
+    expect(canonicalModelId('antigravity/gemini-2.5-flash', 'antigravity')).toBe('antigravity/gemini-2.5-flash')
+  })
+})
+
+describe('canonicalModelId', () => {
+  it('composes provider/model for bare ids', () => {
+    expect(canonicalModelId('gemini-3.8-flash-high', 'antigravity')).toBe('antigravity/gemini-3.8-flash-high')
+  })
+
+  it('leaves bare ids untouched without provider and empty input empty', () => {
+    expect(canonicalModelId('dfmodel')).toBe('dfmodel')
+    expect(canonicalModelId(undefined, 'antigravity')).toBe('')
   })
 })

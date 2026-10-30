@@ -72,9 +72,26 @@ export async function fetchModelDisplayNameMap(): Promise<Record<string, string>
 }
 
 /**
- * 解析展示名称，如果不存在则回退至原始 ID；空输入返回空字符串，由调用方自行兜底。
+ * 解析展示名称：优先 `provider/model` 全名精确命中（歧义裸 ID 靠行内
+ * provider 定名），其次裸键/原键镜像，缺失时回退原始 ID；空输入返回空
+ * 字符串，由调用方自行兜底。
  */
-export function resolveModelDisplayName(map: Record<string, string> | undefined, modelId: string | undefined): string {
+export function resolveModelDisplayName(
+  map: Record<string, string> | undefined,
+  modelId: string | undefined,
+  provider?: string,
+): string {
   if (!modelId) return ''
+  if (provider && !modelId.includes('/')) {
+    const qualified = map?.[`${provider}/${modelId}`]
+    if (qualified) return qualified
+  }
   return map?.[modelId] || modelId
+}
+
+/** 规范 `provider/model` 展示 ID：裸 ID 配 provider 时补前缀，供副行统一显示全名。 */
+export function canonicalModelId(modelId: string | undefined, provider?: string): string {
+  if (!modelId) return ''
+  if (provider && !modelId.includes('/')) return `${provider}/${modelId}`
+  return modelId
 }
