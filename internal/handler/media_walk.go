@@ -41,7 +41,14 @@ func (s *Server) attemptMediaRequest(
 	do func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error),
 ) (resp *http.Response, retryable bool, status int, errBody []byte) {
 	start := time.Now()
-	upResp, err := do(r.Context(), conn)
+	// Media egress shares the chat proxy-pool guarantee (strict-proxy included)
+	// only when pools or strict intent exist; otherwise the standalone
+	// SSRF-safe client applies (and stays mockable in tests).
+	ctx := r.Context()
+	if s.Proxies != nil && (s.Proxies.HasProxies() || s.Proxies.IsStrict()) {
+		ctx = media.WithHTTPClient(ctx, s.getHTTPClient(2*time.Minute))
+	}
+	upResp, err := do(ctx, conn)
 	latencyMs := int(time.Since(start).Milliseconds())
 	if latencyMs < 0 {
 		latencyMs = 0
@@ -55,7 +62,7 @@ func (s *Server) attemptMediaRequest(
 		slog.Error("Media upstream request failed", "provider", providerID, "model", modelName, "error", err)
 		provider.ApplyErrorState(conn, http.StatusBadGateway, err.Error())
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-		s.recordMediaDetail(providerID, modelName, conn.ID, endpoint, "502", latencyMs)
+		s.recordMediaUsage(r, providerID, modelName, conn.ID, endpoint, http.StatusBadGateway, latencyMs)
 		return nil, true, http.StatusBadGateway, []byte(fmt.Sprintf("upstream request failed: %v", err))
 	}
 
@@ -65,7 +72,7 @@ func (s *Server) attemptMediaRequest(
 		slog.Warn("Media upstream error response", "status", upResp.StatusCode, "provider", providerID, "model", modelName)
 		provider.ApplyErrorState(conn, upResp.StatusCode, string(errBody))
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-		s.recordMediaDetail(providerID, modelName, conn.ID, endpoint, fmt.Sprintf("%d", upResp.StatusCode), latencyMs)
+		s.recordMediaUsage(r, providerID, modelName, conn.ID, endpoint, upResp.StatusCode, latencyMs)
 		if provider.CheckFallbackError(upResp.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
 			return nil, true, upResp.StatusCode, errBody
 		}
@@ -74,7 +81,7 @@ func (s *Server) attemptMediaRequest(
 
 	provider.ResetAccountState(conn)
 	s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
-	s.recordMediaDetail(providerID, modelName, conn.ID, endpoint, fmt.Sprintf("%d", upResp.StatusCode), latencyMs)
+	s.recordMediaUsage(r, providerID, modelName, conn.ID, endpoint, upResp.StatusCode, latencyMs)
 	return upResp, false, 0, nil
 }
 
@@ -88,17 +95,18 @@ func (s *Server) walkMediaAccounts(
 	conns []model.ProviderConnection,
 	first *model.ProviderConnection,
 	do func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error),
-) (*http.Response, int, []byte) {
+) (*http.Response, string, int, []byte) {
 	tried := map[string]bool{}
 	var lastStatus int
 	var lastBody []byte
+	var lastConnID string
 	for cur := first; cur != nil; {
 		tried[cur.ID] = true
 		resp, retryable, status, errBody := s.attemptMediaRequest(r, cur, providerID, modelName, endpoint, do)
 		if !retryable {
-			return resp, status, errBody
+			return resp, cur.ID, status, errBody
 		}
-		lastStatus, lastBody = status, errBody
+		lastStatus, lastBody, lastConnID = status, errBody, cur.ID
 		slog.Warn("Media account unavailable, failing over to the next one",
 			"provider", providerID, "model", modelName, "connection", cur.ID, "status", status)
 		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: providerID, Model: modelName, Status: "fallback", Endpoint: endpoint})
@@ -114,7 +122,7 @@ func (s *Server) walkMediaAccounts(
 			break
 		}
 	}
-	return nil, lastStatus, lastBody
+	return nil, lastConnID, lastStatus, lastBody
 }
 
 // resolveMediaPool lists active connections for a media provider and picks

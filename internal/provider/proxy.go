@@ -88,6 +88,15 @@ func (pm *ProxyManager) HasProxies() bool {
 	return len(pm.pools) > 0
 }
 
+// IsStrict reports whether any pool row (active or not) carries the
+// never-direct intent, so callers can honor the guarantee even when no
+// route is currently selectable.
+func (pm *ProxyManager) IsStrict() bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.strict
+}
+
 // strictFailTransport is handed out when a strict proxy pool exists but no
 // proxy route is selectable: every request fails at the transport layer with
 // an explicit refusal instead of silently dialing upstream direct.

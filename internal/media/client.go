@@ -17,9 +17,28 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
+// proxyClientKey carries a proxy-pool-aware *http.Client from the handler
+// layer into media requests, so media egress honors the same proxy pools
+// (and strict-proxy guarantee) as chat traffic.
+type proxyClientKey struct{}
+
+// WithHTTPClient attaches the client media requests must use.
+func WithHTTPClient(ctx context.Context, client *http.Client) context.Context {
+	return context.WithValue(ctx, proxyClientKey{}, client)
+}
+
 // Client handles media provider requests with credential resolution.
 type Client struct {
 	HTTPClient *http.Client
+}
+
+// do issues the request through the ctx-attached client when present,
+// falling back to the standalone SSRF-safe client (tests, no proxy pools).
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if client, ok := req.Context().Value(proxyClientKey{}).(*http.Client); ok && client != nil {
+		return client.Do(req)
+	}
+	return c.HTTPClient.Do(req)
 }
 
 func NewClient() *Client {
@@ -65,62 +84,6 @@ func setAuth(req *http.Request, cfg *ProviderConfig, creds Credentials) {
 	default:
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-}
-
-// EmbeddingRequest is the OpenAI-compatible embedding request.
-type EmbeddingRequest struct {
-	Model          string `json:"model"`
-	Input          any    `json:"input"`
-	EncodingFormat string `json:"encoding_format,omitempty"`
-	Dimensions     int    `json:"dimensions,omitempty"`
-}
-
-// HandleEmbedding proxies an embedding request to the appropriate provider.
-func (c *Client) HandleEmbedding(ctx context.Context, providerID string, body []byte, creds Credentials) (*http.Response, error) {
-	cfg := GetConfig(providerID, KindEmbedding)
-	if cfg == nil {
-		return nil, fmt.Errorf("provider '%s' does not support embeddings", providerID)
-	}
-
-	var req EmbeddingRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, fmt.Errorf("invalid embedding request: %w", err)
-	}
-	if req.Input == nil {
-		return nil, fmt.Errorf("missing required field: input")
-	}
-
-	var targetURL string
-	var reqBody []byte
-
-	if cfg.Format == "gemini" {
-		// Gemini embedding: POST {baseUrl}/{model}:embedContent?key=...
-		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model + ":embedContent"
-		geminiBody := map[string]any{
-			"model": "models/" + req.Model,
-			"content": map[string]any{
-				"parts": []map[string]any{{"text": inputToString(req.Input)}},
-			},
-		}
-		reqBody, _ = json.Marshal(geminiBody)
-	} else {
-		targetURL = cfg.BaseURL
-		reqBody = body
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	setAuth(httpReq, cfg, creds)
-
-	slog.Debug("Media embedding request",
-		slog.String("provider", providerID),
-		slog.String("model", req.Model),
-	)
-
-	return c.HTTPClient.Do(httpReq)
 }
 
 // ImageRequest is the OpenAI-compatible image generation request.
@@ -206,7 +169,7 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 		slog.String("model", req.Model),
 	)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // TTSRequest is the text-to-speech request.
@@ -282,7 +245,7 @@ func (c *Client) HandleTTS(ctx context.Context, providerID string, body []byte, 
 		slog.String("model", req.Model),
 	)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // HandleSTT proxies a speech-to-text request (multipart form) using the resolved model.
@@ -341,7 +304,7 @@ func (c *Client) sttOpenAICompat(ctx context.Context, cfg *ProviderConfig, file 
 	httpReq.Header.Set("Content-Type", w.FormDataContentType())
 	setAuth(httpReq, cfg, creds)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 func (c *Client) sttDeepgram(ctx context.Context, cfg *ProviderConfig, file io.Reader, header *multipart.FileHeader, model string, r *http.Request, creds Credentials) (*http.Response, error) {
@@ -369,7 +332,7 @@ func (c *Client) sttDeepgram(ctx context.Context, cfg *ProviderConfig, file io.R
 	httpReq.Header.Set("Content-Type", "audio/wav")
 	setAuth(httpReq, cfg, creds)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 func (c *Client) sttGemini(ctx context.Context, cfg *ProviderConfig, file io.Reader, header *multipart.FileHeader, model string, r *http.Request, creds Credentials) (*http.Response, error) {
@@ -405,7 +368,7 @@ func (c *Client) sttGemini(ctx context.Context, cfg *ProviderConfig, file io.Rea
 	httpReq.Header.Set("Content-Type", "application/json")
 	setAuth(httpReq, cfg, creds)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // VideoRequest is the video generation request.
@@ -438,7 +401,7 @@ func (c *Client) HandleVideo(ctx context.Context, providerID string, action stri
 		slog.String("action", action),
 	)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // HandleVideoStatus polls a video generation job status.
@@ -455,7 +418,7 @@ func (c *Client) HandleVideoStatus(ctx context.Context, providerID, requestID st
 	}
 	setAuth(httpReq, cfg, creds)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // FetchRequest is the web fetch request.
@@ -519,7 +482,7 @@ func (c *Client) HandleWebFetch(ctx context.Context, providerID string, body []b
 	}
 	setAuth(httpReq, cfg, creds)
 
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // SearchRequest is the web search request.
@@ -626,7 +589,7 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 		httpReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
 	}
 	setAuth(httpReq, cfg, creds)
-	return c.HTTPClient.Do(httpReq)
+	return c.do(httpReq)
 }
 
 // TestCredentials tests upstream connectivity and authentication for a media provider.
@@ -735,19 +698,4 @@ func (c *Client) TestCredentials(ctx context.Context, providerID string, creds C
 	}
 
 	return false, resp.StatusCode, fmt.Errorf("upstream returned HTTP %d", resp.StatusCode)
-}
-
-func inputToString(input any) string {
-	switch v := input.(type) {
-	case string:
-		return v
-	case []any:
-		if len(v) > 0 {
-			if s, ok := v[0].(string); ok {
-				return s
-			}
-		}
-	}
-	b, _ := json.Marshal(input)
-	return string(b)
 }

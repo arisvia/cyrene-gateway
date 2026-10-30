@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -146,7 +147,7 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, _ = json.Marshal(bodyMap)
 
 	cfg := media.GetConfig(modelInfo.Provider, media.KindImage)
-	resp, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/images/generations", conns, first,
+	resp, _, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/images/generations", conns, first,
 		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
 			return s.MediaClient.HandleImageGeneration(ctx, modelInfo.Provider, bodyBytes, mediaCreds(conn))
 		})
@@ -225,7 +226,7 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, _ = json.Marshal(bodyMap)
 
 	cfg := media.GetConfig(modelInfo.Provider, media.KindTTS)
-	resp, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/audio/speech", conns, first,
+	resp, _, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/audio/speech", conns, first,
 		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
 			return s.MediaClient.HandleTTS(ctx, modelInfo.Provider, bodyBytes, mediaCreds(conn))
 		})
@@ -296,7 +297,7 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 	}
 
 	cfg := media.GetConfig(modelInfo.Provider, media.KindSTT)
-	resp, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/audio/transcriptions", conns, first,
+	resp, _, status, errBody := s.walkMediaAccounts(r, modelInfo.Provider, modelInfo.Model, "/v1/audio/transcriptions", conns, first,
 		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
 			return s.MediaClient.HandleSTT(ctx, modelInfo.Provider, modelInfo.Model, r, mediaCreds(conn))
 		})
@@ -383,7 +384,7 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		bodyBytes, _ = json.Marshal(bodyMap)
 	}
 
-	resp, status, errBody := s.walkMediaAccounts(r, providerID, modelName, "/v1/videos/generations", conns, first,
+	resp, connID, status, errBody := s.walkMediaAccounts(r, providerID, modelName, "/v1/videos/generations", conns, first,
 		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
 			return s.MediaClient.HandleVideo(ctx, providerID, "generations", bodyBytes, mediaCreds(conn))
 		})
@@ -393,6 +394,20 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 	}
 	defer resp.Body.Close()
 
+	// Bind the created job to the account that produced it so status polling
+	// reaches the same credentials without a provider hint.
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if raw, err := io.ReadAll(resp.Body); err == nil {
+			var job struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal(raw, &job) == nil && job.ID != "" {
+				s.registerVideoJob(job.ID, providerID, connID)
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(raw))
+		}
+	}
+
 	s.proxyMediaResponse(w, resp)
 }
 
@@ -400,6 +415,13 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 	requestID := r.PathValue("id")
 	providerID := provider.ResolveProviderAlias(r.URL.Query().Get("provider"))
+	if providerID == "" {
+		// The job registry makes the provider hint optional: a job ID created
+		// through this gateway resolves to its owning account.
+		if ref, ok := s.lookupVideoJob(requestID); ok {
+			providerID = ref.Provider
+		}
+	}
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider query param"})
 		return
@@ -409,10 +431,19 @@ func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, first := s.resolveMediaPool(providerID)
+	conns, first := s.resolveMediaPool(providerID)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
+	}
+	// Prefer the exact account that created the job when it is still active.
+	if ref, ok := s.lookupVideoJob(requestID); ok && ref.Connection != "" {
+		for i := range conns {
+			if conns[i].ID == ref.Connection && conns[i].IsActive {
+				first = &conns[i]
+				break
+			}
+		}
 	}
 
 	// A job ID is account-bound: one attempt, no pool walk (a 404 on another
@@ -470,7 +501,7 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, status, errBody := s.walkMediaAccounts(r, req.Provider, "", "/v1/web/fetch", conns, first,
+	resp, _, status, errBody := s.walkMediaAccounts(r, req.Provider, "", "/v1/web/fetch", conns, first,
 		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
 			return s.MediaClient.HandleWebFetch(ctx, req.Provider, bodyBytes, mediaCreds(conn))
 		})
@@ -550,7 +581,7 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal(q, &queryStr)
 	}
 
-	resp, status, errBody := s.walkMediaAccounts(r, providerID, modelName, "/v1/search", conns, first,
+	resp, _, status, errBody := s.walkMediaAccounts(r, providerID, modelName, "/v1/search", conns, first,
 		func(ctx context.Context, conn *model.ProviderConnection) (*http.Response, error) {
 			return s.MediaClient.HandleWebSearch(ctx, providerID, bodyBytes, mediaCreds(conn))
 		})
@@ -723,6 +754,91 @@ func (s *Server) handleMediaVoices(w http.ResponseWriter, r *http.Request) {
 	// Return static voice lists for known providers
 	voices := getStaticVoices(providerID)
 	writeJSON(w, http.StatusOK, map[string]any{"provider": providerID, "voices": voices})
+}
+
+// recordMediaUsage persists a media call into usageHistory (charts/cost) and
+// requestDetails (per-request audit), replacing the old detail-only writer so
+// media traffic is visible in the usage dashboard like chat traffic.
+func (s *Server) recordMediaUsage(r *http.Request, providerID, modelName, connID, endpoint string, status, latencyMs int) {
+	if s.DB == nil {
+		return
+	}
+	if modelName == "" {
+		modelName = providerID
+	}
+	statusStr := "ok"
+	if status == 499 {
+		statusStr = "canceled"
+	} else if status >= 400 {
+		statusStr = fmt.Sprintf("%d", status)
+	}
+	entry := &db.UsageEntry{
+		Provider:     providerID,
+		Model:        modelName,
+		ConnectionID: connID,
+		APIKey:       extractRequestAPIKey(r),
+		Endpoint:     endpoint,
+		Status:       statusStr,
+		Meta:         `{"usage_missing":true,"media":true}`,
+	}
+	if err := s.DB.SaveUsageEntry(entry); err != nil {
+		slog.Warn("Failed to record media usage", "error", err, "model", modelName)
+	}
+	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelName)
+	rdData := map[string]any{
+		"id":           rdID,
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+		"model":        modelName,
+		"provider":     providerID,
+		"connectionId": connID,
+		"status":       statusStr,
+		"latencyMs":    latencyMs,
+		"endpoint":     endpoint,
+	}
+	rdBytes, _ := json.Marshal(rdData)
+	_ = s.DB.SaveRequestDetail(&db.RequestDetail{
+		ID:           rdID,
+		Timestamp:    rdData["timestamp"].(string),
+		Provider:     providerID,
+		Model:        modelName,
+		ConnectionID: connID,
+		Status:       statusStr,
+		Data:         string(rdBytes),
+	})
+}
+
+// --- Video job registry ---
+// A video job ID is bound to the account that created it: status polling must
+// reach the same account (and its refreshed token). The registry maps job IDs
+// to provider+connection so /v1/videos/{id} needs no provider hint.
+
+const kvScopeVideoJobs = "videoJobs"
+
+type videoJobRef struct {
+	Provider   string `json:"provider"`
+	Connection string `json:"connectionId"`
+	CreatedAt  int64  `json:"createdAt"`
+}
+
+func (s *Server) registerVideoJob(jobID, providerID, connID string) {
+	if s.DB == nil || jobID == "" {
+		return
+	}
+	b, _ := json.Marshal(videoJobRef{Provider: providerID, Connection: connID, CreatedAt: time.Now().Unix()})
+	_ = s.DB.KVSet(kvScopeVideoJobs, jobID, string(b))
+}
+
+// lookupVideoJob resolves a job ID to its owning provider+connection.
+func (s *Server) lookupVideoJob(jobID string) (videoJobRef, bool) {
+	var ref videoJobRef
+	if s.DB == nil {
+		return ref, false
+	}
+	raw, err := s.DB.KVGet(kvScopeVideoJobs, jobID)
+	if err != nil || json.Unmarshal([]byte(raw), &ref) != nil {
+		return ref, false
+	}
+	return ref, true
 }
 
 // proxyMediaResponse copies an upstream response to the client.
@@ -956,35 +1072,5 @@ func (s *Server) aggregateAntigravitySearchResponse(w http.ResponseWriter, resp 
 		"count":    len(results),
 		"summary":  summary,
 		"results":  results,
-	})
-}
-
-func (s *Server) recordMediaDetail(provider, modelName, connID, endpoint, status string, latencyMs int) {
-	if s.DB == nil {
-		return
-	}
-	if modelName == "" {
-		modelName = provider
-	}
-	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelName)
-	rdData := map[string]any{
-		"id":           rdID,
-		"timestamp":    time.Now().UTC().Format(time.RFC3339),
-		"model":        modelName,
-		"provider":     provider,
-		"connectionId": connID,
-		"status":       status,
-		"latencyMs":    latencyMs,
-		"endpoint":     endpoint,
-	}
-	rdBytes, _ := json.Marshal(rdData)
-	_ = s.DB.SaveRequestDetail(&db.RequestDetail{
-		ID:           rdID,
-		Timestamp:    rdData["timestamp"].(string),
-		Provider:     provider,
-		Model:        modelName,
-		ConnectionID: connID,
-		Status:       status,
-		Data:         string(rdBytes),
 	})
 }

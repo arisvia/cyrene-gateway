@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
@@ -240,6 +242,124 @@ func TestMediaTTSNormalizesGeminiAudio(t *testing.T) {
 	}
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "audio/") {
 		t.Fatalf("audio content type missing: %q", ct)
+	}
+}
+
+func TestVideoJobRegistryResolvesOwnerWithoutProviderHint(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "vid-xai", Provider: "xai", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "xai-key"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		paths = append(paths, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/generations") {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"job-abc-123","status":"queued"}`)),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"job-abc-123","status":"completed"}`)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/videos/generations", strings.NewReader(`{"model":"xai/grok-2-video","prompt":"a rocket"}`)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("video creation failed: %d %s", w.Code, w.Body.String())
+	}
+
+	// Poll WITHOUT the provider query param: the registry must resolve it.
+	w = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/videos/job-abc-123", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("provider-less status poll failed: %d %s", w.Code, w.Body.String())
+	}
+	if len(paths) != 2 || !strings.Contains(paths[1], "job-abc-123") {
+		t.Fatalf("status poll did not reach upstream job endpoint: %v", paths)
+	}
+}
+
+func TestMediaUsageLandsInUsageHistory(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "img-openai", Provider: "openai", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "k"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"created":1,"data":[{"b64_json":"b2s="}]}`)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"openai/dall-e-3","prompt":"a cat"}`)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("image request failed: %d %s", w.Code, w.Body.String())
+	}
+
+	rows, err := database.GetUsageHistory(db.UsageFilter{Model: "dall-e-3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Provider != "openai" || rows[0].Status != "ok" {
+		t.Fatalf("media call missing from usageHistory: %+v", rows)
+	}
+}
+
+func TestMediaEgressHonorsProxyPool(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "img-openai", Provider: "openai", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "k"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A proxy pool whose "proxy" is an httptest server: media egress must
+	// arrive there (CONNECT/absolute-form or plain path both acceptable).
+	var sawMedia atomic.Bool
+	proxyUp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawMedia.Store(true)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"created":1,"data":[{"b64_json":"b2s="}]}`))
+	}))
+	defer proxyUp.Close()
+	srv.Proxies.UpdatePools([]model.ProxyPool{{
+		ID: "pool-1", IsActive: true,
+		Data: model.ProxyPoolData{ProxyURL: proxyUp.URL},
+	}})
+	// The direct client would answer differently; if media bypassed the pool
+	// this transport would be hit instead.
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		t.Error("media request bypassed the proxy pool")
+		return nil, fmt.Errorf("bypassed")
+	})}
+
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"openai/dall-e-3","prompt":"a cat"}`)))
+	// The fake proxy speaks plain HTTP, so an HTTPS target can only get as
+	// far as the CONNECT/tunnel stage: reaching it at all proves egress
+	// used the pool transport, and the direct mock staying silent proves
+	// no bypass. A completed 200 is equally acceptable.
+	if !sawMedia.Load() {
+		t.Fatalf("media egress did not traverse proxy pool: code=%d body=%s", w.Code, w.Body.String())
+	}
+	if w.Code != http.StatusOK && !(w.Code == http.StatusBadGateway && strings.Contains(w.Body.String(), "upstream request failed")) {
+		t.Fatalf("unexpected outcome for pool-routed media call: code=%d body=%s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "bypassed") {
+		t.Fatal("media request used the direct client instead of the proxy pool")
 	}
 }
 
