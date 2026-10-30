@@ -2,7 +2,7 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [1.8.3] - 2026-10-29
+## [1.8.3] - 2026-10-30
 
 ### Added
 - **会话亲和覆盖无会话字段的 agent 客户端**：显式字段之外新增具名会话头白名单（`X-Session-Id`/`X-Conversation-Id`/`X-Grok-Conv-Id`，值经字符集校验）与「API 密钥作用域 + system + 首条用户消息」内容指纹兜底，pi/opencode/aider 等不携带任何会话标识的多轮对话从此也能钉定上游账号提升缓存命中；指纹跨租户隔离、仅 SHA-1 进入内存表。
