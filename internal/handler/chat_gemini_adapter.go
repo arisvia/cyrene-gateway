@@ -257,6 +257,8 @@ func (s *Server) handleGeminiGenerateContent(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	newReq.Header = r.Header.Clone()
+	// Keep client identity intact for tenant scoping (session affinity fallback).
+	newReq.RemoteAddr = r.RemoteAddr
 	// Preserve the inbound query string (e.g. Gemini REST "?key=<k>") so the
 	// shared extractRequestAPIKey can attribute usage for ?key= callers.
 	newReq.URL.RawQuery = r.URL.RawQuery

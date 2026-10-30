@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -238,21 +239,29 @@ func TestMessagesViaChat_RotatesEvenlyAcrossEqualPriorityAccounts(t *testing.T) 
 		}
 	}
 
-	// Send 6 /v1/messages requests to openai provider (APIType "openai" triggers handleMessagesViaChat)
+	// Six DISTINCT conversations (id-less clients fall back to the content
+	// fingerprint, so distinct openers = distinct sessions), two growing turns
+	// each. Conversation turns must reuse their binding without advancing the
+	// pool, and fresh conversations must still alternate 6/6 — the delegation
+	// branch selecting a connection twice per request would double-advance the
+	// round-robin counter and collapse every binding onto one account.
 	for i := range 6 {
-		body := `{"model":"openai/gpt-4o","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}`
-		req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		srv.Handler.ServeHTTP(rec, req)
+		first := fmt.Sprintf(`{"model":"openai/gpt-4o","max_tokens":100,"messages":[{"role":"user","content":"hi %d"}]}`, i)
+		second := fmt.Sprintf(`{"model":"openai/gpt-4o","max_tokens":100,"messages":[{"role":"user","content":"hi %d"},{"role":"assistant","content":"yo"},{"role":"user","content":"more %d"}]}`, i, i)
+		for _, body := range []string{first, second} {
+			req := httptest.NewRequest("POST", "/v1/messages", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("request %d failed with status %d: %s", i, rec.Code, rec.Body.String())
+			if rec.Code != http.StatusOK {
+				t.Fatalf("request %d failed with status %d: %s", i, rec.Code, rec.Body.String())
+			}
 		}
 	}
 
-	// Both accounts must alternate evenly (3 and 3), not 6 and 0
-	if hitsA.Load() != 3 || hitsB.Load() != 3 {
-		t.Fatalf("expected 3 hits each on equal priority accounts, got A=%d, B=%d", hitsA.Load(), hitsB.Load())
+	// Both accounts must alternate evenly (6 and 6), not 12 and 0.
+	if hitsA.Load() != 6 || hitsB.Load() != 6 {
+		t.Fatalf("expected 6 hits each on equal priority accounts, got A=%d, B=%d", hitsA.Load(), hitsB.Load())
 	}
 }

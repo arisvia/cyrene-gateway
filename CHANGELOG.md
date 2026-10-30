@@ -4,6 +4,9 @@
 
 ## [1.8.3] - 2026-10-29
 
+### Added
+- **会话亲和覆盖无会话字段的 agent 客户端**：显式字段之外新增具名会话头白名单（`X-Session-Id`/`X-Conversation-Id`/`X-Grok-Conv-Id`，值经字符集校验）与「API 密钥作用域 + system + 首条用户消息」内容指纹兜底，pi/opencode/aider 等不携带任何会话标识的多轮对话从此也能钉定上游账号提升缓存命中；指纹跨租户隔离、仅 SHA-1 进入内存表。
+
 ### Fixed
 - **Combo 链路的会话亲和补全**：命中 Combo 模型的 Anthropic Messages 请求原本先于会话标识解析就移交聊天管线（翻译后的 OpenAI 请求体不携带 `prompt_cache_key`/`session_id`/`metadata.user_id`），多轮对话被轮转打散、上游 KV 缓存保护失效；标识解析现前置到移交之前并经请求头传递。
 - **客户端断连不再误伤账号池**：Anthropic Messages 直通在客户端中途断开时，传输层取消错误不再计入账号冷却并级联故障转移——此前单个用户挂断可把该提供商全部账号逐一切入冷却。

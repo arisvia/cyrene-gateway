@@ -1,7 +1,9 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -9,7 +11,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
-func TestSessionKeyFromRawBody(t *testing.T) {
+func TestSessionKeyFromBodyMap(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
@@ -19,15 +21,19 @@ func TestSessionKeyFromRawBody(t *testing.T) {
 		{"prompt_cache_key wins", `{"prompt_cache_key":"pc-1","session_id":"s-2","messages":[{"role":"user","content":"x"}]}`, "pk:pc-1", false},
 		{"session_id", `{"session_id":"s-2","messages":[{"role":"user","content":"x"}]}`, "pk:s-2", false},
 		{"conversation_id", `{"conversation_id":"c-3","messages":[{"role":"user","content":"x"}]}`, "pk:c-3", false},
+		{"openai user field", `{"user":"u-9","messages":[{"role":"user","content":"x"}]}`, "pk:u-9", false},
 		{"anthropic metadata user id", `{"messages":[{"role":"user","content":"x"}],"metadata":{"user_id":"{\"session_id\":\"abc\"}"}}`, "mu:", false},
-		{"first user string is NOT a routing key", `{"messages":[{"role":"system","content":"s"},{"role":"user","content":"hello world"}]}`, "", true},
-		{"first user blocks is NOT a routing key", `{"messages":[{"role":"user","content":[{"type":"text","text":"a"},{"type":"image_url","image_url":{"url":"u"}}]}]}`, "", true},
+		{"first user string is NOT an explicit key", `{"messages":[{"role":"system","content":"s"},{"role":"user","content":"hello world"}]}`, "", true},
+		{"first user blocks is NOT an explicit key", `{"messages":[{"role":"user","content":[{"type":"text","text":"a"},{"type":"image_url","image_url":{"url":"u"}}]}]}`, "", true},
 		{"no user message", `{"model":"gpt-4o","messages":[{"role":"assistant","content":"x"}]}`, "", true},
-		{"invalid json", `not json`, "", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := SessionKeyFromRawBody([]byte(tc.body))
+			var m map[string]any
+			if err := json.Unmarshal([]byte(tc.body), &m); err != nil {
+				t.Fatal(err)
+			}
+			got := SessionKeyFromBodyMap(m)
 			if tc.wantEmpty {
 				if got != "" {
 					t.Fatalf("expected empty key, got %q", got)
@@ -37,16 +43,76 @@ func TestSessionKeyFromRawBody(t *testing.T) {
 			if !strings.HasPrefix(got, tc.wantPrefix) {
 				t.Fatalf("key %q missing prefix %q", got, tc.wantPrefix)
 			}
-			if again := SessionKeyFromRawBody([]byte(tc.body)); again != got {
+			if again := SessionKeyFromBodyMap(m); again != got {
 				t.Fatalf("key must be deterministic: %q vs %q", got, again)
 			}
 		})
 	}
 }
 
+func TestSessionKeyFromHeaders(t *testing.T) {
+	h := http.Header{}
+	h.Set("X-Session-Id", "sess_01JABC")
+	if got := SessionKeyFromHeaders(h); got != "hd:x-session-id|sess_01JABC" {
+		t.Fatalf("allowlisted session header must be keyed, got %q", got)
+	}
+
+	// Request-scoped ids change every turn and must never feed affinity.
+	h = http.Header{}
+	h.Set("X-Client-Request-Id", "req-1234")
+	h.Set("X-Request-Id", "req-5678")
+	if got := SessionKeyFromHeaders(h); got != "" {
+		t.Fatalf("request ids must be ignored, got %q", got)
+	}
+
+	// Junk values (spaces, control chars, out of length bounds) are rejected so
+	// the routing table cannot be keyed on arbitrary payloads.
+	for _, bad := range []string{"", "ab", "has spaces in it", strings.Repeat("x", 200), "line\nbreak"} {
+		h = http.Header{}
+		h.Set("X-Conversation-Id", bad)
+		if got := SessionKeyFromHeaders(h); got != "" {
+			t.Fatalf("value %q must be rejected, got %q", bad, got)
+		}
+	}
+}
+
+func TestSessionKeyFromContentFallback(t *testing.T) {
+	parse := func(s string) map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(s), &m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	convA := `{"messages":[{"role":"system","content":"sys"},{"role":"user","content":"first turn"}]}`
+	convAExtended := `{"messages":[{"role":"system","content":"sys"},{"role":"user","content":"first turn"},{"role":"assistant","content":"a"},{"role":"user","content":"second turn"}]}`
+	convB := `{"messages":[{"role":"system","content":"sys"},{"role":"user","content":"other opener"}]}`
+
+	keyA := SessionKeyFromContentFallback(parse(convA), "k:key1")
+	if keyA == "" || !strings.HasPrefix(keyA, "c:") {
+		t.Fatalf("fingerprint must be a c: key, got %q", keyA)
+	}
+	if grew := SessionKeyFromContentFallback(parse(convAExtended), "k:key1"); grew != keyA {
+		t.Fatalf("later turns of the same conversation must reproduce the key: %q vs %q", keyA, grew)
+	}
+	if other := SessionKeyFromContentFallback(parse(convB), "k:key1"); other == keyA {
+		t.Fatal("different openers must not share a fingerprint")
+	}
+	if crossKey := SessionKeyFromContentFallback(parse(convA), "k:key2"); crossKey == keyA {
+		t.Fatal("same content under a different API key must not share a fingerprint")
+	}
+	// Anthropic shape: top-level system string + block content array.
+	anth := `{"system":"You are...","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`
+	if k := SessionKeyFromContentFallback(parse(anth), "ip:1.2.3.4"); !strings.HasPrefix(k, "c:") {
+		t.Fatalf("anthropic shape must fingerprint, got %q", k)
+	}
+	if k := SessionKeyFromContentFallback(parse(`{"model":"gpt-4o","messages":[{"role":"assistant","content":"x"}]}`), "k:key1"); k != "" {
+		t.Fatalf("content-free body must produce no fallback, got %q", k)
+	}
+}
+
 func TestBoundSessionKeyCapsOversizedIDs(t *testing.T) {
-	huge := `{"prompt_cache_key":"` + strings.Repeat("x", 5000) + `"}`
-	key := SessionKeyFromRawBody([]byte(huge))
+	key := BoundSessionKey("pk:" + strings.Repeat("x", 5000))
 	if len(key) > 160 {
 		t.Fatalf("key length %d exceeds cap", len(key))
 	}

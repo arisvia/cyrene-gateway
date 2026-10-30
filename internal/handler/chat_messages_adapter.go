@@ -193,6 +193,8 @@ func (s *Server) handleMessagesViaChat(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 	newReq.Header = r.Header.Clone()
+	// Keep client identity intact for tenant scoping (session affinity fallback).
+	newReq.RemoteAddr = r.RemoteAddr
 	newReq.Header.Set("Content-Type", "application/json")
 	newReq.Header.Set("X-Cyrene-Original-Endpoint", "/v1/messages")
 	s.handleChatCompletions(adapter, newReq)

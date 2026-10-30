@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/metrics"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -161,12 +162,42 @@ func (s *Server) selectAvailableConnection(conns []model.ProviderConnection, mod
 	return provider.SelectCredentialSticky(conns, modelName, excludeIDs, s.quotaChecker(), sessionKey)
 }
 
-// requestSessionKey resolves the affinity key for a request: an explicit client
-// hint wins (length-bounded before it can enter the routing table), otherwise
-// the conversation identity embedded in the raw body.
+// requestSessionKey resolves the affinity key for a request. Layered priority:
+// an explicit client hint or gateway header wins, then a session-semantic agent
+// header (allowlisted, token-validated), and only if the client carries no id
+// at all does the tenant-scoped content fingerprint pin the conversation.
 func requestSessionKey(r *http.Request, rawBody []byte) string {
 	if v := r.Header.Get("X-Cyrene-Session-ID"); v != "" {
 		return provider.BoundSessionKey(v)
 	}
-	return provider.SessionKeyFromRawBody(rawBody)
+	var m map[string]any
+	if len(rawBody) > 0 {
+		_ = json.Unmarshal(rawBody, &m)
+	}
+	return resolveSessionKey(r, m)
+}
+
+// resolveSessionKey is requestSessionKey for an already parsed request body
+// (Anthropic or OpenAI shape).
+func resolveSessionKey(r *http.Request, bodyMap map[string]any) string {
+	if v := r.Header.Get("X-Cyrene-Session-ID"); v != "" {
+		return provider.BoundSessionKey(v)
+	}
+	if k := provider.SessionKeyFromBodyMap(bodyMap); k != "" {
+		return k
+	}
+	if k := provider.SessionKeyFromHeaders(r.Header); k != "" {
+		return k
+	}
+	return provider.SessionKeyFromContentFallback(bodyMap, sessionScope(r))
+}
+
+// sessionScope isolates content fingerprints per tenant: the authenticating
+// API key id, or the client address (port stripped — agents reconnect from new
+// ephemeral ports, which must not re-key their own conversations) in open mode.
+func sessionScope(r *http.Request) string {
+	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil {
+		return "k:" + keyObj.ID
+	}
+	return "ip:" + auth.ClientIP(r.RemoteAddr)
 }

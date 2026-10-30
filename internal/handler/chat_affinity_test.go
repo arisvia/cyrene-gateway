@@ -170,3 +170,80 @@ func TestMessagesComboAffinitySurvivesDelegation(t *testing.T) {
 		t.Fatalf("combo turns of one session split across accounts: %d vs %d", hits1, hits2)
 	}
 }
+
+// Most agent clients (pi, opencode, aider, VS Code BYOK) send no session field
+// and no session header. Their consecutive turns must still pin one account via
+// the tenant-scoped content fingerprint, while distinct conversations keep
+// spreading over the pool — and a session header must override the fingerprint
+// for two conversations that happen to open with the same words.
+func TestContentFallbackPinsIdlessConversations(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	var mu sync.Mutex
+	hits1, hits2 := 0, 0
+	mock1 := upstreamCounter(t, &hits1, &mu)
+	defer mock1.Close()
+	mock2 := upstreamCounter(t, &hits2, &mu)
+	defer mock2.Close()
+
+	for i, url := range []string{mock1.URL, mock2.URL} {
+		if err := database.CreateConnection(&model.ProviderConnection{
+			ID:       fmt.Sprintf("fb-conn-%d", i),
+			Provider: "openai",
+			AuthType: "api-key",
+			IsActive: true,
+			Data:     model.ConnectionData{APIKey: fmt.Sprintf("sk-fb-%d", i), BaseURL: url + "/v1"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	post := func(body string, extraHeader [2]string) {
+		req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		if extraHeader[0] != "" {
+			req.Header.Set(extraHeader[0], extraHeader[1])
+		}
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	}
+
+	// One id-less conversation, three growing turns: same opener every time.
+	msgs := []string{`{"role":"system","content":"persona"}`, `{"role":"user","content":"deploy the canary please"}`}
+	for turn := range 3 {
+		if turn > 0 {
+			msgs = append(msgs, `{"role":"assistant","content":"ack"}`)
+		}
+		post(`{"model":"openai/gpt-4o","messages":[`+strings.Join(msgs, ",")+`]}`, [2]string{})
+		msgs = append(msgs, fmt.Sprintf(`{"role":"user","content":"follow up %d"}`, turn))
+	}
+	if hits1+hits2 != 3 {
+		t.Fatalf("expected 3 upstream hits, got %d+%d", hits1, hits2)
+	}
+	if hits1 != 0 && hits2 != 0 {
+		t.Fatalf("id-less conversation split across accounts: %d vs %d", hits1, hits2)
+	}
+
+	// Distinct openers are distinct conversations: must still load balance.
+	hits1, hits2 = 0, 0
+	for i := range 4 {
+		post(fmt.Sprintf(`{"model":"openai/gpt-4o","messages":[{"role":"user","content":"distinct opener %d"}]}`, i), [2]string{})
+	}
+	if hits1 == 0 || hits2 == 0 {
+		t.Fatalf("distinct id-less conversations must load balance, got %d vs %d", hits1, hits2)
+	}
+
+	// Header beats content: identical opener, different session ids, must not
+	// share the fingerprint pin.
+	hits1, hits2 = 0, 0
+	for i := range 2 {
+		post(`{"model":"openai/gpt-4o","messages":[{"role":"user","content":"same opener both"}]}`,
+			[2]string{"X-Session-Id", fmt.Sprintf("sess-%d", i)})
+	}
+	if hits1 == 0 || hits2 == 0 {
+		t.Fatalf("session header must override the content fingerprint, got %d vs %d", hits1, hits2)
+	}
+}

@@ -67,15 +67,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	stream, _ := reqBody["stream"].(bool)
-	// Resolve the affinity key before any via-chat delegation: the translated
-	// OpenAI body drops prompt_cache_key/session_id/metadata.user_id, so the
-	// request header is the only carrier into the combo and adapter pipelines.
-	sessionKey := provider.BoundSessionKey(r.Header.Get("X-Cyrene-Session-ID"))
-	if sessionKey == "" {
-		sessionKey = provider.SessionKeyFromBodyMap(reqBody)
-		if sessionKey != "" {
-			r.Header.Set("X-Cyrene-Session-ID", sessionKey)
-		}
+	// Resolve the affinity key BEFORE any via-chat delegation and stamp it on
+	// the request header: the translated OpenAI body drops every session field,
+	// so the header is the only carrier into the combo and adapter pipelines.
+	// The layered resolver also covers clients (pi, opencode, ...) that carry no
+	// session field or header at all.
+	sessionKey := resolveSessionKey(r, reqBody)
+	if sessionKey != "" && r.Header.Get("X-Cyrene-Session-ID") == "" {
+		r.Header.Set("X-Cyrene-Session-ID", sessionKey)
 	}
 	// If model is a combo, route via Chat Completions adapter
 	if _, isCombo := provider.ResolveCombo(modelStr, s.DB); isCombo {
