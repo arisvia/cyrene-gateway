@@ -318,6 +318,39 @@ func TestMediaUsageLandsInUsageHistory(t *testing.T) {
 	}
 }
 
+// Media callers may name the model as "provider/model" (the web-search
+// default engine does); usage rows must store the bare id like chat does,
+// otherwise the usage dashboard splits one model across two buckets.
+func TestMediaUsageRecordsBareModel(t *testing.T) {
+	srv, database := setupTestServer(t)
+	r := httptest.NewRequest(http.MethodPost, "/v1/search", nil)
+	srv.recordMediaUsage(r, "antigravity", "antigravity/gemini-3.8-flash-high", "conn-1", "/v1/search", http.StatusOK, 12)
+
+	rows, err := database.GetUsageHistory(db.UsageFilter{Model: "gemini-3.8-flash-high"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Model != "gemini-3.8-flash-high" {
+		t.Fatalf("expected one bare-model usage row, got %+v", rows)
+	}
+	details, err := database.GetRequestDetails(db.RequestDetailFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(details.Details) != 1 {
+		t.Fatalf("expected one request detail, got %d", len(details.Details))
+	}
+	var rd struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(details.Details[0], &rd); err != nil {
+		t.Fatal(err)
+	}
+	if rd.Model != "gemini-3.8-flash-high" {
+		t.Fatalf("request detail should carry the bare model id, got %q", rd.Model)
+	}
+}
+
 func TestMediaEgressHonorsProxyPool(t *testing.T) {
 	srv, database := setupTestServer(t)
 	if err := database.CreateConnection(&model.ProviderConnection{

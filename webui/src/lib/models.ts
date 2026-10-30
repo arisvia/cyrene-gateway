@@ -35,15 +35,40 @@ export function reloadModels(): Promise<GatewayModel[]> {
 }
 
 /**
- * 模型 ID 到友好展示名称的映射字典（缺失名称回退至 raw id）。
+ * Build the model ID → friendly display name dictionary (missing names fall
+ * back to the raw id). The catalog lists `provider/model` full names while
+ * usage rows record the bare id, so each full entry is mirrored onto its
+ * bare key; a bare key claimed by two providers with different names is
+ * dropped so it falls back to the raw id instead of mislabeling.
  */
-export async function fetchModelDisplayNameMap(): Promise<Record<string, string>> {
-  const list = await fetchModels()
+export function buildModelDisplayNameMap(list: GatewayModel[]): Record<string, string> {
   const map: Record<string, string> = {}
   for (const m of list) {
     if (m && m.id) map[m.id] = m.display_name?.trim() || m.id
   }
+  const bareName: Record<string, string> = {}
+  const ambiguous = new Set<string>()
+  for (const m of list) {
+    if (!m || !m.id) continue
+    const i = m.id.lastIndexOf('/')
+    if (i < 0) continue
+    const name = m.display_name?.trim()
+    if (!name) continue
+    const bare = m.id.slice(i + 1)
+    if (ambiguous.has(bare)) continue
+    if (bareName[bare] !== undefined && bareName[bare] !== name) {
+      ambiguous.add(bare)
+      delete map[bare]
+      continue
+    }
+    bareName[bare] = name
+    if (map[bare] === undefined) map[bare] = name
+  }
   return map
+}
+
+export async function fetchModelDisplayNameMap(): Promise<Record<string, string>> {
+  return buildModelDisplayNameMap(await fetchModels())
 }
 
 /**

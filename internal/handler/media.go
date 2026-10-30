@@ -813,6 +813,13 @@ func (s *Server) recordMediaUsage(r *http.Request, providerID, modelName, connID
 	if modelName == "" {
 		modelName = providerID
 	}
+	// Chat rows store the bare model ID; media callers may name the model as
+	// "provider/model" (e.g. the web-search default engine). Normalize so
+	// usage aggregation buckets stay unified and the dashboard's display-name
+	// lookup sees one canonical form.
+	if pfx := providerID + "/"; strings.HasPrefix(modelName, pfx) {
+		modelName = strings.TrimPrefix(modelName, pfx)
+	}
 	statusStr := "ok"
 	if status == 499 {
 		statusStr = "canceled"
