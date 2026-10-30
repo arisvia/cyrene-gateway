@@ -636,7 +636,7 @@ func TestMediaResolvedDisabledModel(t *testing.T) {
 	}{
 		{"image", "/v1/images/generations", "oai/dall-e-3", "openai/dall-e-3", ""},
 		{"tts", "/v1/audio/speech", "oai/tts-1", "openai/tts-1", ""},
-		{"stt", "/v1/audio/transcriptions", "oai/whisper-1", "openai/whisper-1", ""},
+		{"stt", "/v1/audio/transcriptions", "openai/whisper-1", "openai/whisper-1", ""},
 		{"video", "/v1/videos/generations", "xai/grok-2-video", "xai/grok-2-video", ""},
 		{"video_explicit_provider", "/v1/videos/generations", "xai/grok-2-video", "xai/grok-2-video", "xai"},
 		{"search", "/v1/search", "ag/gemini-2.5-flash", "antigravity/gemini-2.5-flash", "antigravity"},
@@ -653,6 +653,52 @@ func TestMediaResolvedDisabledModel(t *testing.T) {
 				t.Errorf("want disabled 403 and zero upstream requests, got %d and %d: %s", w.Code, calls, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestMediaSearchListingSurvivesHardcodedEngineDisable(t *testing.T) {
+	// The hardcoded web-search engines (gemini-2.5-flash/pro) can be disabled
+	// for chat cost control; the listing must then fall back to live
+	// Gemini-family chat engines from the provider model cache so the
+	// search surface does not vanish.
+	srv, _ := setupMediaAuthTest(t, nil, func(*http.Request) {})
+	for _, id := range []string{"antigravity/gemini-2.5-flash", "antigravity/gemini-2.5-pro"} {
+		if err := srv.DB.KVSet(model.KVScopeDisabledModels, id, "true"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cached := model.CachedModels{Models: []model.ModelMetadata{
+		{ID: "gemini-3.8-flash-high", DisplayName: "Gemini 3.8 Flash High", Capabilities: []string{"chat"}},
+		{ID: "gemini-3.1-flash-image", DisplayName: "Image", Capabilities: []string{"image-generation"}},
+	}}
+	raw, _ := json.Marshal(cached)
+	if err := srv.DB.KVSet(model.KVScopeProviderModelCache, "antigravity", string(raw)); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/media-providers?kind=web-search&connectedOnly=true", nil)
+	// /api/* management routes treat non-loopback hosts as WAN (session auth
+	// required); pin both peer and Host to loopback like the other tests.
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Host = "127.0.0.1:20128"
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("listing failed: %d %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Providers []struct {
+			Provider string `json:"provider"`
+			Models   []struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Providers) != 1 || len(body.Providers[0].Models) != 1 || body.Providers[0].Models[0].ID != "gemini-3.8-flash-high" {
+		t.Fatalf("live chat engine not offered for web search: %s", w.Body.String())
 	}
 }
 
@@ -689,20 +735,24 @@ func TestMediaOpenModeWithoutKey(t *testing.T) {
 
 func TestMediaSearchDefaultModelWhitelist(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		allowed  []string
-		disabled bool
-		want     int
+		name    string
+		allowed []string
+		disable []string
+		want    int
 	}{
-		{"denied", []string{"openai/*"}, false, http.StatusForbidden},
-		{"allowed", []string{"antigravity/gemini-2.5-flash"}, false, http.StatusOK},
-		{"disabled", nil, true, http.StatusForbidden},
+		{"denied", []string{"openai/*"}, nil, http.StatusForbidden},
+		// The default engine is the first non-disabled registry entry.
+		{"allowed_default", []string{"antigravity/gemini-3.8-flash-high"}, nil, http.StatusOK},
+		// Disabling the default falls through to the next enabled engine;
+		// whitelisting only the disabled one must still deny.
+		{"default_disabled_falls_through", []string{"antigravity/gemini-3.8-flash-high"}, []string{"antigravity/gemini-3.8-flash-high"}, http.StatusForbidden},
+		{"all_engines_disabled", nil, []string{"antigravity/gemini-3.8-flash-high", "antigravity/gemini-2.5-flash", "antigravity/gemini-2.5-pro"}, http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			srv, key := setupMediaAuthTest(t, tc.allowed, func(*http.Request) { calls++ })
-			if tc.disabled {
-				if err := srv.DB.KVSet(model.KVScopeDisabledModels, "antigravity/gemini-2.5-flash", "true"); err != nil {
+			for _, id := range tc.disable {
+				if err := srv.DB.KVSet(model.KVScopeDisabledModels, id, "true"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -711,8 +761,11 @@ func TestMediaSearchDefaultModelWhitelist(t *testing.T) {
 			if w.Code != tc.want {
 				t.Errorf("want status %d, got %d: %s", tc.want, w.Code, w.Body.String())
 			}
-			if tc.want == http.StatusForbidden && calls != 0 || tc.want == http.StatusOK && calls != 1 {
-				t.Errorf("unexpected upstream requests: %d", calls)
+			if tc.want == http.StatusOK && calls != 1 {
+				t.Errorf("want one upstream request, got %d", calls)
+			}
+			if tc.want != http.StatusOK && calls != 0 {
+				t.Errorf("want zero upstream requests, got %d", calls)
 			}
 		})
 	}

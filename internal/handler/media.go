@@ -544,9 +544,14 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web search", providerID)})
 		return
 	}
-	// Authorize the same default model that the Antigravity client would use.
+	// Authorize the same default model that the Antigravity client would use,
+	// skipping engines the operator disabled for chat cost control.
 	if modelName == "" && providerID == "antigravity" {
-		modelName = "antigravity/gemini-2.5-flash"
+		modelName = s.defaultSearchModel(providerID)
+		if modelName == "" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "all web search engines are disabled"})
+			return
+		}
 	}
 	if modelName != "" {
 		if !s.checkMediaModelAccess(w, r, modelName) {
@@ -597,6 +602,43 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.proxyMediaResponse(w, resp)
+}
+
+// defaultSearchModel picks the first enabled web-search engine for a
+// provider: static registry entries first, then live Gemini-family chat
+// engines from the provider model cache.
+func (s *Server) defaultSearchModel(providerID string) string {
+	cfg := media.GetConfig(providerID, media.KindWebSearch)
+	if cfg == nil {
+		return ""
+	}
+	disabledMap, _ := s.DB.KVList(model.KVScopeDisabledModels)
+	isDisabled := func(fullID string) bool { return disabledMap != nil && disabledMap[fullID] != "" }
+	for _, p := range media.GetProvidersByKind(media.KindWebSearch) {
+		if p.Provider != providerID {
+			continue
+		}
+		for _, m := range p.Models {
+			if m.Kind == media.KindWebSearch && !isDisabled(providerID+"/"+m.ID) {
+				return providerID + "/" + m.ID
+			}
+		}
+	}
+	if raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, providerID); err == nil && raw != "" {
+		var cached model.CachedModels
+		if json.Unmarshal([]byte(raw), &cached) == nil {
+			for _, cm := range cached.Models {
+				lowerID := strings.ToLower(cm.ID)
+				if providerID == "antigravity" && strings.HasPrefix(lowerID, "gemini-") &&
+					!strings.Contains(lowerID, "-image") &&
+					slices.Contains(cm.Capabilities, "chat") &&
+					!isDisabled(providerID+"/"+cm.ID) {
+					return providerID + "/" + cm.ID
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // handleMediaProviders handles GET /api/media-providers
@@ -684,9 +726,14 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 								strings.Contains(lowerID, "bge") ||
 								strings.Contains(lowerID, "gte")
 						case media.KindWebSearch:
-							if e.Provider == "antigravity" {
-								match = (cm.ID == "gemini-2.5-flash" || cm.ID == "gemini-2.5-pro")
-							}
+							// Web search is a tool capability of Gemini-family chat
+							// engines: any active, non-disabled chat model can drive
+							// it, so match the live catalog instead of a hardcoded
+							// engine list (which goes stale as upstream retires tiers).
+							match = e.Provider == "antigravity" &&
+								strings.HasPrefix(lowerID, "gemini-") &&
+								!strings.Contains(lowerID, "-image") &&
+								slices.Contains(cm.Capabilities, "chat")
 						}
 						if match && !seenModel[cm.ID] {
 							seenModel[cm.ID] = true
