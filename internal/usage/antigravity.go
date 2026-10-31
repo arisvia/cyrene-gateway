@@ -146,6 +146,7 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 	}
 
 	var geminiModels []modelQuotaRaw
+	var argonModels []modelQuotaRaw
 	var claudeGptModels []modelQuotaRaw
 	var imageModels []modelQuotaRaw
 	var otherModels []modelQuotaRaw
@@ -199,7 +200,11 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		}
 
 		lowerID := strings.ToLower(id)
-		if strings.HasPrefix(lowerID, "gemini-") {
+		if strings.HasPrefix(lowerID, "gemini-4") {
+			// Gemini 4 Argon draws from its own weekly pool, separate from
+			// the 3.x Flash/Pro window.
+			argonModels = append(argonModels, raw)
+		} else if strings.HasPrefix(lowerID, "gemini-") {
 			geminiModels = append(geminiModels, raw)
 		} else if strings.HasPrefix(lowerID, "claude-") || strings.HasPrefix(lowerID, "gpt-") {
 			// Claude and GPT-OSS share the exact same quota pool in Antigravity
@@ -235,7 +240,28 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		}
 	}
 
-	// 2. Aggregate Claude & GPT shared models pool (worst-case remainingFraction wins)
+	// 2. Aggregate Gemini 4 Argon pool (independent weekly window per Google rollout)
+	if len(argonModels) > 0 {
+		rep := argonModels[0]
+		for _, m := range argonModels[1:] {
+			if m.remFrac < rep.remFrac {
+				rep = m
+			}
+		}
+		rem := math.Round(rep.remFrac * total)
+		quotas["gemini4"] = Quota{
+			DisplayName:         "Gemini 4 Argon",
+			Total:               total,
+			Used:                total - rem,
+			Remaining:           rem,
+			RemainingPercentage: rep.remFrac * 100.0,
+			ResetAt:             rep.resetAt,
+			ResetSoon:           rep.resetSoon,
+			Unit:                "requests",
+		}
+	}
+
+	// 3. Aggregate Claude & GPT shared models pool (worst-case remainingFraction wins)
 	if len(claudeGptModels) > 0 {
 		rep := claudeGptModels[0]
 		for _, m := range claudeGptModels[1:] {
@@ -298,7 +324,12 @@ func clusterAntigravitySummary(summary AntigravityQuotaSummaryResponse) map[stri
 
 		baseKey := "other"
 		baseDisplay := groupName
-		if strings.Contains(lowerGroup, "gemini") {
+		if strings.Contains(lowerGroup, "argon") || strings.Contains(lowerGroup, "gemini 4") || strings.Contains(lowerGroup, "gemini-4") {
+			// Argon carries its own weekly pool; merging it into "gemini"
+			// would overwrite the Gemini buckets (same map keys).
+			baseKey = "gemini4"
+			baseDisplay = "Gemini 4 Argon"
+		} else if strings.Contains(lowerGroup, "gemini") {
 			baseKey = "gemini"
 			baseDisplay = "Gemini (Search / Image)"
 		} else if strings.Contains(lowerGroup, "claude") || strings.Contains(lowerGroup, "gpt") {

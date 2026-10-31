@@ -13,6 +13,7 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/translator"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
@@ -1111,16 +1112,20 @@ func TestAntigravityNonStreamInBandErrorWithPartialContentFailsOver(t *testing.T
 	if w.Body.Len() != 0 {
 		t.Errorf("nothing may be written when the turn is retried: %s", w.Body.String())
 	}
-	if conn.Data.RateLimitedUntil == "" {
-		t.Fatalf("RESOURCE_EXHAUSTED prose must park the quota window, got TestStatus=%v LastError=%q", conn.Data.TestStatus, conn.Data.LastError)
+	if conn.Data.RateLimitedUntil != "" {
+		t.Errorf("quota exhaustion must park the POOL, not the whole account (Gemini would melt down): %s", conn.Data.RateLimitedUntil)
 	}
-	parked, perr := time.Parse(time.RFC3339, conn.Data.RateLimitedUntil)
+	lock, _ := conn.Data.ProviderSpecificData["modelLock_claude-opus-5-5-high"].(string)
+	if lock == "" {
+		t.Fatalf("RESOURCE_EXHAUSTED must set a pool-scoped model lock, got TestStatus=%v LastError=%q", conn.Data.TestStatus, conn.Data.LastError)
+	}
+	until, perr := time.Parse(time.RFC3339, lock)
 	if perr != nil {
-		t.Fatalf("RateLimitedUntil unparseable: %v", perr)
+		t.Fatalf("model lock unparseable: %v", perr)
 	}
-	// Must be the 15-min quota park (text rule via appended enum), not the
-	// 2s exponential backoff the bare derived-429 status rule would give.
-	if remaining := time.Until(parked); remaining < 5*time.Minute {
+	// Must be the 15-min quota window (CooldownQuota), not the 2s exponential
+	// backoff the bare derived-429 status rule would give.
+	if remaining := time.Until(until); remaining < 5*time.Minute {
 		t.Errorf("quota park too short (%v) — enum piggyback onto the classified text regressed", remaining)
 	}
 }
@@ -1157,5 +1162,75 @@ func TestAntigravityNonStreamInBandDeterministicErrorIsHonest(t *testing.T) {
 	}
 	if uc.Status != 400 {
 		t.Errorf("uc.Status = %d, want 400", uc.Status)
+	}
+}
+
+func newAntigravityQuotaUpstream(t *testing.T) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}`))
+	}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+func TestAntigravityQuotaExhaustionParksPoolNotAccount(t *testing.T) {
+	srv, _ := setupTestServer(t)
+	ts := newAntigravityQuotaUpstream(t)
+	conn := &model.ProviderConnection{
+		ID: "opus-pool", Provider: "antigravity", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken:          "tok",
+			BaseURL:              ts.URL,
+			ProviderSpecificData: map[string]any{"projectId": "proj-1"},
+		},
+	}
+	req := ChatCompletionRequest{
+		Model:    "antigravity/claude-opus-5-5-high",
+		Messages: []Message{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	}
+	raw, _ := json.Marshal(req)
+	modelInfo := model.ModelInfo{Provider: "antigravity", Model: "claude-opus-5-5-high"}
+	w := httptest.NewRecorder()
+	retryable := srv.handleAntigravityChat(w, httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(raw)), req, raw, modelInfo, conn, provider.ProviderInfo{})
+	if !retryable {
+		t.Fatalf("quota 429 must hop to the next account, body=%s", w.Body.String())
+	}
+	if conn.Data.RateLimitedUntil != "" {
+		t.Errorf("quota exhaustion must NOT park the whole account (Gemini pools would melt down): RateLimitedUntil=%s", conn.Data.RateLimitedUntil)
+	}
+	lock, _ := conn.Data.ProviderSpecificData["modelLock_claude-opus-5-5-high"].(string)
+	if lock == "" {
+		t.Fatalf("expected pool-scoped model lock on the exhausted claude model, got %+v", conn.Data.ProviderSpecificData)
+	}
+	if _, banded := conn.Data.ProviderSpecificData["modelLock_gemini-3.8-flash-high"]; banded {
+		t.Errorf("gemini pool must stay servable when only claude is exhausted")
+	}
+
+	// Selector parity: the locked claude model is skipped, gemini still picks this account.
+	conns := []model.ProviderConnection{*conn}
+	if c := provider.SelectCredential(conns, "claude-opus-5-5-high", nil); c != nil {
+		t.Errorf("selector must skip the pool-locked claude model")
+	}
+	if c := provider.SelectCredential(conns, "gemini-3.8-flash-high", nil); c == nil {
+		t.Errorf("selector must still serve gemini on the same account")
+	}
+}
+
+func TestAntigravityQuotaPoolMapping(t *testing.T) {
+	cases := map[string]string{
+		"claude-opus-5-5-high":   "claude",
+		"gpt-oss-120b-medium":    "claude",
+		"gemini-3.8-flash-high":  "gemini",
+		"gemini-3.1-flash-image": "gemini",
+		"gemini-4-argon-high":    "gemini4",
+		"gemini-4":               "gemini4",
+		"mystery-model":          "",
+	}
+	for m, want := range cases {
+		if got := antigravityQuotaPool(m); got != want {
+			t.Errorf("antigravityQuotaPool(%q) = %q, want %q", m, got, want)
+		}
 	}
 }

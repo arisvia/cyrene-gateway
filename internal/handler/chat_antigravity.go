@@ -266,6 +266,17 @@ func (s *Server) handleAntigravityChat(
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		provider.ApplyErrorState(conn, resp.StatusCode, string(respBody))
+		// Quota-class exhaustion is POOL-scoped on antigravity (Claude & GPT /
+		// Gemini / Gemini-4-Argon are separate windows): park only this pool's
+		// models so the account keeps serving its other pools, instead of a
+		// global 15-min RateLimitedUntil meltdown.
+		if pool := antigravityQuotaPool(targetModel); pool != "" &&
+			provider.CheckFallbackError(resp.StatusCode, string(respBody), conn.Data.BackoffLevel).Cooldown >= provider.CooldownQuota {
+			conn.Data.RateLimitedUntil = ""
+			if lockPatch := s.lockAntigravityPool(conn, pool, targetModel, modelInfo.Model); lockPatch != nil && s.DB != nil {
+				_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
+			}
+		}
 		if s.DB != nil {
 			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
@@ -588,6 +599,53 @@ func antigravityFinishToOpenAI(fr string) string {
 	}
 }
 
+// antigravityQuotaPool maps a resolved upstream model onto the Google quota
+// pool it draws from (verified against live retrieveUserQuotaSummary buckets):
+// Claude & GPT-OSS share one pool, the Gemini family (text/search/image)
+// shares another, and Gemini 4 Argon carries its own weekly pool.
+func antigravityQuotaPool(targetModel string) string {
+	lower := strings.ToLower(targetModel)
+	switch {
+	case strings.HasPrefix(lower, "claude-"), strings.HasPrefix(lower, "gpt-"):
+		return "claude"
+	case strings.HasPrefix(lower, "gemini-4"):
+		return "gemini4"
+	case strings.HasPrefix(lower, "gemini-"):
+		return "gemini"
+	}
+	return ""
+}
+
+// lockAntigravityPool parks every same-pool model on this connection via the
+// existing model-lock mechanism (the credential selector already skips locked
+// models per request). One exhausted pool must not melt down the whole
+// account: the sibling pools keep their headroom and keep serving.
+// Returns the provider-data patch to persist (nil when nothing to lock).
+func (s *Server) lockAntigravityPool(conn *model.ProviderConnection, pool, targetModel, requestedModel string) map[string]any {
+	until := time.Now().Add(provider.CooldownQuota).UTC().Format(time.RFC3339)
+	patch := map[string]any{}
+	lock := func(name string) {
+		if name != "" && antigravityQuotaPool(name) == pool {
+			patch["modelLock_"+name] = until
+		}
+	}
+	lock(targetModel)
+	lock(requestedModel)
+	for _, m := range s.getAntigravityAvailableModels() {
+		lock(m.ID)
+	}
+	if len(patch) == 0 {
+		return nil
+	}
+	if conn.Data.ProviderSpecificData == nil {
+		conn.Data.ProviderSpecificData = make(map[string]any)
+	}
+	for k, v := range patch {
+		conn.Data.ProviderSpecificData[k] = v
+	}
+	return patch
+}
+
 // isGemini4Model reports whether a model name refers to Google Gemini 4 (Argon architecture).
 func isGemini4Model(model string) bool {
 	m := strings.ToLower(model)
@@ -815,7 +873,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 				// would regress the account to a 30s transient park.
 				errMsg += " (" + payload.Error.Status + ")"
 			}
-			s.abortAntigravityStream(w, flusher, uc, conn, &outBuilder, &reasoningBuilder, lastUsage, errMsg, antigravityInBandStatus(payload.Error.Code, payload.Error.Status))
+			s.abortAntigravityStream(w, flusher, uc, conn, model, &outBuilder, &reasoningBuilder, lastUsage, errMsg, antigravityInBandStatus(payload.Error.Code, payload.Error.Status))
 			return
 		}
 
@@ -926,7 +984,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	if scanErr := scanner.Err(); scanErr != nil && !sawDone && !sawFinish {
 		// Stalled mid-turn: without a terminal frame the client only sees the
 		// stream stop and cannot distinguish truncation from a clean end.
-		s.abortAntigravityStream(w, flusher, uc, conn, &outBuilder, &reasoningBuilder, lastUsage,
+		s.abortAntigravityStream(w, flusher, uc, conn, model, &outBuilder, &reasoningBuilder, lastUsage,
 			fmt.Sprintf("antigravity stream interrupted: %v", scanErr), http.StatusBadGateway)
 		return
 	}
@@ -935,7 +993,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		// [DONE]. A tool-only turn legitimately ends on EOF without
 		// finishReason, so emptiness — not the missing terminal frame — is
 		// the truncation signal here.
-		s.abortAntigravityStream(w, flusher, uc, conn, &outBuilder, &reasoningBuilder, lastUsage,
+		s.abortAntigravityStream(w, flusher, uc, conn, model, &outBuilder, &reasoningBuilder, lastUsage,
 			"antigravity stream produced no content before closing", http.StatusBadGateway)
 		return
 	}
@@ -986,7 +1044,7 @@ func (s *Server) markAntigravityClientGone(uc *usageContext, out, reasoning *str
 // error chunk (the OpenAI→Claude adapters render {"error":{...}} chunks as a
 // proper Anthropic event:error) instead of a misleading [DONE], books the
 // failure status, and records account error state.
-func (s *Server) abortAntigravityStream(w http.ResponseWriter, flusher http.Flusher, uc *usageContext, conn *model.ProviderConnection, out, reasoning *strings.Builder, lastUsage usage.Usage, message string, status int) {
+func (s *Server) abortAntigravityStream(w http.ResponseWriter, flusher http.Flusher, uc *usageContext, conn *model.ProviderConnection, poolModel string, out, reasoning *strings.Builder, lastUsage usage.Usage, message string, status int) {
 	slog.Warn("Antigravity stream aborted", slog.String("message", message), slog.Int("status", status))
 	payload, _ := json.Marshal(map[string]any{
 		"error": map[string]any{
@@ -1008,6 +1066,13 @@ func (s *Server) abortAntigravityStream(w http.ResponseWriter, flusher http.Flus
 	}
 	if conn != nil {
 		provider.ApplyErrorState(conn, status, message)
+		if pool := antigravityQuotaPool(poolModel); pool != "" &&
+			provider.CheckFallbackError(status, message, conn.Data.BackoffLevel).Cooldown >= provider.CooldownQuota {
+			conn.Data.RateLimitedUntil = ""
+			if lockPatch := s.lockAntigravityPool(conn, pool, poolModel, poolModel); lockPatch != nil && s.DB != nil {
+				_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
+			}
+		}
 		if s.DB != nil {
 			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
@@ -1131,6 +1196,13 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 		status := antigravityInBandStatus(upstreamErrCode, upstreamErrStatus)
 		if conn != nil {
 			provider.ApplyErrorState(conn, status, upstreamErr)
+			if pool := antigravityQuotaPool(model); pool != "" &&
+				provider.CheckFallbackError(status, upstreamErr, conn.Data.BackoffLevel).Cooldown >= provider.CooldownQuota {
+				conn.Data.RateLimitedUntil = ""
+				if lockPatch := s.lockAntigravityPool(conn, pool, model, model); lockPatch != nil && s.DB != nil {
+					_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
+				}
+			}
 			if s.DB != nil {
 				_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			}

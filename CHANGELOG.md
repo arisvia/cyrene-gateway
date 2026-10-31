@@ -2,6 +2,12 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.5] - 2026-10-31
+
+### Fixed
+- **antigravity 单池耗尽不再熔断整账号**：Claude/GPT 的 5 小时配额窗口打干后，此前会把整个账号全局冷却 15 分钟，连带同账号仍有 90%+ 余量的 Gemini 与 Argon 池一起 503 雪崩。现按 Google 真实配额结构（Claude & GPT / Gemini / Gemini 4 Argon 三个独立池）精确降级为池级锁：仅耗尽池内的模型轮换到其他账号，其余池持续服务。
+- **配额面板 Argon 独立池**：Gemini 4 Argon 的独立周额度组不再并入 Gemini 组展示，修复键冲突互相覆盖。
+
 ## [1.8.4] - 2026-10-31
 
 ### Fixed
@@ -313,6 +319,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.8.5]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.0...v1.8.2

@@ -2,6 +2,7 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -331,5 +332,30 @@ func TestClusterAntigravitySummary(t *testing.T) {
 	cWeek, ok := quotas["claude_weekly"]
 	if !ok || cWeek.DisplayName != "Claude & GPT (Weekly)" || cWeek.RemainingPercentage != 60.0 {
 		t.Errorf("unexpected claude_weekly: %+v", cWeek)
+	}
+}
+
+func TestClusterAntigravitySummaryKeepsArgonPoolSeparate(t *testing.T) {
+	raw := []byte(`{"groups":[
+		{"displayName":"Gemini models","buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":1.0}]},
+		{"displayName":"Gemini 4 Argon","buckets":[{"bucketId":"argon-weekly","window":"weekly","remainingFraction":0.42}]}
+	]}`)
+	var summary AntigravityQuotaSummaryResponse
+	if err := json.Unmarshal(raw, &summary); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	quotas := clusterAntigravitySummary(summary)
+	if _, ok := quotas["gemini_session"]; !ok {
+		t.Fatalf("gemini session bucket lost: %+v", quotas)
+	}
+	a, ok := quotas["gemini4_weekly"]
+	if !ok {
+		t.Fatalf("argon weekly bucket merged into gemini keys (collision): %+v", quotas)
+	}
+	if a.RemainingPercentage < 40 || a.RemainingPercentage > 45 {
+		t.Errorf("argon percentage = %v, want ~42", a.RemainingPercentage)
+	}
+	if a.DisplayName != "Gemini 4 Argon (Weekly)" {
+		t.Errorf("argon display = %q", a.DisplayName)
 	}
 }
