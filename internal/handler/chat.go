@@ -122,6 +122,8 @@ type ChatCompletionRequest struct {
 	Messages        []Message       `json:"messages"`
 	Tools           json.RawMessage `json:"tools,omitempty"`
 	ToolChoice      json.RawMessage `json:"tool_choice,omitempty"`
+	Stop            []string        `json:"stop,omitempty"`
+	TopP            *float64        `json:"top_p,omitempty"`
 	Stream          bool            `json:"stream,omitempty"`
 }
 

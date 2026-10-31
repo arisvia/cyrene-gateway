@@ -72,7 +72,7 @@ func (a *anthropicResponseAdapter) Write(p []byte) (int, error) {
 		a.WriteHeader(a.statusCode)
 	}
 	if a.statusCode < 200 || a.statusCode >= 300 {
-		return a.w.Write(p)
+		return a.w.Write(anthropicErrorEnvelope(a.statusCode, p))
 	}
 
 	if a.isSSE {
@@ -177,19 +177,19 @@ func (a *anthropicResponseAdapter) Finish() {
 func (s *Server) handleMessagesViaChat(w http.ResponseWriter, r *http.Request, reqBody map[string]any, modelStr string, stream bool) {
 	openAIBodyMap, err := translator.ClaudeToOpenAIRequest(reqBody)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to translate Anthropic request: %v", err)})
+		writeAnthropicError(w, http.StatusBadRequest, fmt.Sprintf("failed to translate Anthropic request: %v", err))
 		return
 	}
 	openAIBytes, err := json.Marshal(openAIBodyMap)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to encode translated request"})
+		writeAnthropicError(w, http.StatusBadRequest, "failed to encode translated request")
 		return
 	}
 
 	adapter := newAnthropicResponseAdapter(w, stream, modelStr)
 	newReq, err := http.NewRequestWithContext(r.Context(), "POST", "/v1/chat/completions", bytes.NewReader(openAIBytes))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create proxy request"})
+		writeAnthropicError(w, http.StatusInternalServerError, "failed to create proxy request")
 		return
 	}
 	newReq.Header = r.Header.Clone()
@@ -199,4 +199,77 @@ func (s *Server) handleMessagesViaChat(w http.ResponseWriter, r *http.Request, r
 	newReq.Header.Set("X-Cyrene-Original-Endpoint", "/v1/messages")
 	s.handleChatCompletions(adapter, newReq)
 	adapter.Finish()
+}
+
+// writeAnthropicError emits an Anthropic-shaped error body directly on w for
+// failures raised before the response adapter exists.
+func writeAnthropicError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	body, _ := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    anthropicErrorTypeForStatus(status),
+			"message": message,
+		},
+	})
+	w.Write(body)
+}
+
+// anthropicErrorEnvelope rewrites gateway/OpenAI error bodies ({\"error\": \"...\"}
+// flat strings or nested objects) into the {"type":"error","error":{type,message}}
+// shape Anthropic SDKs parse, so clients can classify and back off instead of
+// surfacing an empty message. Already-shaped bodies pass through untouched.
+func anthropicErrorEnvelope(status int, body []byte) []byte {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		if parsed["type"] == "error" {
+			return body
+		}
+	}
+	message := string(bytes.TrimSpace(body))
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		switch e := parsed["error"].(type) {
+		case string:
+			if e != "" {
+				message = e
+			}
+		case map[string]any:
+			if m, ok := e["message"].(string); ok && m != "" {
+				message = m
+			}
+		}
+	}
+	out, err := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    anthropicErrorTypeForStatus(status),
+			"message": message,
+		},
+	})
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+func anthropicErrorTypeForStatus(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "invalid_request_error"
+	case http.StatusUnauthorized:
+		return "authentication_error"
+	case http.StatusForbidden:
+		return "permission_error"
+	case http.StatusNotFound:
+		return "not_found_error"
+	case http.StatusRequestEntityTooLarge:
+		return "request_too_large"
+	case http.StatusTooManyRequests:
+		return "rate_limit_error"
+	case http.StatusServiceUnavailable:
+		return "overloaded_error"
+	default:
+		return "api_error"
+	}
 }

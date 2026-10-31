@@ -39,6 +39,7 @@ func (s *Server) handleAntigravityChat(
 	}
 	if token == "" {
 		// No usable credential on this account: another one may have one.
+		slog.Warn("Antigravity connection has no usable credential, hopping", slog.String("connection", conn.ID))
 		return true
 	}
 
@@ -56,11 +57,16 @@ func (s *Server) handleAntigravityChat(
 	if projectID == "" {
 		pid, err := s.EnsureAntigravityProject(r.Context(), conn, client)
 		if err != nil {
-			if conn.Data.BaseURL == "" && providerInfo.BaseURL == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": fmt.Sprintf("antigravity project not configured and discovery failed: %v", err),
-				})
+			if r.Context().Err() != nil {
 				return
+			}
+			slog.Warn("Antigravity project discovery failed", "error", err, "connection", conn.ID)
+			if conn.Data.BaseURL == "" && providerInfo.BaseURL == "" {
+				// Account-scoped failure (throttled/revoked entitlement on THIS
+				// Google account): a sibling connection may carry a usable
+				// project. Never surface a deterministic client-facing 400 for
+				// it; let the pool walk proceed.
+				return true
 			}
 		} else {
 			projectID = pid
@@ -76,6 +82,12 @@ func (s *Server) handleAntigravityChat(
 		if req.Temperature != nil {
 			genConfig["temperature"] = *req.Temperature
 		}
+		if req.TopP != nil {
+			genConfig["topP"] = *req.TopP
+		}
+	}
+	if len(req.Stop) > 0 {
+		genConfig["stopSequences"] = req.Stop
 	}
 	if req.MaxTokens != nil && *req.MaxTokens > 0 {
 		genConfig["maxOutputTokens"] = *req.MaxTokens
@@ -222,7 +234,12 @@ func (s *Server) handleAntigravityChat(
 
 	// Phase 9: On-401 retry with token refresh for OAuth connections
 	if resp.StatusCode == http.StatusUnauthorized && conn.Data.RefreshToken != "" {
+		errBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		// Keep the original 401 body armed: any path that does not replace resp
+		// (refresh failed, retry build/do failed) still records the real cause
+		// instead of cooling the account on an empty error body.
+		resp.Body = io.NopCloser(bytes.NewReader(errBody))
 		slog.Warn("Antigravity upstream returned 401, attempting token refresh and retry",
 			slog.String("provider", conn.Provider),
 			slog.String("connection_id", conn.ID))
@@ -299,6 +316,15 @@ func (s *Server) handleAntigravityChat(
 		return false
 	}
 
+	// Response headers arrived: the account served us. Clear sticky error state
+	// (testStatus/lastError/backoff) like every other executor does; without it
+	// a single malformed-history 400 pinned these connections as "error" until
+	// an admin re-test, and backoffLevel only ever grew.
+	provider.ResetAccountState(conn)
+	if s.DB != nil {
+		_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+	}
+
 	uc := &usageContext{
 		StartedAt:    start,
 		Provider:     conn.Provider,
@@ -311,9 +337,11 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	if isImage || !req.Stream {
-		s.proxyAntigravityNonStreaming(w, resp, modelInfo.Model, uc)
+		if s.proxyAntigravityNonStreaming(w, resp, modelInfo.Model, uc, conn) {
+			return true
+		}
 	} else {
-		s.proxyAntigravityStreaming(w, r, resp, modelInfo.Model, uc)
+		s.proxyAntigravityStreaming(w, r, resp, modelInfo.Model, uc, conn)
 	}
 	return false
 }
@@ -346,11 +374,72 @@ func parseMessageContent(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// contentPartsForGemini flattens an OpenAI message's content into Gemini parts,
+// carrying base64 image_url items as inlineData. Text-only flattening silently
+// dropped vision input (the model answered about images it never received) and
+// could leave an image-only turn with zero parts, which the turn normalizer
+// deletes — producing an empty-contents 400 upstream.
+func contentPartsForGemini(raw json.RawMessage) []map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		if str == "" {
+			return nil
+		}
+		return []map[string]any{{"text": str}}
+	}
+	var items []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		ImageURL struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return []map[string]any{{"text": string(raw)}}
+	}
+	var out []map[string]any
+	for _, it := range items {
+		if it.ImageURL.URL != "" {
+			if mt, data, ok := splitBase64DataURI(it.ImageURL.URL); ok {
+				out = append(out, map[string]any{
+					"inlineData": map[string]any{"mimeType": mt, "data": data},
+				})
+			}
+			continue
+		}
+		if it.Type == "text" || it.Text != "" {
+			out = append(out, map[string]any{"text": it.Text})
+		}
+	}
+	return out
+}
+
+func splitBase64DataURI(u string) (string, string, bool) {
+	if !strings.HasPrefix(u, "data:") {
+		return "", "", false
+	}
+	comma := strings.IndexByte(u, ',')
+	semi := strings.IndexByte(u, ';')
+	if comma < 0 || semi < 5 || semi > comma {
+		return "", "", false
+	}
+	return u[5:semi], u[comma+1:], true
+}
+
 func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([]map[string]any, []map[string]any) {
 	var contents []map[string]any
 	var systemParts []map[string]any
 	isGemini4 := len(targetModel) > 0 && isGemini4Model(targetModel[0])
 	toolCallNames := make(map[string]string)
+	// cloudcode-pa turns functionCall parts into Anthropic tool_use blocks where
+	// id is REQUIRED (missing → 400 "messages.N.content.M.tool_use.id: Field
+	// required"). OpenAI leaves tool_call_id optional, so calls without one get
+	// a synthesized id here; the matching tool turn is paired back to it.
+	callIDsBySeq := make(map[int]string)
+	callSeq := 0
 	for _, msg := range messages {
 		if len(msg.ToolCalls) > 0 {
 			var tcs []struct {
@@ -361,13 +450,20 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 			}
 			if err := json.Unmarshal(msg.ToolCalls, &tcs); err == nil {
 				for _, tc := range tcs {
-					if tc.ID != "" && tc.Function.Name != "" {
-						toolCallNames[tc.ID] = tc.Function.Name
+					id := tc.ID
+					if id == "" {
+						id = fmt.Sprintf("call_%s", randomHex(8))
+						callIDsBySeq[callSeq] = id
 					}
+					if tc.Function.Name != "" {
+						toolCallNames[id] = tc.Function.Name
+					}
+					callSeq++
 				}
 			}
 		}
 	}
+	callSeq = 0 // reuse the counter for the emission pass below (same order)
 
 	for _, msg := range messages {
 		role := strings.ToLower(msg.Role)
@@ -385,22 +481,28 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 				fnName = msg.ToolCallID
 			}
 			var resp any
-			if err := json.Unmarshal([]byte(text), &resp); err != nil || resp == nil {
+			dec := json.NewDecoder(strings.NewReader(text))
+			dec.UseNumber() // keep bare-number tool outputs exact (no float64 mangling)
+			if err := dec.Decode(&resp); err != nil || resp == nil {
 				resp = map[string]any{"result": text}
 			}
 			respMap, ok := resp.(map[string]any)
 			if !ok {
 				respMap = map[string]any{"result": resp}
 			}
+			// Echo the call id so the backend can bind the tool_result back
+			// to its tool_use.
+			frBody := map[string]any{
+				"name":     fnName,
+				"response": respMap,
+			}
+			if msg.ToolCallID != "" {
+				frBody["id"] = msg.ToolCallID
+			}
 			contents = append(contents, map[string]any{
 				"role": "user",
 				"parts": []map[string]any{
-					{
-						"functionResponse": map[string]any{
-							"name":     fnName,
-							"response": respMap,
-						},
-					},
+					{"functionResponse": frBody},
 				},
 			})
 			continue
@@ -410,9 +512,7 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 		}
 
 		var parts []map[string]any
-		if text != "" {
-			parts = append(parts, map[string]any{"text": text})
-		}
+		parts = append(parts, contentPartsForGemini(msg.Content)...)
 
 		// Backfill thoughtSignature for tool calling history on Gemini 3+
 		if len(msg.ToolCalls) > 0 {
@@ -420,19 +520,35 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 				ID       string `json:"id"`
 				Type     string `json:"type"`
 				Function struct {
-					Name      string `json:"name"`
-					Arguments string `json:"arguments"`
+					Name      string          `json:"name"`
+					Arguments json.RawMessage `json:"arguments"`
 				} `json:"function"`
 			}
 			if err := json.Unmarshal(msg.ToolCalls, &toolCalls); err == nil && len(toolCalls) > 0 {
 				for i, tc := range toolCalls {
+					fcID := tc.ID
+					if fcID == "" {
+						fcID = callIDsBySeq[callSeq]
+					}
+					callSeq++
 					var args map[string]any
-					_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+					// Accept both string-encoded and object-shaped arguments so a
+					// Mistral-style body doesn't fail the whole turn's unmarshal and
+					// silently orphan its functionResponses.
+					var asStr string
+					if len(tc.Function.Arguments) > 0 {
+						if err := json.Unmarshal(tc.Function.Arguments, &asStr); err == nil {
+							_ = json.Unmarshal([]byte(asStr), &args)
+						} else {
+							_ = json.Unmarshal(tc.Function.Arguments, &args)
+						}
+					}
 					if args == nil {
 						args = map[string]any{}
 					}
 					fcPart := map[string]any{
 						"functionCall": map[string]any{
+							"id":   fcID,
 							"name": tc.Function.Name,
 							"args": args,
 						},
@@ -455,6 +571,21 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 	contents = normalizeAntigravityContents(contents, isGemini4)
 
 	return contents, systemParts
+}
+
+// antigravityFinishToOpenAI maps a lowercased cloudcode-pa finishReason onto
+// the OpenAI enum that the downstream Claude adapter keys on ("length"→
+// max_tokens, "content_filter"→refusal). Passing raw gemini tokens through
+// made truncated output look like a clean end_turn/tool_use completion.
+func antigravityFinishToOpenAI(fr string) string {
+	switch fr {
+	case "max_tokens":
+		return "length"
+	case "safety", "recitation", "prohibited_content", "blocklist":
+		return "content_filter"
+	default:
+		return "stop"
+	}
 }
 
 // isGemini4Model reports whether a model name refers to Google Gemini 4 (Argon architecture).
@@ -535,6 +666,16 @@ type antigravityChunkPayload struct {
 		Candidates []antigravityCandidateItem `json:"candidates"`
 	} `json:"response"`
 	Candidates []antigravityCandidateItem `json:"candidates"`
+	// cloudcode-pa sometimes places the terminal signal at the payload root
+	// instead of inside a candidate (recorded upstream samples prove both).
+	FinishReason string `json:"finishReason"`
+	// In-band error frames arrive on an HTTP 200 SSE; ignoring them made a
+	// failed turn look like a clean empty completion.
+	Error *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	} `json:"error,omitempty"`
 }
 
 func (p *antigravityChunkPayload) getCandidates() []antigravityCandidateItem {
@@ -584,7 +725,7 @@ func hasNonNullField(obj json.RawMessage, key string) bool {
 	return ok && len(raw) > 0 && string(raw) != "null" && string(raw) != "{}"
 }
 
-func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext) {
+func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Request, resp *http.Response, model string, uc *usageContext, conn *model.ProviderConnection) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming unsupported"})
@@ -608,6 +749,15 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	var lastUsage usage.Usage
 	var outBuilder strings.Builder
 	var reasoningBuilder strings.Builder
+	// Monotonic tool-call slot across the whole stream: antigravity delivers each
+	// functionCall as its own complete part, often in separate SSE events. Reusing
+	// the per-event part offset would make clients (and the OpenAI→Claude stream
+	// adapter) merge parallel calls into one with concatenated arguments.
+	toolCallSeq := 0
+	sawDone := false
+	// A terminal finish_reason chunk actually written to the client; suppresses
+	// the abort paths after a served end-of-turn (e.g. SAFETY refusal with zero parts).
+	sawFinish := false
 	ctx := r.Context()
 	for scanner.Scan() {
 		select {
@@ -628,12 +778,18 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		line := scanner.Bytes()
 		if isSSEComment(line) {
 			if err := forwardSSEComment(w, flusher, line); err != nil {
+				s.markAntigravityClientGone(uc, &outBuilder, &reasoningBuilder)
+				s.recordUsage(uc, lastUsage)
 				return
 			}
 			continue
 		}
 		data, isDone, ok := translator.ParseSSEDataLineString(scanner.Text())
-		if !ok || isDone {
+		if isDone {
+			sawDone = true
+			continue
+		}
+		if !ok {
 			continue
 		}
 
@@ -642,7 +798,25 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 		if u := extractAntigravityUsage([]byte(data)); u.Known || u.TotalTokens > 0 {
-			lastUsage = u
+			// Never let a present-but-zeroed trailing frame wipe good usage.
+			if u.TotalTokens > 0 || lastUsage.TotalTokens == 0 {
+				lastUsage = u
+			}
+		}
+		if payload.Error != nil && (payload.Error.Message != "" || payload.Error.Status != "" || payload.Error.Code >= 400) {
+			errMsg := payload.Error.Message
+			if errMsg == "" {
+				errMsg = fmt.Sprintf("antigravity in-band error (code %d, status %s)", payload.Error.Code, payload.Error.Status)
+			}
+			if payload.Error.Status != "" && !strings.Contains(errMsg, payload.Error.Status) {
+				// Carry the RPC enum into the classified text so the quota rule
+				// (resource_exhausted → 15-min park) fires just like it does for
+				// a real non-200 body; prose alone ("exhausted (e.g. check quota)")
+				// would regress the account to a 30s transient park.
+				errMsg += " (" + payload.Error.Status + ")"
+			}
+			s.abortAntigravityStream(w, flusher, uc, conn, &outBuilder, &reasoningBuilder, lastUsage, errMsg, antigravityInBandStatus(payload.Error.Code, payload.Error.Status))
+			return
 		}
 
 		textChunk := ""
@@ -652,25 +826,39 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		for _, cand := range payload.getCandidates() {
 			if cand.FinishReason != "" {
 				finishReason = strings.ToLower(cand.FinishReason)
+				sawFinish = true
 			}
-			for i, part := range cand.Content.Parts {
+			for _, part := range cand.Content.Parts {
 				if part.Thought {
 					reasoningChunk += part.Text
 				} else if part.FunctionCall != nil {
+					tcIdx := toolCallSeq
+					toolCallSeq++
 					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					argsStr := string(argsBytes)
+					if argsStr == "null" || argsStr == "" {
+						// Zero-argument calls must stay JSON objects; "null"
+						// becomes tool_use.input:null and breaks Anthropic clients.
+						argsStr = "{}"
+					}
 					toolCallsDelta = append(toolCallsDelta, map[string]any{
-						"index": i,
-						"id":    fmt.Sprintf("call_%s_%d", randomHex(8), i),
+						"index": tcIdx,
+						"id":    fmt.Sprintf("call_%s_%d", randomHex(8), tcIdx),
 						"type":  "function",
 						"function": map[string]any{
 							"name":      part.FunctionCall.Name,
-							"arguments": string(argsBytes),
+							"arguments": argsStr,
 						},
 					})
 				} else {
 					textChunk += part.Text
 				}
 			}
+		}
+
+		if finishReason == "" && payload.FinishReason != "" {
+			// Root-level terminal signal (recorded upstream shape).
+			finishReason = strings.ToLower(payload.FinishReason)
 		}
 
 		if textChunk == "" && reasoningChunk == "" && len(toolCallsDelta) == 0 && finishReason == "" {
@@ -696,12 +884,9 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 
 		var fr any = nil
 		if finishReason != "" {
-			if len(toolCallsDelta) > 0 || finishReason == "tool_calls" {
+			fr = antigravityFinishToOpenAI(finishReason)
+			if fr == "stop" && len(toolCallsDelta) > 0 {
 				fr = "tool_calls"
-			} else if finishReason == "stop" || finishReason == "max_tokens" {
-				fr = finishReason
-			} else {
-				fr = "stop"
 			}
 		} else if len(toolCallsDelta) > 0 {
 			fr = "tool_calls"
@@ -722,17 +907,37 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 
 		chunkBytes, _ := json.Marshal(chunk)
 		if _, writeErr := fmt.Fprintf(w, "data: %s\n\n", string(chunkBytes)); writeErr != nil {
-			finalOutput := outBuilder.String()
-			if finalOutput == "" && reasoningBuilder.Len() > 0 {
-				finalOutput = reasoningBuilder.String()
-			}
-			if uc != nil {
-				uc.Status = 499
-				uc.Response = finalOutput
-			}
+			s.markAntigravityClientGone(uc, &outBuilder, &reasoningBuilder)
 			s.recordUsage(uc, lastUsage)
 			return
 		}
+		if fr != nil {
+			sawFinish = true
+		}
+	}
+
+	if r.Context().Err() != nil {
+		// Client hung up: book 499 and never cool the account for it.
+		s.markAntigravityClientGone(uc, &outBuilder, &reasoningBuilder)
+		s.recordUsage(uc, lastUsage)
+		return
+	}
+
+	if scanErr := scanner.Err(); scanErr != nil && !sawDone && !sawFinish {
+		// Stalled mid-turn: without a terminal frame the client only sees the
+		// stream stop and cannot distinguish truncation from a clean end.
+		s.abortAntigravityStream(w, flusher, uc, conn, &outBuilder, &reasoningBuilder, lastUsage,
+			fmt.Sprintf("antigravity stream interrupted: %v", scanErr), http.StatusBadGateway)
+		return
+	}
+	if !sawDone && !sawFinish && outBuilder.Len() == 0 && reasoningBuilder.Len() == 0 && toolCallSeq == 0 {
+		// Upstream closed after headers without a single delta and without
+		// [DONE]. A tool-only turn legitimately ends on EOF without
+		// finishReason, so emptiness — not the missing terminal frame — is
+		// the truncation signal here.
+		s.abortAntigravityStream(w, flusher, uc, conn, &outBuilder, &reasoningBuilder, lastUsage,
+			"antigravity stream produced no content before closing", http.StatusBadGateway)
+		return
 	}
 
 	if lastUsage.Known || lastUsage.TotalTokens > 0 {
@@ -740,10 +945,18 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 			"id": chatCmpleID, "object": "chat.completion.chunk", "created": time.Now().Unix(),
 			"model": model, "choices": []any{}, "usage": lastUsage.OpenAI(),
 		})
-		fmt.Fprintf(w, "data: %s\n\n", chunk)
+		if _, writeErr := fmt.Fprintf(w, "data: %s\n\n", chunk); writeErr != nil {
+			s.markAntigravityClientGone(uc, &outBuilder, &reasoningBuilder)
+			s.recordUsage(uc, lastUsage)
+			return
+		}
 	}
 	// Send final [DONE]
-	fmt.Fprintf(w, "data: [DONE]\n\n")
+	if _, writeErr := fmt.Fprintf(w, "data: [DONE]\n\n"); writeErr != nil {
+		s.markAntigravityClientGone(uc, &outBuilder, &reasoningBuilder)
+		s.recordUsage(uc, lastUsage)
+		return
+	}
 	flusher.Flush()
 
 	finalOutput := outBuilder.String()
@@ -756,17 +969,92 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 	s.recordUsage(uc, lastUsage)
 }
 
-func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.Response, model string, uc *usageContext) {
+// markAntigravityClientGone books a client-cancelled stream as 499 without
+// touching account health (parity with chat_messages.go / media_walk.go).
+func (s *Server) markAntigravityClientGone(uc *usageContext, out, reasoning *strings.Builder) {
+	finalOutput := out.String()
+	if finalOutput == "" && reasoning.Len() > 0 {
+		finalOutput = reasoning.String()
+	}
+	if uc != nil {
+		uc.Status = 499
+		uc.Response = finalOutput
+	}
+}
+
+// abortAntigravityStream terminates an upstream-failed stream with an in-band
+// error chunk (the OpenAI→Claude adapters render {"error":{...}} chunks as a
+// proper Anthropic event:error) instead of a misleading [DONE], books the
+// failure status, and records account error state.
+func (s *Server) abortAntigravityStream(w http.ResponseWriter, flusher http.Flusher, uc *usageContext, conn *model.ProviderConnection, out, reasoning *strings.Builder, lastUsage usage.Usage, message string, status int) {
+	slog.Warn("Antigravity stream aborted", slog.String("message", message), slog.Int("status", status))
+	payload, _ := json.Marshal(map[string]any{
+		"error": map[string]any{
+			"type":    anthropicErrorTypeForStatus(status),
+			"message": message,
+			"status":  status,
+		},
+	})
+	fmt.Fprintf(w, "data: %s\n\n", payload)
+	flusher.Flush()
+
+	if uc != nil {
+		finalOutput := out.String()
+		if finalOutput == "" && reasoning.Len() > 0 {
+			finalOutput = reasoning.String()
+		}
+		uc.Status = status
+		uc.Response = finalOutput
+	}
+	if conn != nil {
+		provider.ApplyErrorState(conn, status, message)
+		if s.DB != nil {
+			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+		}
+	}
+	s.recordUsage(uc, lastUsage)
+}
+
+// antigravityInBandStatus derives an HTTP-equivalent status from an in-band
+// error frame. cloudcode-pa often carries only the RPC enum, so a
+// Code==0 RESOURCE_EXHAUSTED frame must still surface as 429 for both the
+// client-visible error type and the fallback/quota rules.
+func antigravityInBandStatus(code int, status string) int {
+	if code >= 400 && code <= 599 {
+		return code
+	}
+	switch strings.ToUpper(status) {
+	case "RESOURCE_EXHAUSTED", "RATE_LIMIT_EXCEEDED":
+		return http.StatusTooManyRequests
+	case "UNAVAILABLE":
+		return http.StatusServiceUnavailable
+	case "INTERNAL", "DATA_LOSS", "UNKNOWN":
+		return http.StatusInternalServerError
+	case "PERMISSION_DENIED", "FAILED_PRECONDITION":
+		return http.StatusForbidden
+	case "UNAUTHENTICATED":
+		return http.StatusUnauthorized
+	case "INVALID_ARGUMENT":
+		return http.StatusBadRequest
+	}
+	return http.StatusBadGateway
+}
+
+func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.Response, model string, uc *usageContext, conn *model.ProviderConnection) (retryable bool) {
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read antigravity response: " + err.Error()})
-		return
+		return false
 	}
 
 	fullText := ""
 	reasoningText := ""
 	var toolCalls []any
 	var lastUsage usage.Usage
+	upstreamFinish := ""
+	upstreamErr := ""
+	upstreamErrCode := 0
+	upstreamErrStatus := ""
 
 	extractParts := func(data []byte) {
 		var payload antigravityChunkPayload
@@ -774,20 +1062,43 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 			return
 		}
 		if u := extractAntigravityUsage(data); u.Known || u.TotalTokens > 0 {
-			lastUsage = u
+			if u.TotalTokens > 0 || lastUsage.TotalTokens == 0 {
+				lastUsage = u
+			}
+		}
+		if payload.Error != nil && (payload.Error.Message != "" || payload.Error.Status != "" || payload.Error.Code >= 400) {
+			upstreamErr = payload.Error.Message
+			if upstreamErr == "" {
+				upstreamErr = fmt.Sprintf("antigravity in-band error (code %d, status %s)", payload.Error.Code, payload.Error.Status)
+			}
+			if payload.Error.Status != "" && !strings.Contains(upstreamErr, payload.Error.Status) {
+				upstreamErr += " (" + payload.Error.Status + ")"
+			}
+			upstreamErrCode = payload.Error.Code
+			upstreamErrStatus = payload.Error.Status
 		}
 		for _, cand := range payload.getCandidates() {
+			if cand.FinishReason != "" {
+				upstreamFinish = strings.ToLower(cand.FinishReason)
+			}
+			if upstreamFinish == "" && payload.FinishReason != "" {
+				upstreamFinish = strings.ToLower(payload.FinishReason)
+			}
 			for i, part := range cand.Content.Parts {
 				if part.Thought {
 					reasoningText += part.Text
 				} else if part.FunctionCall != nil {
 					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					argsStr := string(argsBytes)
+					if argsStr == "null" || argsStr == "" {
+						argsStr = "{}"
+					}
 					toolCalls = append(toolCalls, map[string]any{
 						"id":   fmt.Sprintf("call_%s_%d", randomHex(8), i),
 						"type": "function",
 						"function": map[string]any{
 							"name":      part.FunctionCall.Name,
-							"arguments": string(argsBytes),
+							"arguments": argsStr,
 						},
 					})
 				} else {
@@ -812,8 +1123,39 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 		}
 	}
 
+	// Any in-band error frame fails the non-streaming turn: nothing has been
+	// written to w yet, so quota/throttle classes hand off to the sibling
+	// connection, and the rest surface honestly instead of fabricating a
+	// clean "stop" completion out of a truncated partial buffer (F21).
+	if upstreamErr != "" {
+		status := antigravityInBandStatus(upstreamErrCode, upstreamErrStatus)
+		if conn != nil {
+			provider.ApplyErrorState(conn, status, upstreamErr)
+			if s.DB != nil {
+				_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			}
+			if provider.CheckFallbackError(status, upstreamErr, conn.Data.BackoffLevel).ShouldFallback {
+				return true
+			}
+		}
+		if uc != nil {
+			uc.Status = status
+		}
+		s.recordUsage(uc, lastUsage)
+		writeJSON(w, status, map[string]any{
+			"error": map[string]any{
+				"type":    anthropicErrorTypeForStatus(status),
+				"message": upstreamErr,
+			},
+		})
+		return false
+	}
+
 	finishReason := "stop"
-	if len(toolCalls) > 0 {
+	if upstreamFinish != "" {
+		finishReason = antigravityFinishToOpenAI(upstreamFinish)
+	}
+	if finishReason == "stop" && len(toolCalls) > 0 {
 		finishReason = "tool_calls"
 	}
 
@@ -857,6 +1199,7 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 		uc.Response = finalResp
 	}
 	s.recordUsage(uc, lastUsage)
+	return false
 }
 func randomHex(n int) string {
 	b := make([]byte, n)

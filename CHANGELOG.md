@@ -2,6 +2,14 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.4] - 2026-10-31
+
+### Fixed
+- **antigravity 模型工具调用参数粘连与历史回放丢失 ID**：流式工具调用 delta 此前沿用单事件内部下标而非单调累加 slot，并行工具调用被错误聚合为单个拼合 JSON；OpenAI 消息转 Gemini 历史时遗漏 `tool_call_id` 透传与缺失兜底，导致模型在多轮对话中触发 400（`tool_use.id: Field required`）。现为流分配全局自增 slot，并完整回传与保底生成 call ID。
+- **antigravity 长文本与多轮中断截断伪装为成功**：非流式 `FinishReason` 被忽略且流式 `MAX_TOKENS` 未翻译为 OpenAI `length`，上游截断时客户端误收到 `end_turn`；扫描器超时/断流时原样发送 `[DONE]` 帧，导致中断被当成正常完成并记录 200。现统一走 `antigravityFinishToOpenAI` 映射漏斗，流异常与内联错误帧如实抛出并在断开前闭合已打开的 content block。
+- **antigravity 错误响应透传与状态常态被污染**：上游通过 HTTP 200 SSE 下发的内联配额与限流错误此前未被捕获并被吞噬；单 Google 账号凭据发现失败直接向客户端透传 400 且阻断备用账号轮换；成功调用后未重置健康状态导致偶发错误永久钉死连接。现将发现失败标记为可重试、解析内联错误帧、并在非流式路径上对可回退错误实施同轮转移，调用成功后同步重置连接状态。
+- **antigravity 视觉输入与工具高级参数适配**：图片输入在此前扁平化为纯文本时被静默丢弃导致纯图请求 400，现转换回 `inlineData`；透传 `stop` 与 `top_p` 字段；大整数数字工具输出保留精度防 float64 截断；工具报错标志 `is_error` 前缀折叠进文本以供 Claude 感知；RTK 工具输出压缩支持内存切片。
+
 ## [1.8.3] - 2026-10-30
 
 ### Added
@@ -305,6 +313,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.8.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.0...v1.8.2
 [1.8.0]: https://github.com/arisvia/cyrene-gateway/compare/v1.7.7...v1.8.0

@@ -610,3 +610,24 @@ func TestCompressMessages_GeminiFunctionResponse_ResultKey(t *testing.T) {
 		t.Errorf("expected omission marker in Gemini compressed result, got: %s", compressed)
 	}
 }
+
+func TestCompressMessages_GeminiTypedSlices(t *testing.T) {
+	var lines []string
+	for i := range 300 {
+		lines = append(lines, "antigravity output line "+strconv.Itoa(i)+" "+strings.Repeat("y", 40))
+	}
+	content := strings.Join(lines, "\n")
+	// The antigravity envelope carries contents/parts as typed slices in
+	// memory before marshaling; compression must not silently no-op there.
+	body := map[string]any{
+		"contents": []map[string]any{
+			{"role": "user", "parts": []map[string]any{
+				{"functionResponse": map[string]any{"name": "grep", "response": map[string]any{"content": content}}},
+			}},
+		},
+	}
+	saved := CompressMessages(body, true)
+	if saved <= 0 {
+		t.Fatalf("typed []map[string]any contents must compress, saved=%d", saved)
+	}
+}

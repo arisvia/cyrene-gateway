@@ -188,6 +188,11 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 					case "tool_result":
 						toolCallID, _ := block["tool_use_id"].(string)
 						resContent := extractText(block["content"])
+						if isErr, ok := block["is_error"].(bool); ok && isErr {
+							// OpenAI tool messages have no error channel; fold the
+							// flag into the text so the model still sees failure.
+							resContent = "[tool_use_error] " + resContent
+						}
 						toolResults = append(toolResults, map[string]any{
 							"role":         "tool",
 							"tool_call_id": toolCallID,
@@ -339,11 +344,15 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 					for _, tcRaw := range tcList {
 						if tc, ok := tcRaw.(map[string]any); ok {
 							tcID, _ := tc["id"].(string)
+							if tcID == "" {
+								// Anthropic requires tool_use.id: Field required.
+								tcID = fmt.Sprintf("toolu_%d", len(contentBlocks)+1)
+							}
 							if fn, ok := tc["function"].(map[string]any); ok {
 								fnName, _ := fn["name"].(string)
 								argsStr, _ := fn["arguments"].(string)
 								var parsedArgs any
-								if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err != nil {
+								if err := json.Unmarshal([]byte(argsStr), &parsedArgs); err != nil || parsedArgs == nil {
 									parsedArgs = map[string]any{}
 								}
 								contentBlocks = append(contentBlocks, map[string]any{
@@ -576,16 +585,43 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 
 	if upstreamError := chunk["error"]; upstreamError != nil {
 		t.ended = true
+		var out bytes.Buffer
+		// A mid-stream failure must not leave content blocks open: close the
+		// active and any started tool blocks, then render the error as the
+		// terminal frame (no stop_reason — the error itself is terminal).
+		if t.blockStarted {
+			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
+			t.blockStarted = false
+			t.blockType = ""
+		}
+		if len(t.toolBlockIndices) > 0 {
+			stopIndices := make([]int, 0, len(t.toolBlockIndices))
+			for _, bIdx := range t.toolBlockIndices {
+				stopIndices = append(stopIndices, bIdx)
+			}
+			sort.Ints(stopIndices)
+			for _, bIdx := range stopIndices {
+				out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", bIdx))
+			}
+		}
 		message := "Upstream stream failed"
+		errType := "api_error"
 		if detail, ok := upstreamError.(map[string]any); ok {
 			if text, ok := detail["message"].(string); ok {
 				message = text
 			}
+			switch tp, _ := detail["type"].(string); tp {
+			case "invalid_request_error", "authentication_error", "permission_error",
+				"not_found_error", "request_too_large", "rate_limit_error",
+				"overloaded_error", "api_error":
+				errType = tp
+			}
 		} else if text, ok := upstreamError.(string); ok {
 			message = text
 		}
-		payload, err := json.Marshal(map[string]any{"type": "error", "error": map[string]any{"type": "api_error", "message": message}})
-		return []byte(fmt.Sprintf("event: error\ndata: %s\n\n", payload)), true, err
+		payload, err := json.Marshal(map[string]any{"type": "error", "error": map[string]any{"type": errType, "message": message}})
+		out.WriteString(fmt.Sprintf("event: error\ndata: %s\n\n", payload))
+		return out.Bytes(), true, err
 	}
 	var out bytes.Buffer
 

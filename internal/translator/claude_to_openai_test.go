@@ -448,3 +448,57 @@ func TestOpenAIToClaudeSSETranslator_InlineThinkTags(t *testing.T) {
 		t.Fatalf("expected message_stop, got: %s", s3)
 	}
 }
+func TestClaudeToOpenAIRequestToolResultErrorFlagSurvives(t *testing.T) {
+	body := decodeTranslatorPayload(t, []byte(`{
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"bash","input":{"command":"go test"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"exit status 1","is_error":true}]}
+		]
+	}`))
+	res, err := ClaudeToOpenAIRequest(body)
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	msgs := res["messages"].([]any)
+	var toolMsg map[string]any
+	for _, m := range msgs {
+		mm := m.(map[string]any)
+		if mm["role"] == "tool" {
+			toolMsg = mm
+		}
+	}
+	if toolMsg == nil {
+		t.Fatalf("no tool message produced: %+v", msgs)
+	}
+	content, _ := toolMsg["content"].(string)
+	if !strings.HasPrefix(content, "[tool_use_error] ") {
+		t.Errorf("is_error flag dropped: content = %q", content)
+	}
+}
+
+func TestOpenAIToClaudeResponseNullArgsAndEmptyID(t *testing.T) {
+	openAI := []byte(`{"id":"x","object":"chat.completion","model":"claude-opus-5-5","choices":[{"index":0,"message":{"role":"assistant","content":"","tool_calls":[{"id":"","type":"function","function":{"name":"noop","arguments":"null"}}]},"finish_reason":"tool_calls"}]}`)
+	out, err := OpenAIToClaudeResponse(openAI, "claude-opus-5-5")
+	if err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	blocks, _ := resp["content"].([]any)
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 tool_use block, got %s", out)
+	}
+	b := blocks[0].(map[string]any)
+	if b["type"] != "tool_use" {
+		t.Fatalf("expected tool_use, got %v", b["type"])
+	}
+	if id, _ := b["id"].(string); id == "" {
+		t.Errorf("empty tool_use.id must be replaced, got %s", out)
+	}
+	input, ok := b["input"].(map[string]any)
+	if !ok || input == nil {
+		t.Errorf("null arguments must normalize to an object, got %T", b["input"])
+	}
+}

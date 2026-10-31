@@ -120,7 +120,9 @@ func CompressMessages(body map[string]any, enabled bool) int {
 	}
 
 	// Gemini format: body["contents"] -> parts -> functionResponse -> response -> content
-	if contents, ok := body["contents"].([]any); ok {
+	// Accept the typed slices the antigravity envelope carries in memory, not
+	// just JSON-decoded []any (geminiParts parity).
+	if contents, ok := geminiParts(body["contents"]); ok {
 		lastModelIdx := -1
 		for i, c := range contents {
 			if contentMap, ok := c.(map[string]any); ok {
@@ -137,7 +139,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 			}
 			isHistorical := (lastModelIdx != -1 && i < lastModelIdx)
 
-			parts, ok := contentMap["parts"].([]any)
+			parts, ok := geminiParts(contentMap["parts"])
 			if !ok {
 				continue
 			}

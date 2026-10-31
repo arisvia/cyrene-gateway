@@ -59,9 +59,11 @@ var ErrorRules = []ErrorRule{
 	// account is out of credits, not briefly throttled, so it has to leave the
 	// rotation for a long time instead of backing off for a couple of seconds.
 	// Antigravity reports "RESOURCE_EXHAUSTED" / "rateLimitExceeded" per window,
+	// or the canonical gRPC prose "Resource has been exhausted (e.g. check quota)."
 	// CodeBuddy reports "usage limit" / "insufficient credits".
 	{Text: "resource_exhausted", CooldownMs: CooldownQuota},
 	{Text: "resource exhausted", CooldownMs: CooldownQuota},
+	{Text: "has been exhausted", CooldownMs: CooldownQuota},
 	// Google reports the enum spelling without spaces; the prose form
 	// "rate limit exceeded" stays on the backoff path below because it usually
 	// means a momentary throttle rather than exhausted credits.
