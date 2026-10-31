@@ -228,6 +228,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			lastError = string(errBody)
 
 			provider.ApplyErrorState(conn, resp.StatusCode, string(errBody))
+			s.parkAntigravityQuota(conn, modelInfo.Model, modelInfo.Model, resp.StatusCode, string(errBody))
 			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			// Account-scoped failures (quota, throttle, 5xx) get the next account
 			// on the SAME model; request-scoped 4xx repeat everywhere, so advance

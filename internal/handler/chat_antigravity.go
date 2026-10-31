@@ -270,13 +270,7 @@ func (s *Server) handleAntigravityChat(
 		// Gemini / Gemini-4-Argon are separate windows): park only this pool's
 		// models so the account keeps serving its other pools, instead of a
 		// global 15-min RateLimitedUntil meltdown.
-		if pool := antigravityQuotaPool(targetModel); pool != "" &&
-			provider.CheckFallbackError(resp.StatusCode, string(respBody), conn.Data.BackoffLevel).Cooldown >= provider.CooldownQuota {
-			conn.Data.RateLimitedUntil = ""
-			if lockPatch := s.lockAntigravityPool(conn, pool, targetModel, modelInfo.Model); lockPatch != nil && s.DB != nil {
-				_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
-			}
-		}
+		s.parkAntigravityQuota(conn, targetModel, modelInfo.Model, resp.StatusCode, string(respBody))
 		if s.DB != nil {
 			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
@@ -614,6 +608,26 @@ func antigravityQuotaPool(targetModel string) string {
 		return "gemini"
 	}
 	return ""
+}
+
+// parkAntigravityQuota converts an account-wide quota park into pool-scoped
+// model locks. Must be called AFTER ApplyErrorState: returns true when the
+// failure is quota-class on a mapped antigravity pool, having already cleared
+// the global RateLimitedUntil and persisted the locks (chat AND media traffic
+// for that pool are then skipped by the selector; sibling pools keep serving).
+func (s *Server) parkAntigravityQuota(conn *model.ProviderConnection, poolModel, requestedModel string, status int, errorText string) bool {
+	pool := antigravityQuotaPool(poolModel)
+	if conn == nil || pool == "" {
+		return false
+	}
+	if provider.CheckFallbackError(status, errorText, conn.Data.BackoffLevel).Cooldown < provider.CooldownQuota {
+		return false
+	}
+	conn.Data.RateLimitedUntil = ""
+	if lockPatch := s.lockAntigravityPool(conn, pool, poolModel, requestedModel); lockPatch != nil && s.DB != nil {
+		_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
+	}
+	return true
 }
 
 // lockAntigravityPool parks every same-pool model on this connection via the
@@ -1066,13 +1080,7 @@ func (s *Server) abortAntigravityStream(w http.ResponseWriter, flusher http.Flus
 	}
 	if conn != nil {
 		provider.ApplyErrorState(conn, status, message)
-		if pool := antigravityQuotaPool(poolModel); pool != "" &&
-			provider.CheckFallbackError(status, message, conn.Data.BackoffLevel).Cooldown >= provider.CooldownQuota {
-			conn.Data.RateLimitedUntil = ""
-			if lockPatch := s.lockAntigravityPool(conn, pool, poolModel, poolModel); lockPatch != nil && s.DB != nil {
-				_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
-			}
-		}
+		s.parkAntigravityQuota(conn, poolModel, poolModel, status, message)
 		if s.DB != nil {
 			_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		}
@@ -1196,13 +1204,7 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 		status := antigravityInBandStatus(upstreamErrCode, upstreamErrStatus)
 		if conn != nil {
 			provider.ApplyErrorState(conn, status, upstreamErr)
-			if pool := antigravityQuotaPool(model); pool != "" &&
-				provider.CheckFallbackError(status, upstreamErr, conn.Data.BackoffLevel).Cooldown >= provider.CooldownQuota {
-				conn.Data.RateLimitedUntil = ""
-				if lockPatch := s.lockAntigravityPool(conn, pool, model, model); lockPatch != nil && s.DB != nil {
-					_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
-				}
-			}
+			s.parkAntigravityQuota(conn, model, model, status, upstreamErr)
 			if s.DB != nil {
 				_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 			}

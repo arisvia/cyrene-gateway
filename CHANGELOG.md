@@ -2,6 +2,11 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.8.6] - 2026-10-31
+
+### Fixed
+- **媒体与 Combo 路径并入池级熔断**：antigravity 图像/搜索等媒体调用与 Combo 成员账号此前在单一配额池耗尽时仍会冷却整个账号（与 1.8.5 修复的聊天雪崩同型、方向相反），并连带同账号 Claude 池停摆；现共享同一池级锁语义，且媒体账号轮换开始识别池锁，不再反复撞击已耗尽的账号。
+
 ## [1.8.5] - 2026-10-31
 
 ### Fixed
@@ -319,6 +324,7 @@
 ### Fixed
 - **全站视觉与稳定性治理**：统一空状态组件与暗色毛玻璃规范，修复面板白屏（P0）与定时器内存泄漏。
 
+[1.8.6]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.3...v1.8.4
 [1.8.3]: https://github.com/arisvia/cyrene-gateway/compare/v1.8.2...v1.8.3

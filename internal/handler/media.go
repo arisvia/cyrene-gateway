@@ -136,7 +136,7 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conns, first := s.resolveMediaPool(modelInfo.Provider)
+	conns, first := s.resolveMediaPool(modelInfo.Provider, modelInfo.Model)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
@@ -216,7 +216,7 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conns, first := s.resolveMediaPool(modelInfo.Provider)
+	conns, first := s.resolveMediaPool(modelInfo.Provider, modelInfo.Model)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
@@ -290,7 +290,7 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	conns, first := s.resolveMediaPool(modelInfo.Provider)
+	conns, first := s.resolveMediaPool(modelInfo.Provider, modelInfo.Model)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)})
 		return
@@ -373,7 +373,7 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	conns, first := s.resolveMediaPool(providerID)
+	conns, first := s.resolveMediaPool(providerID, resolvedModel)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
@@ -431,7 +431,7 @@ func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conns, first := s.resolveMediaPool(providerID)
+	conns, first := s.resolveMediaPool(providerID, "")
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return
@@ -495,7 +495,7 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conns, first := s.resolveMediaPool(req.Provider)
+	conns, first := s.resolveMediaPool(req.Provider, req.Model)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", req.Provider)})
 		return
@@ -575,7 +575,7 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, _ = json.Marshal(bodyMap)
 	}
 
-	conns, first := s.resolveMediaPool(providerID)
+	conns, first := s.resolveMediaPool(providerID, modelName)
 	if first == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": fmt.Sprintf("no active credentials for provider: %s", providerID)})
 		return

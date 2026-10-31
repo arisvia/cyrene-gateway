@@ -14,6 +14,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestNormalizeImageGemini(t *testing.T) {
@@ -209,6 +210,59 @@ func TestMediaImagePoolExhaustion(t *testing.T) {
 
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("exhausted pool must surface last upstream status, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestMediaAntigravityQuotaParksPoolNotAccount proves the media surface shares
+// the chat-side pool semantics: an exhausted Gemini quota (image generation)
+// must lock only the gemini pool's models on the antigravity account, leaving
+// the Claude/GPT pool — and the account overall — servable for chat traffic.
+func TestMediaAntigravityQuotaParksPoolNotAccount(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "ag-media", Provider: "antigravity", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken:          "tok",
+			ProviderSpecificData: map[string]any{"projectId": "proj-1"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv.MediaClient.HTTPClient = &http.Client{Transport: mediaTestTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusTooManyRequests,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"quota exceeded","code":429}}`)),
+		}, nil
+	})}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", strings.NewReader(`{"model":"antigravity/gemini-3.1-flash-image","prompt":"a cat"}`))
+	srv.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("want terminal 429 after single-account pool exhaustion, got %d: %s", w.Code, w.Body.String())
+	}
+	conns, err := srv.DB.ListConnectionsByProvider("antigravity")
+	if err != nil || len(conns) == 0 {
+		t.Fatalf("connection missing: err=%v n=%d", err, len(conns))
+	}
+	psd := conns[0].Data.ProviderSpecificData
+	if conns[0].Data.RateLimitedUntil != "" {
+		t.Errorf("media quota burn must NOT park the whole account (claude chat would melt down): RateLimitedUntil=%s", conns[0].Data.RateLimitedUntil)
+	}
+	if lock, _ := psd["modelLock_gemini-3.1-flash-image"].(string); lock == "" {
+		t.Fatalf("expected pool lock on the exhausted gemini engine, got %+v", psd)
+	}
+	if _, banded := psd["modelLock_claude-opus-5-5-high"]; banded {
+		t.Errorf("claude pool must stay servable when only the gemini media pool is exhausted")
+	}
+	pool := []model.ProviderConnection{conns[0]}
+	if c := provider.SelectCredential(pool, "claude-opus-5-5-high", nil); c == nil {
+		t.Errorf("claude chat must still select this account while only gemini is locked")
+	}
+	if c := provider.SelectCredential(pool, "gemini-3.1-flash-image", nil); c != nil {
+		t.Errorf("selector must skip the pool-locked media engine")
 	}
 }
 

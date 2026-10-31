@@ -71,6 +71,10 @@ func (s *Server) attemptMediaRequest(
 		upResp.Body.Close()
 		slog.Warn("Media upstream error response", "status", upResp.StatusCode, "provider", providerID, "model", modelName)
 		provider.ApplyErrorState(conn, upResp.StatusCode, string(errBody))
+		// Antigravity quota burn parks only the engine's pool (chat-side parity):
+		// image/search exhaustion must not melt down the Claude pool on the same
+		// account, and vice versa via the shared model locks.
+		s.parkAntigravityQuota(conn, modelName, modelName, upResp.StatusCode, string(errBody))
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 		s.recordMediaUsage(r, providerID, modelName, conn.ID, endpoint, upResp.StatusCode, latencyMs)
 		if provider.CheckFallbackError(upResp.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
@@ -112,7 +116,7 @@ func (s *Server) walkMediaAccounts(
 		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: providerID, Model: modelName, Status: "fallback", Endpoint: endpoint})
 		cur = nil
 		for {
-			next := s.selectAvailableConnection(conns, "", tried, "")
+			next := s.selectAvailableConnection(conns, modelName, tried, "")
 			if next == nil {
 				break
 			}
@@ -127,12 +131,12 @@ func (s *Server) walkMediaAccounts(
 
 // resolveMediaPool lists active connections for a media provider and picks
 // the first eligible account, so handlers can walk the pool on failure.
-func (s *Server) resolveMediaPool(providerID string) ([]model.ProviderConnection, *model.ProviderConnection) {
+func (s *Server) resolveMediaPool(providerID, modelName string) ([]model.ProviderConnection, *model.ProviderConnection) {
 	conns, err := s.DB.ListConnectionsByProvider(providerID)
 	if err != nil || len(conns) == 0 {
 		return nil, nil
 	}
-	first := s.selectAvailableConnection(conns, "", nil, "")
+	first := s.selectAvailableConnection(conns, modelName, nil, "")
 	if first == nil {
 		return conns, nil
 	}
