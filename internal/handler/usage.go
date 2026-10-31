@@ -161,6 +161,7 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 
 	stats["byKey"] = history.ByKey
 	stats["byEndpoint"] = history.ByEndpoint
+	stats["byClient"] = history.ByClient
 
 	payload, err := json.Marshal(stats)
 	if err != nil {

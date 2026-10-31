@@ -43,6 +43,7 @@ type usageContext struct {
 	APIKey       string
 	Endpoint     string
 	Status       int
+	Client       string
 	Prompt       string
 	Response     string
 }
@@ -529,6 +530,7 @@ func (s *Server) attemptSingleModelChat(
 			"status":       statusStr,
 			"latencyMs":    latencyMs,
 			"endpoint":     endpoint,
+			"client":       detectClientAgent(r),
 			"error":        string(errBody),
 			"input":        extractPromptSummary(req.Messages),
 		}
@@ -568,6 +570,7 @@ func (s *Server) attemptSingleModelChat(
 
 	// Proxy the response with format translation
 	uc := &usageContext{
+		Client:       detectClientAgent(r),
 		RequestID:    ensureRequestID(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,

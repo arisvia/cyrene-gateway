@@ -851,6 +851,7 @@ export const zhCN = {
       model: '模型',
       key: '分发 Key',
       endpoint: '协议端点',
+      client: '客户端',
     },
     metrics: {
       requests: '请求数',
@@ -860,6 +861,12 @@ export const zhCN = {
       cost: '估算费用',
     },
     defaultKeyLabel: '默认客户端 (免鉴权)',
+    clientColumn: '客户端',
+    clients: {
+      browser: '浏览器',
+      unknown: '未知',
+      other: '其他',
+    },
     requestDetails: '请求明细',
     stopLive: '停止实时',
     overview: '概览',
@@ -915,6 +922,7 @@ export const zhCN = {
       endpoint: '网关接收端点',
       timestamp: '请求时间戳',
       connectionId: '连接凭证 ID',
+      client: '客户端来源',
     },
   },
   topology: {

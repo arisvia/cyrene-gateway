@@ -833,7 +833,7 @@ func (s *Server) recordMediaUsage(r *http.Request, providerID, modelName, connID
 		APIKey:       extractRequestAPIKey(r),
 		Endpoint:     endpoint,
 		Status:       statusStr,
-		Meta:         `{"usage_missing":true,"media":true}`,
+		Meta:         fmt.Sprintf(`{"usage_missing":true,"media":true,"client":%q}`, detectClientAgent(r)),
 	}
 	if err := s.DB.SaveUsageEntry(entry); err != nil {
 		slog.Warn("Failed to record media usage", "error", err, "model", modelName)
@@ -848,6 +848,7 @@ func (s *Server) recordMediaUsage(r *http.Request, providerID, modelName, connID
 		"status":       statusStr,
 		"latencyMs":    latencyMs,
 		"endpoint":     endpoint,
+		"client":       detectClientAgent(r),
 	}
 	rdBytes, _ := json.Marshal(rdData)
 	_ = s.DB.SaveRequestDetail(&db.RequestDetail{

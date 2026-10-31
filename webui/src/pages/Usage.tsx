@@ -7,6 +7,7 @@ import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor, maskKey } from '@/lib/format'
 import { fetchModelDisplayNameMap, resolveModelDisplayName, canonicalModelId } from '@/lib/models'
+import { clientDisplayName } from '@/lib/clients'
 import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
 
 // One gateway request emits several events (accepted → routing → streaming →
@@ -100,6 +101,7 @@ const Usage: Component = () => {
           completionTokens: rd.completionTokens,
           latencyMs: rd.latencyMs,
           endpoint: rd.endpoint,
+          client: rd.client,
         })))
       }
     })
@@ -193,7 +195,7 @@ const Usage: Component = () => {
     { label: t('usage.estimatedCost'), value: fmtCost(store.usageStats.totalCost ?? 0) },
   ])
 
-  type BreakdownDimension = 'provider' | 'model' | 'key' | 'endpoint'
+  type BreakdownDimension = 'provider' | 'model' | 'key' | 'endpoint' | 'client'
   type BreakdownMetric = 'requests' | 'totalTokens' | 'promptTokens' | 'completionTokens' | 'cost'
 
   const [dimension, setDimension] = createSignal<BreakdownDimension>('provider')
@@ -207,6 +209,7 @@ const Usage: Component = () => {
     else if (dim === 'model') raw = stats.byModel
     else if (dim === 'key') raw = stats.byKey
     else if (dim === 'endpoint') raw = stats.byEndpoint
+    else if (dim === 'client') raw = stats.byClient
 
     if (!raw) return []
 
@@ -218,6 +221,8 @@ const Usage: Component = () => {
         displayName = resolveModelDisplayName(modelNameMap(), parts[0], parts[1]) || parts[0]
       } else if (dim === 'key' && key === 'default') {
         displayName = t('usage.defaultKeyLabel')
+      } else if (dim === 'client') {
+        displayName = clientDisplayName(key, t)
       }
 
       const totalTokens = (v.promptTokens || 0) + (v.completionTokens || 0)
@@ -449,6 +454,7 @@ const Usage: Component = () => {
                   { value: 'model', label: t('usage.dimensions.model') },
                   { value: 'key', label: t('usage.dimensions.key') },
                   { value: 'endpoint', label: t('usage.dimensions.endpoint') },
+                  { value: 'client', label: t('usage.dimensions.client') },
                 ]}
               />
             </div>
@@ -532,6 +538,9 @@ const Usage: Component = () => {
                       </div>
                       <div class="flex items-center justify-between gap-2 text-[10px] text-faint">
                         <span class="font-mono truncate min-w-0" title={e.endpoint}>{e.endpoint || '/v1/chat/completions'}</span>
+                        <Show when={e.client}>
+                          <span class="shrink-0 text-[10px]">{clientDisplayName(e.client, t)}</span>
+                        </Show>
                         <Show when={(e.promptTokens || 0) > 0 || (e.completionTokens || 0) > 0}>
                           <div class="flex items-center gap-2 font-mono whitespace-nowrap shrink-0">
                             <span>in: <span class="text-foreground tabular-nums">{fmtNum(e.promptTokens ?? 0)}</span></span>
@@ -565,6 +574,7 @@ const Usage: Component = () => {
                     <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.prompt')}</th>
                     <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.completion')}</th>
                     <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.latency')}</th>
+                    <th class="pb-2.5 font-medium">{t('usage.clientColumn')}</th>
                     <th class="pb-2.5 font-medium text-right">{t('usage.tableHeaders.details')}</th>
                   </tr>
                 </thead>
@@ -585,6 +595,7 @@ const Usage: Component = () => {
                         <td class="py-2.5 text-right tabular-nums">{fmtNum(d.promptTokens ?? 0)}</td>
                         <td class="py-2.5 text-right tabular-nums">{fmtNum(d.completionTokens ?? 0)}</td>
                         <td class="py-2.5 text-right text-faint tabular-nums">{d.latencyMs ?? '-'}ms</td>
+                        <td class="py-2.5 text-faint text-[11px] whitespace-nowrap">{d.client ? clientDisplayName(d.client, t) : '-'}</td>
                         <td class="py-2.5 text-right">
                           <IconButton
                             size="sm"

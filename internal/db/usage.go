@@ -399,19 +399,36 @@ func (d *DB) GetConnectionUsageTokens(connectionID string, period string) (promp
 	return prompt, completion
 }
 
-// UsageSummary aggregates retained history without a pagination limit. Day counts
+// clientFromMeta extracts the downstream client id from the usageHistory meta
+// JSON. Rows written before client tracking (or lacking the field) report
+// "unknown".
+func clientFromMeta(meta string) string {
+	if meta == "" {
+		return "unknown"
+	}
+	var m struct {
+		Client string `json:"client"`
+	}
+	if err := json.Unmarshal([]byte(meta), &m); err != nil || m.Client == "" {
+		return "unknown"
+	}
+	return m.Client
+}
+
+// GetUsageSummary aggregates retained history without a pagination limit. Day counts
 // cover the entire first UTC day so callers can detect missing/pruned history.
 // They do not imply that the missing events fall inside a partial-day window.
 type UsageSummary struct {
 	DayData
 	ByKey         map[string]DayCounter
 	ByEndpoint    map[string]DayCounter
+	ByClient      map[string]DayCounter
 	RequestsByDay map[string]int
 }
 
 func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 	query := `SELECT timestamp, COALESCE(provider,''), COALESCE(model,''),
-		COALESCE(apiKey,''), COALESCE(endpoint,''), promptTokens, completionTokens, cost FROM usageHistory WHERE 1=1`
+		COALESCE(apiKey,''), COALESCE(endpoint,''), promptTokens, completionTokens, cost, COALESCE(meta,'') FROM usageHistory WHERE 1=1`
 	var args []any
 	var dayStart time.Time
 	if !start.IsZero() {
@@ -432,11 +449,11 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 	defer rows.Close()
 	result := &UsageSummary{
 		DayData: DayData{ByProvider: make(map[string]DayCounter), ByModel: make(map[string]DayCounter)},
-		ByKey:   make(map[string]DayCounter), ByEndpoint: make(map[string]DayCounter), RequestsByDay: make(map[string]int),
+		ByKey:   make(map[string]DayCounter), ByEndpoint: make(map[string]DayCounter), ByClient: make(map[string]DayCounter), RequestsByDay: make(map[string]int),
 	}
 	for rows.Next() {
 		var e UsageEntry
-		if err := rows.Scan(&e.Timestamp, &e.Provider, &e.Model, &e.APIKey, &e.Endpoint, &e.PromptTokens, &e.CompletionTokens, &e.Cost); err != nil {
+		if err := rows.Scan(&e.Timestamp, &e.Provider, &e.Model, &e.APIKey, &e.Endpoint, &e.PromptTokens, &e.CompletionTokens, &e.Cost, &e.Meta); err != nil {
 			return nil, err
 		}
 		ts, err := time.Parse(time.RFC3339, e.Timestamp)
@@ -460,6 +477,8 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 		}
 		result.ByKey[key] = addUsageToCounter(result.ByKey[key], e)
 		result.ByEndpoint[endpoint] = addUsageToCounter(result.ByEndpoint[endpoint], e)
+		client := clientFromMeta(e.Meta)
+		result.ByClient[client] = addUsageToCounter(result.ByClient[client], e)
 	}
 	return result, rows.Err()
 }

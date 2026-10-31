@@ -289,6 +289,7 @@ func (s *Server) handleAntigravityChat(
 			"status":       statusStr,
 			"latencyMs":    latencyMs,
 			"endpoint":     endpoint,
+			"client":       detectClientAgent(r),
 			"error":        string(respBody),
 			"input":        extractPromptSummary(req.Messages),
 		}
@@ -331,6 +332,7 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	uc := &usageContext{
+		Client:       detectClientAgent(r),
 		StartedAt:    start,
 		Provider:     conn.Provider,
 		Model:        modelInfo.Model,

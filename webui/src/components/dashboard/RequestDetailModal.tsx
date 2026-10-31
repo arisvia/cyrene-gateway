@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor } from '@/lib/format'
 import { fetchModelDisplayNameMap, resolveModelDisplayName, canonicalModelId } from '@/lib/models'
+import { clientDisplayName } from '@/lib/clients'
 import type { RequestDetail } from '@/types/domain'
 interface RequestDetailModalProps {
   item: RequestDetail | null
@@ -155,6 +156,10 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                 <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.endpoint')}</span>
                   <span class="font-mono text-faint">{props.item?.endpoint || '/v1/chat/completions'}</span>
+                </div>
+                <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
+                  <span class="text-faint">{t('requestDetail.properties.client')}</span>
+                  <span class="font-mono text-faint">{clientDisplayName(props.item?.client, t)}</span>
                 </div>
                 <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.timestamp')}</span>

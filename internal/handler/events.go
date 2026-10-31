@@ -20,6 +20,7 @@ type RequestEvent struct {
 	Model     string `json:"model,omitempty"`
 	Status    string `json:"status,omitempty"`
 	Endpoint  string `json:"endpoint,omitempty"`
+	Client    string `json:"client,omitempty"`
 	Prompt    int    `json:"promptTokens,omitempty"`
 	Compl     int    `json:"completionTokens,omitempty"`
 	LatencyMs int64  `json:"latencyMs,omitempty"`

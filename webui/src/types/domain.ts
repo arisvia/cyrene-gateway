@@ -120,6 +120,7 @@ export interface UsageStats {
   byModel?: Record<string, UsageDimensionItem>
   byKey?: Record<string, UsageDimensionItem>
   byEndpoint?: Record<string, UsageDimensionItem>
+  byClient?: Record<string, UsageDimensionItem>
   last10Minutes?: { minute: string; requests: number }[]
 }
 
@@ -135,6 +136,7 @@ export interface RequestDetail {
   latencyMs?: number
   connectionId?: string
   endpoint?: string
+  client?: string
 }
 
 export interface Pagination {
@@ -170,6 +172,7 @@ export interface LiveUsageEvent {
   status?: string
   latencyMs?: number
   endpoint?: string
+  client?: string
   promptTokens?: number
   completionTokens?: number
 }

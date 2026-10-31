@@ -206,6 +206,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 				s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
 				uc := &usageContext{
+					Client:       detectClientAgent(r),
 					RequestID:    ensureRequestID(r),
 					Provider:     modelInfo.Provider,
 					Model:        modelInfo.Model,
@@ -409,6 +410,7 @@ func (s *Server) recordComboFailure(r *http.Request, comboName string, lastStatu
 		"status":    statusStr,
 		"latencyMs": latencyMs,
 		"endpoint":  endpoint,
+		"client":    detectClientAgent(r),
 		"error":     lastError,
 	}
 	if prompt != "" {

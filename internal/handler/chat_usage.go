@@ -73,6 +73,9 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		Status:           statusStr,
 	}
 	meta := map[string]any{}
+	if uc.Client != "" {
+		meta["client"] = uc.Client
+	}
 	if !usageKnown {
 		meta["usage_missing"] = true
 	}
@@ -108,6 +111,9 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		"latencyMs":        latencyMs,
 		"endpoint":         uc.Endpoint,
 		"usageKnown":       usageKnown,
+	}
+	if uc.Client != "" {
+		rdData["client"] = uc.Client
 	}
 	if uc.Prompt != "" {
 		rdData["input"] = uc.Prompt
@@ -150,6 +156,7 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 			Prompt:    promptTokens,
 			Compl:     completionTokens,
 			Endpoint:  uc.Endpoint,
+			Client:    uc.Client,
 			LatencyMs: int64(latencyMs),
 		})
 	}

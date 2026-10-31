@@ -274,6 +274,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 				"status":       statusStr,
 				"latencyMs":    latencyMs,
 				"endpoint":     endpoint,
+				"client":       detectClientAgent(r),
 				"error":        string(errBody),
 				"input":        extractPromptSummary(req.Messages),
 			}
@@ -378,6 +379,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	uc := &usageContext{
+		Client:       detectClientAgent(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,
 		ConnectionID: conn.ID,

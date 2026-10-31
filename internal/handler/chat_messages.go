@@ -349,6 +349,7 @@ func (s *Server) attemptMessagesPassthrough(
 			"status":       statusStr,
 			"latencyMs":    latencyMs,
 			"endpoint":     endpoint,
+			"client":       detectClientAgent(r),
 			"error":        string(errBody),
 			"input":        extractAnthropicPrompt(reqBody),
 		}
@@ -383,6 +384,7 @@ func (s *Server) attemptMessagesPassthrough(
 
 	prompt := extractAnthropicPrompt(reqBody)
 	uc := &usageContext{
+		Client:       detectClientAgent(r),
 		RequestID:    ensureRequestID(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,

@@ -221,6 +221,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		"status":       fmt.Sprintf("%d", resp.StatusCode),
 		"latencyMs":    latencyMs,
 		"endpoint":     "/v1/embeddings",
+		"client":       detectClientAgent(r),
 	}
 	rdBytes, _ := json.Marshal(rdData)
 	_ = s.DB.SaveRequestDetail(&db.RequestDetail{

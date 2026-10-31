@@ -853,6 +853,7 @@ export const enUS: TranslationDict = {
       model: 'Model',
       key: 'API Key',
       endpoint: 'Endpoint',
+      client: 'Client',
     },
     metrics: {
       requests: 'Requests',
@@ -862,6 +863,12 @@ export const enUS: TranslationDict = {
       cost: 'Cost',
     },
     defaultKeyLabel: 'Default Client (Direct)',
+    clientColumn: 'Client',
+    clients: {
+      browser: 'Browser',
+      unknown: 'Unknown',
+      other: 'Other',
+    },
     requestDetails: 'Request Details',
     stopLive: 'Stop Live',
     overview: 'Overview',
@@ -916,6 +923,7 @@ export const enUS: TranslationDict = {
       targetModel: 'Target Model',
       endpoint: 'Gateway Endpoint',
       timestamp: 'Timestamp',
+      client: 'Client Source',
       connectionId: 'Connection ID',
     },
   },

@@ -246,3 +246,46 @@ func TestUsageStatsCacheCollapsesRepeatedReads(t *testing.T) {
 		}
 	})
 }
+
+// TestUsageStatsExposesByClientDimension locks the downstream agent dimension
+// end-to-end: usageHistory.meta {"client":...} buckets by fingerprint id, and
+// rows predating client tracking collapse to "unknown".
+func TestUsageStatsExposesByClientDimension(t *testing.T) {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	srv := &Server{DB: database}
+	now := time.Now().UTC()
+	if err := database.SaveUsageEntry(&db.UsageEntry{
+		Timestamp: now.Format(time.RFC3339Nano), Provider: "p", Model: "m", APIKey: "k",
+		Endpoint: "/v1/chat/completions", PromptTokens: 10, CompletionTokens: 5, Cost: 0.1,
+		Meta: `{"client":"claude-code"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveUsageEntry(&db.UsageEntry{
+		Timestamp: now.Format(time.RFC3339Nano), Provider: "p", Model: "m", APIKey: "k",
+		Endpoint: "/v1/chat/completions", PromptTokens: 4, CompletionTokens: 2, Cost: 0.05,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	srv.handleUsageStats(w, httptest.NewRequest("GET", "/api/usage/stats?period=24h", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	var result struct {
+		ByClient map[string]db.DayCounter `json:"byClient"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ByClient["claude-code"].Requests != 1 || result.ByClient["claude-code"].PromptTokens != 10 {
+		t.Fatalf("claude-code bucket wrong: %+v", result.ByClient)
+	}
+	if result.ByClient["unknown"].Requests != 1 {
+		t.Fatalf("legacy rows must bucket as unknown: %+v", result.ByClient)
+	}
+}
