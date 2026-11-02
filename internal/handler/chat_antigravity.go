@@ -279,7 +279,7 @@ func (s *Server) handleAntigravityChat(
 			latencyMs = 0
 		}
 		statusStr := fmt.Sprintf("%d", resp.StatusCode)
-		rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+		rdID := fmt.Sprintf("%d-%s", nextRequestDetailStamp(), modelInfo.Model)
 		rdData := map[string]any{
 			"id":           rdID,
 			"timestamp":    time.Now().UTC().Format(time.RFC3339),

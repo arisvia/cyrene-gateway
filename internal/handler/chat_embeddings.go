@@ -211,7 +211,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	latencyMs := int(time.Since(startTime).Milliseconds())
-	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelInfo.Model)
+	rdID := fmt.Sprintf("%d-%s", nextRequestDetailStamp(), modelInfo.Model)
 	rdData := map[string]any{
 		"id":           rdID,
 		"timestamp":    time.Now().UTC().Format(time.RFC3339),

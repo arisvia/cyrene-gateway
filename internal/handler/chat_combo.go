@@ -401,7 +401,7 @@ func (s *Server) recordComboFailure(r *http.Request, comboName string, lastStatu
 	}
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 	statusStr := fmt.Sprintf("%d", lastStatus)
-	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), comboName)
+	rdID := fmt.Sprintf("%d-%s", nextRequestDetailStamp(), comboName)
 	rdData := map[string]any{
 		"id":        rdID,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),

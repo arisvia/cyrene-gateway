@@ -97,7 +97,7 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if latencyMs < 0 {
 		latencyMs = 0
 	}
-	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), uc.Model)
+	rdID := fmt.Sprintf("%d-%s", nextRequestDetailStamp(), uc.Model)
 	rdData := map[string]any{
 		"id":               rdID,
 		"timestamp":        time.Now().UTC().Format(time.RFC3339),

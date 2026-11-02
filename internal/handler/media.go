@@ -838,7 +838,7 @@ func (s *Server) recordMediaUsage(r *http.Request, providerID, modelName, connID
 	if err := s.DB.SaveUsageEntry(entry); err != nil {
 		slog.Warn("Failed to record media usage", "error", err, "model", modelName)
 	}
-	rdID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), modelName)
+	rdID := fmt.Sprintf("%d-%s", nextRequestDetailStamp(), modelName)
 	rdData := map[string]any{
 		"id":           rdID,
 		"timestamp":    time.Now().UTC().Format(time.RFC3339),
