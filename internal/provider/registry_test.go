@@ -11,9 +11,10 @@ import (
 // aggregators/free tiers, and brand pairs. Registry IDs are stable.
 func TestRegistryCompleteness(t *testing.T) {
 	expectedProviders := []string{
-		// Curated coding providers (12)
+		// Curated coding providers (14)
 		"claude", "github", "grok-cli", "cursor", "qoder",
 		"codebuddy", "kimi", "antigravity", "opencode", "openrouter",
+		"cline", "kilocode",
 		"glm", "glm-cn",
 		"anthropic", "openai", "gemini", "vertex", "tencent",
 		"xai", "alicode", "alicode-cn",
@@ -39,7 +40,7 @@ func TestRegistryCategories(t *testing.T) {
 
 	expectedCats := map[string]int{
 		"apikey":   14,
-		"oauth":    11,
+		"oauth":    13,
 		"freeTier": 4,
 		"custom":   2,
 	}
@@ -222,7 +223,7 @@ func TestOpenAIDualAuth(t *testing.T) {
 
 func TestRegistryOAuthProviders(t *testing.T) {
 	// Providers with standard OAuth token endpoints
-	oauthWithToken := []string{"claude", "github", "kimi"}
+	oauthWithToken := []string{"claude", "github", "kimi", "cline", "kilocode"}
 	for _, id := range oauthWithToken {
 		p, ok := Registry[id]
 		if !ok {

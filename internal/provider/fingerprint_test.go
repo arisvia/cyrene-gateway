@@ -83,3 +83,49 @@ func TestQoderIdentityConstantsAreClientShaped(t *testing.T) {
 
 // Aggregator CLIs front a plain OpenAI-compatible endpoint, so only the
 // credential shape and identity headers need pinning.
+
+func TestAggregatorCLIIdentity(t *testing.T) {
+	if got := ClineAccessToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.sig"); got != "workos:eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.sig" {
+		t.Errorf("OAuth JWT must gain the workos: prefix, got %q", got)
+	}
+	if got := ClineAccessToken("clp_abc123"); got != "clp_abc123" {
+		t.Errorf("ClinePass API keys must pass through verbatim, got %q", got)
+	}
+	if got := ClineAccessToken("workos:eyJhbGciOiJIUzI1NiJ9.e30.sig"); got != "workos:eyJhbGciOiJIUzI1NiJ9.e30.sig" {
+		t.Errorf("already-prefixed tokens must not be prefixed twice, got %q", got)
+	}
+
+	cline := Registry["cline"]
+	if cline.ModelsURL == "" || cline.ModelsAuth != "none" {
+		t.Errorf("cline needs a public live catalog, got url=%q auth=%q", cline.ModelsURL, cline.ModelsAuth)
+	}
+	if len(cline.Models) != 0 {
+		t.Error("cline must not hardcode a static model list")
+	}
+
+	kilo := Registry["kilocode"]
+	if kilo.ModelsURL == "" || len(kilo.Models) != 0 {
+		t.Error("kilocode needs a live catalog and no static model list")
+	}
+	if got := GetProviderFlowType("kilocode"); got != FlowDeviceCode {
+		t.Errorf("kilocode flow = %q, want device_code", got)
+	}
+	if got := GetProviderFlowType("cline"); got != FlowAuthorizationCode {
+		t.Errorf("cline flow = %q, want authorization_code", got)
+	}
+}
+
+func TestKilocodeOrgHook(t *testing.T) {
+	h := http.Header{}
+	kilocodeOrgHook(h, Credentials{ProviderSpecificData: map[string]any{"orgId": "org-9"}})
+	if got := h.Get("X-Kilocode-OrganizationID"); got != "org-9" {
+		t.Errorf("org header = %q, want org-9", got)
+	}
+	// Single-org accounts have no orgId: the header must stay absent rather than
+	// being sent empty.
+	h2 := http.Header{}
+	kilocodeOrgHook(h2, Credentials{})
+	if got := h2.Get("X-Kilocode-OrganizationID"); got != "" {
+		t.Errorf("org header must be omitted without an org, got %q", got)
+	}
+}

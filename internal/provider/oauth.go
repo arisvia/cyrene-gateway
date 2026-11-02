@@ -165,6 +165,9 @@ var refreshProfiles = map[string]refreshProfile{
 	"codebuddy-cn": {
 		// CodeBuddy CN uses X-Refresh-Token header, handled separately.
 	},
+	"cline": {
+		url: "https://api.cline.bot/api/v1/auth/refresh",
+	},
 }
 
 // kimiRefreshHeaders builds X-Msh-* headers for kimi token refresh.
@@ -240,7 +243,7 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 
 	// Providers with no refresh support (long-lived tokens or device-code only).
 	switch providerID {
-	case "cursor":
+	case "cursor", "kilocode":
 		return nil, fmt.Errorf("provider %s does not support token refresh (long-lived credential)", providerID)
 	}
 

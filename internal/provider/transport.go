@@ -77,6 +77,15 @@ func ResolveCredentials(conn *model.ProviderConnection, providerName, modelName 
 		IsOpenCodeFreeModel(modelName) {
 		creds.APIKey = "public"
 	}
+	// Cline's gateway expects OAuth JWTs prefixed with "workos:"; API keys ride
+	// through untouched (see ClineAccessToken).
+	if providerName == "cline" || conn.Provider == "cline" {
+		if creds.APIKey != "" {
+			creds.APIKey = ClineAccessToken(creds.APIKey)
+		} else {
+			creds.AccessToken = ClineAccessToken(creds.AccessToken)
+		}
+	}
 	return creds
 }
 

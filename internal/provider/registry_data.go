@@ -164,6 +164,48 @@ func init() {
 		ThinkingFormat: "openai",
 		ModelsURL:      "https://www.codebuddy.ai/v3/config",
 	}
+	Registry["cline"] = ProviderInfo{
+		ID: "cline", Name: "Cline",
+		Alias:   "cl",
+		BaseURL: "https://api.cline.bot/api/v1/chat/completions",
+		APIType: "openai", AuthType: "oauth",
+		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 80,
+		Color:    "#5B9BD5",
+		Website:  "https://cline.bot",
+		Icon:     "smart_toy",
+		TextIcon: "CL",
+		// Cline's gateway wraps non-stream bodies in {"success":true,"data":{...}};
+		// the non-stream reader already unwraps that envelope.
+		AuthorizeURL: "https://api.cline.bot/api/v1/auth/authorize",
+		TokenURL:     "https://api.cline.bot/api/v1/auth/token",
+		AuthHooks:    []string{"clineHeaders"},
+		Headers: map[string]string{
+			"HTTP-Referer": ClineReferer,
+			"X-Title":      ClineClientTitle,
+		},
+		// Live catalog is OpenRouter-shaped and public.
+		ModelsURL:  "https://api.cline.bot/api/v1/ai/cline/models",
+		ModelsAuth: "none",
+	}
+	Registry["kilocode"] = ProviderInfo{
+		ID: "kilocode", Name: "Kilo Code",
+		Alias:   "kc",
+		BaseURL: "https://api.kilo.ai/api/openrouter/chat/completions",
+		APIType: "openai", AuthType: "oauth",
+		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 70,
+		Color:    "#FF6B35",
+		Website:  "https://kilocode.ai",
+		Icon:     "code",
+		TextIcon: "KC",
+		// Non-RFC device flow: POST /codes returns {code,verificationUrl}, then
+		// GET /codes/{code} answers 202 pending / 410 expired / 200 {status,token}.
+		DeviceCodeURL: "https://api.kilo.ai/api/device-auth/codes",
+		TokenURL:      "https://api.kilo.ai/api/device-auth/codes",
+		AuthHooks:     []string{"kilocodeOrg"},
+		// Kilo proxies the OpenRouter catalog (public, OpenRouter-shaped).
+		ModelsURL:  "https://api.kilo.ai/api/gateway/models",
+		ModelsAuth: "none",
+	}
 	Registry["cursor"] = ProviderInfo{
 		ID: "cursor", Name: "Cursor",
 		Alias:   "cu",

@@ -115,6 +115,7 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   xai: getProviderAsset('xai')!,
   cursor: getProviderAsset('cursor')!,
   cline: getProviderAsset('cline')!,
+  kilocode: getProviderAsset('kilocode')!,
   roo: getProviderAsset('roo')!,
   continue: getProviderAsset('continue')!,
   antigravity: getProviderAsset('antigravity')!,

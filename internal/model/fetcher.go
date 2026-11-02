@@ -119,7 +119,7 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 // normalizeModels dispatches to provider-specific normalizers.
 func normalizeModels(providerID string, body []byte) ([]ModelMetadata, error) {
 	switch {
-	case providerID == "openrouter":
+	case providerID == "openrouter", providerID == "cline", providerID == "kilocode":
 		return normalizeOpenRouter(body)
 	case providerID == "anthropic" || providerID == "claude":
 		return normalizeAnthropic(body)
