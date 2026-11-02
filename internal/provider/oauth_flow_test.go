@@ -404,7 +404,7 @@ func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
 		if r.Header.Get("X-Domain") != "www.codebuddy.ai" {
 			t.Errorf("expected X-Domain www.codebuddy.ai, got %s", r.Header.Get("X-Domain"))
 		}
-		if r.Header.Get("User-Agent") != "IDE/2.177.1 CodeBuddy/2.177.1" {
+		if r.Header.Get("User-Agent") != "IDE/"+CodebuddyVersion+" CodeBuddy/"+CodebuddyVersion {
 			t.Errorf("expected IDE User-Agent, got %s", r.Header.Get("User-Agent"))
 		}
 		w.Header().Set("Content-Type", "application/json")

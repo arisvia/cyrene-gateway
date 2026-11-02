@@ -341,7 +341,9 @@ func (s *Server) handleRegistry(w http.ResponseWriter, r *http.Request) {
 				Category:     "media",
 				AuthHint:     fmt.Sprintf("支持能力: %s", strings.Join(kinds, ", ")),
 				AuthModes:    []string{"api-key"},
-				APIKeyURL:    media.APIKeyURLs[id],
+				APIKeyURL:    mp.APIKeyURL,
+				Website:      mp.Website,
+				Color:        mp.Color,
 				Capabilities: caps,
 			})
 		}

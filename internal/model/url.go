@@ -29,5 +29,10 @@ func DeriveModelsURL(baseURL string) string {
 		}
 	}
 	base = strings.TrimRight(base, "/")
+	// Some providers store the catalog itself as the base (gemini's
+	// /v1beta/models). Appending again would request .../models/models.
+	if strings.HasSuffix(strings.ToLower(base), "/models") {
+		return base
+	}
 	return base + "/models"
 }

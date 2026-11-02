@@ -78,8 +78,6 @@ func TestResolveProviderAlias(t *testing.T) {
 		{"qdcn", "qoder-cn"},
 		{"cb", "codebuddy"},
 		{"cbcn", "codebuddy-cn"},
-		{"cl", "cline"},
-		{"kc", "kilocode"},
 		{"ali", "alicode"},
 		{"alicn", "alicode-cn"},
 		{"glmcn", "glm-cn"},

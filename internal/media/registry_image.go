@@ -92,4 +92,23 @@ func registerImageProviders() {
 			Format:     "stability",
 		},
 	)
+
+	// fal.ai hosted models (FLUX and friends), addressed as <variant>.
+	mergeProvider("fal", "fal.ai", KindImage,
+		[]ModelEntry{
+			{ID: "flux/schnell", Name: "FLUX Schnell", Kind: KindImage},
+			{ID: "flux/dev", Name: "FLUX Dev", Kind: KindImage},
+			{ID: "flux-pro/v1.1", Name: "FLUX Pro v1.1", Kind: KindImage},
+			{ID: "flux-pro/v1.1-ultra", Name: "FLUX Pro v1.1 Ultra", Kind: KindImage},
+			{ID: "recraft-v3", Name: "Recraft V3", Kind: KindImage},
+		},
+		ProviderConfig{
+			Provider:   "fal",
+			Kind:       KindImage,
+			BaseURL:    "https://fal.run/fal-ai",
+			AuthType:   "apikey",
+			AuthHeader: "bearer",
+			Format:     "fal",
+		},
+	)
 }

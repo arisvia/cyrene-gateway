@@ -83,7 +83,6 @@ func TestQoderIdentityConstantsAreClientShaped(t *testing.T) {
 
 // Aggregator CLIs front a plain OpenAI-compatible endpoint, so only the
 // credential shape and identity headers need pinning.
-
 func TestAggregatorCLIIdentity(t *testing.T) {
 	if got := ClineAccessToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.sig"); got != "workos:eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.sig" {
 		t.Errorf("OAuth JWT must gain the workos: prefix, got %q", got)

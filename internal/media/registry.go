@@ -33,23 +33,18 @@ type ModelEntry struct {
 }
 
 // MediaProviderInfo is the full media provider definition returned by the API.
+// Display fields mirror provider.ProviderInfo so a media-only provider renders
+// the same card as a chat provider (brand colour, console link) instead of
+// falling back to initials.
 type MediaProviderInfo struct {
-	Provider string                  `json:"provider"`
-	Name     string                  `json:"name"`
-	Kinds    []Kind                  `json:"kinds"`
-	Models   []ModelEntry            `json:"models,omitempty"`
-	Configs  map[Kind]ProviderConfig `json:"configs,omitempty"`
-}
-
-// APIKeyURLs maps media provider IDs to their console/key dashboard URLs.
-var APIKeyURLs = map[string]string{
-	"stability-ai": "https://platform.stability.ai/account/keys",
-	"elevenlabs":   "https://elevenlabs.io/app/settings/api-keys",
-	"deepgram":     "https://console.deepgram.com/",
-	"brave-search": "https://brave.com/search/api/",
-	"tavily":       "https://app.tavily.com/home",
-	"exa":          "https://dashboard.exa.ai/api-keys",
-	"firecrawl":    "https://www.firecrawl.dev/app/api-keys",
+	Provider  string                  `json:"provider"`
+	Name      string                  `json:"name"`
+	Kinds     []Kind                  `json:"kinds"`
+	Color     string                  `json:"color,omitempty"`
+	Website   string                  `json:"website,omitempty"`
+	APIKeyURL string                  `json:"apiKeyUrl,omitempty"`
+	Models    []ModelEntry            `json:"models,omitempty"`
+	Configs   map[Kind]ProviderConfig `json:"configs,omitempty"`
 }
 
 // Registry holds all media provider definitions keyed by provider ID.
@@ -63,6 +58,14 @@ func init() {
 	registerSTTProviders()
 	registerVideoProviders()
 	registerWebProviders()
+
+	for id, m := range displayMeta {
+		p, ok := Registry[id]
+		if !ok {
+			continue
+		}
+		p.Color, p.Website, p.APIKeyURL = m.color, m.website, m.apiKeyURL
+	}
 }
 
 // GetProvidersByKind returns all providers supporting a given kind.
@@ -98,14 +101,21 @@ func SupportsKind(provider string, kind Kind) bool {
 	return slices.Contains(p.Kinds, kind)
 }
 
-func addProvider(id, name string, kinds []Kind, models []ModelEntry, configs map[Kind]ProviderConfig) {
-	Registry[id] = &MediaProviderInfo{
-		Provider: id,
-		Name:     name,
-		Kinds:    kinds,
-		Models:   models,
-		Configs:  configs,
-	}
+// displayMeta carries the brand metadata the per-kind registration files would
+// otherwise each have to repeat. Providers absent from this table have no
+// brand assets (they render initials), or are also chat providers whose
+// ProviderInfo already supplies the colour.
+var displayMeta = map[string]struct{ color, website, apiKeyURL string }{
+	"stability-ai": {"#8B5CF6", "https://platform.stability.ai", "https://platform.stability.ai/account/keys"},
+	"elevenlabs":   {"#141414", "https://elevenlabs.io", "https://elevenlabs.io/app/settings/api-keys"},
+	"deepgram":     {"#13EF93", "https://deepgram.com", "https://console.deepgram.com/"},
+	"brave-search": {"#FB542B", "https://brave.com/search/api/", "https://brave.com/search/api/"},
+	"tavily":       {"#6855F5", "https://tavily.com", "https://app.tavily.com/home"},
+	"exa":          {"#1F40ED", "https://exa.ai", "https://dashboard.exa.ai/api-keys"},
+	"firecrawl":    {"#F97316", "https://firecrawl.dev", "https://www.firecrawl.dev/app/api-keys"},
+	"fal":          {"#2563EB", "https://fal.ai", "https://fal.ai/dashboard/keys"},
+	"cartesia":     {"#FF4F8B", "https://cartesia.ai", "https://play.cartesia.ai/keys"},
+	"assemblyai":   {"#0062FF", "https://assemblyai.com", "https://www.assemblyai.com/app/api-keys"},
 }
 
 // mergeProvider adds or merges a kind into an existing provider entry.

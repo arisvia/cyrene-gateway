@@ -22,6 +22,9 @@ interface MediaProvider {
   hasConnection: boolean
   activeConnections: number
   primaryConnectionId?: string
+  color?: string
+  website?: string
+  apiKeyUrl?: string
 }
 
 
@@ -220,7 +223,7 @@ const Media: Component = () => {
                       <div class="space-y-2.5">
                         <div class="flex flex-wrap items-center justify-between gap-2 min-w-0">
                           <div class="flex items-center gap-2.5 min-w-0">
-                            <ProviderAvatar provider={p.provider} name={p.name} size="md" />
+                            <ProviderAvatar provider={p.provider} name={p.name} color={p.color} size="md" />
                             <div class="min-w-0">
                               <h3 class="text-sm font-semibold text-foreground truncate">{p.name}</h3>
                               <p class="text-[11px] font-mono text-faint truncate">{p.provider}</p>

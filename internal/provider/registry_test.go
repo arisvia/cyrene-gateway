@@ -15,6 +15,7 @@ func TestRegistryCompleteness(t *testing.T) {
 		"claude", "github", "grok-cli", "cursor", "qoder",
 		"codebuddy", "kimi", "antigravity", "opencode", "openrouter",
 		"cline", "kilocode",
+		"mistral", "perplexity", "cohere", "fireworks", "together", "deepinfra",
 		"glm", "glm-cn",
 		"anthropic", "openai", "gemini", "vertex", "tencent",
 		"xai", "alicode", "alicode-cn",
@@ -39,7 +40,7 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":   14,
+		"apikey":   20,
 		"oauth":    13,
 		"freeTier": 4,
 		"custom":   2,
@@ -223,7 +224,7 @@ func TestOpenAIDualAuth(t *testing.T) {
 
 func TestRegistryOAuthProviders(t *testing.T) {
 	// Providers with standard OAuth token endpoints
-	oauthWithToken := []string{"claude", "github", "kimi", "cline", "kilocode"}
+	oauthWithToken := []string{"claude", "github", "kimi"}
 	for _, id := range oauthWithToken {
 		p, ok := Registry[id]
 		if !ok {

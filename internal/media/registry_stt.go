@@ -65,4 +65,22 @@ func registerSTTProviders() {
 			Format:     "gemini-stt",
 		},
 	)
+
+	// AssemblyAI async transcription (submit + poll)
+	mergeProvider("assemblyai", "AssemblyAI", KindSTT,
+		[]ModelEntry{
+			{ID: "universal-3-pro", Name: "Universal 3 Pro", Kind: KindSTT},
+			{ID: "universal-2", Name: "Universal 2", Kind: KindSTT},
+			{ID: "best", Name: "Best (Nano + Universal)", Kind: KindSTT},
+			{ID: "nano", Name: "Nano (Fast)", Kind: KindSTT},
+		},
+		ProviderConfig{
+			Provider:   "assemblyai",
+			Kind:       KindSTT,
+			BaseURL:    "https://api.assemblyai.com/v2/transcript",
+			AuthType:   "apikey",
+			AuthHeader: "bearer",
+			Format:     "assemblyai",
+		},
+	)
 }

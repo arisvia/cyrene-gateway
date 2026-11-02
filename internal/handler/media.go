@@ -672,6 +672,9 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 		HasConnection       bool                                `json:"hasConnection"`
 		PrimaryConnectionID string                              `json:"primaryConnectionId,omitempty"`
 		AuthType            string                              `json:"authType,omitempty"`
+		Color               string                              `json:"color,omitempty"`
+		Website             string                              `json:"website,omitempty"`
+		APIKeyURL           string                              `json:"apiKeyUrl,omitempty"`
 	}
 
 	enrichList := func(entries []*media.MediaProviderInfo, filterKind media.Kind) []EnrichedProvider {
@@ -763,6 +766,9 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 				HasConnection:       has,
 				PrimaryConnectionID: primaryConnByProvider[e.Provider],
 				AuthType:            authTypeByProvider[e.Provider],
+				Color:               e.Color,
+				Website:             e.Website,
+				APIKeyURL:           e.APIKeyURL,
 			})
 		}
 		// 排序：已配置连接的优先置顶，其次按 Provider ID 稳定排序

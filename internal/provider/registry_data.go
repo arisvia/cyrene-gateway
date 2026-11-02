@@ -40,10 +40,11 @@ func init() {
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 10,
 		Brand: "Alibaba", Region: "intl",
-		Color:    "#FF6A00",
-		Website:  "https://www.alibabacloud.com/product/coding",
-		Icon:     "cloud",
-		TextIcon: "ALi",
+		Color:     "#FF6A00",
+		Website:   "https://www.alibabacloud.com/product/coding",
+		Icon:      "cloud",
+		TextIcon:  "ALi",
+		APIKeyURL: "https://www.alibabacloud.com/product/coding",
 	}
 	Registry["alicode-cn"] = ProviderInfo{
 		ID: "alicode-cn", Name: "Alibaba (CN)",
@@ -52,10 +53,11 @@ func init() {
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 20,
 		Brand: "Alibaba", Region: "cn",
-		Color:    "#FF6A00",
-		Website:  "https://bailian.console.aliyun.com",
-		Icon:     "cloud",
-		TextIcon: "ALi",
+		Color:     "#FF6A00",
+		Website:   "https://bailian.console.aliyun.com",
+		Icon:      "cloud",
+		TextIcon:  "ALi",
+		APIKeyURL: "https://bailian.console.aliyun.com/?apiKey=1",
 	}
 	Registry["anthropic"] = ProviderInfo{
 		ID: "anthropic", Name: "Anthropic",
@@ -279,10 +281,11 @@ func init() {
 		APIType: "openai", AuthType: "api-key",
 		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 130,
 		Brand: "GLM", Region: "cn",
-		Color:    "#DC2626",
-		Website:  "https://open.bigmodel.cn",
-		Icon:     "code",
-		TextIcon: "GC",
+		Color:     "#DC2626",
+		Website:   "https://open.bigmodel.cn",
+		Icon:      "code",
+		TextIcon:  "GC",
+		APIKeyURL: "https://open.bigmodel.cn/usercenter/apikeys",
 	}
 	Registry["glm"] = ProviderInfo{
 		ID: "glm", Name: "GLM Coding (Intl)",
@@ -363,6 +366,88 @@ func init() {
 		AuthScheme: "raw",
 		AuthHooks:  []string{"kimiHeaders"},
 	}
+	Registry["mistral"] = ProviderInfo{
+		ID: "mistral", Name: "Mistral",
+		Alias:   "mist",
+		BaseURL: "https://api.mistral.ai/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 50,
+		Color:     "#FF7000",
+		Website:   "https://mistral.ai",
+		Icon:      "air",
+		TextIcon:  "MI",
+		APIKeyURL: "https://console.mistral.ai/api-keys",
+	}
+	Registry["perplexity"] = ProviderInfo{
+		ID: "perplexity", Name: "Perplexity",
+		Alias:   "pp",
+		BaseURL: "https://api.perplexity.ai/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 60,
+		Color:     "#20808D",
+		Website:   "https://www.perplexity.ai",
+		Icon:      "search",
+		TextIcon:  "PX",
+		APIKeyURL: "https://www.perplexity.ai/settings/api",
+		// Sonar's catalog is not exposed over /models; keep the two documented
+		// engines rather than a derive that would 404.
+		Models: []ModelRef{
+			{ID: "sonar-pro", Name: "Sonar Pro"},
+			{ID: "sonar", Name: "Sonar"},
+		},
+	}
+	Registry["cohere"] = ProviderInfo{
+		ID: "cohere", Name: "Cohere",
+		Alias:   "co",
+		BaseURL: "https://api.cohere.ai/compatibility/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 60,
+		Color:     "#39594D",
+		Website:   "https://cohere.com",
+		Icon:      "hub",
+		TextIcon:  "CO",
+		APIKeyURL: "https://dashboard.cohere.com/api-keys",
+		// Native /v1/models is Cohere-shaped; /compatibility/v1 mirrors it in
+		// the OpenAI envelope the rest of this gateway parses.
+		ModelsURL:  "https://api.cohere.ai/compatibility/v1/models",
+		ModelsAuth: "bearer",
+	}
+	Registry["fireworks"] = ProviderInfo{
+		ID: "fireworks", Name: "Fireworks AI",
+		Alias:   "fw",
+		BaseURL: "https://api.fireworks.ai/inference/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 70,
+		Color:     "#7B2EF2",
+		Website:   "https://fireworks.ai",
+		Icon:      "local_fire_department",
+		TextIcon:  "FW",
+		APIKeyURL: "https://fireworks.ai/account/api-keys",
+	}
+	Registry["together"] = ProviderInfo{
+		ID: "together", Name: "Together AI",
+		Alias:   "tg",
+		BaseURL: "https://api.together.xyz/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 70,
+		Color:     "#0F6FFF",
+		Website:   "https://www.together.ai",
+		Icon:      "group_work",
+		TextIcon:  "TG",
+		APIKeyURL: "https://api.together.xyz/settings/api-keys",
+	}
+	Registry["deepinfra"] = ProviderInfo{
+		ID: "deepinfra", Name: "DeepInfra",
+		Alias:   "di",
+		BaseURL: "https://api.deepinfra.com/v1/openai/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 80,
+		Color:     "#2563EB",
+		Website:   "https://deepinfra.com",
+		Icon:      "cloud",
+		TextIcon:  "DI",
+		APIKeyURL: "https://deepinfra.com/dash/api_keys",
+	}
 	Registry["minimax-cn"] = ProviderInfo{
 		ID: "minimax-cn", Name: "MiniMax (CN)",
 		Alias:   "mmcn",
@@ -375,6 +460,9 @@ func init() {
 		Icon:      "memory",
 		TextIcon:  "MC",
 		APIKeyURL: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+		// CN mirror of the OpenAI-compatible catalog (see minimax above).
+		ModelsURL:  "https://api.minimaxi.com/v1/models",
+		ModelsAuth: "bearer",
 		// 9router minimax-cn.js transport: claude endpoint, ?beta=true,
 		// x-api-key raw auth + CLAUDE_API_HEADERS.
 		URLSuffix:  "?beta=true",
@@ -394,6 +482,10 @@ func init() {
 		Icon:      "memory",
 		TextIcon:  "MM",
 		APIKeyURL: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+		// The anthropic /v1/messages base has no catalog; MiniMax exposes
+		// /v1/models on the OpenAI-compatible host.
+		ModelsURL:  "https://api.minimax.io/v1/models",
+		ModelsAuth: "bearer",
 		// 9router minimax.js transport: claude endpoint, ?beta=true,
 		// x-api-key raw auth + CLAUDE_API_HEADERS.
 		URLSuffix:  "?beta=true",
@@ -524,6 +616,7 @@ func init() {
 		Icon:        "cloud",
 		TextIcon:    "HY",
 		ValidateURL: "https://api.hunyuan.cloud.tencent.com/v1/models",
+		APIKeyURL:   "https://console.cloud.tencent.com/hunyuan/api-key",
 	}
 	Registry["vertex"] = ProviderInfo{
 		ID: "vertex", Name: "Vertex AI",
@@ -531,10 +624,19 @@ func init() {
 		BaseURL: "https://aiplatform.googleapis.com",
 		APIType: "openai", AuthType: "api-key",
 		Category: "freeTier", AuthModes: []string{"api-key"}, Priority: 40,
-		Color:    "#4285F4",
-		Website:  "https://cloud.google.com/vertex-ai",
-		Icon:     "cloud",
-		TextIcon: "VX",
+		Color:     "#4285F4",
+		Website:   "https://cloud.google.com/vertex-ai",
+		Icon:      "cloud",
+		TextIcon:  "VX",
+		APIKeyURL: "https://console.cloud.google.com/apis/credentials",
+		// Vertex's catalog is project+location scoped, so there is no single
+		// public /models URL; keep a curated list instead of a dead derive.
+		Models: []ModelRef{
+			{ID: "gemini-3.1-pro-preview", Name: "Gemini 3.1 Pro Preview"},
+			{ID: "gemini-3.1-flash-lite-preview", Name: "Gemini 3.1 Flash Lite Preview"},
+			{ID: "gemini-3-flash-preview", Name: "Gemini 3 Flash Preview"},
+			{ID: "gemini-2.5-flash", Name: "Gemini 2.5 Flash"},
+		},
 	}
 	Registry["xai"] = ProviderInfo{
 		ID: "xai", Name: "xAI (Grok)",

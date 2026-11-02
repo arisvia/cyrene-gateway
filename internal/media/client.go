@@ -149,6 +149,21 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 			envelope["project"] = creds.ProjectID
 		}
 		reqBody, _ = json.Marshal(envelope)
+	case "fal":
+		// fal's REST models are <model-path> addressed directly; sync mode
+		// makes the response carry the images instead of a queue job handle.
+		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model
+		falBody := map[string]any{"prompt": req.Prompt}
+		if req.N > 1 {
+			falBody["num_images"] = req.N
+		}
+		if req.Size != "" {
+			w, h, ok := strings.Cut(req.Size, "x")
+			if ok {
+				falBody["image_size"] = map[string]any{"width": w, "height": h}
+			}
+		}
+		reqBody, _ = json.Marshal(falBody)
 	default:
 		// OpenAI-compatible
 		targetURL = cfg.BaseURL
@@ -217,6 +232,22 @@ func (c *Client) HandleTTS(ctx context.Context, providerID string, body []byte, 
 			"model_id": req.Model,
 		}
 		reqBody, _ = json.Marshal(elevenBody)
+	case "cartesia":
+		targetURL = cfg.BaseURL
+		cartBody := map[string]any{
+			"model_id":   req.Model,
+			"transcript": req.Input,
+			"voice":      map[string]any{"mode": "id", "id": req.Voice},
+			"output_format": map[string]any{
+				"container":   "mp3",
+				"sample_rate": 44100,
+				"bit_rate":    128000,
+			},
+		}
+		if req.Voice == "" {
+			cartBody["voice"] = map[string]any{"mode": "id", "id": "a0e99841-438c-4a64-b679-ae501e7d6091"}
+		}
+		reqBody, _ = json.Marshal(cartBody)
 	case "gemini-tts":
 		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model + ":generateContent"
 		geminiBody := map[string]any{
@@ -238,6 +269,11 @@ func (c *Client) HandleTTS(ctx context.Context, providerID string, body []byte, 
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if cfg.Format == "cartesia" {
+		// Cartesia versions its REST surface by header; the version below is
+		// the one that accepts the body shape built above.
+		httpReq.Header.Set("Cartesia-Version", "2025-04-16")
+	}
 	setAuth(httpReq, cfg, creds)
 
 	slog.Debug("Media TTS request",
@@ -273,6 +309,8 @@ func (c *Client) HandleSTT(ctx context.Context, providerID, resolvedModel string
 		return c.sttDeepgram(ctx, cfg, file, header, resolvedModel, r, creds)
 	case "gemini-stt":
 		return c.sttGemini(ctx, cfg, file, header, resolvedModel, r, creds)
+	case "assemblyai":
+		return c.sttAssemblyAI(ctx, cfg, file, header, resolvedModel, r, creds)
 	default:
 		return c.sttOpenAICompat(ctx, cfg, file, header, resolvedModel, r, creds)
 	}
@@ -698,4 +736,103 @@ func (c *Client) TestCredentials(ctx context.Context, providerID string, creds C
 	}
 
 	return false, resp.StatusCode, fmt.Errorf("upstream returned HTTP %d", resp.StatusCode)
+}
+
+// sttAssemblyAI runs an AssemblyAI transcription. Unlike the OpenAI-shaped
+// providers it is asynchronous: POST the audio, then poll until the transcript
+// is ready and hand back an OpenAI-compatible body so the caller only ever sees
+// one STT shape.
+func (c *Client) sttAssemblyAI(ctx context.Context, cfg *ProviderConfig, file io.Reader, header *multipart.FileHeader, model string, r *http.Request, creds Credentials) (*http.Response, error) {
+	audioData, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	// ponytail: single upload+poll round trip, 90s ceiling. AssemblyAI can take
+	// minutes on long audio; switch to its webhook flow when that matters.
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	submitBody := map[string]any{"audio_url": "data:audio/wav;base64," + base64.StdEncoding.EncodeToString(audioData)}
+	if model != "" {
+		submitBody["speech_model"] = model
+	}
+	if lang := r.FormValue("language"); lang != "" {
+		submitBody["language_code"] = lang
+	}
+
+	payload, err := json.Marshal(submitBody)
+	if err != nil {
+		return nil, err
+	}
+	submitReq, err := http.NewRequestWithContext(ctx, "POST", cfg.BaseURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	submitReq.Header.Set("Content-Type", "application/json")
+	setAuth(submitReq, cfg, creds)
+
+	submitResp, err := c.do(submitReq)
+	if err != nil {
+		return nil, err
+	}
+	submitRaw, err := io.ReadAll(io.LimitReader(submitResp.Body, 1<<20))
+	submitResp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	if submitResp.StatusCode != http.StatusOK && submitResp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("assemblyai submit: status %d: %s", submitResp.StatusCode, string(submitRaw))
+	}
+	var job struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(submitRaw, &job); err != nil || job.ID == "" {
+		return nil, fmt.Errorf("assemblyai submit: no transcript id")
+	}
+
+	pollURL := strings.TrimRight(cfg.BaseURL, "/") + "/" + job.ID
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("assemblyai transcript %s: %w", job.ID, ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
+		pollReq, err := http.NewRequestWithContext(ctx, "GET", pollURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		setAuth(pollReq, cfg, creds)
+		pollResp, err := c.do(pollReq)
+		if err != nil {
+			return nil, err
+		}
+		raw, readErr := io.ReadAll(io.LimitReader(pollResp.Body, 1<<20))
+		pollResp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if pollResp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("assemblyai poll: status %d: %s", pollResp.StatusCode, string(raw))
+		}
+		var tr struct {
+			Status string `json:"status"`
+			Text   string `json:"text"`
+			Error  string `json:"error"`
+		}
+		if err := json.Unmarshal(raw, &tr); err != nil {
+			return nil, fmt.Errorf("assemblyai poll: %w", err)
+		}
+		switch tr.Status {
+		case "completed":
+			body, _ := json.Marshal(map[string]any{"text": tr.Text})
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(bytes.NewReader(body)),
+			}, nil
+		case "error":
+			return nil, fmt.Errorf("assemblyai transcript failed: %s", tr.Error)
+		}
+	}
 }

@@ -50,4 +50,20 @@ func registerTTSProviders() {
 			Format:     "gemini-tts",
 		},
 	)
+
+	// Cartesia Sonic (low-latency streaming TTS)
+	mergeProvider("cartesia", "Cartesia", KindTTS,
+		[]ModelEntry{
+			{ID: "sonic-3", Name: "Sonic 3", Kind: KindTTS},
+			{ID: "sonic-2", Name: "Sonic 2", Kind: KindTTS},
+		},
+		ProviderConfig{
+			Provider:   "cartesia",
+			Kind:       KindTTS,
+			BaseURL:    "https://api.cartesia.ai/tts/bytes",
+			AuthType:   "apikey",
+			AuthHeader: "x-api-key",
+			Format:     "cartesia",
+		},
+	)
 }

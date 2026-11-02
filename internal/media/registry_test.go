@@ -135,9 +135,11 @@ func TestGetConfigNil(t *testing.T) {
 }
 
 func TestPrunedProvidersAbsent(t *testing.T) {
+	// fal, cartesia and assemblyai were re-added deliberately; they stay out of
+	// this list so a re-prune is a conscious act again.
 	removed := []string{
-		"recraft", "fal", "runwayml", "cartesia", "playht",
-		"assemblyai", "huggingface", "searxng", "google-pse",
+		"recraft", "runwayml", "playht",
+		"huggingface", "searxng", "google-pse",
 		"voyage-ai", "jina-ai", "jina-reader", "serper", "searchapi",
 		"edge-tts",
 	}

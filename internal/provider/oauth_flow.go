@@ -211,12 +211,19 @@ func BuildAuthorizeURL(providerID, redirectURI string, pkce *PKCE) (string, erro
 		params.Set("response_type", "code")
 		params.Set("client_id", info.ClientID)
 		params.Set("redirect_uri", redirectURI)
-		params.Set("scope", "openid profile email offline_access grok-cli:access api:access")
 		params.Set("code_challenge", pkce.CodeChallenge)
 		params.Set("code_challenge_method", "S256")
 		params.Set("state", pkce.State)
 		params.Set("plan", "generic")
-		params.Set("referrer", "cyrene-gateway")
+		// The official Grok CLI asks for the conversation scopes and names
+		// itself grok-build; anything else is a plain API OAuth app.
+		if providerID == "grok-cli" {
+			params.Set("scope", GrokCLIOAuthScope)
+			params.Set("referrer", GrokCLIReferrer)
+		} else {
+			params.Set("scope", "openid profile email offline_access grok-cli:access api:access")
+			params.Set("referrer", "xai")
+		}
 	default:
 		// Generic OAuth2 with PKCE
 		params.Set("client_id", info.ClientID)
@@ -259,6 +266,29 @@ func ExchangeCode(providerID, code, redirectURI, codeVerifier string, client *ht
 	var err error
 
 	switch providerID {
+	case "cline":
+		// Cline hands the token bundle back inside the code parameter: either
+		// base64-wrapped JSON the extension wrote, or an opaque code the API
+		// must exchange. Try the local decode first so the common case needs no
+		// second round trip.
+		if decoded, ok := decodeClineCode(code); ok {
+			return decoded, nil
+		}
+		body, _ := json.Marshal(map[string]string{
+			"grant_type":   "authorization_code",
+			"code":         code,
+			"client_type":  "extension",
+			"redirect_uri": redirectURI,
+		})
+		req, reqErr := http.NewRequest("POST", info.TokenURL, strings.NewReader(string(body)))
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		clineHeadersHook(req.Header, Credentials{})
+		resp, err = client.Do(req)
+
 	case "claude":
 		// Claude uses JSON body
 		body := map[string]string{
@@ -361,6 +391,42 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		req.Header.Set("Accept", "application/json")
 		resp, err = client.Do(req)
 
+	case "kilocode":
+		// Non-RFC shape: the POST returns {code, verificationUrl, expiresIn}
+		// and the same "code" is the polling key.
+		req, reqErr := http.NewRequest("POST", info.DeviceCodeURL, strings.NewReader("{}"))
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("kilocode device auth failed (status %d): %s", resp.StatusCode, string(body))
+		}
+		var data map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return nil, fmt.Errorf("failed to decode kilocode device response: %w", err)
+		}
+		code := getString(data, "code")
+		expiresIn := 300
+		if v, ok := data["expiresIn"].(float64); ok {
+			expiresIn = int(v)
+		}
+		return &DeviceCodeResponse{
+			DeviceCode:              code,
+			UserCode:                getString(data, "user_code"),
+			VerificationURI:         getString(data, "verificationUrl"),
+			VerificationURIComplete: getString(data, "verificationUrl"),
+			ExpiresIn:               expiresIn,
+			Interval:                3,
+		}, nil
+
 	case "kimi":
 		deviceID := generateDeviceID()
 		params := url.Values{
@@ -372,6 +438,9 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", KimiCLIUA)
+		req.Header.Set("X-Msh-Platform", kimiCLIPlatform)
+		req.Header.Set("X-Msh-Version", KimiCLIVersion)
 		req.Header.Set("X-Msh-Device-Id", deviceID)
 		resp, err = client.Do(req)
 		if err != nil {
@@ -412,7 +481,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 	case "grok-cli":
 		params := url.Values{
 			"client_id": {info.ClientID},
-			"scope":     {"openid profile email offline_access"},
+			"scope":     {GrokCLIOAuthScope},
 		}
 		req, reqErr := http.NewRequest("POST", info.DeviceCodeURL, strings.NewReader(params.Encode()))
 		if reqErr != nil {
@@ -425,11 +494,11 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 	case "codebuddy", "codebuddy-cn":
 		platform := "CLI"
 		domain := "copilot.tencent.com"
-		userAgent := "CLI/2.177.1 CodeBuddy/2.177.1"
+		userAgent := CodebuddyCLIUA
 		if providerID == "codebuddy" {
 			platform = "ide"
 			domain = "www.codebuddy.ai"
-			userAgent = "IDE/2.177.1 CodeBuddy/2.177.1"
+			userAgent = CodebuddyIDEUA
 		}
 		targetURL := info.DeviceCodeURL + "?platform=" + platform
 		req, reqErr := http.NewRequest("POST", targetURL, strings.NewReader("{}"))
@@ -556,6 +625,51 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 	var err error
 
 	switch providerID {
+	case "kilocode":
+		// 202 = pending, 403 = denied, 410 = expired, 200 = {status, token}.
+		pollURL := strings.TrimRight(info.TokenURL, "/") + "/" + url.PathEscape(deviceCode)
+		req, reqErr := http.NewRequest("GET", pollURL, nil)
+		if reqErr != nil {
+			return nil, reqErr
+		}
+		req.Header.Set("Accept", "application/json")
+		resp, err = client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("kilocode poll failed: %w", err)
+		}
+		defer resp.Body.Close()
+		switch resp.StatusCode {
+		case http.StatusAccepted:
+			return &PollDeviceCodeResult{Error: "authorization_pending"}, nil
+		case http.StatusForbidden:
+			return &PollDeviceCodeResult{Error: "access_denied"}, nil
+		case http.StatusGone:
+			return &PollDeviceCodeResult{Error: "expired_token"}, nil
+		case http.StatusOK:
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("kilocode poll returned status %d: %s", resp.StatusCode, string(body))
+		}
+		var data map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			return nil, fmt.Errorf("failed to decode kilocode poll response: %w", err)
+		}
+		if getString(data, "status") != "approved" {
+			return &PollDeviceCodeResult{Error: "authorization_pending"}, nil
+		}
+		tokens := &TokenExchangeResult{
+			AccessToken: getString(data, "token"),
+			Email:       getString(data, "userEmail"),
+		}
+		if tokens.AccessToken == "" {
+			return &PollDeviceCodeResult{Error: "kilocode returned an empty token"}, nil
+		}
+		// Kilo routes by organization; the token's profile names it.
+		if orgID := fetchKilocodeOrgID(tokens.AccessToken, client); orgID != "" {
+			tokens.ProviderSpecificData = map[string]any{"orgId": orgID}
+		}
+		return &PollDeviceCodeResult{Success: true, Tokens: tokens}, nil
+
 	case "github":
 		params := url.Values{
 			"client_id":   {info.ClientID},
@@ -586,6 +700,9 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", KimiCLIUA)
+		req.Header.Set("X-Msh-Platform", kimiCLIPlatform)
+		req.Header.Set("X-Msh-Version", KimiCLIVersion)
 		if deviceID != "" {
 			req.Header.Set("X-Msh-Device-Id", deviceID)
 		}
@@ -607,10 +724,10 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 
 	case "codebuddy", "codebuddy-cn":
 		domain := "copilot.tencent.com"
-		userAgent := "CLI/2.177.1 CodeBuddy/2.177.1"
+		userAgent := CodebuddyCLIUA
 		if providerID == "codebuddy" {
 			domain = "www.codebuddy.ai"
-			userAgent = "IDE/2.177.1 CodeBuddy/2.177.1"
+			userAgent = CodebuddyIDEUA
 		}
 		pollURL := info.TokenURL + "?state=" + url.QueryEscape(deviceCode)
 		req, reqErr := http.NewRequest("GET", pollURL, nil)
