@@ -125,8 +125,17 @@ func TestRefreshCredentials_KimiHeaders(t *testing.T) {
 		if r.Header.Get("X-Msh-Device-Id") == "" {
 			t.Error("expected X-Msh-Device-Id header")
 		}
-		if r.Header.Get("X-Msh-Platform") != "cyrene-gateway" {
-			t.Errorf("expected X-Msh-Platform=cyrene-gateway, got %s", r.Header.Get("X-Msh-Platform"))
+		// The refresh must present the official CLI identity: naming this
+		// gateway (or a version the backend does not recognise) is what marks
+		// the request as relayed traffic.
+		if got := r.Header.Get("X-Msh-Platform"); got != kimiCLIPlatform {
+			t.Errorf("expected X-Msh-Platform=%s, got %s", kimiCLIPlatform, got)
+		}
+		if got := r.Header.Get("X-Msh-Version"); got != KimiCLIVersion {
+			t.Errorf("expected X-Msh-Version=%s, got %s", KimiCLIVersion, got)
+		}
+		if got := r.Header.Get("User-Agent"); got != KimiCLIUA {
+			t.Errorf("expected User-Agent=%s, got %s", KimiCLIUA, got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{

@@ -254,7 +254,6 @@ func TestRegistryOAuthProviders(t *testing.T) {
 func TestRegistryTransportCompleteness(t *testing.T) {
 	exempt := map[string]bool{
 		"antigravity": true, // resolved at runtime via OAuth
-		"grok-cli":    true, // resolved at runtime via OAuth
 	}
 
 	for id, p := range Registry {

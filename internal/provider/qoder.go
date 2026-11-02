@@ -40,7 +40,12 @@ const (
 	QoderCnChatURL  = "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1"
 	QoderCnLoginURL = "https://qoder.com.cn/device/selectAccounts"
 
-	qoderIDEVersion   = "1.26.0"
+	// Qoder client identity. The COSY signature carries Cosy-Version, but the
+	// chat/quota/PAT paths also send a User-Agent; both must name one client
+	// version or the account looks like two installs sharing a token.
+	QoderIDEVersion   = "1.26.0"
+	QoderCLIUserAgent = "qodercli/1.1.80"
+
 	qoderClientType   = "5"
 	qoderDataPolicy   = "disagree"
 	qoderLoginVersion = "v2"
@@ -206,7 +211,7 @@ func BuildQoderCosyHeaders(body []byte, requestURL string, creds QoderCosyCreds)
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	requestID := uuid.New().String()
 
-	cosyVer := qoderIDEVersion
+	cosyVer := QoderIDEVersion
 	if creds.IDEVersion != "" {
 		cosyVer = creds.IDEVersion
 	}

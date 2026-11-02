@@ -130,6 +130,9 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		upstreamReq.Header.Set("Content-Type", "application/json")
 		upstreamReq.Header.Set("Accept", "text/event-stream")
 		upstreamReq.Header.Set("Cache-Control", "no-cache")
+		// Without this Go sends "Go-http-client/2.0", which names the relay to
+		// Qoder's channel check; the COSY headers alone do not cover the UA.
+		upstreamReq.Header.Set("User-Agent", provider.QoderCLIUserAgent)
 		upstreamReq.Header.Set("X-Model-Key", key)
 		upstreamReq.Header.Set("X-Model-Source", modelSource)
 		upstreamReq.Header.Set("Accept-Encoding", "identity")

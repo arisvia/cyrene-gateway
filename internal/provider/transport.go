@@ -264,8 +264,13 @@ func kimiHeadersHook(h http.Header, c Credentials) {
 	if deviceID == "" {
 		deviceID = "kimi-" + time.Now().Format("20060102150405.000")
 	}
-	h.Set("X-Msh-Platform", "cyrene-gateway")
-	h.Set("X-Msh-Version", "1.0.0")
+	// The coding backend gates on the UA prefix and reads the X-Msh-* block, so
+	// both name the official CLI rather than this gateway.
+	if !strings.HasPrefix(h.Get("User-Agent"), "KimiCLI/") {
+		h.Set("User-Agent", KimiCLIUA)
+	}
+	h.Set("X-Msh-Platform", kimiCLIPlatform)
+	h.Set("X-Msh-Version", KimiCLIVersion)
 	h.Set("X-Msh-Device-Name", deviceName())
 	h.Set("X-Msh-Device-Model", deviceModel())
 	h.Set("X-Msh-Device-Id", deviceID)

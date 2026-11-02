@@ -195,8 +195,9 @@ func kimiRefreshHeaders(conn *model.ProviderConnection) map[string]string {
 	}
 
 	return map[string]string{
-		"X-Msh-Platform":     "cyrene-gateway",
-		"X-Msh-Version":      "1.0.0",
+		"User-Agent":         KimiCLIUA,
+		"X-Msh-Platform":     kimiCLIPlatform,
+		"X-Msh-Version":      KimiCLIVersion,
 		"X-Msh-Device-Name":  hostname,
 		"X-Msh-Device-Model": deviceModel,
 		"X-Msh-Device-Id":    deviceID,
@@ -395,11 +396,11 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 	case "codebuddy-cn":
 		refreshURL = "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
 		domain = "copilot.tencent.com"
-		userAgent = "CLI/2.177.1 CodeBuddy/2.177.1"
-	default: // codebuddy (intl)
+		userAgent = CodebuddyCLIUA
+	default: // codebuddy (intl) — refresh must carry the same IDE identity it enrolled with
 		refreshURL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
 		domain = "www.codebuddy.ai"
-		userAgent = "CLI/2.177.1 CodeBuddy/2.177.1"
+		userAgent = CodebuddyIDEUA
 	}
 
 	req, err := http.NewRequest("POST", refreshURL, strings.NewReader("{}"))

@@ -502,3 +502,54 @@ func TestQoderNonStreamingAggregatesInterleavedToolsByChoice(t *testing.T) {
 		}
 	}
 }
+
+// The COSY signature covers Cosy-Version, but the chat request also needs the
+// CLI User-Agent: Go would otherwise send "Go-http-client/2.0", naming the
+// relay to Qoder's channel check.
+func TestQoderChatSendsCLIUserAgent(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	uaCh := make(chan string, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case uaCh <- r.Header.Get("User-Agent"):
+		default:
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer upstream.Close()
+
+	provider.SeedQoderCatalogForTest("user-ua", map[string]map[string]any{
+		"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096},
+	})
+	conn := &model.ProviderConnection{
+		ID: "qoder-ua-conn", Provider: "qoder", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken:          "dt-mock-token-ua",
+			BaseURL:              upstream.URL,
+			ProviderSpecificData: map[string]any{"userId": "user-ua"},
+		},
+	}
+
+	reqBody := []byte(`{"model":"qoder/dfmodel","stream":true,"messages":[{"role":"user","content":"ping"}]}`)
+	r := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(reqBody))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	var chatReq ChatCompletionRequest
+	json.Unmarshal(reqBody, &chatReq)
+	modelInfo := model.ModelInfo{Provider: "qoder", Model: "dfmodel"}
+	providerInfo, _ := provider.GetProvider("qoder")
+	srv.handleQoderChat(w, r, chatReq, reqBody, modelInfo, conn, providerInfo)
+
+	select {
+	case got := <-uaCh:
+		if got != provider.QoderCLIUserAgent {
+			t.Errorf("User-Agent = %q, want %q", got, provider.QoderCLIUserAgent)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream never received the request")
+	}
+}

@@ -168,8 +168,11 @@ func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
 	if format != "openai" {
 		t.Errorf("expected openai format, got %s", format)
 	}
-	if req.Header.Get("User-Agent") != "CLI/2.177.1 CodeBuddy/2.177.1" {
+	if req.Header.Get("User-Agent") != CodebuddyIDEUA {
 		t.Errorf("unexpected User-Agent: %s", req.Header.Get("User-Agent"))
+	}
+	if req.Header.Get("X-IDE-Type") != "IDE" {
+		t.Errorf("intl chat must present the IDE identity, got X-IDE-Type=%q", req.Header.Get("X-IDE-Type"))
 	}
 	if req.Header.Get("X-Domain") != "www.codebuddy.ai" {
 		t.Errorf("unexpected X-Domain: %s", req.Header.Get("X-Domain"))

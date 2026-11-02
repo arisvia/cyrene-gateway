@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestFetchCodebuddy(t *testing.T) {
@@ -15,7 +17,7 @@ func TestFetchCodebuddy(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer cb-test-token" {
 			t.Errorf("expected Bearer cb-test-token, got %q", got)
 		}
-		if got := r.Header.Get("User-Agent"); got != "CLI/2.177.1 CodeBuddy/2.177.1" {
+		if got := r.Header.Get("User-Agent"); got != provider.CodebuddyCLIUA {
 			t.Errorf("unexpected User-Agent: %q", got)
 		}
 		if got := r.Header.Get("x-codebuddy-request"); got != "1" {

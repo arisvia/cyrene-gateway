@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 const (
@@ -89,12 +91,12 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 	}
 
 	targetURL := codebuddyCnBillingURL
-	userAgent := "CLI/2.177.1 CodeBuddy/2.177.1"
+	userAgent := provider.CodebuddyCLIUA
 	ideType := "CLI"
 
 	if c.Provider == "codebuddy" {
 		targetURL = codebuddyIntlBillingURL
-		userAgent = "IDE/2.177.1 CodeBuddy/2.177.1"
+		userAgent = provider.CodebuddyIDEUA
 		ideType = "IDE"
 	}
 	if c.BaseURL != "" {

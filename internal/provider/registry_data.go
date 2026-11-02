@@ -11,6 +11,16 @@ var claudeCodeHeaders = map[string]string{
 	"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31",
 }
 
+// CodeBuddy client identity. An intl account is enrolled, refreshed and
+// quota-checked as the IDE product, so the chat gateway must present the same
+// identity: one token driven by both a CLI and an IDE fingerprint is exactly
+// what the channel check treats as a relayed client. CN is CLI end to end.
+const (
+	CodebuddyVersion = "2.179.2"
+	CodebuddyIDEUA   = "IDE/" + CodebuddyVersion + " CodeBuddy/" + CodebuddyVersion
+	CodebuddyCLIUA   = "CLI/" + CodebuddyVersion + " CodeBuddy/" + CodebuddyVersion
+)
+
 // claudeOAuthHeaders provides headers required by Anthropic OAuth (/v1/messages with Bearer user tokens)
 var claudeOAuthHeaders = map[string]string{
 	"Anthropic-Version":                         "2023-06-01",
@@ -117,7 +127,7 @@ func init() {
 		DeviceCodeURL: "https://copilot.tencent.com/v2/plugin/auth/state",
 		TokenURL:      "https://copilot.tencent.com/v2/plugin/auth/token",
 		Headers: map[string]string{
-			"User-Agent":          "CLI/2.177.1 CodeBuddy/2.177.1",
+			"User-Agent":          CodebuddyCLIUA,
 			"X-Product":           "SaaS",
 			"X-IDE-Type":          "CLI",
 			"X-IDE-Name":          "CLI",
@@ -142,8 +152,10 @@ func init() {
 		DeviceCodeURL: "https://www.codebuddy.ai/v2/plugin/auth/state",
 		TokenURL:      "https://www.codebuddy.ai/v2/plugin/auth/token",
 		Headers: map[string]string{
-			"User-Agent":          "CLI/2.177.1 CodeBuddy/2.177.1",
+			"User-Agent":          CodebuddyIDEUA,
 			"X-Product":           "SaaS",
+			"X-IDE-Type":          "IDE",
+			"X-IDE-Name":          "IDE",
 			"X-Domain":            "www.codebuddy.ai",
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
@@ -253,9 +265,9 @@ func init() {
 	Registry["grok-cli"] = ProviderInfo{
 		ID: "grok-cli", Name: "Grok Build",
 		Alias:     "gcli",
-		BaseURL:   "",
-		ModelsURL: "https://api.x.ai/v1/models",
-		APIType:   "openai", AuthType: "oauth",
+		BaseURL:   GrokCLIBaseURL,
+		ModelsURL: GrokCLIBaseURL + "/models",
+		APIType:   "responses", AuthType: "oauth",
 		Category: "oauth", AuthModes: []string{"oauth"}, Priority: 275,
 		Color:         "#1DA1F2",
 		Website:       "https://x.ai",
@@ -264,6 +276,11 @@ func init() {
 		DeviceCodeURL: "https://auth.x.ai/oauth2/device/code",
 		TokenURL:      "https://auth.x.ai/oauth2/token",
 		ClientID:      "b1a00492-073a-47ea-816f-4c329264a828",
+		ForceStream:   true,
+		AuthHooks:     []string{"grokCliHeaders"},
+		Headers: map[string]string{
+			"User-Agent": GrokCLIUserAgent,
+		},
 	}
 	Registry["groq"] = ProviderInfo{
 		ID: "groq", Name: "Groq",
