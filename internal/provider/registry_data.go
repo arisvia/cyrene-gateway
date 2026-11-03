@@ -448,6 +448,35 @@ func init() {
 		TextIcon:  "DI",
 		APIKeyURL: "https://deepinfra.com/dash/api_keys",
 	}
+	Registry["xiaomi"] = ProviderInfo{
+		ID: "xiaomi", Name: "Xiaomi MiMo (Intl)",
+		Alias:   "xm",
+		BaseURL: "https://api.xiaomimimo.com/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 75,
+		Brand: "Xiaomi", Region: "intl",
+		Color:     "#FF6900",
+		Website:   "https://mimo.mi.com",
+		Icon:      "bolt",
+		TextIcon:  "XM",
+		APIKeyURL: "https://platform.xiaomimimo.com/#/console/api-keys",
+	}
+	// Token Plan keys (tp-/ttp-) are minted per region and only work on that
+	// region's host: token-plan-cn is the CN subscription endpoint, distinct
+	// from the pay-as-you-go sk- host above.
+	Registry["xiaomi-cn"] = ProviderInfo{
+		ID: "xiaomi-cn", Name: "Xiaomi MiMo (CN)",
+		Alias:   "xmcn",
+		BaseURL: "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+		APIType: "openai", AuthType: "api-key",
+		Category: "apikey", AuthModes: []string{"api-key"}, Priority: 75,
+		Brand: "Xiaomi", Region: "cn",
+		Color:     "#FF6900",
+		Website:   "https://mimo.mi.com",
+		Icon:      "bolt",
+		TextIcon:  "XM",
+		APIKeyURL: "https://platform.xiaomimimo.com/#/console/plan-manage",
+	}
 	Registry["minimax-cn"] = ProviderInfo{
 		ID: "minimax-cn", Name: "MiniMax (CN)",
 		Alias:   "mmcn",

@@ -19,6 +19,7 @@ func TestRegistryCompleteness(t *testing.T) {
 		"glm", "glm-cn",
 		"anthropic", "openai", "gemini", "vertex", "tencent",
 		"xai", "alicode", "alicode-cn",
+		"xiaomi", "xiaomi-cn",
 		// E2E-verified (4)
 		"deepseek", "cerebras", "groq", "nvidia",
 		// Brand pairs / quota-ported (5)
@@ -40,7 +41,7 @@ func TestRegistryCategories(t *testing.T) {
 	cats := GetRegistryByCategory()
 
 	expectedCats := map[string]int{
-		"apikey":   20,
+		"apikey":   22,
 		"oauth":    13,
 		"freeTier": 4,
 		"custom":   2,

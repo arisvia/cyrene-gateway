@@ -94,6 +94,8 @@ func TestResolveProviderAlias(t *testing.T) {
 		{"nim", "nvidia"},
 		{"hy", "tencent"},
 		{"vx", "vertex"},
+		{"xm", "xiaomi"},
+		{"xmcn", "xiaomi-cn"},
 		{"unknown", "unknown"},
 	}
 
