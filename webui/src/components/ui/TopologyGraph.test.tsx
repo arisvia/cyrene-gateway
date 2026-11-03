@@ -19,9 +19,7 @@ function controlOffsets(d: string, x: number, y: number): number[] {
 }
 
 describe('TopologyGraph', () => {
-  // Off-axis spokes keep the S shape (halves bend opposite ways). Vertical
-  // spokes are intentionally straight: the lateral offset scales with x, so a
-  // spoke with x=0 has no sideways component at all.
+  // Off-axis spokes keep the S shape (halves bend opposite ways).
   it.each([
     { x:240, y: 0 },
     { x: -100, y: 150 },
@@ -73,6 +71,27 @@ describe('TopologyGraph', () => {
     expect(Math.abs(second)).toBeGreaterThan(0)
     // Still an S: the halves bend opposite ways, not into a single arc.
     expect(Math.sign(first)).toBe(-Math.sign(second))
+  })
+
+  it('mirrors vertical spokes across the horizontal axis (top and bottom have matching horizontal lean)', () => {
+    const nodes = [
+      { id: 'top', x: 0, y: -150, isActive: true, isHitting: false },
+      { id: 'bottom', x: 0, y: 150, isActive: true, isHitting: false },
+    ]
+    const view = render(() => <TopologyGraph nodes={nodes} hoveredNode={null} reducedMotion={false} />)
+    const paths = Array.from(view.container.querySelectorAll('path')).map(p => p.getAttribute('d')!)
+    // Extract c1x and c2x for both paths:
+    const topNums = paths[0].match(/-?\d+/g)!.map(Number)
+    const botNums = paths[1].match(/-?\d+/g)!.map(Number)
+    const [topC1x, topC1y, topC2x, topC2y] = topNums.slice(2, 6)
+    const [botC1x, botC1y, botC2x, botC2y] = botNums.slice(2, 6)
+
+    // Horizontal deflection must be identical so both curve in the same direction:
+    expect(botC1x).toBe(topC1x)
+    expect(botC2x).toBe(topC2x)
+    // Vertical deflection must be opposite:
+    expect(botC1y).toBe(-topC1y)
+    expect(botC2y).toBe(-topC2y)
   })
 
   it('highlights inactive connections on hover without adding particles', () => {

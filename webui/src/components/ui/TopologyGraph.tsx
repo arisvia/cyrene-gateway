@@ -79,15 +79,17 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
           // exactly where the bend is most visible: the top and bottom spokes are
           // the longest on screen, so a rigid line next to curved neighbours reads
           // as a rendering fault. The weight keeps its sign but gains a floor, so
-          // every spoke curves by the same minimum amount. Vertical spokes have no
-          // inherent side, so they lean along a fixed diagonal instead of
-          // collapsing to zero.
+          // every spoke curves by the same minimum amount.
           const MIN_SWAY = 0.35
           const raw = node.x / len
-          const sway = raw >= 0 ? Math.max(raw, MIN_SWAY) : Math.min(raw, -MIN_SWAY)
-          // For a vertical spoke the normal vector is horizontal (y/len = ±1),
-          // so (node.y/len)*sway is already non-zero there; the floor above is
-          // what keeps it from vanishing.
+          // Vertical spokes (x == 0) mirror across the horizontal axis:
+          // Top (y < 0) and Bottom (y > 0) must lean in the SAME horizontal
+          // direction so the pair forms a reflection across the X axis rather
+          // than an inverted pinwheel. When x == 0, flipping sway with y gives
+          // both top and bottom the exact same horizontal deflection nx.
+          const sway = node.x === 0
+            ? (node.y < 0 ? MIN_SWAY : -MIN_SWAY)
+            : (raw >= 0 ? Math.max(raw, MIN_SWAY) : Math.min(raw, -MIN_SWAY))
           const nx = (node.y / len) * sway
           const ny = (-node.x / len) * sway
           const c1x = Math.round(node.x / 3 - nx * bend)
