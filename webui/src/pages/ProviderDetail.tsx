@@ -102,7 +102,7 @@ const ProviderDetail: Component = () => {
   // ── 多账号管理状态 ──
   const regInfo = () => {
     const p = conn()?.provider
-    return p ? store.registryList().find(r => r.id === p || r.alias === p) : undefined
+    return p ? store.registryList().find(r => r.id === p) : undefined
   }
 
   const accounts = () => {

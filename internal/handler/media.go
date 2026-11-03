@@ -78,10 +78,6 @@ func extractRoutingFields(bodyBytes []byte) (cleanBody []byte, bodyMap map[strin
 	if err != nil {
 		return nil, nil, "", "", err
 	}
-	// The routing id drives connection lookups, SupportsKind and credential
-	// branches, so a shorthand must land on the canonical id. The forwarded body
-	// above keeps the client's own spelling.
-	providerName = provider.ResolveProviderAlias(providerName)
 	return cleanBody, normalized, modelName, providerName, nil
 }
 
@@ -414,7 +410,7 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 // handleVideoStatus handles GET /v1/videos/{id}
 func (s *Server) handleVideoStatus(w http.ResponseWriter, r *http.Request) {
 	requestID := r.PathValue("id")
-	providerID := provider.ResolveProviderAlias(r.URL.Query().Get("provider"))
+	providerID := r.URL.Query().Get("provider")
 	if providerID == "" {
 		// The job registry makes the provider hint optional: a job ID created
 		// through this gateway resolves to its owning account.
@@ -488,8 +484,6 @@ func (s *Server) handleWebFetch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})
 		return
 	}
-	req.Provider = provider.ResolveProviderAlias(req.Provider)
-
 	if !media.SupportsKind(req.Provider, media.KindWebFetch) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web fetch", req.Provider)})
 		return
@@ -533,7 +527,6 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		} else if media.SupportsKind(modelName, media.KindWebSearch) {
 			providerID = modelName
 		}
-		providerID = provider.ResolveProviderAlias(providerID)
 	}
 	if providerID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing provider"})

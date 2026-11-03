@@ -464,13 +464,13 @@ func TestMediaReviewRejectsAmbiguousRoutingFields(t *testing.T) {
 }
 
 func TestMediaReviewCanonicalModelGoldenPaths(t *testing.T) {
-	for _, endpoint := range []struct{ path, provider, model, prefix string }{
-		{"/v1/images/generations", "openai", "dall-e-3", "oai"},
-		{"/v1/audio/speech", "openai", "tts-1", "oai"},
-		{"/v1/videos/generations", "xai", "grok-2-video", "xai"},
+	for _, endpoint := range []struct{ path, provider, model string }{
+		{"/v1/images/generations", "openai", "dall-e-3"},
+		{"/v1/audio/speech", "openai", "tts-1"},
+		{"/v1/videos/generations", "xai", "grok-2-video"},
 	} {
 		target := endpoint.provider + "/" + endpoint.model
-		for _, requested := range []string{endpoint.model, target, endpoint.prefix + "/" + endpoint.model} {
+		for _, requested := range []string{endpoint.model, target} {
 			for _, modelField := range []string{"model", "MODEL"} {
 				t.Run(endpoint.path+"/"+requested+"/"+modelField, func(t *testing.T) {
 					calls := 0
@@ -592,7 +592,7 @@ func TestMediaProviderOnlyVideoWhitelist(t *testing.T) {
 }
 
 func TestMediaSTTResolvedModelPreservesUpload(t *testing.T) {
-	for _, requested := range []string{"openai/whisper-1", "oai/whisper-1"} {
+	for _, requested := range []string{"openai/whisper-1"} {
 		t.Run(requested, func(t *testing.T) {
 			calls := 0
 			srv, key := setupMediaAuthTest(t, []string{requested, "openai/whisper-1"}, func(r *http.Request) {
@@ -634,12 +634,12 @@ func TestMediaResolvedDisabledModel(t *testing.T) {
 	for _, tc := range []struct {
 		name, path, request, target, provider string
 	}{
-		{"image", "/v1/images/generations", "oai/dall-e-3", "openai/dall-e-3", ""},
-		{"tts", "/v1/audio/speech", "oai/tts-1", "openai/tts-1", ""},
+		{"image", "/v1/images/generations", "openai/dall-e-3", "openai/dall-e-3", ""},
+		{"tts", "/v1/audio/speech", "openai/tts-1", "openai/tts-1", ""},
 		{"stt", "/v1/audio/transcriptions", "openai/whisper-1", "openai/whisper-1", ""},
 		{"video", "/v1/videos/generations", "xai/grok-2-video", "xai/grok-2-video", ""},
 		{"video_explicit_provider", "/v1/videos/generations", "xai/grok-2-video", "xai/grok-2-video", "xai"},
-		{"search", "/v1/search", "ag/gemini-2.5-flash", "antigravity/gemini-2.5-flash", "antigravity"},
+		{"search", "/v1/search", "antigravity/gemini-2.5-flash", "antigravity/gemini-2.5-flash", "antigravity"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
@@ -795,13 +795,13 @@ func TestMediaExplicitProviderCannotBypassWhitelist(t *testing.T) {
 // Media routing reads the body's provider field for SupportsKind, credential
 // lookup and provider-specific branches, so a shorthand has to resolve — while
 // the body forwarded upstream keeps the client's own spelling.
-func TestExtractRoutingFieldsCanonicalizesProviderID(t *testing.T) {
-	cleanBody, _, model, providerName, err := extractRoutingFields([]byte(`{"provider":"ag","model":"antigravity/gemini-2.5-flash"}`))
+func TestExtractRoutingFieldsKeepsProviderIDVerbatim(t *testing.T) {
+	cleanBody, _, model, providerName, err := extractRoutingFields([]byte(`{"provider":"antigravity","model":"antigravity/gemini-2.5-flash"}`))
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
 	if providerName != "antigravity" {
-		t.Errorf("routing provider = %q, want the canonical id", providerName)
+		t.Errorf("routing provider = %q, want the id as sent", providerName)
 	}
 	if model != "antigravity/gemini-2.5-flash" {
 		t.Errorf("model = %q, want it untouched", model)
@@ -812,8 +812,8 @@ func TestExtractRoutingFieldsCanonicalizesProviderID(t *testing.T) {
 	if err := json.Unmarshal(cleanBody, &forwarded); err != nil {
 		t.Fatalf("forwarded body: %v", err)
 	}
-	if forwarded.Provider != "ag" {
-		t.Errorf("forwarded body provider = %q, want the client's own spelling", forwarded.Provider)
+	if forwarded.Provider != "antigravity" {
+		t.Errorf("forwarded body provider = %q, want it untouched", forwarded.Provider)
 	}
 }
 

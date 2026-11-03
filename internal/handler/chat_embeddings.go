@@ -54,18 +54,10 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Provider != "" {
-		// The explicit override has to land on the same canonical id that
-		// connections, credentials and usage rows are keyed by. The model may
-		// carry either spelling as its prefix, so trim whichever one matches.
-		canonical := provider.ResolveProviderAlias(req.Provider)
-		modelInfo.Provider = canonical
-		modelInfo.Model = req.Model
-		for _, prefix := range [2]string{req.Provider + "/", canonical + "/"} {
-			if trimmed, ok := strings.CutPrefix(modelInfo.Model, prefix); ok {
-				modelInfo.Model = trimmed
-				break
-			}
-		}
+		// The explicit override must land on the same id that connections,
+		// credentials and usage rows are keyed by, so strip the caller's prefix.
+		modelInfo.Provider = req.Provider
+		modelInfo.Model = strings.TrimPrefix(req.Model, req.Provider+"/")
 	}
 	if provider.IsModelDisabled(req.Model, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})

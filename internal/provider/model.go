@@ -42,18 +42,13 @@ func ExtractModelReasoningEffort(modelStr string) (string, string) {
 }
 
 // ParseModel splits "provider/model" into provider and model parts.
-// If no slash is present, provider is empty and will be inferred or resolved via alias.
+// If no slash is present, provider is empty and will be inferred.
 func ParseModel(modelStr string) model.ModelInfo {
 	cleanModel, _ := ExtractModelReasoningEffort(modelStr)
 	if before, after, ok := strings.Cut(cleanModel, "/"); ok {
-		rawProv := before
-		canonicalProv := ResolveProviderAlias(rawProv)
-		return model.ModelInfo{
-			Provider: canonicalProv,
-			Model:    after,
-		}
+		return model.ModelInfo{Provider: before, Model: after}
 	}
-	// Bare model name - will need alias resolution or inference
+	// Bare model name - the provider still has to be inferred.
 	return model.ModelInfo{Provider: "", Model: cleanModel}
 }
 
@@ -166,16 +161,6 @@ func IsModelDisabled(modelStr string, database *db.DB) bool {
 	}
 	if _, ok := disabled[modelStr]; ok {
 		return true
-	}
-	// A client may pin an upstream by shorthand while the list is keyed by the
-	// canonical id, so the rewritten prefix has to reach the same decision.
-	if before, after, ok := strings.Cut(modelStr, "/"); ok {
-		canonical := ResolveProviderAlias(before) + "/" + after
-		if canonical != modelStr {
-			if _, ok := disabled[canonical]; ok {
-				return true
-			}
-		}
 	}
 	// If modelStr is "provider/model", check bare model as well
 	if idx := strings.Index(modelStr, "/"); idx != -1 {

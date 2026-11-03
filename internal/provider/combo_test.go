@@ -15,8 +15,8 @@ func TestParseModel(t *testing.T) {
 		wantModel string
 	}{
 		{"provider/model", "openai/gpt-4", "openai", "gpt-4"},
-		{"alias/model", "anthropic/claude-3-opus", "anthropic", "claude-3-opus"},
-		{"alias or/model", "or/llama-3", "openrouter", "llama-3"},
+		{"another provider", "anthropic/claude-3-opus", "anthropic", "claude-3-opus"},
+		{"hyphenated provider", "openrouter/llama-3", "openrouter", "llama-3"},
 		{"bare model", "gpt-4", "", "gpt-4"},
 		{"empty", "", "", ""},
 		{"nested slash", "openai/gpt-4/turbo", "openai", "gpt-4/turbo"},
@@ -57,53 +57,6 @@ func TestInferProviderFromModel(t *testing.T) {
 			got := InferProviderFromModel(tt.model)
 			if got != tt.expected {
 				t.Errorf("InferProviderFromModel(%q) = %q, want %q", tt.model, got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestResolveProviderAlias(t *testing.T) {
-	tests := []struct {
-		alias    string
-		expected string
-	}{
-		{"openai", "openai"},
-		{"oai", "openai"},
-		{"anthropic", "anthropic"},
-		{"claude", "claude"}, // "claude" is its own provider (Claude Code)
-		{"gemini", "gemini"},
-		{"or", "openrouter"},
-		{"ds", "deepseek"},
-		{"qd", "qoder"},
-		{"qdcn", "qoder-cn"},
-		{"cb", "codebuddy"},
-		{"cbcn", "codebuddy-cn"},
-		{"ali", "alicode"},
-		{"alicn", "alicode-cn"},
-		{"glmcn", "glm-cn"},
-		{"mm", "minimax"},
-		{"mmcn", "minimax-cn"},
-		{"ag", "antigravity"},
-		{"cc", "claude"},
-		{"cu", "cursor"},
-		{"gh", "github"},
-		{"gcli", "grok-cli"},
-		{"km", "kimi"},
-		{"oc", "opencode"},
-		{"ocg", "opencode-go"},
-		{"nim", "nvidia"},
-		{"hy", "tencent"},
-		{"vx", "vertex"},
-		{"xm", "xiaomi"},
-		{"xmcn", "xiaomi-cn"},
-		{"unknown", "unknown"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.alias, func(t *testing.T) {
-			got := ResolveProviderAlias(tt.alias)
-			if got != tt.expected {
-				t.Errorf("ResolveProviderAlias(%q) = %q, want %q", tt.alias, got, tt.expected)
 			}
 		})
 	}

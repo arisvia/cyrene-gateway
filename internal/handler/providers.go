@@ -50,9 +50,6 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider is required"})
 		return
 	}
-	// Routing and listing key off the canonical id; storing a shorthand would
-	// strand the connection out of every candidate set.
-	req.Provider = provider.ResolveProviderAlias(req.Provider)
 	if req.ID == "" {
 		req.ID = generateID()
 	}
@@ -145,7 +142,7 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Provider != nil {
-		existing.Provider = provider.ResolveProviderAlias(*req.Provider)
+		existing.Provider = *req.Provider
 	}
 	if req.AuthType != nil {
 		if !requireKnownAuthType(w, *req.AuthType) {

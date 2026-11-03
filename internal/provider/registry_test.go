@@ -270,76 +270,27 @@ func TestRegistryTransportCompleteness(t *testing.T) {
 	}
 }
 
-// TestRegistryAliasesBrevityAndUniqueness verifies that provider aliases are
-// strictly concise (<= 5 chars), non-colliding, and resolve correctly.
-func TestRegistryAliasesBrevityAndUniqueness(t *testing.T) {
-	seenAliases := make(map[string]string)
-
-	for id, p := range Registry {
-		// Canonical ID must resolve to itself
-		if got := ResolveProviderAlias(id); got != id {
-			t.Errorf("ResolveProviderAlias(%q) = %q, want %q", id, got, id)
-		}
-
-		if p.Alias == "" {
-			continue
-		}
-
-		// Brevity rule: shorthand alias must be 5 chars or fewer (e.g. cbcn, qdcn)
-		if len(p.Alias) > 5 {
-			t.Errorf("Provider %q has alias %q which exceeds 5 characters", id, p.Alias)
-		}
-
-		// Shorthand must not collide with another canonical ID
-		if other, exists := Registry[p.Alias]; exists && p.Alias != id {
-			t.Errorf("Alias %q of provider %q collides with canonical provider %q", p.Alias, id, other.ID)
-		}
-
-		// Uniqueness: no two providers may claim the same alias
-		if prev, exists := seenAliases[p.Alias]; exists {
-			t.Errorf("Alias %q is claimed by both %q and %q", p.Alias, prev, id)
-		}
-		seenAliases[p.Alias] = id
-
-		// Alias must resolve to canonical ID
-		if got := ResolveProviderAlias(p.Alias); got != id {
-			t.Errorf("ResolveProviderAlias(%q) = %q, want %q", p.Alias, got, id)
-		}
-	}
-}
-
-// TestGetProviderIsCanonicalOnly pins where a shorthand may enter: aliases are
-// resolved inside ParseModel, where a client types "qd/qmodel", and nowhere
-// else. Everything past that point is a canonical id, so the registry lookup
-// must reject a shorthand rather than quietly accepting it and letting the
-// alias become a second identity for the same provider.
+// TestGetProviderIsCanonicalOnly pins that the registry has exactly one
+// spelling per provider. Aliases used to let a client type "qd/qmodel"; they
+// were dropped because a second identity per provider only bought shorter
+// typing and cost a resolution step on every request path.
 func TestGetProviderIsCanonicalOnly(t *testing.T) {
 	for id, p := range Registry {
+		if p.ID != id {
+			t.Errorf("Registry[%q] carries ID %q; the map key and the ID must agree", id, p.ID)
+		}
 		if _, ok := GetProvider(id); !ok {
 			t.Fatalf("GetProvider(%q) missed its own canonical record", id)
 		}
-		if p.Alias == "" || p.Alias == id {
-			continue
-		}
-		if got, ok := GetProvider(p.Alias); ok {
-			t.Errorf("GetProvider(%q) resolved an alias to %q, want a miss", p.Alias, got.ID)
-		}
 	}
 
-	// The client-facing form still resolves, which is the alias's only purpose.
-	if got := ParseModel("oai/gpt-4o"); got.Provider != "openai" || got.Model != "gpt-4o" {
-		t.Errorf("ParseModel(oai/gpt-4o) = %+v, want provider openai and the bare model", got)
-	}
-	if got := ParseModel("openai/gpt-4o"); got.Provider != "openai" {
-		t.Errorf("ParseModel with a canonical prefix = %+v, want provider openai", got)
+	if got := ParseModel("openai/gpt-4o"); got.Provider != "openai" || got.Model != "gpt-4o" {
+		t.Errorf("ParseModel(openai/gpt-4o) = %+v, want provider openai and the bare model", got)
 	}
 
 	// Unknown ids stay unknown: no fuzzy or prefix matching.
 	if _, ok := GetProvider("no-such-provider"); ok {
 		t.Error("GetProvider resolved an unknown provider")
-	}
-	if got := ResolveProviderAlias("no-such-provider"); got != "no-such-provider" {
-		t.Errorf("ResolveProviderAlias rewrote an unknown id to %q", got)
 	}
 }
 
@@ -357,30 +308,4 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 			t.Errorf("provider %q needs an explicit branch in sanitizeCodebuddyRequest", id)
 		}
 	}
-}
-
-func TestBuildAliasMapCollisionGuard(t *testing.T) {
-	original := Registry
-	defer func() { Registry = original }()
-
-	Registry = map[string]ProviderInfo{
-		"bravo":   {ID: "bravo", Alias: "b"},
-		"charlie": {ID: "charlie", Alias: "c"},
-	}
-	m := buildAliasMap()
-	if m["b"] != "bravo" || m["c"] != "charlie" || m["bravo"] != "bravo" {
-		t.Fatalf("alias map missing entries: %+v", m)
-	}
-
-	// An alias shadowing another provider's canonical id must panic at init.
-	Registry = map[string]ProviderInfo{
-		"bravo":   {ID: "bravo", Alias: "charlie"},
-		"charlie": {ID: "charlie"},
-	}
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("alias/id collision must panic")
-		}
-	}()
-	buildAliasMap()
 }

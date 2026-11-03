@@ -156,7 +156,7 @@ const Providers: Component = () => {
 
   // 快捷获取 Registry 项
   const registryFor = (id: string): RegistryProvider | undefined =>
-    store.registryList().find(r => r.id === id || r.alias === id)
+    store.registryList().find(r => r.id === id)
 
   // 过滤后的已接入连接
   // 过滤与聚合后的已接入供应商列表（以 Provider 为唯一主体聚合多账号）

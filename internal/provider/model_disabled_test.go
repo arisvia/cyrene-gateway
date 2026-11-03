@@ -10,7 +10,7 @@ import (
 // The disabled list is keyed by canonical id while a client may pin an upstream
 // with a shorthand, so matching only the typed spelling lets the shorthand reach
 // an upstream the operator switched off.
-func TestIsModelDisabledMatchesShorthandPrefix(t *testing.T) {
+func TestIsModelDisabledMatchesBareAndPrefixedForms(t *testing.T) {
 	database, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatalf("failed to open db: %v", err)
@@ -26,10 +26,8 @@ func TestIsModelDisabledMatchesShorthandPrefix(t *testing.T) {
 		want     bool
 	}{
 		{"openai/gpt-4o", true},
-		{"oai/gpt-4o", true},
 		{"gpt-4o", true},
 		{"openai/gpt-4o-mini", false},
-		{"oai/gpt-4o-mini", false},
 		{"gpt-4o-mini", false},
 	}
 	for _, tc := range cases {

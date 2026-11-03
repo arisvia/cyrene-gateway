@@ -8,7 +8,6 @@ type ProviderInfo struct {
 	Headers  map[string]string `json:"headers,omitempty"`
 	ID       string            `json:"id"`
 	Name     string            `json:"name"`
-	Alias    string            `json:"alias,omitempty"`
 	BaseURL  string            `json:"baseUrl"`
 	APIType  string            `json:"apiType"`  // "openai", "anthropic", "gemini"
 	AuthType string            `json:"authType"` // "api-key", "oauth"
@@ -96,40 +95,6 @@ func (p ProviderInfo) EffectiveBaseURL(connAuthType string, hasAPIKey bool) (bas
 
 // Registry is the static provider registry, populated in init() by registry_data.go
 var Registry map[string]ProviderInfo
-
-// aliasMap is built once for fast lookup
-var aliasMap map[string]string
-
-func buildAliasMap() map[string]string {
-	m := make(map[string]string, len(Registry)*2)
-	for id := range Registry {
-		m[id] = id
-	}
-	// Aliases are inserted after all canonical ids so a collision is
-	// deterministic and fatal at init: a future Alias shadowing another
-	// provider's id (or alias) would otherwise resolve by map-iteration luck.
-	for id, p := range Registry {
-		if p.Alias == "" || p.Alias == id {
-			continue
-		}
-		if existing, ok := m[p.Alias]; ok {
-			panic("provider registry: alias " + p.Alias + " of " + id + " collides with " + existing)
-		}
-		m[p.Alias] = id
-	}
-	return m
-}
-
-// ResolveProviderAlias resolves a provider alias to its canonical ID. Call it
-// only where a client names an upstream in a request (a "provider/model" string
-// or an explicit provider field); connections, database rows, cache keys and
-// stats are all keyed by the canonical ID and must not pass through here.
-func ResolveProviderAlias(aliasOrID string) string {
-	if id, ok := aliasMap[aliasOrID]; ok {
-		return id
-	}
-	return aliasOrID
-}
 
 // GetProvider returns provider info by canonical ID. Shorthands are NOT
 // accepted here: an alias is only ever a client's way of typing a provider
