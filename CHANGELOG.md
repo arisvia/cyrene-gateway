@@ -2,6 +2,23 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.9.0] - 2026-11-03
+
+### Added
+- **按额度到期时间调度账号**：订阅额度到期即作废，此前同一优先档内一律轮询，快过期的账号会被闲置、慢过期的被提前打干。现将账号级截止时间（剩余额度桶中最早的 reset，支持绝对值与百分比两种口径）随配额抓取持久化，并在轮询时优先消耗紧急组；档位语义与优先级完全不变，紧急的备用账号不会抢占健康主账号。优先级档、会话亲和与既有轮换在无截止时间时行为与旧版完全一致。
+- **Xiaomi MiMo 双区**：按量付费（`sk-`，`api.xiaomimimo.com`）与 Token Plan（`tp-`/`ttp-`，区域化 `token-plan-{cn,sgp,ams}` 端点）是两套互不通用的凭证，故 Intl 与 CN 作为独立 provider 提供。
+- **Cline 与 Kilo Code**：Cline 的 OAuth JWT 需 `workos:` 前缀（ClinePass `clp_` 密钥原样透传）；Kilo Code 使用非标准设备码流程且令牌长效。两者的模型目录均走公开实时接口，不硬编码列表。
+- **新增 API/media provider**：Mistral、Perplexity、Cohere、Fireworks、Together、DeepInfra（均 OpenAI 兼容，复用既有传输与解析）；fal（图像）、Cartesia（TTS）、AssemblyAI（STT，唯一异步流程，已归一为 OpenAI 契约）。
+
+### Fixed
+- **同一时钟刻度的请求明细被合并**：Windows 上 `time.Now()` 仅约 15.6ms 分辨率，失败尝试与重试可产生相同主键，`ON CONFLICT DO UPDATE` 静默把两行审计记录并成一行。现改为进程内严格自增序列，既保持时间有序又不重复。
+- **媒体 provider 元数据缺失**：媒体卡片此前缺少品牌色、官网与控制台链接，密钥链接另存在一张只覆盖 13 家中的 7 家的表；现统一到 `MediaProviderInfo` 并与聊天 provider 共用同一份品牌元数据。
+- **模型目录 URL 推导与个别端点**：修复 base 本身即目录时 `.../models/models` 的重复拼接；minimax/minimax-cn 指向无目录的 anthropic 主机；vertex 的 `/models` 需项目与区域作用域，改为内置目录。
+- **fal 与 AssemblyAI 请求形状**：fal 的 `image_size` 必须为整数（原先发送字符串会被校验拒绝），其 `{"images":[{url}]}` 响应现归一为 OpenAI 契约；AssemblyAI 只接受其服务器可访问的 URL，改走先 `/v2/upload` 再提交的两步流程。
+
+### Changed
+- **客户端指纹集中管理**：Antigravity、CodeBuddy、Kimi、Grok、Qoder、OpenCode、Copilot 的 UA / 版本 / 元数据各归一处常量，所有调用点引用同一来源，避免逐处复制导致的漂移；Qoder 与 OpenCode 原先在少数端点上发送第二套非 CLI 身份，实测无契约依据，现统一为单一身份。
+
 ## [1.8.6] - 2026-10-31
 
 ### Fixed
