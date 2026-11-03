@@ -10,6 +10,11 @@ import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor, maskKey } from '@/lib/format'
 import { fetchModelDisplayNameMap, resolveModelDisplayName, canonicalModelId } from '@/lib/models'
 import { clientDisplayName } from '@/lib/clients'
+
+// Cost tracking is off: usageHistory.cost is written as a zero value, so every
+// total is $0 and rendering it would be a number the panel cannot stand behind.
+// Flip this once recordUsage prices tokens from the models.dev catalog.
+const COST_TRACKING = false
 import type { RequestDetail, LiveUsageEvent, UsageDimensionItem } from '@/types/domain'
 
 // One gateway request emits several events (accepted → routing → streaming →
@@ -242,7 +247,7 @@ const Usage: Component = () => {
         label: t('usage.breakdown.cacheRate'),
         value: rate === null ? '—' : `${rate.toFixed(1)}%`,
       },
-      { label: t('usage.estimatedCost'), value: fmtCost(store.usageStats.totalCost ?? 0) },
+      { label: t('usage.estimatedCost'), value: COST_TRACKING ? fmtCost(store.usageStats.totalCost ?? 0) : '—' },
     ]
   })
 
@@ -553,7 +558,7 @@ ${t('usage.metrics.completionTokens')}: ${fmtNum(item.completionTokens)}
 ${t('usage.metrics.totalTokens')}: ${fmtNum(item.totalTokens)}
 ${t('usage.breakdown.cacheRate')}: ${item.cacheRate !== null ? item.cacheRate.toFixed(1) + '%' : '—'} (${fmtNum(item.cachedTokens)})
 ${t('usage.breakdown.successRate')}: ${item.successRate !== null ? item.successRate.toFixed(1) + '%' : '—'}
-${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
+${t('usage.metrics.cost')}: ${COST_TRACKING ? fmtCost(item.cost) : '—'}`}
                       >
                         <div class="min-w-0">
                           <div class="flex items-center gap-2 min-w-0">
@@ -609,7 +614,7 @@ ${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
                         </span>
 
                         <span class="text-right font-mono text-[11px] text-faint tabular-nums">
-                          {fmtCost(item.cost)}
+                          {COST_TRACKING ? fmtCost(item.cost) : '—'}
                         </span>
                       </div>
                     )}
