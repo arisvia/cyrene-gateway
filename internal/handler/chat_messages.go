@@ -384,6 +384,7 @@ func (s *Server) attemptMessagesPassthrough(
 	s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 
 	prompt := extractAnthropicPrompt(reqBody)
+	apiKeyID, apiKeyName := extractRequestAPIKeyIdentity(r)
 	uc := &usageContext{
 		Client:        detectClientAgent(r),
 		ClientVersion: detectClientVersion(r),
@@ -393,6 +394,8 @@ func (s *Server) attemptMessagesPassthrough(
 		Model:         modelInfo.Model,
 		ConnectionID:  conn.ID,
 		APIKey:        extractRequestAPIKey(r),
+		APIKeyID:      apiKeyID,
+		APIKeyName:    apiKeyName,
 		Endpoint:      endpoint,
 		StartedAt:     start,
 		Status:        resp.StatusCode,

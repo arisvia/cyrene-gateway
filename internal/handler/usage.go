@@ -182,6 +182,9 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	stats["byProvider"] = byProvider
 	stats["byModel"] = byModel
 
+	// Names ride alongside the ids so the panel can label keys without a second
+	// lookup, and without the client ever receiving the secret.
+	stats["keyNames"] = history.KeyNames
 	stats["byKey"] = history.ByKey
 	stats["byEndpoint"] = history.ByEndpoint
 	stats["byClient"] = history.ByClient

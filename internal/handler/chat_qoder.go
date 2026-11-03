@@ -382,6 +382,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 	}
 
+	apiKeyID, apiKeyName := extractRequestAPIKeyIdentity(r)
 	uc := &usageContext{
 		Client:        detectClientAgent(r),
 		ClientVersion: detectClientVersion(r),
@@ -390,6 +391,8 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		Model:         modelInfo.Model,
 		ConnectionID:  conn.ID,
 		APIKey:        extractRequestAPIKey(r),
+		APIKeyID:      apiKeyID,
+		APIKeyName:    apiKeyName,
 		Endpoint:      endpoint,
 		StartedAt:     start,
 		Status:        resp.StatusCode,

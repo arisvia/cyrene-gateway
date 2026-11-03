@@ -131,6 +131,8 @@ export interface UsageStats {
   byClient?: Record<string, UsageDimensionItem>
   /** Requests per observed version, nested under the client name. */
   clientVersions?: Record<string, Record<string, number>>
+  /** Dispatching key id to the name recorded at request time. */
+  keyNames?: Record<string, string>
   last10Minutes?: { minute: string; requests: number }[]
 }
 

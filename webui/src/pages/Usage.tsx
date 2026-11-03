@@ -269,6 +269,12 @@ const Usage: Component = () => {
         displayName = resolveModelDisplayName(modelNameMap(), parts[0], parts[1]) || parts[0]
       } else if (dim === 'key' && key === 'default') {
         displayName = t('usage.defaultKeyLabel')
+      } else if (dim === 'key') {
+        // Prefer the operator-visible name. Rows recorded before key identity
+        // existed still carry the secret, so fall back to masking it; a key id
+        // with no name in the map means the key was deleted after the fact.
+        const named = stats.keyNames?.[key]
+        displayName = named || (key.startsWith('cg-') ? maskKey(key) : key)
       } else if (dim === 'client') {
         displayName = clientDisplayName(key, t)
       }

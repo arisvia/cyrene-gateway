@@ -41,11 +41,17 @@ type usageContext struct {
 	Model        string
 	ConnectionID string
 	APIKey       string
-	Endpoint     string
-	Status       int
-	Client       string
-	Prompt       string
-	Response     string
+	// APIKeyID and APIKeyName identify the dispatching key. The bare value in
+	// APIKey is the secret itself, which is neither readable nor stable enough
+	// to group reporting by: keys get renamed, and deleted keys leave rows that
+	// can no longer be resolved back to anything.
+	APIKeyID   string
+	APIKeyName string
+	Endpoint   string
+	Status     int
+	Client     string
+	Prompt     string
+	Response   string
 	// ClientVersion is the version parsed from the same UA as Client.
 	ClientVersion string
 	// RawUA is retained only to explain an "other" classification.
@@ -610,6 +616,7 @@ func (s *Server) attemptSingleModelChat(
 	s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: endpoint})
 
 	// Proxy the response with format translation
+	apiKeyID, apiKeyName := extractRequestAPIKeyIdentity(r)
 	uc := &usageContext{
 		Client:        detectClientAgent(r),
 		ClientVersion: detectClientVersion(r),
@@ -619,6 +626,8 @@ func (s *Server) attemptSingleModelChat(
 		Model:         modelInfo.Model,
 		ConnectionID:  conn.ID,
 		APIKey:        extractRequestAPIKey(r),
+		APIKeyID:      apiKeyID,
+		APIKeyName:    apiKeyName,
 		Endpoint:      endpoint,
 		StartedAt:     start,
 		Status:        resp.StatusCode,
@@ -1217,6 +1226,18 @@ func (s *Server) proxyStreaming(w http.ResponseWriter, r *http.Request, resp *ht
 // consistently from one site (AGENTS.md §7).
 func extractRequestAPIKey(r *http.Request) string {
 	return auth.ExtractAPIKey(r)
+}
+
+// extractRequestAPIKeyIdentity returns the dispatching key's id and name.
+//
+// Prefers the authenticated key from context. Usage rows group on the id and
+// display the name, so a renamed key updates every historical row, and a
+// deleted key can at least be shown as deleted instead of as an opaque secret.
+func extractRequestAPIKeyIdentity(r *http.Request) (id, name string) {
+	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil {
+		return keyObj.ID, keyObj.Name
+	}
+	return "", ""
 }
 
 // resolveRequestEndpoint extracts the original request endpoint, respecting

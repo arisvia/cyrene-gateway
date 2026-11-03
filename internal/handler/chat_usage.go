@@ -73,6 +73,15 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		Status:           statusStr,
 	}
 	meta := map[string]any{}
+	// Key identity rides in meta, not in the apiKey column: the column holds the
+	// secret and is the grouping key for existing rows, so overwriting it would
+	// split history. The id is stable, the name is a label that may be edited.
+	if uc.APIKeyID != "" {
+		meta["key_id"] = uc.APIKeyID
+	}
+	if uc.APIKeyName != "" {
+		meta["key_name"] = uc.APIKeyName
+	}
 	if uc.Client != "" {
 		meta["client"] = uc.Client
 	}

@@ -332,6 +332,7 @@ func (s *Server) handleAntigravityChat(
 		_ = s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 	}
 
+	apiKeyID, apiKeyName := extractRequestAPIKeyIdentity(r)
 	uc := &usageContext{
 		Client:        detectClientAgent(r),
 		ClientVersion: detectClientVersion(r),
@@ -341,6 +342,8 @@ func (s *Server) handleAntigravityChat(
 		Model:         modelInfo.Model,
 		ConnectionID:  conn.ID,
 		APIKey:        extractRequestAPIKey(r),
+		APIKeyID:      apiKeyID,
+		APIKeyName:    apiKeyName,
 		Endpoint:      endpoint,
 		Status:        http.StatusOK,
 		Prompt:        extractPromptSummary(req.Messages),

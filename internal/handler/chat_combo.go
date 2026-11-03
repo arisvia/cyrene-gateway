@@ -205,6 +205,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				provider.ResetAccountState(conn)
 				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 				s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
+				apiKeyID, apiKeyName := extractRequestAPIKeyIdentity(r)
 				uc := &usageContext{
 					Client:        detectClientAgent(r),
 					ClientVersion: detectClientVersion(r),
@@ -214,6 +215,8 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 					Model:         modelInfo.Model,
 					ConnectionID:  conn.ID,
 					APIKey:        extractRequestAPIKey(r),
+					APIKeyID:      apiKeyID,
+					APIKeyName:    apiKeyName,
 					Endpoint:      resolveRequestEndpoint(r, "/v1/chat/completions"),
 					StartedAt:     start,
 					Status:        resp.StatusCode,

@@ -432,6 +432,20 @@ func (d *DB) GetConnectionUsageTokens(connectionID string, period string) (promp
 	return prompt, completion
 }
 
+// metaField reads one string field out of the usage meta JSON. Returns "" for
+// absent rows, malformed JSON, or a non-string value.
+func metaField(meta, field string) string {
+	if meta == "" {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(meta), &m); err != nil {
+		return ""
+	}
+	v, _ := m[field].(string)
+	return v
+}
+
 // clientVersionFromMeta reads the UA-derived version recorded beside the client
 // id. Absent for clients whose UA carried no version.
 func clientVersionFromMeta(meta string) string {
@@ -475,6 +489,9 @@ type UsageSummary struct {
 	// ClientVersions counts requests per observed version, nested under the
 	// client name so the breakdown can stay one row per tool.
 	ClientVersions map[string]map[string]int
+	// KeyNames maps the dispatching key id to the name recorded at request
+	// time. Rows list keys by name instead of by secret fragment.
+	KeyNames map[string]string
 }
 
 func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
@@ -501,7 +518,7 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 	result := &UsageSummary{
 		DayData: DayData{ByProvider: make(map[string]DayCounter), ByModel: make(map[string]DayCounter)},
 		ByKey:   make(map[string]DayCounter), ByEndpoint: make(map[string]DayCounter), ByClient: make(map[string]DayCounter), RequestsByDay: make(map[string]int),
-		ClientVersions: make(map[string]map[string]int),
+		ClientVersions: make(map[string]map[string]int), KeyNames: make(map[string]string),
 	}
 	for rows.Next() {
 		var e UsageEntry
@@ -520,7 +537,15 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 			continue
 		}
 		addUsageToDay(&result.DayData, e)
+		// Group on the key id when we have one; legacy rows predate the field and
+		// keep grouping by their stored secret so history does not split.
 		key, endpoint := e.APIKey, e.Endpoint
+		if id := metaField(e.Meta, "key_id"); id != "" {
+			key = id
+			if name := metaField(e.Meta, "key_name"); name != "" {
+				result.KeyNames[id] = name
+			}
+		}
 		if key == "" {
 			key = "default"
 		}
