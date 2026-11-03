@@ -58,6 +58,50 @@ func (d *DB) Vacuum() error {
 	return nil
 }
 
+// ResetUsage deletes every usage record and the aggregates derived from them.
+//
+// Destructive and irreversible: this drops the history the stats panels read,
+// which is the point -- there is no way to distinguish "reset the counters"
+// from "forget everything" once the rows are gone. Callers must confirm first.
+// usageDaily and the lifetime counter are included because leaving them would
+// keep reporting totals for records that no longer exist.
+func (d *DB) ResetUsage() (history, details int64, err error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return 0, 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	resHist, err := tx.Exec("DELETE FROM usageHistory")
+	if err != nil {
+		return 0, 0, fmt.Errorf("reset usageHistory: %w", err)
+	}
+	history, _ = resHist.RowsAffected()
+
+	resDetails, err := tx.Exec("DELETE FROM requestDetails")
+	if err != nil {
+		return history, 0, fmt.Errorf("reset requestDetails: %w", err)
+	}
+	details, _ = resDetails.RowsAffected()
+
+	if _, err := tx.Exec("DELETE FROM usageDaily"); err != nil {
+		return history, details, fmt.Errorf("reset usageDaily: %w", err)
+	}
+	// The lifetime counter lives in _meta; zero rather than delete so the stat
+	// endpoint keeps reading a value instead of falling back on a missing row.
+	if _, err := tx.Exec(
+		"INSERT INTO _meta (key, value) VALUES ('totalRequestsLifetime', '0') " +
+			"ON CONFLICT(key) DO UPDATE SET value = '0'",
+	); err != nil {
+		return history, details, fmt.Errorf("reset lifetime counter: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("commit reset: %w", err)
+	}
+	return history, details, nil
+}
+
 // PruneLogs deletes usage history and request details older than retentionDays.
 func (d *DB) PruneLogs(retentionDays int) (int64, int64, error) {
 	if retentionDays <= 0 {

@@ -1,7 +1,9 @@
 import { type Component, For, Show, Switch, Match, createSignal, createMemo, createResource, onMount, onCleanup } from 'solid-js'
 import { useGatewayStore } from '@/stores/gateway'
 import { useI18n } from '@/i18n'
-import { Card, Badge, Button, IconButton, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye } from '@/components/ui'
+import { Card, Badge, Button, IconButton, Select, Empty, Skeleton, LoadState, StatusPulse, PageHeader, SegmentedControl, TabTransition, IconEye, Modal } from '@/components/ui'
+import { apiPost } from '@/lib/api'
+import { toast } from '@/lib/toast'
 import { ProviderAvatar } from '@/components/ui/ProviderIcon'
 import { GatewayTopology } from '@/components/dashboard/Topology'
 import { RequestDetailModal } from '@/components/dashboard/RequestDetailModal'
@@ -191,6 +193,31 @@ const Usage: Component = () => {
   // Window-wide cache hit rate. Derived from the totals rather than summed over
   // the dimension maps: a rate is only correct per prompt-token base, and adding
   // per-dimension percentages together would not be.
+  // Reset is destructive and irreversible, so it lives behind a modal that
+  // states the record count being deleted rather than firing from a toolbar.
+  const [resetOpen, setResetOpen] = createSignal(false)
+  const [resetting, setResetting] = createSignal(false)
+
+  async function doResetUsage() {
+    setResetting(true)
+    try {
+      const res = await apiPost<{ deletedHistory: number; deletedDetails: number }>(
+        '/api/system/maintenance',
+        { action: 'reset_usage' },
+      )
+      toast.success(t('usage.resetDone', {
+        history: String(res.deletedHistory ?? 0),
+        details: String(res.deletedDetails ?? 0),
+      }))
+      setResetOpen(false)
+      await store.loadUsage(period())
+    } catch {
+      // Error surfaced by api.ts
+    } finally {
+      setResetting(false)
+    }
+  }
+
   const cacheHitRate = createMemo(() => {
     const prompt = store.usageStats.totalPromptTokens ?? 0
     const cached = store.usageStats.totalCachedTokens ?? 0
@@ -315,6 +342,9 @@ const Usage: Component = () => {
                 size="sm"
               />
               <span>{live() ? t('usage.stopLive') : t('usage.liveEvents')}</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setResetOpen(true)} class="text-xs text-faint hover:text-danger">
+              {t('usage.resetStats')}
             </Button>
           </div>
         }
@@ -717,6 +747,31 @@ ${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
         item={selectedDetail()}
         onClose={() => setSelectedDetail(null)}
       />
+
+      {/* 重置统计：明确列出将被删除的记录条数，因为操作不可撤销 */}
+      <Modal
+        open={resetOpen()}
+        title={t('usage.resetStats')}
+        size="sm"
+        onClose={() => !resetting() && setResetOpen(false)}
+        footer={
+          <div class="flex items-center gap-2">
+            <Button variant="secondary" size="sm" disabled={resetting()} onClick={() => setResetOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="danger" size="sm" loading={resetting()} onClick={doResetUsage}>
+              {t('usage.resetConfirmBtn')}
+            </Button>
+          </div>
+        }
+      >
+        <div class="space-y-3 text-sm">
+          <p class="text-foreground">{t('usage.resetWarn')}</p>
+          <p class="text-xs text-faint">
+            {t('usage.resetScope', { count: fmtNum(store.usageStats.totalRequests ?? 0) })}
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }

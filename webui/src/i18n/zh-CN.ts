@@ -849,6 +849,11 @@ export const zhCN = {
     subtitle: '累计 {count} 次请求 · 实时监控流量路由分发',
     totalRequests: '总请求',
     ioTokens: '输入 / 输出 Token',
+    resetStats: '重置统计',
+    resetConfirmBtn: '确认清空',
+    resetWarn: '将永久删除所有用量历史与请求明细，此操作不可撤销。',
+    resetScope: '当前范围内 {count} 条请求记录将被删除；账号、Key 与设置不受影响。',
+    resetDone: '已清空统计：删除 {history} 条历史、{details} 条明细',
     estimatedCost: '估算成本',
     tokenTrend: 'Token 趋势',
     breakdown: {

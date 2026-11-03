@@ -89,9 +89,26 @@ func (s *Server) handleSystemMaintenance(w http.ResponseWriter, r *http.Request)
 			"message":       "Old logs pruned successfully",
 		})
 
+	case "reset_usage":
+		history, details, err := s.DB.ResetUsage()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		// Drop the cached stats payload: it still holds the pre-reset numbers and
+		// would keep serving them until the TTL expired.
+		s.invalidateUsageStats()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":        true,
+			"action":         "reset_usage",
+			"deletedHistory": history,
+			"deletedDetails": details,
+			"message":        "Usage statistics reset",
+		})
+
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "unknown action: must be 'checkpoint', 'vacuum', or 'prune_logs'",
+			"error": "unknown action: must be 'checkpoint', 'vacuum', 'prune_logs', or 'reset_usage'",
 		})
 	}
 }

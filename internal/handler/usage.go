@@ -42,6 +42,15 @@ func (s *Server) storeUsageStats(period string, payload []byte) {
 	s.usageStatsCache[period] = usageStatsEntry{payload: payload, expires: time.Now().Add(usageStatsTTL)}
 }
 
+// invalidateUsageStats drops every cached period. Used after a destructive
+// maintenance action so the panels stop serving numbers for deleted rows
+// instead of waiting out the TTL.
+func (s *Server) invalidateUsageStats() {
+	s.usageStatsMu.Lock()
+	defer s.usageStatsMu.Unlock()
+	s.usageStatsCache = nil
+}
+
 // handleUsageStats returns aggregated usage statistics.
 func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	period := r.URL.Query().Get("period")
