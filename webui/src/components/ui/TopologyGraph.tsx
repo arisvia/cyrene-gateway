@@ -1,7 +1,7 @@
 import { For, Show, type JSX } from 'solid-js'
 
 interface TopologyGraphProps {
-  nodes: { id: string; x: number; y: number; isActive: boolean; isHitting: boolean }[]
+  nodes: { id: string; x: number; y: number; isActive: boolean; isHitting: boolean; tokensPerSec?: number }[]
   hoveredNode: string | null
   reducedMotion: boolean
 }
@@ -51,10 +51,33 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
 
       <For each={props.nodes}>
         {node => {
+          // Pulse cadence follows throughput. Tokens/s spans roughly two orders
+          // of magnitude between providers, so the mapping is logarithmic and
+          // clamped: anything from ~10 to ~1000 tok/s lands between 1.25s and
+          // 0.35s, keeping the motion readable instead of strobing.
+          const pulseDur = () => {
+            const rate = node.tokensPerSec
+            if (!rate || rate <= 0) return '0.95s'
+            const scaled = Math.log10(rate + 1) // 1.04 @10, 3.0 @1000
+            const secs = Math.max(0.35, Math.min(1.25, 1.55 - scaled * 0.4))
+            return `${secs.toFixed(2)}s`
+          }
+          // Stagger the trailing pulses by a fraction of the cycle so they stay
+          // evenly spaced at any speed instead of bunching when the rate rises.
+          const pulseOffset = (index: number) => {
+            const cycle = parseFloat(pulseDur())
+            return `${(cycle * 0.32 * index).toFixed(2)}s`
+          }
           const len = Math.hypot(node.x, node.y) || 1
           const bend = Math.max(20, Math.round(len * 0.11))
-          const nx = node.y / len
-          const ny = -node.x / len
+          // Mirror symmetry instead of a pinwheel. A constant lateral offset
+          // makes every spoke lean the same way, so the ring reads as chiral and
+          // slightly lopsided. Scaling by x/len carries the sign for free: spokes
+          // on the right curve right, their mirror images curve left, and the
+          // vertical ones get factor 0 and stay straight.
+          const sway = node.x / len
+          const nx = (node.y / len) * sway
+          const ny = (-node.x / len) * sway
           const c1x = Math.round(node.x / 3 - nx * bend)
           const c1y = Math.round(node.y / 3 - ny * bend)
           const c2x = Math.round(node.x * 2 / 3 + nx * bend * 1.3)
@@ -144,7 +167,7 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
                       stroke-dasharray="0.22 0.78"
                       opacity={0.95}
                     >
-                      <animate attributeName="stroke-dashoffset" from="1" to="0" dur="0.95s" repeatCount="indefinite" />
+                      <animate attributeName="stroke-dashoffset" from="1" to="0" dur={pulseDur()} repeatCount="indefinite" />
                     </path>
 
                     {/* 激光脉冲 2: 紧随其后的多色等离子波束 */}
@@ -158,12 +181,12 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
                       stroke-dasharray="0.36 0.64"
                       opacity={0.8}
                     >
-                      <animate attributeName="stroke-dashoffset" from="1.3" to="0.3" dur="0.95s" repeatCount="indefinite" />
+                      <animate attributeName="stroke-dashoffset" from="1.3" to="0.3" dur={pulseDur()} repeatCount="indefinite" />
                     </path>
 
                     {/* 5. 领航光子核 1: 霓虹青白粒子 */}
                     <g>
-                      <animateMotion path={path} dur="0.95s" repeatCount="indefinite" />
+                      <animateMotion path={path} dur={pulseDur()} repeatCount="indefinite" />
                       <circle r={9} fill="#00f2fe" opacity="0.45" filter="url(#topology-conduit-glow)">
                         <animate attributeName="r" values="7;12;7" dur="0.5s" repeatCount="indefinite" />
                       </circle>
@@ -173,7 +196,7 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
 
                     {/* 6. 次级光子核 2: 洋红紫光粒子 */}
                     <g>
-                      <animateMotion path={path} dur="0.95s" begin="0.32s" repeatCount="indefinite" />
+                      <animateMotion path={path} dur={pulseDur()} begin={pulseOffset(1)} repeatCount="indefinite" />
                       <circle r={7} fill="#a855f7" opacity="0.4" filter="url(#topology-conduit-glow)">
                         <animate attributeName="r" values="5;9;5" dur="0.5s" repeatCount="indefinite" />
                       </circle>
@@ -183,7 +206,7 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
 
                     {/* 7. 尾随光子核 3: 金黄光子 */}
                     <g>
-                      <animateMotion path={path} dur="0.95s" begin="0.64s" repeatCount="indefinite" />
+                      <animateMotion path={path} dur={pulseDur()} begin={pulseOffset(2)} repeatCount="indefinite" />
                       <circle r={6} fill="#fbbf24" opacity="0.35" />
                       <circle r={3} fill="#f59e0b" opacity="0.9" />
                       <circle r={1.5} fill="#ffffff" opacity="1" />

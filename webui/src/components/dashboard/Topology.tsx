@@ -23,18 +23,25 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
   const [isDragging, setIsDragging] = createSignal(false)
   const [dragStart, setDragStart] = createSignal({ x: 0, y: 0 })
   const [hoveredNode, setHoveredNode] = createSignal<string | null>(null)
-  const [activeHits, setActiveHits] = createSignal<Record<string, { latencyMs?: number; expiresAt: number }>>({})
+  const [activeHits, setActiveHits] = createSignal<Record<string, { latencyMs?: number; tokensPerSec?: number; expiresAt: number }>>({})
   let hitTimer: ReturnType<typeof setInterval> | undefined
 
   // Track concurrent providers independently so one request no longer hides another.
   createEffect(() => {
     const now = Date.now()
-    const next: Record<string, { latencyMs?: number; expiresAt: number }> = {}
+    const next: Record<string, { latencyMs?: number; tokensPerSec?: number; expiresAt: number }> = {}
     for (const event of (props.liveEvents || []).slice(0, 24)) {
       if (!event.provider) continue
       const ongoing = ['accepted', 'routing', 'upstream_connected', 'streaming', 'fallback'].includes(event.type || event.status || '')
+      // Throughput drives the pulse speed: a provider streaming 700 tok/s
+      // should look visibly busier than one dribbling 20 tok/s, which latency
+      // alone cannot express (a slow first byte and a slow stream look alike).
+      const tokens = (event.promptTokens ?? 0) + (event.completionTokens ?? 0)
+      const secs = (event.latencyMs ?? 0) / 1000
+      const tokensPerSec = tokens > 0 && secs > 0.05 ? tokens / secs : undefined
       next[event.provider] = {
         latencyMs: event.latencyMs,
+        tokensPerSec,
         expiresAt: now + (ongoing ? 60_000 : 8_000),
       }
     }
@@ -135,6 +142,7 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
         y,
         isHitting,
         recentLatency: isHitting ? hit?.latencyMs : undefined,
+        tokensPerSec: isHitting ? hit?.tokensPerSec : undefined,
         color: g.color || 'var(--accent)',
       }
     })
