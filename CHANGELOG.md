@@ -17,7 +17,7 @@
 - **fal 与 AssemblyAI 请求形状**：fal 的 `image_size` 必须为整数（原先发送字符串会被校验拒绝），其 `{"images":[{url}]}` 响应现归一为 OpenAI 契约；AssemblyAI 只接受其服务器可访问的 URL，改走先 `/v2/upload` 再提交的两步流程。
 
 ### Security
-- **`/api/registry` 泄露 OAuth client secret**：`ClientSecret` 此前会随 provider 元数据序列化返回，而该接口在默认未开启强制登录时对局域网可达，两个 Google OAuth secret 因此可被任意调用方读取；现该字段彻底排除出 JSON（WebUI 从未读取，OAuth 全程服务端执行）。**已提交的两个 secret 需视为泄露并轮换。**
+- **`/api/registry` 泄露 OAuth client secret**：`ClientSecret` 此前会随 provider 元数据序列化返回，而该接口在默认未开启强制登录时对局域网可达，两个 Google OAuth secret 因此可被任意调用方读取；现该字段彻底排除出 JSON（WebUI 从未读取，OAuth 全程服务端执行），历史中的值保持原样且不可轮换（属上游客户端应用凭证）。
 - **媒体出站 URL 可被请求体操控**：`voice`、`model`、`response_format` 未转义即拼入上游 URL，持有任意网关密钥的调用方可做路径穿越或追加查询参数，从而在携带网关自身凭证的请求上选择任意端点；现统一 `PathEscape` 与 `url.Values` 构造。
 - **模型目录错误文本携带 API key**：查询串鉴权（Gemini 目录）会把 key 放进 URL，而 `*url.Error` 保留完整 URL，其文本此前直接进入 API 响应与系统日志；现脱敏后再包装。`LoadModelsDevCatalog` 收到 nil client 时改为失败关闭，不再构造绕过 SSRF 校验的裸 client。
 
