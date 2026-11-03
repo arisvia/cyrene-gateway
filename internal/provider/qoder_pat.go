@@ -192,7 +192,7 @@ func qoderExchangeJobToken(providerID, pat string, client *http.Client) (jobToke
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", QoderCLIUserAgent)
-	req.Header.Set("Cosy-Version", QoderIDEVersion)
+	req.Header.Set(QoderCosyVersionHeader, QoderIDEVersion)
 	req.Header.Set("Cosy-ClientType", qoderClientType)
 
 	resp, err := client.Do(req)

@@ -38,7 +38,7 @@ func qoderQuotaURL(providerID, baseURL string) string {
 func getQoderJSON(ctx context.Context, client *http.Client, url, token string) (int, map[string]any, string, error) {
 	headers := bearer(token)
 	headers["User-Agent"] = provider.QoderCLIUserAgent
-	headers["Cosy-Version"] = provider.QoderIDEVersion
+	headers[provider.QoderCosyVersionHeader] = provider.QoderIDEVersion
 	headers["Cosy-ClientType"] = "5"
 	return getJSON(ctx, client, url, headers)
 }

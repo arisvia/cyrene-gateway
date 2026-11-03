@@ -68,7 +68,7 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 						if anthVer := r.Header.Get("anthropic-version"); anthVer != "" {
 							upReq.Header.Set("anthropic-version", anthVer)
 						} else {
-							upReq.Header.Set("anthropic-version", "2023-06-01")
+							upReq.Header.Set("anthropic-version", provider.AnthropicAPIVersion)
 						}
 
 						client := s.getHTTPClient(10 * time.Second)

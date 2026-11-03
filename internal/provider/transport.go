@@ -23,9 +23,9 @@ const (
 	AuthCookie = "cookie"
 )
 
-// anthropicAPIVersion is the single source for the Anthropic API version header,
+// AnthropicAPIVersion is the single source for the Anthropic API version header,
 // reused across all claude-format providers (9router shared.js ANTHROPIC_API_VERSION).
-const anthropicAPIVersion = "2023-06-01"
+const AnthropicAPIVersion = "2023-06-01"
 
 // Transport describes the runtime HTTP configuration for reaching a provider's
 // upstream API: where to send the request, what wire format to use, and how to
@@ -241,7 +241,7 @@ func ApplyAuth(req *http.Request, t Transport, creds Credentials) {
 			req.Header.Set(t.Auth.Header, token)
 		}
 		if t.Auth.AnthropicVersion && req.Header.Get("anthropic-version") == "" {
-			req.Header.Set("anthropic-version", anthropicAPIVersion)
+			req.Header.Set("anthropic-version", AnthropicAPIVersion)
 		}
 	case AuthCookie:
 		req.Header.Set("Cookie", token)
@@ -275,14 +275,9 @@ func kimiHeadersHook(h http.Header, c Credentials) {
 	}
 	// The coding backend gates on the UA prefix and reads the X-Msh-* block, so
 	// both name the official CLI rather than this gateway.
-	if !strings.HasPrefix(h.Get("User-Agent"), "KimiCLI/") {
-		h.Set("User-Agent", KimiCLIUA)
-	}
-	h.Set("X-Msh-Platform", kimiCLIPlatform)
-	h.Set("X-Msh-Version", KimiCLIVersion)
+	applyKimiHeaders(h, deviceID)
 	h.Set("X-Msh-Device-Name", deviceName())
 	h.Set("X-Msh-Device-Model", deviceModel())
-	h.Set("X-Msh-Device-Id", deviceID)
 }
 
 func deviceModel() string {

@@ -43,8 +43,15 @@ const (
 	// Qoder client identity. The COSY signature carries Cosy-Version, but the
 	// chat/quota/PAT paths also send a User-Agent; both must name one client
 	// version or the account looks like two installs sharing a token.
-	QoderIDEVersion   = "1.26.0"
-	QoderCLIUserAgent = "qodercli/1.1.80"
+	QoderIDEVersion = "1.26.0"
+	// QoderCosyVersionHeader carries QoderIDEVersion on every signed call.
+	QoderCosyVersionHeader = "Cosy-Version"
+	QoderCLIUserAgent      = "qodercli/1.1.80"
+
+	// qoderHTTPUserAgent is the default Go client identity, kept verbatim: the
+	// device-poll and userinfo endpoints reject the CLI fingerprint but the
+	// chat/quota paths must keep sending it, so the two are separate values.
+	qoderHTTPUserAgent = "Go-http-client/2.0"
 
 	qoderClientType   = "5"
 	qoderDataPolicy   = "disagree"
@@ -239,7 +246,7 @@ func BuildQoderCosyHeaders(body []byte, requestURL string, creds QoderCosyCreds)
 		"Cosy-Key":               cosyKeyB64,
 		"Cosy-User":              creds.UserID,
 		"Cosy-Date":              timestamp,
-		"Cosy-Version":           cosyVer,
+		QoderCosyVersionHeader:   cosyVer,
 		"Cosy-Machineid":         machineID,
 		"Cosy-Machinetoken":      machineID,
 		"Cosy-Machinetype":       qoderMachineType,
@@ -382,7 +389,7 @@ func PollQoderDeviceTokenFor(providerID, nonce, codeVerifier string, client *htt
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Go-http-client/2.0")
+	req.Header.Set("User-Agent", qoderHTTPUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -487,7 +494,7 @@ func FetchQoderUserProfileFor(providerID, accessToken string, client *http.Clien
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Go-http-client/2.0")
+	req.Header.Set("User-Agent", qoderHTTPUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {

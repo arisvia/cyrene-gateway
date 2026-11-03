@@ -12,7 +12,12 @@ import (
 	"strings"
 )
 
-const opencodeUsageURL = "https://opencode.ai/zen/go/v1/usage"
+const (
+	opencodeUsageURL = "https://opencode.ai/zen/go/v1/usage"
+	// opencodeUsageUA is the short product name the quota endpoint expects;
+	// the versioned chat UA is rejected here.
+	opencodeUsageUA = "opencode"
+)
 
 type opencodeQuotaWindow struct {
 	Percent  any `json:"percent"`
@@ -49,7 +54,7 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "opencode")
+	req.Header.Set("User-Agent", opencodeUsageUA)
 	req.Header.Set("x-opencode-client", "desktop")
 
 	resp, err := quotaHTTPClient(client).Do(req)

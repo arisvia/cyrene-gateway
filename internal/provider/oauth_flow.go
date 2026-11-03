@@ -438,10 +438,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", KimiCLIUA)
-		req.Header.Set("X-Msh-Platform", kimiCLIPlatform)
-		req.Header.Set("X-Msh-Version", KimiCLIVersion)
-		req.Header.Set("X-Msh-Device-Id", deviceID)
+		applyKimiHeaders(req.Header, deviceID)
 		resp, err = client.Do(req)
 		if err != nil {
 			return nil, err
@@ -700,12 +697,7 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", KimiCLIUA)
-		req.Header.Set("X-Msh-Platform", kimiCLIPlatform)
-		req.Header.Set("X-Msh-Version", KimiCLIVersion)
-		if deviceID != "" {
-			req.Header.Set("X-Msh-Device-Id", deviceID)
-		}
+		applyKimiHeaders(req.Header, deviceID)
 		resp, err = client.Do(req)
 
 	case "grok-cli":
