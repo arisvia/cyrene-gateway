@@ -16,6 +16,11 @@
 - **模型目录 URL 推导与个别端点**：修复 base 本身即目录时 `.../models/models` 的重复拼接；minimax/minimax-cn 指向无目录的 anthropic 主机；vertex 的 `/models` 需项目与区域作用域，改为内置目录。
 - **fal 与 AssemblyAI 请求形状**：fal 的 `image_size` 必须为整数（原先发送字符串会被校验拒绝），其 `{"images":[{url}]}` 响应现归一为 OpenAI 契约；AssemblyAI 只接受其服务器可访问的 URL，改走先 `/v2/upload` 再提交的两步流程。
 
+### Security
+- **`/api/registry` 泄露 OAuth client secret**：`ClientSecret` 此前会随 provider 元数据序列化返回，而该接口在默认未开启强制登录时对局域网可达，两个 Google OAuth secret 因此可被任意调用方读取；现该字段彻底排除出 JSON（WebUI 从未读取，OAuth 全程服务端执行）。**已提交的两个 secret 需视为泄露并轮换。**
+- **媒体出站 URL 可被请求体操控**：`voice`、`model`、`response_format` 未转义即拼入上游 URL，持有任意网关密钥的调用方可做路径穿越或追加查询参数，从而在携带网关自身凭证的请求上选择任意端点；现统一 `PathEscape` 与 `url.Values` 构造。
+- **模型目录错误文本携带 API key**：查询串鉴权（Gemini 目录）会把 key 放进 URL，而 `*url.Error` 保留完整 URL，其文本此前直接进入 API 响应与系统日志；现脱敏后再包装。`LoadModelsDevCatalog` 收到 nil client 时改为失败关闭，不再构造绕过 SSRF 校验的裸 client。
+
 ### Changed
 - **客户端指纹集中管理**：Antigravity、CodeBuddy、Kimi、Grok、Qoder、OpenCode、Copilot 的 UA / 版本 / 元数据各归一处常量，所有调用点引用同一来源，避免逐处复制导致的漂移；Qoder 与 OpenCode 原先在少数端点上发送第二套非 CLI 身份，实测无契约依据，现统一为单一身份。
 
