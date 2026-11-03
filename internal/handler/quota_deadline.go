@@ -61,12 +61,22 @@ func (s *Server) syncAllQuotaDeadlines(ctx context.Context) {
 		if conn.Data.AccessToken == "" && conn.Data.APIKey == "" {
 			continue
 		}
+		// Same precondition the panel path uses: a stale access token makes the
+		// quota call fail, which would silently freeze the deadline at its old
+		// value instead of reporting a fresh one.
+		s.tryRefreshToken(conn)
 
 		orgName := ""
 		projectID := ""
 		if conn.Data.ProviderSpecificData != nil {
 			projectID, _ = conn.Data.ProviderSpecificData["projectId"].(string)
 			orgName, _ = conn.Data.ProviderSpecificData["organizationName"].(string)
+		}
+		// Antigravity scopes its quota call to a project; without one the fetch
+		// returns no buckets, which under the rule above leaves the deadline
+		// untouched forever.
+		if conn.Provider == "antigravity" && projectID == "" {
+			projectID, _ = s.EnsureAntigravityProject(ctx, conn, client)
 		}
 		res := usage.FetchQuota(ctx, client, usage.QuotaCredentials{
 			Provider:     conn.Provider,

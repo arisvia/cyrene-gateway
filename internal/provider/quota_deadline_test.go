@@ -26,13 +26,14 @@ func mustParse(t *testing.T, s string) time.Time {
 	return ts
 }
 
-// Exhaustible credits are lost on reset, so the soonest-expiring account must
-// absorb traffic even when a sibling has more headroom.
+// Exhaustible credits are lost on reset, so once an account is inside the
+// urgent window it must absorb traffic even when a sibling has more headroom.
 func TestPickFromPoolPrefersSoonestDeadline(t *testing.T) {
 	credentialRoundRobin.reset()
+	soon := time.Now().Add(6 * time.Hour)
 	conns := []model.ProviderConnection{
-		deadlineConn("later", 0, mustParse(t, "2026-12-01T00:00:00Z")),
-		deadlineConn("sooner", 0, mustParse(t, "2026-11-07T08:00:00Z")),
+		deadlineConn("later", 0, soon.Add(10*24*time.Hour)),
+		deadlineConn("sooner", 0, soon),
 	}
 	for i := range 6 {
 		got := SelectCredential(conns, "m", nil)
@@ -45,11 +46,11 @@ func TestPickFromPoolPrefersSoonestDeadline(t *testing.T) {
 // The soonest group rotates internally, so drains stay balanced.
 func TestPickFromPoolRotatesWithinUrgentGroup(t *testing.T) {
 	credentialRoundRobin.reset()
-	same := mustParse(t, "2026-11-07T08:00:00Z")
+	same := time.Now().Add(6 * time.Hour)
 	conns := []model.ProviderConnection{
 		deadlineConn("a", 0, same),
 		deadlineConn("b", 0, same),
-		deadlineConn("c", 0, mustParse(t, "2026-12-01T00:00:00Z")),
+		deadlineConn("c", 0, same.Add(10*24*time.Hour)),
 	}
 	seen := map[string]int{}
 	for range 6 {
@@ -65,7 +66,7 @@ func TestPickFromPoolUnknownDeadlineSortsLast(t *testing.T) {
 	credentialRoundRobin.reset()
 	conns := []model.ProviderConnection{
 		deadlineConn("unknown", 0, time.Time{}),
-		deadlineConn("known", 0, mustParse(t, "2026-12-01T00:00:00Z")),
+		deadlineConn("known", 0, time.Now().Add(6*time.Hour)),
 	}
 	for i := range 4 {
 		if got := SelectCredential(conns, "m", nil); got.ID != "known" {
@@ -96,8 +97,8 @@ func TestPickFromPoolNoDeadlinesKeepsRotation(t *testing.T) {
 func TestQuotaDeadlineNeverCrossesPriorityTier(t *testing.T) {
 	credentialRoundRobin.reset()
 	conns := []model.ProviderConnection{
-		deadlineConn("primary", 0, mustParse(t, "2026-12-01T00:00:00Z")),
-		deadlineConn("backup", 5, mustParse(t, "2026-11-04T00:00:00Z")),
+		deadlineConn("primary", 0, time.Now().Add(20*24*time.Hour)),
+		deadlineConn("backup", 5, time.Now().Add(4*time.Hour)),
 	}
 	for i := range 4 {
 		if got := SelectCredential(conns, "m", nil); got.ID != "primary" {
@@ -115,8 +116,8 @@ func TestStickyKeepsBindingDespiteUrgency(t *testing.T) {
 	t.Cleanup(ResetSessionAffinity)
 
 	conns := []model.ProviderConnection{
-		deadlineConn("pinned", 0, mustParse(t, "2026-12-01T00:00:00Z")),
-		deadlineConn("urgent", 0, mustParse(t, "2026-11-04T00:00:00Z")),
+		deadlineConn("pinned", 0, time.Now().Add(20*24*time.Hour)),
+		deadlineConn("urgent", 0, time.Now().Add(4*time.Hour)),
 	}
 	first := SelectCredentialSticky(conns, "m", nil, nil, "conv-1")
 	if first == nil {
@@ -135,8 +136,8 @@ func TestStickyNewSessionPrefersUrgent(t *testing.T) {
 	ResetSessionAffinity()
 
 	conns := []model.ProviderConnection{
-		deadlineConn("later", 0, mustParse(t, "2026-12-01T00:00:00Z")),
-		deadlineConn("urgent", 0, mustParse(t, "2026-11-04T00:00:00Z")),
+		deadlineConn("later", 0, time.Now().Add(20*24*time.Hour)),
+		deadlineConn("urgent", 0, time.Now().Add(4*time.Hour)),
 	}
 	for _, key := range []string{"conv-a", "conv-b", "conv-c"} {
 		if got := SelectCredentialSticky(conns, "m", nil, nil, key); got.ID != "urgent" {
@@ -194,14 +195,13 @@ func TestQuotaDeadlineDropsStaleReading(t *testing.T) {
 	}
 }
 
-// A stale stored deadline must also read as unknown for ordering purposes.
+// A stale stored deadline must read as unknown: it must not be treated as the
+// most urgent. With a live sibling present, the sibling owns the urgent group.
 func TestStaleStoredDeadlineIsNotUrgent(t *testing.T) {
 	credentialRoundRobin.reset()
-	stale := mustParse(t, "2026-11-01T00:00:00Z") // already passed
-	future := time.Now().Add(20 * 24 * time.Hour)
 	conns := []model.ProviderConnection{
-		deadlineConn("stale", 0, stale),
-		deadlineConn("future", 0, future),
+		deadlineConn("stale", 0, time.Now().Add(-72*time.Hour)), // already passed
+		deadlineConn("future", 0, time.Now().Add(6*time.Hour)),  // inside the window
 	}
 	for i := range 4 {
 		if got := SelectCredential(conns, "m", nil); got.ID != "future" {
@@ -210,11 +210,28 @@ func TestStaleStoredDeadlineIsNotUrgent(t *testing.T) {
 	}
 }
 
+// When every deadline is stale, ordering must fall back to the plain pool
+// rotation rather than inventing an urgent account out of expired data.
+func TestAllStaleDeadlinesFallBackToPlainRotation(t *testing.T) {
+	credentialRoundRobin.reset()
+	conns := []model.ProviderConnection{
+		deadlineConn("a", 0, time.Now().Add(-72*time.Hour)),
+		deadlineConn("b", 0, time.Now().Add(-48*time.Hour)),
+	}
+	seen := map[string]int{}
+	for range 4 {
+		seen[SelectCredential(conns, "m", nil).ID]++
+	}
+	if seen["a"] != 2 || seen["b"] != 2 {
+		t.Fatalf("all-stale pool must rotate evenly, got %v", seen)
+	}
+}
+
 // Deadlines within the slack window form one group: remote APIs never agree to
 // the second, and exact matching would give one account 100% of traffic.
 func TestUrgentGroupUsesSlackWindow(t *testing.T) {
 	credentialRoundRobin.reset()
-	base := time.Now().Add(72 * time.Hour).Truncate(time.Second)
+	base := time.Now().Add(6 * time.Hour).Truncate(time.Second)
 	conns := []model.ProviderConnection{
 		deadlineConn("a", 0, base),
 		deadlineConn("b", 0, base.Add(6*time.Hour)),
@@ -263,5 +280,58 @@ func TestQuotaDeadlineOfRejectsGarbage(t *testing.T) {
 	conn.Data.ProviderSpecificData = map[string]any{quotaDeadlineKey: "not-a-time"}
 	if !quotaDeadlineOf(&conn).IsZero() {
 		t.Fatal("unparseable deadline must read as unknown")
+	}
+}
+
+// Outside the urgent window nothing is about to be wasted, so the rotation must
+// stay wide. This is only observable when the deadlines differ enough to form
+// distinct groups: without the window guard the near one would absorb all
+// traffic, so an even split proves the guard is in force.
+func TestDistantDeadlinesKeepFullRotation(t *testing.T) {
+	credentialRoundRobin.reset()
+	conns := []model.ProviderConnection{
+		deadlineConn("a", 0, time.Now().Add(29*24*time.Hour)),
+		deadlineConn("b", 0, time.Now().Add(30*24*time.Hour)),
+	}
+	seen := map[string]int{}
+	for range 6 {
+		seen[SelectCredential(conns, "m", nil).ID]++
+	}
+	if seen["a"] != 3 || seen["b"] != 3 {
+		t.Fatalf("both accounts are months out and must share load, got %v", seen)
+	}
+}
+
+// Same pool, but the separation is wide enough that slack grouping would split
+// them. Both are still outside the window, so the full pool must rotate.
+func TestDistantButUngroupedDeadlinesStillShareLoad(t *testing.T) {
+	credentialRoundRobin.reset()
+	conns := []model.ProviderConnection{
+		deadlineConn("near", 0, time.Now().Add(5*24*time.Hour)), // outside 48h
+		deadlineConn("far", 0, time.Now().Add(20*24*time.Hour)), // separate group
+	}
+	seen := map[string]int{}
+	for range 6 {
+		seen[SelectCredential(conns, "m", nil).ID]++
+	}
+	if seen["near"] != 3 || seen["far"] != 3 {
+		t.Fatalf("neither account is urgent, both must serve, got %v", seen)
+	}
+}
+
+// Inside the window the narrow group applies, which is the whole point.
+func TestUrgentWindowBoundary(t *testing.T) {
+	credentialRoundRobin.reset()
+	inWindow := time.Now().Add(6 * time.Hour)
+	conns := []model.ProviderConnection{
+		deadlineConn("urgent", 0, inWindow),
+		deadlineConn("distant", 0, time.Now().Add(40*24*time.Hour)),
+	}
+	seen := map[string]int{}
+	for range 6 {
+		seen[SelectCredential(conns, "m", nil).ID]++
+	}
+	if seen["urgent"] != 6 {
+		t.Fatalf("an account inside the window must take the traffic, got %v", seen)
 	}
 }

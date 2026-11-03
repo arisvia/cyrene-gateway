@@ -295,6 +295,13 @@ func urgentGroup(ordered []*model.ProviderConnection, now time.Time) []*model.Pr
 	if lead.IsZero() {
 		return ordered
 	}
+	// Outside the urgent window nothing is about to be wasted, so there is no
+	// reason to narrow the rotation: 29-day and 30-day siblings must share the
+	// load. Collapsing them onto one account halves throughput and pushes that
+	// account into rate limits for no benefit.
+	if !QuotaDeadlineIsUrgent(lead, now) {
+		return ordered
+	}
 	end := 1
 	for end < len(ordered) {
 		d := effectiveDeadline(ordered[end], now)

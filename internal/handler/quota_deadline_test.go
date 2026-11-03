@@ -98,3 +98,47 @@ func TestQuotaBucketsOfDerivesRemaining(t *testing.T) {
 		}
 	}
 }
+
+// A failed fetch (empty Quotas + a Message) must leave the stored deadline
+// alone. Clearing it would demote a measured account to "unknown" on a single
+// transient 500/401/timeout, silently disabling expiry-aware ordering.
+func TestPersistQuotaDeadlineKeepsLastKnownOnFailure(t *testing.T) {
+	srv, database := setupTestServer(t)
+	conn := model.ProviderConnection{
+		ID:       "conn-keep",
+		Provider: "codebuddy",
+		AuthType: "oauth",
+		IsActive: true,
+		Data:     model.ConnectionData{AccessToken: "tok"},
+	}
+	if err := database.CreateConnection(&conn); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	good := usage.QuotaResult{Quotas: map[string]usage.Quota{
+		"pack": {Used: 1, Total: 100, Remaining: 99, ResetAt: "2026-12-01T00:00:00Z"},
+	}}
+	srv.persistQuotaDeadline(&conn, good)
+
+	stored, err := database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	first, _ := stored.Data.ProviderSpecificData["quotaDeadline"].(string)
+	if first == "" {
+		t.Fatal("first successful fetch must store a deadline")
+	}
+
+	// Now simulate the quota API failing.
+	failed := usage.QuotaResult{Message: "codebuddy usage request failed: 500"}
+	srv.persistQuotaDeadline(&conn, failed)
+
+	stored, err = database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatalf("reload after failure: %v", err)
+	}
+	got, _ := stored.Data.ProviderSpecificData["quotaDeadline"].(string)
+	if got != first {
+		t.Fatalf("failed fetch must keep the last known deadline: had %q, now %q", first, got)
+	}
+}

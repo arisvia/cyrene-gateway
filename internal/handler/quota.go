@@ -189,6 +189,12 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 // quota fetch. Failures are silent: a stale deadline only costs ordering
 // preference, never correctness, and the panel must not fail because of it.
 func (s *Server) persistQuotaDeadline(conn *model.ProviderConnection, res usage.QuotaResult) {
+	// An empty bucket set means the fetch failed: every failure path returns a
+	// Message and no Quotas. Keep the previous deadline — a transient 500 must
+	// not demote a measured account to "unknown" and disable expiry ordering.
+	if len(res.Quotas) == 0 {
+		return
+	}
 	patch := provider.QuotaDeadlinePatch(conn, provider.QuotaDeadline(quotaBucketsOf(res), time.Now()))
 	if patch == nil {
 		return
