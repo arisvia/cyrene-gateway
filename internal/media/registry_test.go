@@ -188,7 +188,6 @@ func TestDisplayMetaAppliedToRegistry(t *testing.T) {
 // they are also chat providers, whose provider.ProviderInfo supplies the colour
 // (the panel merges both sources), or they have no brand asset at all.
 var mediaProvidersWithoutOwnBrand = map[string]bool{
-	"cartesia":    true,
 	"groq":        true,
 	"xai":         true,
 	"openai":      true,

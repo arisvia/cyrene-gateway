@@ -116,6 +116,7 @@ const PROVIDER_IMAGE_MAP: Record<string, string> = {
   cursor: getProviderAsset('cursor')!,
   cline: getProviderAsset('cline')!,
   kilocode: getProviderAsset('kilocode')!,
+  cartesia: getProviderAsset('cartesia')!,
   xiaomi: getProviderAsset('xiaomimimo')!,
   'xiaomi-cn': getProviderAsset('xiaomimimo')!,
   mistral: getProviderAsset('mistral')!,
