@@ -257,7 +257,15 @@ func eligiblePool(conns []model.ProviderConnection, modelName string, excludeIDs
 	return pool
 }
 
-// pickFromPool rotates round-robin inside the active pool.
+// pickFromPool rotates round-robin inside the active pool, but only among the
+// accounts sharing the most urgent quota deadline. Exhaustible credits are lost
+// when they expire, so an account refilling in 29 days must not absorb a request
+// while a sibling refills in 4 days. Accounts with no known deadline form the
+// back group, so grouping never lets an unmeasured account outrank a measured
+// one.
+//
+// The round-robin key stays keyed on the stored priority: the deadline group is
+// derived from data, not configuration, so counters must not jump when it moves.
 func pickFromPool(pool []*model.ProviderConnection) *model.ProviderConnection {
 	if len(pool) == 0 {
 		return nil
@@ -265,8 +273,37 @@ func pickFromPool(pool []*model.ProviderConnection) *model.ProviderConnection {
 	if len(pool) == 1 {
 		return pool[0]
 	}
-	key := pool[0].Provider + "|" + strconv.Itoa(pool[0].Priority)
-	return pool[credentialRoundRobin.next(key, len(pool))]
+	now := time.Now()
+	ordered := orderByQuotaDeadline(pool, now)
+	group := urgentGroup(ordered, now)
+	key := ordered[0].Provider + "|" + strconv.Itoa(ordered[0].Priority)
+	return group[credentialRoundRobin.next(key, len(group))]
+}
+
+// urgentGroup returns the leading run of accounts whose deadline falls within
+// quotaDeadlineGroupSlack of the soonest one. Deadlines come from remote quota
+// APIs and never agree to the second, so exact matching would let the single
+// earliest account absorb every request while its siblings idle.
+//
+// With no known deadlines it is the whole pool, which reproduces the previous
+// all-accounts rotation exactly.
+func urgentGroup(ordered []*model.ProviderConnection, now time.Time) []*model.ProviderConnection {
+	if len(ordered) == 0 {
+		return nil
+	}
+	lead := effectiveDeadline(ordered[0], now)
+	if lead.IsZero() {
+		return ordered
+	}
+	end := 1
+	for end < len(ordered) {
+		d := effectiveDeadline(ordered[end], now)
+		if d.IsZero() || d.Sub(lead) > quotaDeadlineGroupSlack {
+			break
+		}
+		end++
+	}
+	return ordered[:end]
 }
 
 // connEligible reports whether a connection may serve a request right now:

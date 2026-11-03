@@ -70,6 +70,10 @@ func main() {
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	defer bgCancel()
 	srv.StartBackgroundModelSync(bgCtx, 6*time.Hour)
+	// Credit deadlines move on a much shorter clock than model catalogs: the
+	// selection layer drains soonest-expiring accounts first, and a stale
+	// deadline silently disables that.
+	srv.StartBackgroundQuotaDeadlineSync(bgCtx, handler.QuotaDeadlineRefreshInterval)
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	isRestart := os.Getenv("CYRENE_RESTART") == "1"

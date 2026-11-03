@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 	"github.com/arisvia/cyrene-gateway/internal/usage"
 )
@@ -175,5 +176,22 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 			res.AccountID = uid
 		}
 	}
+
+	// Remember when this account's credits run out, so account selection can
+	// drain the soonest-expiring ones first. This fetch is the only place the
+	// real reset dates exist, hence persisting here rather than per request.
+	s.persistQuotaDeadline(conn, res)
+
 	writeJSON(w, http.StatusOK, res)
+}
+
+// persistQuotaDeadline stores the account-level credit deadline derived from a
+// quota fetch. Failures are silent: a stale deadline only costs ordering
+// preference, never correctness, and the panel must not fail because of it.
+func (s *Server) persistQuotaDeadline(conn *model.ProviderConnection, res usage.QuotaResult) {
+	patch := provider.QuotaDeadlinePatch(conn, provider.QuotaDeadline(quotaBucketsOf(res), time.Now()))
+	if patch == nil {
+		return
+	}
+	_ = s.DB.UpdateConnectionProviderData(conn.ID, patch)
 }
