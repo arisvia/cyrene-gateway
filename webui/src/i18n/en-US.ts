@@ -196,7 +196,7 @@ export const enUS: TranslationDict = {
       memoryTotalAlloc: 'Cumulative Allocated',
       dbSize: 'SQLite Database Size',
       walSize: 'WAL Cache Size',
-      totalRequests: 'Total Usage Rows',
+    totalRequests: 'Total Usage Rows',
       totalDetails: 'Request Detail Snapshots',
       updateTitle: 'Online Self-Update',
       updateSubtitle: 'Check and seamlessly upgrade to the latest official release from GitHub',
@@ -850,8 +850,7 @@ export const enUS: TranslationDict = {
     title: 'Usage Analytics',
     subtitle: 'Total {count} requests · Real-time traffic routing',
     totalRequests: 'Total Requests',
-    promptTokens: 'Input Tokens',
-    completionTokens: 'Output Tokens',
+    ioTokens: 'Input / Output Tokens',
     estimatedCost: 'Estimated Cost',
     tokenTrend: 'Token Trends',
     breakdown: {

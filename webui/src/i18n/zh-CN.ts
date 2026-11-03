@@ -194,7 +194,7 @@ export const zhCN = {
       memoryTotalAlloc: '累计分配内存',
       dbSize: 'SQLite 数据库体积',
       walSize: 'WAL 缓存体积',
-      totalRequests: '总请求日志条数',
+    totalRequests: '总请求日志条数',
       totalDetails: '请求明细快照数',
       updateTitle: '在线自更新',
       updateSubtitle: '检查并无缝升级至最新发布的 GitHub 官方版本',
@@ -848,8 +848,7 @@ export const zhCN = {
     title: '用量统计',
     subtitle: '累计 {count} 次请求 · 实时监控流量路由分发',
     totalRequests: '总请求',
-    promptTokens: '输入 Token',
-    completionTokens: '输出 Token',
+    ioTokens: '输入 / 输出 Token',
     estimatedCost: '估算成本',
     tokenTrend: 'Token 趋势',
     breakdown: {

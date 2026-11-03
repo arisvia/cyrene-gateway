@@ -200,10 +200,14 @@ const Usage: Component = () => {
 
   const kpis = createMemo(() => {
     const rate = cacheHitRate()
+    // Four tiles on the 4-column grid. Input and output share one tile because
+    // five tiles wrap, pushing cost onto a second row and breaking the strip.
     return [
       { label: t('usage.totalRequests'), value: fmtNum(store.usageStats.totalRequests ?? 0) },
-      { label: t('usage.promptTokens'), value: fmtNum(store.usageStats.totalPromptTokens ?? 0) },
-      { label: t('usage.completionTokens'), value: fmtNum(store.usageStats.totalCompletionTokens ?? 0) },
+      {
+        label: t('usage.ioTokens'),
+        value: `${fmtNum(store.usageStats.totalPromptTokens ?? 0)} / ${fmtNum(store.usageStats.totalCompletionTokens ?? 0)}`,
+      },
       {
         label: t('usage.breakdown.cacheRate'),
         value: rate === null ? '—' : `${rate.toFixed(1)}%`,
