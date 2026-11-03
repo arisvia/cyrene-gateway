@@ -2,6 +2,8 @@ package media
 
 import (
 	"encoding/json"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -79,5 +81,52 @@ func TestFalImageBodySizeTypes(t *testing.T) {
 		if _, present := falImageBody(&ImageRequest{Prompt: "p", Size: bad})["image_size"]; present {
 			t.Errorf("size %q must be dropped, not forwarded", bad)
 		}
+	}
+}
+
+// AssemblyAI authenticates with the raw key: "Bearer <key>" is rejected.
+func TestAssemblyAIAuthIsRaw(t *testing.T) {
+	cfg := GetConfig("assemblyai", KindSTT)
+	if cfg == nil {
+		t.Fatal("assemblyai STT config missing")
+	}
+	if cfg.AuthHeader != "raw" {
+		t.Fatalf("assemblyai must use raw auth, got %q", cfg.AuthHeader)
+	}
+}
+
+// Only the current model identifiers are offered; "best" and "nano" are
+// deprecated aliases AssemblyAI maps away from.
+func TestAssemblyAIModelsAreCurrent(t *testing.T) {
+	p := Registry["assemblyai"]
+	if p == nil {
+		t.Fatal("assemblyai provider missing")
+	}
+	allowed := map[string]bool{"universal-3-5-pro": true, "universal-2": true}
+	for _, m := range p.Models {
+		if !allowed[m.ID] {
+			t.Errorf("model %q is not a current AssemblyAI identifier", m.ID)
+		}
+	}
+	if len(p.Models) != len(allowed) {
+		t.Errorf("expected %d current models, got %d", len(allowed), len(p.Models))
+	}
+}
+
+// Voice and model arrive from the request body. Unescaped, a caller could walk
+// the URL tree or append their own query parameters to a request that carries
+// the gateway's provider key.
+func TestUserSuppliedPathSegmentsAreEscaped(t *testing.T) {
+	// url.PathEscape is what the client applies; assert the property that
+	// matters: a traversal attempt cannot leave the configured path prefix.
+	got := url.PathEscape("../../v1/user/subscription")
+	if strings.Contains(got, "/") {
+		t.Fatalf("escaped voice id still contains a path separator: %q", got)
+	}
+
+	q := url.Values{}
+	q.Set("output_format", "mp3&enable_logging=false")
+	if strings.Contains(q.Encode(), "&enable_logging") {
+		t.Fatalf("caller-appended query parameter survived encoding: %q", q.Encode())
 	}
 }

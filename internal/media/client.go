@@ -73,6 +73,9 @@ func setAuth(req *http.Request, cfg *ProviderConfig, creds Credentials) {
 		req.Header.Set("Authorization", "Bearer "+token)
 	case "x-api-key":
 		req.Header.Set("x-api-key", token)
+	case "raw":
+		// Header value is the bare credential, no "Bearer " prefix.
+		req.Header.Set("Authorization", token)
 	case "token":
 		req.Header.Set("Authorization", "Token "+token)
 	case "key":
@@ -115,7 +118,7 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 
 	switch cfg.Format {
 	case "gemini":
-		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model + ":generateContent"
+		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + url.PathEscape(req.Model) + ":generateContent"
 		geminiBody := map[string]any{
 			"contents": []map[string]any{
 				{"parts": []map[string]any{{"text": req.Prompt}}},
@@ -153,7 +156,7 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 	case "fal":
 		// fal's REST models are <model-path> addressed directly; sync mode
 		// makes the response carry the images instead of a queue job handle.
-		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model
+		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + url.PathEscape(req.Model)
 		reqBody, _ = json.Marshal(falImageBody(&req))
 	default:
 		// OpenAI-compatible
@@ -214,9 +217,14 @@ func (c *Client) HandleTTS(ctx context.Context, providerID string, body []byte, 
 		if voiceID == "" {
 			voiceID = "21m00Tcm4TlvDq8ikWAM" // Rachel default
 		}
-		targetURL = cfg.BaseURL + "/" + voiceID
+		// voiceID and response_format arrive from the request body. Escaping them
+		// keeps a caller from walking the URL tree (../../v1/user/subscription) or
+		// appending their own query parameters to a request that carries our key.
+		targetURL = cfg.BaseURL + "/" + url.PathEscape(voiceID)
 		if req.ResponseFormat != "" && req.ResponseFormat != "json" {
-			targetURL += "?output_format=" + req.ResponseFormat
+			q := url.Values{}
+			q.Set("output_format", req.ResponseFormat)
+			targetURL += "?" + q.Encode()
 		}
 		elevenBody := map[string]any{
 			"text":     req.Input,
@@ -240,7 +248,7 @@ func (c *Client) HandleTTS(ctx context.Context, providerID string, body []byte, 
 		}
 		reqBody, _ = json.Marshal(cartBody)
 	case "gemini-tts":
-		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model + ":generateContent"
+		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + url.PathEscape(req.Model) + ":generateContent"
 		geminiBody := map[string]any{
 			"contents": []map[string]any{
 				{"parts": []map[string]any{{"text": req.Input}}},
@@ -802,8 +810,10 @@ func (c *Client) sttAssemblyAI(ctx context.Context, cfg *ProviderConfig, file io
 	}
 
 	submitBody := map[string]any{"audio_url": uploaded.UploadURL}
+	// AssemblyAI takes an array here (speech_models), not the old singular
+	// speech_model; the first entry is the primary and the rest are fallbacks.
 	if model != "" {
-		submitBody["speech_model"] = model
+		submitBody["speech_models"] = []string{model}
 	}
 	if lang := r.FormValue("language"); lang != "" {
 		submitBody["language_code"] = lang

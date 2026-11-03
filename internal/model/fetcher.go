@@ -2,9 +2,11 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -99,7 +101,10 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch models: %w", err)
+		// *url.Error embeds the full URL, which carries the API key whenever the
+		// catalog auths via query string. The caller writes this text into the
+		// API response and the system log, so scrub the key before wrapping.
+		return nil, fmt.Errorf("fetch models: %s", redactURLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -727,4 +732,16 @@ func inferCapabilities(modelID string, modalities []string) []string {
 		}
 	}
 	return caps
+}
+
+// redactURLError strips credentials from a transport error before it can reach
+// a response body or a log line. Query-string auth (gemini catalogs) puts the
+// key in the URL, and *url.Error keeps the whole URL.
+func redactURLError(err error) string {
+	var ue *url.Error
+	if !errors.As(err, &ue) {
+		return err.Error()
+	}
+	msg := strings.ReplaceAll(ue.Error(), ue.URL, "[redacted-url]")
+	return msg
 }

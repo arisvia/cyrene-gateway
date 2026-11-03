@@ -56,10 +56,12 @@ type modelsDevProvider struct {
 // any) or an error.
 func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error) {
 	if client == nil {
-		// pony-tail: model package cannot import provider.SafeHTTPClient due to import cycle (provider imports model).
-		// Production callers (server.go) always inject s.getHTTPClient(); nil client is exclusively used in isolated unit tests
-		// against hardcoded ModelsDevURL ("https://models.dev/api.json").
-		client = &http.Client{Timeout: 20 * time.Second}
+		// Fail closed. model cannot import provider.SafeHTTPClient (provider
+		// imports model), so the only safe choices are "a caller-supplied
+		// SSRF-pinned client" or "no request at all" — never a bare
+		// http.Client, which would silently bypass AGENTS.md rule 3 for any
+		// future caller that forgets to inject one.
+		return nil, fmt.Errorf("models.dev catalog requires an SSRF-pinned HTTP client")
 	}
 
 	modelsDevMu.RLock()
