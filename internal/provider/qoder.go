@@ -48,11 +48,6 @@ const (
 	QoderCosyVersionHeader = "Cosy-Version"
 	QoderCLIUserAgent      = "qodercli/1.1.80"
 
-	// qoderHTTPUserAgent is the default Go client identity, kept verbatim: the
-	// device-poll and userinfo endpoints reject the CLI fingerprint but the
-	// chat/quota paths must keep sending it, so the two are separate values.
-	qoderHTTPUserAgent = "Go-http-client/2.0"
-
 	qoderClientType   = "5"
 	qoderDataPolicy   = "disagree"
 	qoderLoginVersion = "v2"
@@ -389,7 +384,7 @@ func PollQoderDeviceTokenFor(providerID, nonce, codeVerifier string, client *htt
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", qoderHTTPUserAgent)
+	req.Header.Set("User-Agent", QoderCLIUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -494,7 +489,7 @@ func FetchQoderUserProfileFor(providerID, accessToken string, client *http.Clien
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", qoderHTTPUserAgent)
+	req.Header.Set("User-Agent", QoderCLIUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {

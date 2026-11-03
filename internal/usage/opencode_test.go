@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestFetchOpenCode(t *testing.T) {
@@ -17,6 +19,11 @@ func TestFetchOpenCode(t *testing.T) {
 		}
 		if client := r.Header.Get("x-opencode-client"); client != "desktop" {
 			t.Errorf("expected x-opencode-client desktop, got %s", client)
+		}
+		// The quota call must carry the same client identity as chat: a bare
+		// "opencode" or Go's default UA names the relay.
+		if ua := r.Header.Get("User-Agent"); ua != provider.DefaultOpenCodeUA {
+			t.Errorf("expected User-Agent %s, got %s", provider.DefaultOpenCodeUA, ua)
 		}
 
 		w.Header().Set("Content-Type", "application/json")

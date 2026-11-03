@@ -69,9 +69,11 @@ func TestClientFingerprintsMatchOfficialCLIs(t *testing.T) {
 	})
 }
 
-// Qoder signs with COSY headers, but the chat path must still name the CLI in
-// User-Agent: an absent UA makes Go send "Go-http-client/2.0", which tells the
-// upstream gateway the request came from a relay.
+// Qoder signs with COSY headers, but every path that reaches Qoder must name
+// the CLI in User-Agent: an absent UA makes Go send "Go-http-client/2.0",
+// which tells the upstream gateway the request came from a relay. The device
+// poll and userinfo endpoints are no exception — they answer identically to
+// either UA, so there is no contract reason to split the identity.
 func TestQoderIdentityConstantsAreClientShaped(t *testing.T) {
 	if QoderCLIUserAgent == "" || !strings.HasPrefix(QoderCLIUserAgent, "qodercli/") {
 		t.Errorf("Qoder User-Agent must look like the CLI, got %q", QoderCLIUserAgent)
