@@ -206,18 +206,19 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 				s.publishRequestEvent(r, RequestEvent{Type: "upstream_connected", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "upstream_connected", Endpoint: resolveRequestEndpoint(r, "/v1/chat/completions")})
 				uc := &usageContext{
-					Client:       detectClientAgent(r),
-					RawUA:        rawUserAgent(r),
-					RequestID:    ensureRequestID(r),
-					Provider:     modelInfo.Provider,
-					Model:        modelInfo.Model,
-					ConnectionID: conn.ID,
-					APIKey:       extractRequestAPIKey(r),
-					Endpoint:     resolveRequestEndpoint(r, "/v1/chat/completions"),
-					StartedAt:    start,
-					Status:       resp.StatusCode,
-					Prompt:       extractPromptSummary(req.Messages),
-					Turns:        countTurns(req.Messages),
+					Client:        detectClientAgent(r),
+					ClientVersion: detectClientVersion(r),
+					RawUA:         rawUserAgent(r),
+					RequestID:     ensureRequestID(r),
+					Provider:      modelInfo.Provider,
+					Model:         modelInfo.Model,
+					ConnectionID:  conn.ID,
+					APIKey:        extractRequestAPIKey(r),
+					Endpoint:      resolveRequestEndpoint(r, "/v1/chat/completions"),
+					StartedAt:     start,
+					Status:        resp.StatusCode,
+					Prompt:        extractPromptSummary(req.Messages),
+					Turns:         countTurns(req.Messages),
 				}
 				s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
 				resp.Body.Close()

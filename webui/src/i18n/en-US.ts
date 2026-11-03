@@ -854,6 +854,11 @@ export const enUS: TranslationDict = {
     completionTokens: 'Output Tokens',
     estimatedCost: 'Estimated Cost',
     tokenTrend: 'Token Trends',
+    breakdown: {
+      cacheRate: 'Cache hit',
+      successRate: 'Success',
+      failed: 'failed',
+    },
     breakdownTitle: 'Multi-dimensional Breakdown',
     dimensions: {
       provider: 'Provider',
@@ -925,6 +930,7 @@ export const enUS: TranslationDict = {
     loadingMeta: 'Loading metadata...',
     totalLatency: 'Total Latency',
     estimatedCost: 'Estimated Cost',
+    cacheHit: 'Cache hit',
     throughput: 'Throughput',
     turns: 'Turns',
     properties: {

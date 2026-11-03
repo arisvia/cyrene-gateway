@@ -42,6 +42,13 @@ type DayCounter struct {
 	PromptTokens     int     `json:"promptTokens"`
 	CompletionTokens int     `json:"completionTokens"`
 	Cost             float64 `json:"cost"`
+	// CachedTokens is the prompt-side share the provider served from cache.
+	// Already present in meta["cached_tokens"]; surfaced here so cache hit rate
+	// can be aggregated without a schema change or a rescan of history.
+	CachedTokens int `json:"cachedTokens,omitempty"`
+	// Failed counts non-ok outcomes. Kept beside Requests so a success rate is
+	// derivable without a second query.
+	Failed int `json:"failed,omitempty"`
 }
 
 // DayData is the JSON blob stored in usageDaily.
@@ -158,7 +165,27 @@ func addUsageToCounter(c DayCounter, e UsageEntry) DayCounter {
 	c.PromptTokens += e.PromptTokens
 	c.CompletionTokens += e.CompletionTokens
 	c.Cost += e.Cost
+	c.CachedTokens += cachedTokensFromMeta(e.Meta)
+	if e.Status != "" && e.Status != "ok" {
+		c.Failed++
+	}
 	return c
+}
+
+// cachedTokensFromMeta reads the prompt-cache hit count the handler recorded at
+// request time. Rows written before cache tracking, or by providers that report
+// no cache, simply contribute zero.
+func cachedTokensFromMeta(meta string) int {
+	if meta == "" {
+		return 0
+	}
+	var m struct {
+		CachedTokens int `json:"cached_tokens"`
+	}
+	if err := json.Unmarshal([]byte(meta), &m); err != nil {
+		return 0
+	}
+	return m.CachedTokens
 }
 
 const usageHistoryColumns = `id, timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta`
@@ -399,6 +426,21 @@ func (d *DB) GetConnectionUsageTokens(connectionID string, period string) (promp
 	return prompt, completion
 }
 
+// clientVersionFromMeta reads the UA-derived version recorded beside the client
+// id. Absent for clients whose UA carried no version.
+func clientVersionFromMeta(meta string) string {
+	if meta == "" {
+		return ""
+	}
+	var m struct {
+		ClientVersion string `json:"client_version"`
+	}
+	if err := json.Unmarshal([]byte(meta), &m); err != nil {
+		return ""
+	}
+	return m.ClientVersion
+}
+
 // clientFromMeta extracts the downstream client id from the usageHistory meta
 // JSON. Rows written before client tracking (or lacking the field) report
 // "unknown".
@@ -424,11 +466,14 @@ type UsageSummary struct {
 	ByEndpoint    map[string]DayCounter
 	ByClient      map[string]DayCounter
 	RequestsByDay map[string]int
+	// ClientVersions counts requests per observed version, nested under the
+	// client name so the breakdown can stay one row per tool.
+	ClientVersions map[string]map[string]int
 }
 
 func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 	query := `SELECT timestamp, COALESCE(provider,''), COALESCE(model,''),
-		COALESCE(apiKey,''), COALESCE(endpoint,''), promptTokens, completionTokens, cost, COALESCE(meta,'') FROM usageHistory WHERE 1=1`
+		COALESCE(apiKey,''), COALESCE(endpoint,''), promptTokens, completionTokens, cost, COALESCE(status,''), COALESCE(meta,'') FROM usageHistory WHERE 1=1`
 	var args []any
 	var dayStart time.Time
 	if !start.IsZero() {
@@ -450,10 +495,11 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 	result := &UsageSummary{
 		DayData: DayData{ByProvider: make(map[string]DayCounter), ByModel: make(map[string]DayCounter)},
 		ByKey:   make(map[string]DayCounter), ByEndpoint: make(map[string]DayCounter), ByClient: make(map[string]DayCounter), RequestsByDay: make(map[string]int),
+		ClientVersions: make(map[string]map[string]int),
 	}
 	for rows.Next() {
 		var e UsageEntry
-		if err := rows.Scan(&e.Timestamp, &e.Provider, &e.Model, &e.APIKey, &e.Endpoint, &e.PromptTokens, &e.CompletionTokens, &e.Cost, &e.Meta); err != nil {
+		if err := rows.Scan(&e.Timestamp, &e.Provider, &e.Model, &e.APIKey, &e.Endpoint, &e.PromptTokens, &e.CompletionTokens, &e.Cost, &e.Status, &e.Meta); err != nil {
 			return nil, err
 		}
 		ts, err := time.Parse(time.RFC3339, e.Timestamp)
@@ -479,6 +525,14 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 		result.ByEndpoint[endpoint] = addUsageToCounter(result.ByEndpoint[endpoint], e)
 		client := clientFromMeta(e.Meta)
 		result.ByClient[client] = addUsageToCounter(result.ByClient[client], e)
+		// Versions are tracked per client but never split the grouping: a dozen
+		// CLI patch releases must not become a dozen rows in the breakdown.
+		if v := clientVersionFromMeta(e.Meta); v != "" {
+			if result.ClientVersions[client] == nil {
+				result.ClientVersions[client] = make(map[string]int)
+			}
+			result.ClientVersions[client][v]++
+		}
 	}
 	return result, rows.Err()
 }

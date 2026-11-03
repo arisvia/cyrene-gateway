@@ -5,96 +5,134 @@ import (
 	"strings"
 )
 
-// Downstream client-agent taxonomy ids (stable wire values; the webui owns
-// display labels). Missing UA collapses to unknown, unmatched UAs to other.
+// Downstream client identity, derived from the User-Agent instead of matched
+// against a catalog of known tools.
+//
+// A hardcoded rule list is always one release behind: every new CLI, every
+// renamed product, and every SDK minor bump silently collapses to "other",
+// which is exactly the dimension most worth reading. User-Agents already carry
+// the product name and version in a conventional "Product/Version" shape, so
+// the gateway parses that shape and reports what it finds. Unknown tools then
+// show up under their real name instead of a bucket that explains nothing.
+//
+// Wire values: the product token, lowercased, with version reported separately.
+// Missing UA is still "unknown"; a UA with no product token is "other".
 const (
-	clientIDClaude     = "claude-code"
-	clientIDCodex      = "codex-cli"
-	clientIDOpenCode   = "opencode"
-	clientIDAider      = "aider"
-	clientIDCursor     = "cursor"
-	clientIDCline      = "cline"
-	clientIDRooCode    = "roocode"
-	clientIDWindsurf   = "windsurf"
-	clientIDLobeChat   = "lobechat"
-	clientIDOpenWebUI  = "open-webui"
-	clientIDDify       = "dify"
-	clientIDCherry     = "cherry-studio"
-	clientIDChatWise   = "chatwise"
-	clientIDNextChat   = "nextchat"
-	clientIDJan        = "jan"
-	clientIDMsty       = "msty"
-	clientIDLangChain  = "langchain"
-	clientIDAnthropic  = "anthropic-sdk"
-	clientIDOpenAI     = "openai-sdk"
-	clientIDGemini     = "gemini-sdk"
-	clientIDInsomnia   = "insomnia"
-	clientIDPostman    = "postman"
-	clientIDApifox     = "apifox"
-	clientIDApiPost    = "apipost"
-	clientIDHoppscotch = "hoppscotch"
-	clientIDCurl       = "curl"
-	clientIDWget       = "wget"
-	clientIDHttpie     = "httpie"
-	clientIDGoHTTP     = "go-http"
-	clientIDBun        = "bun"
-	clientIDNodeHTTP   = "node-http"
-	clientIDPythonHTTP = "python-http"
-	clientIDJavaHTTP   = "java-http"
-	clientIDBrowser    = "browser"
-	clientIDUnknown    = "unknown"
-	clientIDOther      = "other"
+	clientIDUnknown = "unknown"
+	clientIDOther   = "other"
+
+	// Browsers are the one shape that does not lead with the product: a
+	// Mozilla-prefixed UA is a whole platform string, and its later tokens
+	// (AppleWebKit, Safari) are engine names, not callers. Reporting the raw
+	// token would say "mozilla" for every browser visit.
+	clientIDBrowser = "browser"
+
+	maxClientName    = 64
+	maxClientVersion = 32
 )
 
-// agentRule maps lowercase User-Agent substrings to a stable client id.
-// Order matters: named agent/SDK/tool fingerprints first, generic HTTP
-// libraries second, browser heuristic last — raw UAs never leak into the
-// dimension and cardinality stays bounded.
-type agentRule struct {
-	patterns []string
-	id       string
+// parseUserAgent extracts the calling product and its version.
+//
+// Handles the two shapes that actually occur:
+//
+//	"claude-cli/2.0.59 (external, cli)"  -> claude-cli, 2.0.59
+//	"Aider 0.74.1"                       -> aider, 0.74.1
+//
+// The product is the first token; the version is whatever numeric-looking
+// suffix follows it, either after a slash or as the next word.
+func parseUserAgent(ua string) (name string, version string) {
+	ua = strings.TrimSpace(ua)
+	if ua == "" {
+		return "", ""
+	}
+	if strings.HasPrefix(strings.ToLower(ua), "mozilla/") {
+		return clientIDBrowser, ""
+	}
+
+	fields := strings.Fields(ua)
+	if len(fields) == 0 {
+		return "", ""
+	}
+	head := fields[0]
+
+	// A leading slash means no product token at all. Without this guard the
+	// slash survives to sanitizeToken as "/1.2.3" and trims down to a version
+	// pretending to be a client name.
+	if strings.HasPrefix(head, "/") {
+		return "", ""
+	}
+	product, rest := head, ""
+	if i := strings.IndexByte(head, '/'); i > 0 {
+		product, rest = head[:i], head[i+1:]
+	}
+	product = sanitizeToken(product)
+	if product == "" {
+		return "", ""
+	}
+
+	if rest != "" {
+		version = sanitizeToken(rest)
+	}
+	// "Aider 0.74.1" carries the version as the next word instead of a suffix.
+	if version == "" && len(fields) > 1 && looksLikeVersion(fields[1]) {
+		version = sanitizeToken(fields[1])
+	}
+
+	return product, truncate(version, maxClientVersion)
 }
 
-var agentRules = []agentRule{
-	{[]string{"claude-cli", "claude_code/"}, clientIDClaude},
-	{[]string{"codex_cli_rs", "codex-cli", "codex_cli"}, clientIDCodex},
-	{[]string{"opencode/"}, clientIDOpenCode},
-	{[]string{"aider"}, clientIDAider},
-	{[]string{"cursor"}, clientIDCursor},
-	{[]string{"cline"}, clientIDCline},
-	{[]string{"roocode", "roo-code", "roo code"}, clientIDRooCode},
-	{[]string{"windsurf"}, clientIDWindsurf},
-	{[]string{"lobechat", "lobe-chat", "lobehub"}, clientIDLobeChat},
-	{[]string{"open-webui"}, clientIDOpenWebUI},
-	{[]string{"dify"}, clientIDDify},
-	{[]string{"cherry studio", "cherry-studio"}, clientIDCherry},
-	{[]string{"chatwise"}, clientIDChatWise},
-	{[]string{"chatgpt-next-web", "chatgptnextweb", "nextchat"}, clientIDNextChat},
-	{[]string{"jan/"}, clientIDJan},
-	{[]string{"msty"}, clientIDMsty},
-	{[]string{"langchain"}, clientIDLangChain},
-	{[]string{"anthropic/"}, clientIDAnthropic},
-	{[]string{"openai/"}, clientIDOpenAI},
-	{[]string{"google-genai", "google-api-python-client"}, clientIDGemini},
-	{[]string{"insomnia"}, clientIDInsomnia},
-	{[]string{"postman"}, clientIDPostman},
-	{[]string{"apifox"}, clientIDApifox},
-	{[]string{"apipost"}, clientIDApiPost},
-	{[]string{"hoppscotch"}, clientIDHoppscotch},
-	{[]string{"curl/"}, clientIDCurl},
-	{[]string{"wget/"}, clientIDWget},
-	{[]string{"httpie"}, clientIDHttpie},
-	{[]string{"go-http-client"}, clientIDGoHTTP},
-	{[]string{"bun/"}, clientIDBun},
-	{[]string{"node-fetch", "undici", "axios"}, clientIDNodeHTTP},
-	{[]string{"python-requests", "python-urllib", "httpx", "aiohttp"}, clientIDPythonHTTP},
-	{[]string{"java/", "okhttp", "apache-httpclient", "urlconnection"}, clientIDJavaHTTP},
-	{[]string{"mozilla/", "applewebkit"}, clientIDBrowser},
+// sanitizeToken lowercases a UA token and trims the punctuation that separates
+// it from the next field, keeping the result safe as a grouping key.
+func sanitizeToken(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.Trim(s, "()[]{};,\"/")
+	if s == "" || s == "/" {
+		return ""
+	}
+	// A trailing parenthetical ("opencode/1.4.0(x)") leaves a dangling comma or
+	// space once trimmed; cut the version at the first character that cannot be
+	// part of one.
+	if i := strings.IndexAny(s, " \t(),;"); i >= 0 {
+		s = s[:i]
+	}
+	return truncate(s, maxClientName)
 }
 
-// rawUserAgent returns the caller's User-Agent, capped. Paired with an "other"
-// classification it is the only way to learn which client was missed -- the
-// taxonomy deliberately discards the string otherwise.
+func looksLikeVersion(s string) bool {
+	if s == "" {
+		return false
+	}
+	return s[0] >= '0' && s[0] <= '9'
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
+}
+
+// detectClientAgent reports the calling product, e.g. "claude-cli".
+func detectClientAgent(r *http.Request) string {
+	name, _ := parseUserAgent(r.Header.Get("User-Agent"))
+	if name == "" {
+		if strings.TrimSpace(r.Header.Get("User-Agent")) == "" {
+			return clientIDUnknown
+		}
+		return clientIDOther
+	}
+	return name
+}
+
+// detectClientVersion reports the version that followed the product token.
+// Empty when the UA carried none, which is common for simple clients.
+func detectClientVersion(r *http.Request) string {
+	_, version := parseUserAgent(r.Header.Get("User-Agent"))
+	return version
+}
+
+// rawUserAgent returns the caller's User-Agent, capped. Kept alongside the
+// parsed identity because parsing is a lossy convenience, not a source of truth.
 func rawUserAgent(r *http.Request) string {
 	const maxUA = 200
 	ua := r.Header.Get("User-Agent")
@@ -102,22 +140,4 @@ func rawUserAgent(r *http.Request) string {
 		return ua[:maxUA] + "..."
 	}
 	return ua
-}
-
-// detectClientAgent fingerprints the downstream caller from its User-Agent
-// header. Missing UA is "unknown"; unclassifiable UAs collapse to "other".
-func detectClientAgent(r *http.Request) string {
-	ua := r.Header.Get("User-Agent")
-	if ua == "" {
-		return clientIDUnknown
-	}
-	lower := strings.ToLower(ua)
-	for _, rule := range agentRules {
-		for _, p := range rule.patterns {
-			if strings.Contains(lower, p) {
-				return rule.id
-			}
-		}
-	}
-	return clientIDOther
 }

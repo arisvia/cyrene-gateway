@@ -76,6 +76,9 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if uc.Client != "" {
 		meta["client"] = uc.Client
 	}
+	if uc.ClientVersion != "" {
+		meta["client_version"] = uc.ClientVersion
+	}
 	if !usageKnown {
 		meta["usage_missing"] = true
 	}
@@ -118,9 +121,13 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	if uc.Client != "" {
 		rdData["client"] = uc.Client
 	}
-	// Keep the raw UA only when classification missed. Storing it unconditionally
-	// would defeat the bounded-cardinality reason the taxonomy exists.
-	if uc.Client == clientIDOther && uc.RawUA != "" {
+	if uc.ClientVersion != "" {
+		rdData["clientVersion"] = uc.ClientVersion
+	}
+	// Keep the raw UA when parsing yielded nothing usable, so the row can still
+	// be explained. Stored only in that case: it is caller-controlled text and
+	// the parsed identity already covers every normal row.
+	if (uc.Client == clientIDOther || uc.Client == clientIDUnknown) && uc.RawUA != "" {
 		rdData["clientRaw"] = uc.RawUA
 	}
 	if uc.Prompt != "" {
@@ -131,6 +138,11 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 	}
 	if u.CachedTokens > 0 {
 		rdData["cachedTokens"] = u.CachedTokens
+		// Hit rate is prompt-side: the share of supplied context that the
+		// provider served from its cache instead of re-reading.
+		if promptTokens > 0 {
+			rdData["cacheHitRate"] = float64(u.CachedTokens) / float64(promptTokens)
+		}
 	}
 	if u.ReasoningTokens > 0 {
 		rdData["reasoningTokens"] = u.ReasoningTokens

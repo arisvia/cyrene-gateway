@@ -867,8 +867,8 @@ func usageCounterCovers(a, b DayCounter) bool {
 }
 
 func usageDayCovers(a, b DayData) bool {
-	if !usageCounterCovers(DayCounter{a.Requests, a.PromptTokens, a.CompletionTokens, a.Cost},
-		DayCounter{b.Requests, b.PromptTokens, b.CompletionTokens, b.Cost}) {
+	if !usageCounterCovers(DayCounter{Requests: a.Requests, PromptTokens: a.PromptTokens, CompletionTokens: a.CompletionTokens, Cost: a.Cost},
+		DayCounter{Requests: b.Requests, PromptTokens: b.PromptTokens, CompletionTokens: b.CompletionTokens, Cost: b.Cost}) {
 		return false
 	}
 	for key, counter := range b.ByProvider {
@@ -885,7 +885,7 @@ func usageDayCovers(a, b DayData) bool {
 }
 
 func validUsageDay(day DayData) bool {
-	total := DayCounter{day.Requests, day.PromptTokens, day.CompletionTokens, day.Cost}
+	total := DayCounter{Requests: day.Requests, PromptTokens: day.PromptTokens, CompletionTokens: day.CompletionTokens, Cost: day.Cost}
 	if !usageCounterCovers(total, DayCounter{}) {
 		return false
 	}

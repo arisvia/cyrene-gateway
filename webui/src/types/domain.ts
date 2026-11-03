@@ -107,6 +107,10 @@ export interface UsageDimensionItem {
   promptTokens: number
   completionTokens: number
   cost?: number
+  /** Prompt-side tokens served from the provider's cache. */
+  cachedTokens?: number
+  /** Non-ok outcomes, for deriving a success rate. */
+  failed?: number
 }
 
 export interface UsageStats {
@@ -121,6 +125,8 @@ export interface UsageStats {
   byKey?: Record<string, UsageDimensionItem>
   byEndpoint?: Record<string, UsageDimensionItem>
   byClient?: Record<string, UsageDimensionItem>
+  /** Requests per observed version, nested under the client name. */
+  clientVersions?: Record<string, Record<string, number>>
   last10Minutes?: { minute: string; requests: number }[]
 }
 
@@ -137,8 +143,12 @@ export interface RequestDetail {
   connectionId?: string
   endpoint?: string
   client?: string
+  /** Version parsed from the UA beside `client`. */
+  clientVersion?: string
   /** Raw User-Agent, present only when `client` fell through to "other". */
   clientRaw?: string
+  /** Prompt tokens served from the provider's cache. */
+  cachedTokens?: number
   /** User-message count: how many exchanges the conversation had. */
   turns?: number
 }

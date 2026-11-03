@@ -196,10 +196,11 @@ const Usage: Component = () => {
   ])
 
   type BreakdownDimension = 'provider' | 'model' | 'key' | 'endpoint' | 'client'
-  type BreakdownMetric = 'requests' | 'totalTokens' | 'promptTokens' | 'completionTokens' | 'cost'
 
   const [dimension, setDimension] = createSignal<BreakdownDimension>('provider')
-  const [metric, setMetric] = createSignal<BreakdownMetric>('requests')
+  // Rows are ordered by request volume; the columns carry every other number.
+  // A metric picker only ever showed one cell of a dimension x metric grid, so
+  // comparing two providers meant flipping it back and forth.
 
   const breakdownItems = createMemo(() => {
     const stats = store.usageStats
@@ -213,7 +214,6 @@ const Usage: Component = () => {
 
     if (!raw) return []
 
-    const m = metric()
     const items = Object.entries(raw).map(([key, v]) => {
       let displayName = key
       if (dim === 'model') {
@@ -225,35 +225,51 @@ const Usage: Component = () => {
         displayName = clientDisplayName(key, t)
       }
 
-      const totalTokens = (v.promptTokens || 0) + (v.completionTokens || 0)
-      let val = 0
-      if (m === 'requests') val = v.requests || 0
-      else if (m === 'totalTokens') val = totalTokens
-      else if (m === 'promptTokens') val = v.promptTokens || 0
-      else if (m === 'completionTokens') val = v.completionTokens || 0
-      else if (m === 'cost') val = v.cost || 0
+      const promptTokens = v.promptTokens || 0
+      const completionTokens = v.completionTokens || 0
+      const totalTokens = promptTokens + completionTokens
+      const requests = v.requests || 0
+      const failed = v.failed || 0
+      const cachedTokens = v.cachedTokens || 0
+
+      // Cache hit rate is prompt-side by definition: the cached share of the
+      // context that was sent, not of the generated output.
+      const cacheRate = promptTokens > 0 ? (cachedTokens / promptTokens) * 100 : null
+      const successRate = requests > 0 ? ((requests - failed) / requests) * 100 : null
 
       return {
         key,
         displayName,
-        requests: v.requests || 0,
-        promptTokens: v.promptTokens || 0,
-        completionTokens: v.completionTokens || 0,
+        requests,
+        promptTokens,
+        completionTokens,
         totalTokens,
+        cachedTokens,
+        cacheRate,
+        failed,
+        successRate,
         cost: v.cost || 0,
-        metricVal: val,
+        // Versions observed for this client, most frequent first. Shown under
+        // the name so a dozen patch releases do not become a dozen rows.
+        versions: dim === 'client'
+          ? Object.entries(stats.clientVersions?.[key] || {}).sort((a, b) => b[1] - a[1]).map(([ver]) => ver)
+          : [],
       }
     })
 
-    return items.sort((a, b) => b.metricVal - a.metricVal)
+    return items.sort((a, b) => b.requests - a.requests)
   })
 
-  const maxMetricVal = createMemo(() => Math.max(1, ...breakdownItems().map(i => i.metricVal)))
+  const maxRequests = createMemo(() => Math.max(1, ...breakdownItems().map(i => i.requests)))
 
-  function formatMetricValue(val: number, m: BreakdownMetric): string {
-    if (m === 'cost') return fmtCost(val)
-    if (m === 'requests') return `${fmtNum(val)}`
-    return fmtNum(val)
+  const dimensionLabel = () => {
+    switch (dimension()) {
+      case 'provider': return t('usage.dimensions.provider')
+      case 'model': return t('usage.dimensions.model')
+      case 'key': return t('usage.dimensions.key')
+      case 'endpoint': return t('usage.dimensions.endpoint')
+      case 'client': return t('usage.dimensions.client')
+    }
   }
 
   return (
@@ -428,19 +444,6 @@ const Usage: Component = () => {
                 <h3 class="text-sm font-semibold truncate">{t('usage.breakdownTitle')}</h3>
                 <span class="text-xs text-faint">({breakdownItems().length})</span>
               </div>
-              <Select
-                value={metric()}
-                onChange={v => setMetric(v as BreakdownMetric)}
-                size="sm"
-                class="w-32 text-xs shrink-0"
-                options={[
-                  { value: 'requests', label: t('usage.metrics.requests') },
-                  { value: 'totalTokens', label: t('usage.metrics.totalTokens') },
-                  { value: 'promptTokens', label: t('usage.metrics.promptTokens') },
-                  { value: 'completionTokens', label: t('usage.metrics.completionTokens') },
-                  { value: 'cost', label: t('usage.metrics.cost') },
-                ]}
-              />
             </div>
 
             <div class="mb-3.5">
@@ -461,31 +464,77 @@ const Usage: Component = () => {
 
             <Show when={!loading()} fallback={<Show when={!store.loadErrors.usage}><Skeleton class="h-48 w-full" /></Show>}>
               <Show when={breakdownItems().length > 0} fallback={<Empty message={t('common.noData')} />}>
-                <div class="space-y-1.5 flex-1 overflow-y-auto max-h-[320px] px-0.5">
+                <div class="flex-1 overflow-y-auto max-h-[320px]">
+                  {/* Header labels the columns once; the volume bar stays because
+                      relative magnitude is what a table alone cannot convey. */}
+                  <div class="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4rem_4rem] gap-x-3 px-2.5 pb-1.5 text-[10px] text-faint">
+                    <span>{dimensionLabel()}</span>
+                    <span class="text-right">{t('usage.metrics.requests')}</span>
+                    <span class="text-right">{t('usage.breakdown.cacheRate')}</span>
+                    <span class="text-right">{t('usage.breakdown.successRate')}</span>
+                    <span class="text-right">{t('usage.metrics.cost')}</span>
+                  </div>
                   <For each={breakdownItems()}>
                     {item => (
                       <div
-                        class="group flex items-center gap-3 text-xs py-2 px-2.5 rounded-lg hover:bg-surface/70 transition-colors"
-                        title={`${item.displayName}\n${t('usage.metrics.requests')}: ${fmtNum(item.requests)}\n${t('usage.metrics.promptTokens')}: ${fmtNum(item.promptTokens)}\n${t('usage.metrics.completionTokens')}: ${fmtNum(item.completionTokens)}\n${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
+                        class="group grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4rem_4rem] items-center gap-x-3 text-xs py-2 px-2.5 rounded-lg hover:bg-surface/70 transition-colors"
+                        title={`${item.displayName}
+${t('usage.metrics.requests')}: ${fmtNum(item.requests)}${item.failed > 0 ? ` (${fmtNum(item.failed)} ${t('usage.breakdown.failed')})` : ''}
+${t('usage.metrics.promptTokens')}: ${fmtNum(item.promptTokens)}
+${t('usage.metrics.completionTokens')}: ${fmtNum(item.completionTokens)}
+${t('usage.metrics.totalTokens')}: ${fmtNum(item.totalTokens)}
+${t('usage.breakdown.cacheRate')}: ${item.cacheRate !== null ? item.cacheRate.toFixed(1) + '%' : '—'} (${fmtNum(item.cachedTokens)})
+${t('usage.breakdown.successRate')}: ${item.successRate !== null ? item.successRate.toFixed(1) + '%' : '—'}
+${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
                       >
-                        <div class="w-36 shrink-0 truncate flex items-center gap-2">
-                          <Show when={dimension() === 'provider'}>
-                            <ProviderAvatar provider={item.key} size="sm" class="w-5 h-5 rounded-md shrink-0" />
+                        <div class="min-w-0">
+                          <div class="flex items-center gap-2 min-w-0">
+                            <Show when={dimension() === 'provider'}>
+                              <ProviderAvatar provider={item.key} size="sm" class="w-5 h-5 rounded-md shrink-0" />
+                            </Show>
+                            <span class="truncate font-medium text-[11px]" title={item.displayName}>
+                              {dimension() === 'key' ? (item.key === 'default' ? t('usage.defaultKeyLabel') : maskKey(item.key)) : item.displayName}
+                            </span>
+                          </div>
+                          <Show when={item.versions.length > 0}>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                              <For each={item.versions.slice(0, 3)}>
+                                {ver => <Badge tone="gray" class="text-[9px] px-1 py-0 font-mono">{ver}</Badge>}
+                              </For>
+                              <Show when={item.versions.length > 3}>
+                                <span class="text-[9px] text-faint self-center">+{item.versions.length - 3}</span>
+                              </Show>
+                            </div>
                           </Show>
-                          <span class="truncate font-medium text-[11px]" title={item.displayName}>
-                            {dimension() === 'key' ? (item.key === 'default' ? t('usage.defaultKeyLabel') : maskKey(item.key)) : item.displayName}
-                          </span>
+                          <div class="mt-1 h-1 rounded-full bg-control/70 overflow-hidden">
+                            <div
+                              class="h-full bg-accent transition-all duration-300 rounded-full"
+                              style={{ width: `${Math.max(2, (item.requests / maxRequests()) * 100)}%` }}
+                            />
+                          </div>
                         </div>
 
-                        <div class="flex-1 min-w-0 h-1.5 rounded-full bg-control/70 overflow-hidden">
-                          <div
-                            class="h-full bg-accent transition-all duration-300 rounded-full"
-                            style={{ width: `${Math.max(2, (item.metricVal / maxMetricVal()) * 100)}%` }}
-                          />
-                        </div>
+                        <span class="text-right font-mono text-[11px] text-foreground tabular-nums">
+                          {fmtNum(item.requests)}
+                          <Show when={item.failed > 0}>
+                            <span class="text-danger text-[9px] ml-0.5">/{fmtNum(item.failed)}</span>
+                          </Show>
+                        </span>
 
-                        <span class="w-20 shrink-0 text-right font-mono text-[11px] text-faint group-hover:text-foreground tabular-nums transition-colors">
-                          {formatMetricValue(item.metricVal, metric())}
+                        <span class="text-right font-mono text-[11px] tabular-nums" classList={{'text-success': (item.cacheRate ?? 0) >= 50, 'text-faint': (item.cacheRate ?? 0) < 50}}>
+                          <Show when={item.cacheRate !== null} fallback="—">
+                            {item.cacheRate!.toFixed(1)}%
+                          </Show>
+                        </span>
+
+                        <span class="text-right font-mono text-[11px] tabular-nums" classList={{'text-danger': (item.successRate ?? 100) < 95, 'text-faint': (item.successRate ?? 100) >= 95}}>
+                          <Show when={item.successRate !== null} fallback="—">
+                            {item.successRate!.toFixed(1)}%
+                          </Show>
+                        </span>
+
+                        <span class="text-right font-mono text-[11px] text-faint tabular-nums">
+                          {fmtCost(item.cost)}
                         </span>
                       </div>
                     )}

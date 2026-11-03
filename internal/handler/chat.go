@@ -46,6 +46,8 @@ type usageContext struct {
 	Client       string
 	Prompt       string
 	Response     string
+	// ClientVersion is the version parsed from the same UA as Client.
+	ClientVersion string
 	// RawUA is retained only to explain an "other" classification.
 	RawUA string
 	// Turns is the number of user messages in the request, i.e. how many
@@ -609,18 +611,19 @@ func (s *Server) attemptSingleModelChat(
 
 	// Proxy the response with format translation
 	uc := &usageContext{
-		Client:       detectClientAgent(r),
-		RawUA:        rawUserAgent(r),
-		RequestID:    ensureRequestID(r),
-		Provider:     modelInfo.Provider,
-		Model:        modelInfo.Model,
-		ConnectionID: conn.ID,
-		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     endpoint,
-		StartedAt:    start,
-		Status:       resp.StatusCode,
-		Prompt:       extractPromptSummary(req.Messages),
-		Turns:        countTurns(req.Messages),
+		Client:        detectClientAgent(r),
+		ClientVersion: detectClientVersion(r),
+		RawUA:         rawUserAgent(r),
+		RequestID:     ensureRequestID(r),
+		Provider:      modelInfo.Provider,
+		Model:         modelInfo.Model,
+		ConnectionID:  conn.ID,
+		APIKey:        extractRequestAPIKey(r),
+		Endpoint:      endpoint,
+		StartedAt:     start,
+		Status:        resp.StatusCode,
+		Prompt:        extractPromptSummary(req.Messages),
+		Turns:         countTurns(req.Messages),
 	}
 	s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
 	return false, 0, nil

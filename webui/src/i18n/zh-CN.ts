@@ -852,6 +852,11 @@ export const zhCN = {
     completionTokens: '输出 Token',
     estimatedCost: '估算成本',
     tokenTrend: 'Token 趋势',
+    breakdown: {
+      cacheRate: '缓存命中',
+      successRate: '成功率',
+      failed: '失败',
+    },
     breakdownTitle: '多维用量分析',
     dimensions: {
       provider: '供应商',
@@ -923,6 +928,7 @@ export const zhCN = {
     loadingMeta: '加载元数据…',
     totalLatency: '总耗时',
     estimatedCost: '估算成本',
+    cacheHit: '缓存命中',
     throughput: '平均速率',
     turns: '对话轮次',
     properties: {

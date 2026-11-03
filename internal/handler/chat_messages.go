@@ -385,18 +385,19 @@ func (s *Server) attemptMessagesPassthrough(
 
 	prompt := extractAnthropicPrompt(reqBody)
 	uc := &usageContext{
-		Client:       detectClientAgent(r),
-		RawUA:        rawUserAgent(r),
-		RequestID:    ensureRequestID(r),
-		Provider:     modelInfo.Provider,
-		Model:        modelInfo.Model,
-		ConnectionID: conn.ID,
-		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     endpoint,
-		StartedAt:    start,
-		Status:       resp.StatusCode,
-		Prompt:       prompt,
-		Turns:        countTurnsRaw(reqBody),
+		Client:        detectClientAgent(r),
+		ClientVersion: detectClientVersion(r),
+		RawUA:         rawUserAgent(r),
+		RequestID:     ensureRequestID(r),
+		Provider:      modelInfo.Provider,
+		Model:         modelInfo.Model,
+		ConnectionID:  conn.ID,
+		APIKey:        extractRequestAPIKey(r),
+		Endpoint:      endpoint,
+		StartedAt:     start,
+		Status:        resp.StatusCode,
+		Prompt:        prompt,
+		Turns:         countTurnsRaw(reqBody),
 	}
 	// For Anthropic passthrough, stream directly without translation
 	if stream {

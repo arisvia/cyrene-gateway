@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 import { useI18n } from '@/i18n'
 import { formatNumber as fmtNum, formatCost as fmtCost, timeAgo as fmtTime, timeUnitsFor } from '@/lib/format'
 import { fetchModelDisplayNameMap, resolveModelDisplayName, canonicalModelId } from '@/lib/models'
-import { clientDisplayName } from '@/lib/clients'
+import { clientDisplayWithVersion } from '@/lib/clients'
 import type { RequestDetail } from '@/types/domain'
 interface RequestDetailModalProps {
   item: RequestDetail | null
@@ -37,6 +37,16 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   // Output throughput. Uses completion tokens only: prompt tokens are billed
   // before generation starts, so counting them would inflate the rate on
   // prefill-heavy requests and flatten the difference between models.
+  // Prompt-side cache hit. Providers report cached tokens only when they hit;
+  // zero means either a miss or a provider that does not report at all, so the
+  // rate is shown only when the field is present.
+  const cacheHitRate = () => {
+    const cached = detail()?.cachedTokens ?? 0
+    const prompt = detail()?.promptTokens ?? 0
+    if (cached <= 0 || prompt <= 0) return null
+    return (cached / prompt) * 100
+  }
+
   const tokensPerSec = () => {
     const out = detail()?.completionTokens ?? 0
     const ms = detail()?.latencyMs ?? 0
@@ -161,6 +171,15 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                   </div>
                 </div>
                 <div class="p-3.5 rounded-xl bg-surface-inset/40 border border-subtle/60">
+                  <div class="text-xs text-faint">{t('requestDetail.cacheHit')}</div>
+                  <div class="text-base font-semibold mt-1 tabular-nums text-text">
+                    <Show when={cacheHitRate()} fallback={<span class="text-faint">-</span>}>
+                      {cacheHitRate()!.toFixed(1)}
+                      <span class="text-xs font-normal text-faint ml-0.5">%</span>
+                    </Show>
+                  </div>
+                </div>
+                <div class="p-3.5 rounded-xl bg-surface-inset/40 border border-subtle/60">
                   <div class="text-xs text-faint">{t('requestDetail.turns')}</div>
                   <div class="text-base font-semibold mt-1 tabular-nums text-text">
                     <Show when={detail()?.turns} fallback={<span class="text-faint">-</span>}>
@@ -186,7 +205,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                 </div>
                 <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.client')}</span>
-                  <span class="font-mono text-faint">{clientDisplayName(detail()?.client, t)}</span>
+                  <span class="font-mono text-faint">{clientDisplayWithVersion(detail()?.client, detail()?.clientVersion, t)}</span>
                 </div>
                 {/* Only meaningful as an explanation of an unclassified client. */}
                 <Show when={detail()?.client === 'other' && detail()?.clientRaw}>

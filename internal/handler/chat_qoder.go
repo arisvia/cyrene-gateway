@@ -383,17 +383,18 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	uc := &usageContext{
-		Client:       detectClientAgent(r),
-		RawUA:        rawUserAgent(r),
-		Provider:     modelInfo.Provider,
-		Model:        modelInfo.Model,
-		ConnectionID: conn.ID,
-		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     endpoint,
-		StartedAt:    start,
-		Status:       resp.StatusCode,
-		Prompt:       extractPromptSummary(req.Messages),
-		Turns:        countTurns(req.Messages),
+		Client:        detectClientAgent(r),
+		ClientVersion: detectClientVersion(r),
+		RawUA:         rawUserAgent(r),
+		Provider:      modelInfo.Provider,
+		Model:         modelInfo.Model,
+		ConnectionID:  conn.ID,
+		APIKey:        extractRequestAPIKey(r),
+		Endpoint:      endpoint,
+		StartedAt:     start,
+		Status:        resp.StatusCode,
+		Prompt:        extractPromptSummary(req.Messages),
+		Turns:         countTurns(req.Messages),
 	}
 	// 非流式请求（OpenAI 契约 stream 默认 false）：上游只有 SSE，
 	// 在网关侧聚合 chunks 后拼成标准 chat.completion JSON 返回。

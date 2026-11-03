@@ -333,17 +333,18 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	uc := &usageContext{
-		Client:       detectClientAgent(r),
-		RawUA:        rawUserAgent(r),
-		StartedAt:    start,
-		Provider:     conn.Provider,
-		Model:        modelInfo.Model,
-		ConnectionID: conn.ID,
-		APIKey:       extractRequestAPIKey(r),
-		Endpoint:     endpoint,
-		Status:       http.StatusOK,
-		Prompt:       extractPromptSummary(req.Messages),
-		Turns:        countTurns(req.Messages),
+		Client:        detectClientAgent(r),
+		ClientVersion: detectClientVersion(r),
+		RawUA:         rawUserAgent(r),
+		StartedAt:     start,
+		Provider:      conn.Provider,
+		Model:         modelInfo.Model,
+		ConnectionID:  conn.ID,
+		APIKey:        extractRequestAPIKey(r),
+		Endpoint:      endpoint,
+		Status:        http.StatusOK,
+		Prompt:        extractPromptSummary(req.Messages),
+		Turns:         countTurns(req.Messages),
 	}
 
 	if isImage || !req.Stream {

@@ -44,6 +44,37 @@ describe('RequestDetailModal', () => {
     expect(text()).not.toContain('tok/s')
   })
 
+  it('derives the cache hit rate from cached over prompt tokens', () => {
+    render(() => (
+      <RequestDetailModal
+        item={{ ...base, promptTokens: 20_000, completionTokens: 100, cachedTokens: 18_000, latencyMs: 1000 }}
+        onClose={() => {}}
+      />
+    ))
+    // 18k of 20k = 90.0%, matching the 命中 column other gateways show.
+    expect(text()).toContain('90.0')
+  })
+
+  it('hides the cache rate when nothing was cached', () => {
+    render(() => (
+      <RequestDetailModal
+        item={{ ...base, promptTokens: 20_000, completionTokens: 100, latencyMs: 1000 }}
+        onClose={() => {}}
+      />
+    ))
+    expect(text()).not.toContain('90.0')
+  })
+
+  it('shows the client with its version', () => {
+    render(() => (
+      <RequestDetailModal
+        item={{ ...base, client: 'claude-cli', clientVersion: '2.0.59' }}
+        onClose={() => {}}
+      />
+    ))
+    expect(text()).toContain('Claude Code 2.0.59')
+  })
+
   it('shows the turn count', () => {
     render(() => (
       <RequestDetailModal item={{ ...base, turns: 7 }} onClose={() => {}} />
