@@ -58,6 +58,8 @@ type DayData struct {
 	Requests         int                   `json:"requests"`
 	PromptTokens     int                   `json:"promptTokens"`
 	CompletionTokens int                   `json:"completionTokens"`
+	CachedTokens     int                   `json:"cachedTokens,omitempty"`
+	Failed           int                   `json:"failed,omitempty"`
 	Cost             float64               `json:"cost"`
 }
 
@@ -149,6 +151,10 @@ func addUsageToDay(day *DayData, e UsageEntry) {
 	day.Requests++
 	day.PromptTokens += e.PromptTokens
 	day.CompletionTokens += e.CompletionTokens
+	day.CachedTokens += cachedTokensFromMeta(e.Meta)
+	if e.Status != "" && e.Status != "ok" {
+		day.Failed++
+	}
 	day.Cost += e.Cost
 	if e.Provider != "" {
 		day.ByProvider[e.Provider] = addUsageToCounter(day.ByProvider[e.Provider], e)

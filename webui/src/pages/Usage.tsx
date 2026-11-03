@@ -188,12 +188,29 @@ const Usage: Component = () => {
     if (len <= 31) return 5     // 30d：每隔 5 天展示（首尾必显）
     return 10                   // 60d+：每隔 10 天展示
   })
-  const kpis = createMemo(() => [
-    { label: t('usage.totalRequests'), value: fmtNum(store.usageStats.totalRequests ?? 0) },
-    { label: t('usage.promptTokens'), value: fmtNum(store.usageStats.totalPromptTokens ?? 0) },
-    { label: t('usage.completionTokens'), value: fmtNum(store.usageStats.totalCompletionTokens ?? 0) },
-    { label: t('usage.estimatedCost'), value: fmtCost(store.usageStats.totalCost ?? 0) },
-  ])
+  // Window-wide cache hit rate. Derived from the totals rather than summed over
+  // the dimension maps: a rate is only correct per prompt-token base, and adding
+  // per-dimension percentages together would not be.
+  const cacheHitRate = createMemo(() => {
+    const prompt = store.usageStats.totalPromptTokens ?? 0
+    const cached = store.usageStats.totalCachedTokens ?? 0
+    if (prompt <= 0 || cached <= 0) return null
+    return (cached / prompt) * 100
+  })
+
+  const kpis = createMemo(() => {
+    const rate = cacheHitRate()
+    return [
+      { label: t('usage.totalRequests'), value: fmtNum(store.usageStats.totalRequests ?? 0) },
+      { label: t('usage.promptTokens'), value: fmtNum(store.usageStats.totalPromptTokens ?? 0) },
+      { label: t('usage.completionTokens'), value: fmtNum(store.usageStats.totalCompletionTokens ?? 0) },
+      {
+        label: t('usage.breakdown.cacheRate'),
+        value: rate === null ? '—' : `${rate.toFixed(1)}%`,
+      },
+      { label: t('usage.estimatedCost'), value: fmtCost(store.usageStats.totalCost ?? 0) },
+    ]
+  })
 
   type BreakdownDimension = 'provider' | 'model' | 'key' | 'endpoint' | 'client'
 

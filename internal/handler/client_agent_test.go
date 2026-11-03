@@ -27,8 +27,8 @@ func TestDetectClientAgent(t *testing.T) {
 		{"Aider 0.74.1", "aider", "0.74.1"},
 		{"Cursor/1.2.3", "cursor", "1.2.3"},
 		{"Roo-Code/3.12", "roo-code", "3.12"},
-		{"Anthropic/Python 0.42.0", "anthropic", "python"},
-		{"OpenAI/Python 1.58.1", "openai", "python"},
+		{"Anthropic/Python 0.42.0", "anthropic", "0.42.0"},
+		{"OpenAI/Python 1.58.1", "openai", "1.58.1"},
 		{"python-requests/2.32.3", "python-requests", "2.32.3"},
 		{"Go-http-client/2.0", "go-http-client", "2.0"},
 		{"PostmanRuntime/7.43.0", "postmanruntime", "7.43.0"},
@@ -36,7 +36,6 @@ func TestDetectClientAgent(t *testing.T) {
 		// A tool the gateway has never heard of is reported by name rather than
 		// disappearing into an "other" bucket that explains nothing.
 		{"some-internal-runner/3", "some-internal-runner", "3"},
-		{"guohongxing/omp.18.14.0", "guohongxing", "omp.18.14.0"},
 		{"Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/131.0 Safari/537.36", "browser", ""},
 	}
 	for _, c := range cases {

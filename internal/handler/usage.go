@@ -101,6 +101,8 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	totalRequests := 0
 	totalPrompt := 0
 	totalCompletion := 0
+	totalCached := 0
+	totalFailed := 0
 	totalCost := 0.0
 	byProvider := make(map[string]db.DayCounter)
 	byModel := make(map[string]db.DayCounter)
@@ -116,6 +118,8 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 		totalRequests += day.Requests
 		totalPrompt += day.PromptTokens
 		totalCompletion += day.CompletionTokens
+		totalCached += day.CachedTokens
+		totalFailed += day.Failed
 		totalCost += day.Cost
 
 		for k, v := range day.ByProvider {
@@ -123,6 +127,8 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 			p.Requests += v.Requests
 			p.PromptTokens += v.PromptTokens
 			p.CompletionTokens += v.CompletionTokens
+			p.CachedTokens += v.CachedTokens
+			p.Failed += v.Failed
 			p.Cost += v.Cost
 			byProvider[k] = p
 		}
@@ -131,6 +137,8 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 			m.Requests += v.Requests
 			m.PromptTokens += v.PromptTokens
 			m.CompletionTokens += v.CompletionTokens
+			m.CachedTokens += v.CachedTokens
+			m.Failed += v.Failed
 			m.Cost += v.Cost
 			byModel[k] = m
 		}
@@ -141,6 +149,8 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 		totalRequests = history.Requests
 		totalPrompt = history.PromptTokens
 		totalCompletion = history.CompletionTokens
+		totalCached = history.CachedTokens
+		totalFailed = history.Failed
 		totalCost = history.Cost
 		byProvider = history.ByProvider
 		byModel = history.ByModel
@@ -155,6 +165,10 @@ func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
 	stats["totalRequests"] = totalRequests
 	stats["totalPromptTokens"] = totalPrompt
 	stats["totalCompletionTokens"] = totalCompletion
+	// Cached and failed travel with the totals so the KPI row can show a hit
+	// rate without summing the dimension maps client-side.
+	stats["totalCachedTokens"] = totalCached
+	stats["totalFailed"] = totalFailed
 	stats["totalCost"] = totalCost
 	stats["byProvider"] = byProvider
 	stats["byModel"] = byModel

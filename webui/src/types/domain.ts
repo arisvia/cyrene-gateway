@@ -119,6 +119,10 @@ export interface UsageStats {
   totalPromptTokens?: number
   totalCompletionTokens?: number
   totalCost?: number
+  /** Prompt tokens served from cache, window-wide. */
+  totalCachedTokens?: number
+  /** Non-ok outcomes, window-wide. */
+  totalFailed?: number
   period?: string
   byProvider?: Record<string, UsageDimensionItem>
   byModel?: Record<string, UsageDimensionItem>

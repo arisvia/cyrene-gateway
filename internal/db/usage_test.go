@@ -3,6 +3,7 @@ package db
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func setupTestDB(t *testing.T) *DB {
@@ -306,5 +307,41 @@ func TestGetUsageDimensions(t *testing.T) {
 	}
 	if byEndpoint["/v1/chat/completions"].Requests != 1 {
 		t.Errorf("unexpected stats for /v1/chat/completions: %+v", byEndpoint["/v1/chat/completions"])
+	}
+}
+
+// Cache hits and failures must survive the daily aggregate, which is the path
+// the stats endpoint reads for every period except 24h. Dropping them there
+// would make the KPI show a hit rate that silently excluded most traffic.
+func TestDayAggregateCarriesCacheAndFailures(t *testing.T) {
+	d := setupTestDB(t)
+
+	if err := d.SaveUsageEntry(&UsageEntry{
+		Provider: "anthropic", Model: "claude", Status: "ok",
+		PromptTokens: 1000, CompletionTokens: 10, Cost: 0.01,
+		Meta: `{"cached_tokens":900}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SaveUsageEntry(&UsageEntry{
+		Provider: "anthropic", Model: "claude", Status: "500",
+		PromptTokens: 500, CompletionTokens: 0, Cost: 0,
+		Meta: `{"cached_tokens":100}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	day, err := d.GetUsageDaily(time.Now().UTC().Format("2006-01-02"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if day.CachedTokens != 1000 {
+		t.Fatalf("day.CachedTokens = %d, want 1000", day.CachedTokens)
+	}
+	if day.Failed != 1 {
+		t.Fatalf("day.Failed = %d, want 1", day.Failed)
+	}
+	if c := day.ByProvider["anthropic"]; c.CachedTokens != 1000 || c.Failed != 1 {
+		t.Fatalf("provider counter lost cache/failures: %+v", c)
 	}
 }

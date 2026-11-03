@@ -38,8 +38,9 @@ const (
 //	"claude-cli/2.0.59 (external, cli)"  -> claude-cli, 2.0.59
 //	"Aider 0.74.1"                       -> aider, 0.74.1
 //
-// The product is the first token; the version is whatever numeric-looking
-// suffix follows it, either after a slash or as the next word.
+// The product is the first token; the version is the numeric segment that
+// follows it, either after a slash or somewhere later in the same field. A UA
+// that carries no version simply reports none -- nothing is invented.
 func parseUserAgent(ua string) (name string, version string) {
 	ua = strings.TrimSpace(ua)
 	if ua == "" {
@@ -70,12 +71,21 @@ func parseUserAgent(ua string) (name string, version string) {
 		return "", ""
 	}
 
-	if rest != "" {
+	if rest != "" && looksLikeVersion(rest) {
 		version = sanitizeToken(rest)
 	}
-	// "Aider 0.74.1" carries the version as the next word instead of a suffix.
-	if version == "" && len(fields) > 1 && looksLikeVersion(fields[1]) {
-		version = sanitizeToken(fields[1])
+	// The version may also follow as later tokens: "Anthropic/Python 0.42.0"
+	// puts a runtime name between the product and the number, and "Aider 0.74.1"
+	// has no slash at all. Scanning for the first numeric-looking token is the
+	// same structural rule used everywhere else -- no product catalog needed.
+	if version == "" {
+		for _, field := range fields[1:] {
+			tok := sanitizeToken(field)
+			if looksLikeVersion(tok) {
+				version = tok
+				break
+			}
+		}
 	}
 
 	return product, truncate(version, maxClientVersion)
