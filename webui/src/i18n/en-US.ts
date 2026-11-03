@@ -851,6 +851,7 @@ export const enUS: TranslationDict = {
     subtitle: 'Total {count} requests · Real-time traffic routing',
     totalRequests: 'Total Requests',
     ioTokens: 'Input / Output Tokens',
+    keyDeleted: 'Deleted',
     resetStats: 'Reset statistics',
     resetConfirmBtn: 'Delete everything',
     resetWarn: 'All usage history and request details will be permanently deleted. This cannot be undone.',

@@ -91,6 +91,9 @@ const Usage: Component = () => {
 
   onMount(() => {
     load()
+    // The key dimension resolves labels against the live key list, so it must be
+    // present even when the user never visited the keys page in this session.
+    if (store.apiKeys().length === 0) void store.loadKeys()
     document.addEventListener('visibilitychange', onVisible)
     store.loadRequestDetails(1, 10).then(() => {
       if (liveEvents().length === 0 && store.requestDetails().length > 0) {
@@ -264,17 +267,24 @@ const Usage: Component = () => {
 
     const items = Object.entries(raw).map(([key, v]) => {
       let displayName = key
+      let keyDeleted = false
       if (dim === 'model') {
         const parts = key.split('|')
         displayName = resolveModelDisplayName(modelNameMap(), parts[0], parts[1]) || parts[0]
       } else if (dim === 'key' && key === 'default') {
         displayName = t('usage.defaultKeyLabel')
       } else if (dim === 'key') {
-        // Prefer the operator-visible name. Rows recorded before key identity
-        // existed still carry the secret, so fall back to masking it; a key id
-        // with no name in the map means the key was deleted after the fact.
-        const named = stats.keyNames?.[key]
-        displayName = named || (key.startsWith('cg-') ? maskKey(key) : key)
+        // Resolve against the live key list, not the name snapshot stored with
+        // each row: a snapshot goes stale the moment the key is renamed. The
+        // snapshot is only a fallback for keys deleted since the request.
+        const live = store.apiKeys().find(k => k.id === key)
+        keyDeleted = !live && key !== 'default'
+        if (live) {
+          displayName = live.name || maskKey(live.key)
+        } else {
+          const snapshot = stats.keyNames?.[key]
+          displayName = snapshot || (key.startsWith('cg-') ? maskKey(key) : key)
+        }
       } else if (dim === 'client') {
         displayName = clientDisplayName(key, t)
       }
@@ -308,6 +318,7 @@ const Usage: Component = () => {
         versions: dim === 'client'
           ? Object.entries(stats.clientVersions?.[key] || {}).sort((a, b) => b[1] - a[1]).map(([ver]) => ver)
           : [],
+        keyDeleted,
       }
     })
 
@@ -550,8 +561,15 @@ ${t('usage.metrics.cost')}: ${fmtCost(item.cost)}`}
                               <ProviderAvatar provider={item.key} size="sm" class="w-5 h-5 rounded-md shrink-0" />
                             </Show>
                             <span class="truncate font-medium text-[11px]" title={item.displayName}>
-                              {dimension() === 'key' ? (item.key === 'default' ? t('usage.defaultKeyLabel') : maskKey(item.key)) : item.displayName}
+                              {item.displayName}
                             </span>
+                            {/* Historical rows outlive the key they belong to; say
+                                so rather than showing a label that looks current. */}
+                            <Show when={item.keyDeleted}>
+                              <Badge tone="gray" class="text-[9px] px-1 py-0 shrink-0">
+                                {t('usage.keyDeleted')}
+                              </Badge>
+                            </Show>
                           </div>
                           <Show when={item.versions.length > 0}>
                             <div class="flex flex-wrap gap-1 mt-1">
