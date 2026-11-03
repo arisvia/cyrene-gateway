@@ -184,9 +184,10 @@ func TestDisplayMetaAppliedToRegistry(t *testing.T) {
 	}
 }
 
-// Providers that appear in the media registry without their own brand entry:
-// they are also chat providers, whose provider.ProviderInfo supplies the colour
-// (the panel merges both sources), or they have no brand asset at all.
+// Providers that appear in the media registry without their own displayMeta
+// entry: they are also chat providers, whose provider.ProviderInfo supplies the
+// brand colour (the panel merges both sources), so duplicating it here would
+// create a second source of truth for the same value.
 var mediaProvidersWithoutOwnBrand = map[string]bool{
 	"groq":        true,
 	"xai":         true,

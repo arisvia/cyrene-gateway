@@ -33,6 +33,7 @@ cd webui && npm run typecheck && npm test && npm run build
    - 空状态统一复用 `@/components/ui` 的 `<Empty />`，禁止页面私造 DOM。
    - 禁止在业务组件内联 Raw `<svg>`，统一收口至 `@/components/ui` (`icons.tsx`)。
    - 禁止使用裸 HTML 表单元素，统一使用 UI 导出的 `Input`、`Button`、`Select`、`Alert`。
+   - 品牌图标统一取自 LobeHub Icons（`@lobehub/icons-static-svg`）并**优先彩色版**：上游同时提供 `xxx.svg`（单色）与 `xxx-color.svg`（彩色）时一律取 `-color`，两份副本需同时落到 `webui/public/providers/` 与 `webui/src/assets/providers/`。仅当上游无彩色变体（如 `anthropic`、`openai`、`xai`、`elevenlabs`）时才允许单色；上游完全没有条目时（如 `cartesia`）可用厂商官方标志封装为内嵌 PNG 的 SVG，禁止留空。`ProviderAvatar` 会按资产是否含硬编码颜色自动选择 `<img>` 或 CSS mask 分支，无需手工登记。
 7. **反重复造轮子（Deduplication）**：
    - Base64URL、PKCE 签名统一收口至 `provider/oauth.go`，UUID 生成统一使用 `uuid.New().String()`。
    - SSE 数据行解析统一使用 `translator.ParseSSEDataLine` 或 `ParseSSEDataLineString`。
