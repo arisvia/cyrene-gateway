@@ -10,7 +10,6 @@
 const CLIENT_DISPLAY_NAMES: Record<string, string> = {
   'claude-cli': 'Claude Code',
   codex_cli_rs: 'Codex CLI',
-  'codex-cli': 'Codex CLI',
   opencode: 'OpenCode',
   aider: 'Aider',
   cursor: 'Cursor',
@@ -24,6 +23,31 @@ const CLIENT_DISPLAY_NAMES: Record<string, string> = {
   'go-http-client': 'Go HTTP',
   postmanruntime: 'Postman',
   insomnia: 'Insomnia',
+
+  // Identifiers written before the gateway started parsing UAs. History is not
+  // rewritten, so these rows still carry the old catalog ids and would
+  // otherwise render as "Anthropic Sdk" or "Go Http".
+  'claude-code': 'Claude Code',
+  'codex-cli': 'Codex CLI',
+  roocode: 'Roo Code',
+  'anthropic-sdk': 'Anthropic SDK',
+  'openai-sdk': 'OpenAI SDK',
+  'gemini-sdk': 'Gemini SDK',
+  'go-http': 'Go HTTP',
+  'python-http': 'Python HTTP',
+  'java-http': 'Java HTTP',
+  'node-http': 'Node HTTP',
+  lobechat: 'LobeChat',
+  'open-webui': 'Open WebUI',
+  'cherry-studio': 'Cherry Studio',
+  chatwise: 'ChatWise',
+  nextchat: 'NextChat',
+  langchain: 'LangChain',
+  hoppscotch: 'Hoppscotch',
+  apifox: 'Apifox',
+  apipost: 'ApiPost',
+  httpie: 'HTTPie',
+  wget: 'wget',
 }
 
 export type ClientLabelTranslator = (

@@ -13,7 +13,6 @@ describe('clientDisplayName', () => {
   it('renders an unseen product without needing a release', () => {
     // The point of parsing instead of cataloguing: this must not read "其他".
     expect(clientDisplayName('some-internal-runner', t)).toBe('Some Internal Runner')
-    expect(clientDisplayName('guohongxing', t)).toBe('Guohongxing')
   })
 
   it('keeps the generic buckets translated', () => {
@@ -21,6 +20,13 @@ describe('clientDisplayName', () => {
     expect(clientDisplayName('unknown', t)).toBe('未知')
     expect(clientDisplayName('other', t)).toBe('其他')
     expect(clientDisplayName('', t)).toBe('-')
+  })
+
+  it('still renders pre-parse catalog ids readably', () => {
+    // History keeps the old ids; they must not degrade to "Anthropic Sdk".
+    expect(clientDisplayName('anthropic-sdk', t)).toBe('Anthropic SDK')
+    expect(clientDisplayName('go-http', t)).toBe('Go HTTP')
+    expect(clientDisplayName('roocode', t)).toBe('Roo Code')
   })
 
   it('appends the version when there is one', () => {

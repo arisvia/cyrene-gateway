@@ -208,7 +208,9 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                   <span class="font-mono text-faint">{clientDisplayWithVersion(detail()?.client, detail()?.clientVersion, t)}</span>
                 </div>
                 {/* Only meaningful as an explanation of an unclassified client. */}
-                <Show when={detail()?.client === 'other' && detail()?.clientRaw}>
+                {/* Only for the two unparsed buckets: the raw UA explains a
+                    failure to name the client, and is noise beside a real name. */}
+                <Show when={(detail()?.client === 'other' || detail()?.client === 'unknown') && detail()?.clientRaw}>
                   <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                     <span class="text-faint">{t('requestDetail.properties.clientRaw')}</span>
                     <span class="font-mono text-faint text-[11px]">{detail()!.clientRaw}</span>
