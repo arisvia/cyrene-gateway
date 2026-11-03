@@ -925,8 +925,11 @@ export const enUS: TranslationDict = {
     loadingMeta: 'Loading metadata...',
     totalLatency: 'Total Latency',
     estimatedCost: 'Estimated Cost',
+    throughput: 'Throughput',
+    turns: 'Turns',
     properties: {
       provider: 'Provider',
+      clientRaw: 'Raw UA',
       targetModel: 'Target Model',
       endpoint: 'Gateway Endpoint',
       timestamp: 'Timestamp',

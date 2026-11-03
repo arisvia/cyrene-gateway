@@ -24,7 +24,7 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
     async id => {
       if (!id) return null
       try {
-        const r = await api(`/api/usage/request-details/${encodeURIComponent(id)}`)
+        const r = await api<RequestDetail>(`/api/usage/request-details/${encodeURIComponent(id)}`)
         return r || null
       } catch {
         return null
@@ -33,6 +33,16 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
   )
 
   const detail = () => fullDetail() || props.item
+
+  // Output throughput. Uses completion tokens only: prompt tokens are billed
+  // before generation starts, so counting them would inflate the rate on
+  // prefill-heavy requests and flatten the difference between models.
+  const tokensPerSec = () => {
+    const out = detail()?.completionTokens ?? 0
+    const ms = detail()?.latencyMs ?? 0
+    if (out <= 0 || ms < 50) return null
+    return out / (ms / 1000)
+  }
   // 清洗并提取对话内容（过滤冗长思考过程 <thinking> ... </thinking>）
   const cleanPayload = () => {
     const raw = detail()
@@ -141,6 +151,23 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                     {fmtCost(props.item?.cost ?? 0)}
                   </div>
                 </div>
+                <div class="p-3.5 rounded-xl bg-surface-inset/40 border border-subtle/60">
+                  <div class="text-xs text-faint">{t('requestDetail.throughput')}</div>
+                  <div class="text-base font-semibold mt-1 tabular-nums text-text">
+                    <Show when={tokensPerSec()} fallback={<span class="text-faint">-</span>}>
+                      {tokensPerSec()!.toFixed(1)}
+                      <span class="text-xs font-normal text-faint ml-1">tok/s</span>
+                    </Show>
+                  </div>
+                </div>
+                <div class="p-3.5 rounded-xl bg-surface-inset/40 border border-subtle/60">
+                  <div class="text-xs text-faint">{t('requestDetail.turns')}</div>
+                  <div class="text-base font-semibold mt-1 tabular-nums text-text">
+                    <Show when={detail()?.turns} fallback={<span class="text-faint">-</span>}>
+                      {fmtNum(detail()!.turns!)}
+                    </Show>
+                  </div>
+                </div>
               </div>
 
               {/* 路由与调度属性列表 */}
@@ -159,8 +186,15 @@ export const RequestDetailModal: Component<RequestDetailModalProps> = props => {
                 </div>
                 <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.client')}</span>
-                  <span class="font-mono text-faint">{clientDisplayName(props.item?.client, t)}</span>
+                  <span class="font-mono text-faint">{clientDisplayName(detail()?.client, t)}</span>
                 </div>
+                {/* Only meaningful as an explanation of an unclassified client. */}
+                <Show when={detail()?.client === 'other' && detail()?.clientRaw}>
+                  <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
+                    <span class="text-faint">{t('requestDetail.properties.clientRaw')}</span>
+                    <span class="font-mono text-faint text-[11px]">{detail()!.clientRaw}</span>
+                  </div>
+                </Show>
                 <div class="px-4 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 min-w-0 break-words [overflow-wrap:anywhere]">
                   <span class="text-faint">{t('requestDetail.properties.timestamp')}</span>
                   <span class="font-mono text-faint">{props.item?.timestamp || '-'}</span>

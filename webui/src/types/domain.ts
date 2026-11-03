@@ -137,6 +137,10 @@ export interface RequestDetail {
   connectionId?: string
   endpoint?: string
   client?: string
+  /** Raw User-Agent, present only when `client` fell through to "other". */
+  clientRaw?: string
+  /** User-message count: how many exchanges the conversation had. */
+  turns?: number
 }
 
 export interface Pagination {

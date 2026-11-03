@@ -291,6 +291,7 @@ func (s *Server) handleAntigravityChat(
 			"endpoint":     endpoint,
 			"client":       detectClientAgent(r),
 			"error":        string(respBody),
+			"turns":        countTurns(req.Messages),
 			"input":        extractPromptSummary(req.Messages),
 		}
 		rdBytes, _ := json.Marshal(rdData)
@@ -333,6 +334,7 @@ func (s *Server) handleAntigravityChat(
 
 	uc := &usageContext{
 		Client:       detectClientAgent(r),
+		RawUA:        rawUserAgent(r),
 		StartedAt:    start,
 		Provider:     conn.Provider,
 		Model:        modelInfo.Model,
@@ -341,6 +343,7 @@ func (s *Server) handleAntigravityChat(
 		Endpoint:     endpoint,
 		Status:       http.StatusOK,
 		Prompt:       extractPromptSummary(req.Messages),
+		Turns:        countTurns(req.Messages),
 	}
 
 	if isImage || !req.Stream {

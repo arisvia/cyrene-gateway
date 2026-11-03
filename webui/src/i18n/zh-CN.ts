@@ -923,8 +923,11 @@ export const zhCN = {
     loadingMeta: '加载元数据…',
     totalLatency: '总耗时',
     estimatedCost: '估算成本',
+    throughput: '平均速率',
+    turns: '对话轮次',
     properties: {
       provider: '请求提供商',
+      clientRaw: '原始 UA',
       targetModel: '实际目标模型',
       endpoint: '网关接收端点',
       timestamp: '请求时间戳',

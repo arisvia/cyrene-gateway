@@ -351,6 +351,7 @@ func (s *Server) attemptMessagesPassthrough(
 			"endpoint":     endpoint,
 			"client":       detectClientAgent(r),
 			"error":        string(errBody),
+			"turns":        countTurnsRaw(reqBody),
 			"input":        extractAnthropicPrompt(reqBody),
 		}
 		rdBytes, _ := json.Marshal(rdData)
@@ -385,6 +386,7 @@ func (s *Server) attemptMessagesPassthrough(
 	prompt := extractAnthropicPrompt(reqBody)
 	uc := &usageContext{
 		Client:       detectClientAgent(r),
+		RawUA:        rawUserAgent(r),
 		RequestID:    ensureRequestID(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,
@@ -394,6 +396,7 @@ func (s *Server) attemptMessagesPassthrough(
 		StartedAt:    start,
 		Status:       resp.StatusCode,
 		Prompt:       prompt,
+		Turns:        countTurnsRaw(reqBody),
 	}
 	// For Anthropic passthrough, stream directly without translation
 	if stream {

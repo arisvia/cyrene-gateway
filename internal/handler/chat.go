@@ -46,6 +46,44 @@ type usageContext struct {
 	Client       string
 	Prompt       string
 	Response     string
+	// RawUA is retained only to explain an "other" classification.
+	RawUA string
+	// Turns is the number of user messages in the request, i.e. how many
+	// conversational exchanges the caller has had. Recorded because a 300k-token
+	// request means very different things at turn 2 and turn 60.
+	Turns int
+}
+
+// countTurnsRaw is countTurns for handlers that hold the raw Anthropic body
+// rather than the parsed OpenAI message list.
+func countTurnsRaw(body map[string]any) int {
+	raw, ok := body["messages"].([]any)
+	if !ok {
+		return 0
+	}
+	n := 0
+	for _, m := range raw {
+		msg, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if role, _ := msg["role"].(string); strings.EqualFold(role, "user") {
+			n++
+		}
+	}
+	return n
+}
+
+// countTurns reports how many user-role messages the request carried. Only user
+// messages count: assistant/tool rows are the model's own history, not a turn.
+func countTurns(messages []Message) int {
+	n := 0
+	for _, m := range messages {
+		if strings.EqualFold(m.Role, "user") {
+			n++
+		}
+	}
+	return n
 }
 
 func capPromptText(s string) string {
@@ -531,6 +569,7 @@ func (s *Server) attemptSingleModelChat(
 			"latencyMs":    latencyMs,
 			"endpoint":     endpoint,
 			"client":       detectClientAgent(r),
+			"turns":        countTurns(req.Messages),
 			"error":        string(errBody),
 			"input":        extractPromptSummary(req.Messages),
 		}
@@ -571,6 +610,7 @@ func (s *Server) attemptSingleModelChat(
 	// Proxy the response with format translation
 	uc := &usageContext{
 		Client:       detectClientAgent(r),
+		RawUA:        rawUserAgent(r),
 		RequestID:    ensureRequestID(r),
 		Provider:     modelInfo.Provider,
 		Model:        modelInfo.Model,
@@ -580,6 +620,7 @@ func (s *Server) attemptSingleModelChat(
 		StartedAt:    start,
 		Status:       resp.StatusCode,
 		Prompt:       extractPromptSummary(req.Messages),
+		Turns:        countTurns(req.Messages),
 	}
 	s.proxyResponse(w, r, resp, req.Stream, upstreamStream, targetFormat, modelInfo.Model, uc)
 	return false, 0, nil

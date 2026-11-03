@@ -112,8 +112,16 @@ func (s *Server) recordUsage(uc *usageContext, u usage.Usage) {
 		"endpoint":         uc.Endpoint,
 		"usageKnown":       usageKnown,
 	}
+	if uc.Turns > 0 {
+		rdData["turns"] = uc.Turns
+	}
 	if uc.Client != "" {
 		rdData["client"] = uc.Client
+	}
+	// Keep the raw UA only when classification missed. Storing it unconditionally
+	// would defeat the bounded-cardinality reason the taxonomy exists.
+	if uc.Client == clientIDOther && uc.RawUA != "" {
+		rdData["clientRaw"] = uc.RawUA
 	}
 	if uc.Prompt != "" {
 		rdData["input"] = uc.Prompt

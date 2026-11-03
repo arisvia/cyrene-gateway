@@ -92,6 +92,18 @@ var agentRules = []agentRule{
 	{[]string{"mozilla/", "applewebkit"}, clientIDBrowser},
 }
 
+// rawUserAgent returns the caller's User-Agent, capped. Paired with an "other"
+// classification it is the only way to learn which client was missed -- the
+// taxonomy deliberately discards the string otherwise.
+func rawUserAgent(r *http.Request) string {
+	const maxUA = 200
+	ua := r.Header.Get("User-Agent")
+	if len(ua) > maxUA {
+		return ua[:maxUA] + "..."
+	}
+	return ua
+}
+
 // detectClientAgent fingerprints the downstream caller from its User-Agent
 // header. Missing UA is "unknown"; unclassifiable UAs collapse to "other".
 func detectClientAgent(r *http.Request) string {
