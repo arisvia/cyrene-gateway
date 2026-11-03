@@ -465,6 +465,7 @@ export const enUS: TranslationDict = {
     hintAuthOAuth: "signs in over OAuth",
     hintAuthKey: "takes an API key",
     hintCapabilities: "serves {caps}",
+    hintCapabilitiesPrefix: "Supports",
     nativeBuiltin: "Native Builtin",
     alreadyConnected: "Connected",
     apiProtocol: "API Protocol",

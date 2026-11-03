@@ -84,12 +84,17 @@ const Providers: Component = () => {
     const auth = reg.authType === 'oauth' ? t('providers.hintAuthOAuth') : t('providers.hintAuthKey')
     parts.push(auth)
 
-    const caps = (reg.capabilities && reg.capabilities.length ? reg.capabilities : ['llm'])
-      .map(k => getCapConfig(k).label)
-      .join(' / ')
-    parts.push(t('providers.hintCapabilities', { caps }))
-
-    if (reg.authHint) parts.push(reg.authHint)
+    // Media providers arrive with an AuthHint the backend generated from their
+    // kinds ("支持能力: stt"), so appending the capability list again would say
+    // the same thing twice in one tooltip.
+    const hint = reg.authHint
+    if (hint) parts.push(hint)
+    if (!hint || !hint.includes(t('providers.hintCapabilitiesPrefix'))) {
+      const caps = (reg.capabilities && reg.capabilities.length ? reg.capabilities : ['llm'])
+        .map(k => getCapConfig(k).label)
+        .join(' / ')
+      parts.push(t('providers.hintCapabilities', { caps }))
+    }
     return parts.join(' · ')
   }
 

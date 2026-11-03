@@ -463,6 +463,7 @@ export const zhCN = {
     hintAuthOAuth: "OAuth 授权登入",
     hintAuthKey: "API Key 直连",
     hintCapabilities: "可承载 {caps}",
+    hintCapabilitiesPrefix: "支持能力",
     nativeBuiltin: "原生内置",
     alreadyConnected: "已接入",
     apiProtocol: "接口协议",
