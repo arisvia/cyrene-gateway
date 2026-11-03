@@ -10,7 +10,7 @@ import (
 )
 
 // ParseModel splits "provider/model" into provider and model parts.
-// If no slash is present, provider is empty and will be inferred or resolved via alias.
+// If no slash is present, provider is empty and will be inferred.
 // StripModelContextMarker removes trailing context window markers such as "[1m]" or "[1M]"
 // appended by clients like Claude Code with the 1M-context beta enabled.
 func StripModelContextMarker(modelStr string) (string, string) {

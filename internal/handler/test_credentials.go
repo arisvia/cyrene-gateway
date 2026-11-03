@@ -29,8 +29,6 @@ func (s *Server) handleTestCredentials(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provider or baseUrl required"})
 		return
 	}
-	// The ephemeral connection below is keyed by provider id, so an alias has to
-	// become the canonical id before any lookup or credential routing reads it.
 	allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
 	if req.BaseURL != "" {
 		if _, err := provider.ValidateUpstreamURL(req.BaseURL, allowPrivate); err != nil {

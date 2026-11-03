@@ -150,10 +150,9 @@ func TestUsageStatsRollingWindowFractionalAndOffsetTimestamps(t *testing.T) {
 	})
 }
 
-// Usage rows are written with the canonical provider id and the filter sits on
-// the admin surface, so it matches that id exactly: a shorthand is a client-side
-// model-prefix convenience and must not become a second key for stats.
-func TestUsageHistoryFilterIsCanonicalIDOnly(t *testing.T) {
+// Usage rows are keyed by the provider id, so the admin filter matches it
+// exactly. There is no second spelling to fold in.
+func TestUsageHistoryFilterMatchesProviderIDExactly(t *testing.T) {
 	database, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -181,8 +180,9 @@ func TestUsageHistoryFilterIsCanonicalIDOnly(t *testing.T) {
 	if got := history("provider=claude"); !strings.Contains(got, "\"sonnet\"") {
 		t.Fatalf("canonical filter lost its own row: %s", got)
 	}
-	if got := history("provider=cc"); strings.Contains(got, "\"sonnet\"") {
-		t.Errorf("alias filter matched canonical rows, want the id taken verbatim: %s", got)
+	// An unknown provider name is a miss, never a second spelling for "claude".
+	if got := history("provider=not-a-provider"); strings.Contains(got, "\"sonnet\"") {
+		t.Errorf("unknown provider filter matched rows: %s", got)
 	}
 }
 

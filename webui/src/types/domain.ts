@@ -90,7 +90,6 @@ export interface ProviderModel {
   enabled?: boolean
   isFree?: boolean
   priceFactor?: number
-  alias?: string
   contextLength?: number
   maxOutputTokens?: number
   capabilities?: string[]

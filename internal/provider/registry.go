@@ -96,9 +96,8 @@ func (p ProviderInfo) EffectiveBaseURL(connAuthType string, hasAPIKey bool) (bas
 // Registry is the static provider registry, populated in init() by registry_data.go
 var Registry map[string]ProviderInfo
 
-// GetProvider returns provider info by canonical ID. Shorthands are NOT
-// accepted here: an alias is only ever a client's way of typing a provider
-// inside a model string, and every id past that point is canonical.
+// GetProvider returns provider info by id. There is exactly one spelling per
+// provider, so an unknown key is a miss rather than an alias to resolve.
 func GetProvider(id string) (ProviderInfo, bool) {
 	p, ok := Registry[id]
 	return p, ok

@@ -1311,7 +1311,6 @@ func resolveAntigravityModel(
 ) (targetModel string, tier string, shouldInjectThinking bool, isImage bool) {
 	cleanModel := rawModel
 	cleanModel = strings.TrimPrefix(cleanModel, "antigravity/")
-	cleanModel = strings.TrimPrefix(cleanModel, "ag/")
 	cleanModel = strings.TrimSpace(cleanModel)
 
 	if strings.Contains(strings.ToLower(cleanModel), "image") {

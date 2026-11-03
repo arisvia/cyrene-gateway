@@ -346,7 +346,7 @@ func TestAntigravityThinkingTierRouting(t *testing.T) {
 		},
 		// 2. gemini-3.8-flash explicit high
 		{
-			model:          "ag/gemini-3.8-flash",
+			model:          "antigravity/gemini-3.8-flash",
 			effort:         "high",
 			expectedTarget: "gemini-3.8-flash-high",
 			expectedTier:   "high",
