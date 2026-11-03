@@ -17,7 +17,7 @@ import (
 // NeedsImageNormalization reports whether the image format returns a body
 // that is not OpenAI-shaped and must be converted before proxying.
 func NeedsImageNormalization(format string) bool {
-	return format == "gemini" || format == "stability"
+	return format == "gemini" || format == "stability" || format == "fal"
 }
 
 // NeedsAudioNormalization reports whether the TTS format returns JSON
@@ -112,6 +112,35 @@ func NormalizeImage(format string, raw []byte) ([]byte, error) {
 			return nil, fmt.Errorf("stability response contained no image")
 		}
 		return openAIImageBody([]string{st.Image})
+	case "fal":
+		// fal answers {"images":[{"url":...}]}. It serves hosted URLs rather
+		// than inline base64, so the OpenAI shape carries url instead of
+		// b64_json — the downstream contract allows either.
+		var fr struct {
+			Images []struct {
+				URL string `json:"url"`
+			} `json:"images"`
+		}
+		if err := json.Unmarshal(raw, &fr); err != nil {
+			return nil, fmt.Errorf("parse fal response: %w", err)
+		}
+		urls := make([]string, 0, len(fr.Images))
+		for _, img := range fr.Images {
+			if img.URL != "" {
+				urls = append(urls, img.URL)
+			}
+		}
+		if len(urls) == 0 {
+			return nil, fmt.Errorf("fal response contained no images")
+		}
+		data := make([]map[string]any, 0, len(urls))
+		for _, u := range urls {
+			data = append(data, map[string]any{"url": u})
+		}
+		return json.Marshal(map[string]any{
+			"created": time.Now().Unix(),
+			"data":    data,
+		})
 	}
 	return raw, nil
 }

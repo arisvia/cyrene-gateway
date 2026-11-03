@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,17 +154,7 @@ func (c *Client) HandleImageGeneration(ctx context.Context, providerID string, b
 		// fal's REST models are <model-path> addressed directly; sync mode
 		// makes the response carry the images instead of a queue job handle.
 		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/" + req.Model
-		falBody := map[string]any{"prompt": req.Prompt}
-		if req.N > 1 {
-			falBody["num_images"] = req.N
-		}
-		if req.Size != "" {
-			w, h, ok := strings.Cut(req.Size, "x")
-			if ok {
-				falBody["image_size"] = map[string]any{"width": w, "height": h}
-			}
-		}
-		reqBody, _ = json.Marshal(falBody)
+		reqBody, _ = json.Marshal(falImageBody(&req))
 	default:
 		// OpenAI-compatible
 		targetURL = cfg.BaseURL
@@ -738,6 +729,34 @@ func (c *Client) TestCredentials(ctx context.Context, providerID string, creds C
 	return false, resp.StatusCode, fmt.Errorf("upstream returned HTTP %d", resp.StatusCode)
 }
 
+// falImageBody builds the fal request. image_size must be integers: fal
+// validates the type and rejects the "WxH" split as strings.
+func falImageBody(req *ImageRequest) map[string]any {
+	body := map[string]any{"prompt": req.Prompt}
+	if req.N > 1 {
+		body["num_images"] = req.N
+	}
+	w, h, ok := strings.Cut(req.Size, "x")
+	if !ok {
+		return body
+	}
+	wi, wErr := strconv.Atoi(strings.TrimSpace(w))
+	hi, hErr := strconv.Atoi(strings.TrimSpace(h))
+	if wErr != nil || hErr != nil || wi <= 0 || hi <= 0 {
+		// Unparseable size: fall back to fal's default rather than sending a
+		// value its validator will reject.
+		return body
+	}
+	body["image_size"] = map[string]any{"width": wi, "height": hi}
+	return body
+}
+
+// assemblyAIUploadURL derives the upload endpoint from the configured
+// transcript endpoint, which is the only address the registry stores.
+func assemblyAIUploadURL(cfg *ProviderConfig) string {
+	return strings.TrimSuffix(strings.TrimRight(cfg.BaseURL, "/"), "/transcript") + "/upload"
+}
+
 // sttAssemblyAI runs an AssemblyAI transcription. Unlike the OpenAI-shaped
 // providers it is asynchronous: POST the audio, then poll until the transcript
 // is ready and hand back an OpenAI-compatible body so the caller only ever sees
@@ -753,7 +772,36 @@ func (c *Client) sttAssemblyAI(ctx context.Context, cfg *ProviderConfig, file io
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
-	submitBody := map[string]any{"audio_url": "data:audio/wav;base64," + base64.StdEncoding.EncodeToString(audioData)}
+	// AssemblyAI only accepts a URL its own servers can reach; a data: URI is
+	// rejected at download time. Upload the bytes first, then submit the
+	// returned URL (the documented two-step flow).
+	uploadURL := assemblyAIUploadURL(cfg)
+	uploadReq, err := http.NewRequestWithContext(ctx, "POST", uploadURL, bytes.NewReader(audioData))
+	if err != nil {
+		return nil, err
+	}
+	uploadReq.Header.Set("Content-Type", "application/octet-stream")
+	setAuth(uploadReq, cfg, creds)
+	uploadResp, err := c.do(uploadReq)
+	if err != nil {
+		return nil, err
+	}
+	uploadRaw, err := io.ReadAll(io.LimitReader(uploadResp.Body, 1<<20))
+	uploadResp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	if uploadResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("assemblyai upload: status %d: %s", uploadResp.StatusCode, string(uploadRaw))
+	}
+	var uploaded struct {
+		UploadURL string `json:"upload_url"`
+	}
+	if err := json.Unmarshal(uploadRaw, &uploaded); err != nil || uploaded.UploadURL == "" {
+		return nil, fmt.Errorf("assemblyai upload: no upload_url in response")
+	}
+
+	submitBody := map[string]any{"audio_url": uploaded.UploadURL}
 	if model != "" {
 		submitBody["speech_model"] = model
 	}

@@ -164,3 +164,48 @@ func TestTestCredentialsValidation(t *testing.T) {
 		t.Error("expected error for nonexistent provider")
 	}
 }
+
+// The brand metadata table is applied by mutating pointers after registration.
+// A change of Registry's value type, or of the loop to copy-by-value, would
+// silently stop it landing — which is exactly what it did the first time.
+func TestDisplayMetaAppliedToRegistry(t *testing.T) {
+	if len(displayMeta) == 0 {
+		t.Fatal("displayMeta is empty")
+	}
+	for id, m := range displayMeta {
+		p := Registry[id]
+		if p == nil {
+			t.Errorf("displayMeta references unknown provider %q", id)
+			continue
+		}
+		if p.Color != m.color || p.Website != m.website || p.APIKeyURL != m.apiKeyURL {
+			t.Errorf("%s: metadata not applied: color=%q website=%q keyURL=%q", id, p.Color, p.Website, p.APIKeyURL)
+		}
+	}
+}
+
+// Providers that appear in the media registry without their own brand entry:
+// they are also chat providers, whose provider.ProviderInfo supplies the colour
+// (the panel merges both sources), or they have no brand asset at all.
+var mediaProvidersWithoutOwnBrand = map[string]bool{
+	"cartesia":    true,
+	"groq":        true,
+	"xai":         true,
+	"openai":      true,
+	"openrouter":  true,
+	"gemini":      true,
+	"antigravity": true,
+}
+
+// Every other media provider must carry its own colour, so a new one cannot
+// silently land as an initials-only card.
+func TestMediaProvidersDeclareBrandMetadata(t *testing.T) {
+	for id, p := range Registry {
+		if mediaProvidersWithoutOwnBrand[id] {
+			continue
+		}
+		if p.Color == "" {
+			t.Errorf("provider %q has no colour and is not in mediaProvidersWithoutOwnBrand", id)
+		}
+	}
+}
