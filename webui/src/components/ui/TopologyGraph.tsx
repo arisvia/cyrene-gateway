@@ -73,9 +73,21 @@ export function TopologyGraph(props: TopologyGraphProps): JSX.Element {
           // Mirror symmetry instead of a pinwheel. A constant lateral offset
           // makes every spoke lean the same way, so the ring reads as chiral and
           // slightly lopsided. Scaling by x/len carries the sign for free: spokes
-          // on the right curve right, their mirror images curve left, and the
-          // vertical ones get factor 0 and stay straight.
-          const sway = node.x / len
+          // on the right curve right, their mirror images curve left.
+          //
+          // A pure x/len weight leaves vertical spokes dead straight, which is
+          // exactly where the bend is most visible: the top and bottom spokes are
+          // the longest on screen, so a rigid line next to curved neighbours reads
+          // as a rendering fault. The weight keeps its sign but gains a floor, so
+          // every spoke curves by the same minimum amount. Vertical spokes have no
+          // inherent side, so they lean along a fixed diagonal instead of
+          // collapsing to zero.
+          const MIN_SWAY = 0.35
+          const raw = node.x / len
+          const sway = raw >= 0 ? Math.max(raw, MIN_SWAY) : Math.min(raw, -MIN_SWAY)
+          // For a vertical spoke the normal vector is horizontal (y/len = ±1),
+          // so (node.y/len)*sway is already non-zero there; the floor above is
+          // what keeps it from vanishing.
           const nx = (node.y / len) * sway
           const ny = (-node.x / len) * sway
           const c1x = Math.round(node.x / 3 - nx * bend)

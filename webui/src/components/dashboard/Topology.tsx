@@ -121,8 +121,14 @@ export function GatewayTopology(props: TopologyProps): JSX.Element {
     if (count === 0) return []
     // 规整放射布局：角度均匀分布，半径恒定（椭圆环适配宽扁容器）。
     // rx 随节点数自适应保证相邻卡片弦距，ry 压缩高度换取更大的缩放比例。
+    //
+    // ry 的压缩比原为 0.8。卡片高度远小于宽度，纵向辐条两端各只被卡片边缘遮住
+    // 约 30px，而横向与斜向辐条进入矩形卡片时遮掉更多，于是纵向辐条虽然几何距离
+    // 更短，可见段却最长（0.8 时实测 128px vs 横向 85px），看起来像被拉长。
+    // 0.65 时三者可见长度约 93/85/88px，差值落在无法分辨的范围内，同时比 0.62
+    // 保留更多纵向空间。
     const rx = count <= 1 ? 235 : Math.max(235, Math.min(340, 110 / Math.sin(Math.PI / count)))
-    const ry = Math.min(260, Math.round(rx * 0.8))
+    const ry = Math.min(260, Math.round(rx * 0.65))
 
     return grouped.map((g, i) => {
       const angle = (i / count) * 2 * Math.PI - Math.PI / 2

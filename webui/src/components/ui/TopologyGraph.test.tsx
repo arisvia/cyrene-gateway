@@ -63,12 +63,16 @@ describe('TopologyGraph', () => {
     expect(Math.sign(right)).toBe(-Math.sign(left))
   })
 
-  it('keeps a vertical spoke straight', () => {
+  it('curves a vertical spoke instead of leaving it rigid', () => {
+    // Vertical spokes are the longest on screen, so a perfectly straight line
+    // beside curved neighbours reads as a rendering fault rather than a choice.
     const nodes = [{ id: 'top', x: 0, y: -140, isActive: true, isHitting: false }]
     const view = render(() => <TopologyGraph nodes={nodes} hoveredNode={null} reducedMotion={false} />)
     const [first, second] = controlOffsets(firstPath(view.container), 0, -140)
-    expect(first).toBe(0)
-    expect(second).toBe(0)
+    expect(Math.abs(first)).toBeGreaterThan(0)
+    expect(Math.abs(second)).toBeGreaterThan(0)
+    // Still an S: the halves bend opposite ways, not into a single arc.
+    expect(Math.sign(first)).toBe(-Math.sign(second))
   })
 
   it('highlights inactive connections on hover without adding particles', () => {
