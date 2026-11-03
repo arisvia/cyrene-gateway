@@ -15,6 +15,7 @@ import {
   Modal,
   PageHeader,
   ProviderAvatar,
+  Hint,
   SegmentedControl,
   Select,
   TabTransition,
@@ -64,6 +65,33 @@ const Providers: Component = () => {
     apikey: t('providers.authTypes.apiKey'),
     oauth: t('providers.authTypes.oauth'),
   })
+
+  // cardHint composes the card's explanatory line for the tooltip. It states the
+  // facts a user actually needs before connecting — wire protocol, credential
+  // shape, capability scope — instead of restating the badge text, which would
+  // just move the same characters somewhere less discoverable.
+  const cardHint = (reg: RegistryProvider): string => {
+    const parts: string[] = []
+    const apiType = reg.apiType || 'openai'
+    const protocol: Record<string, string> = {
+      openai: t('providers.hintProtocolOpenAI'),
+      anthropic: t('providers.hintProtocolAnthropic'),
+      gemini: t('providers.hintProtocolGemini'),
+      responses: t('providers.hintProtocolResponses'),
+    }
+    parts.push(protocol[apiType] || apiType)
+
+    const auth = reg.authType === 'oauth' ? t('providers.hintAuthOAuth') : t('providers.hintAuthKey')
+    parts.push(auth)
+
+    const caps = (reg.capabilities && reg.capabilities.length ? reg.capabilities : ['llm'])
+      .map(k => getCapConfig(k).label)
+      .join(' / ')
+    parts.push(t('providers.hintCapabilities', { caps }))
+
+    if (reg.authHint) parts.push(reg.authHint)
+    return parts.join(' · ')
+  }
 
   const getCapConfig = (capKey: string) => {
     // 8 项能力各用不同色相，避免同页出现重复色标识
@@ -775,8 +803,9 @@ const Providers: Component = () => {
                           size="md"
                         />
                         <div class="min-w-0">
-                          <div class="font-semibold text-sm text-foreground wrap-anywhere">
-                            {group.name}
+                          <div class="font-semibold text-sm text-foreground wrap-anywhere flex items-center gap-1.5">
+                            <span class="wrap-anywhere">{group.name}</span>
+                            <Hint text={cardHint(reg())} />
                           </div>
                           <div class="text-xs text-faint font-mono truncate">{reg().id}</div>
                         </div>
@@ -841,12 +870,6 @@ const Providers: Component = () => {
                           )
                         }}
                       </For>
-                    </div>
-                    {/* 说明提示：固定最小高度保证网格卡片严格等高 */}
-                    <div class="mt-2 min-h-5 flex items-center">
-                      <Show when={reg().authHint} fallback={<span class="text-[11px] text-faint/60">{t('providers.officialStandardApi')}</span>}>
-                        <span class="text-[11px] text-muted italic line-clamp-1">{reg().authHint}</span>
-                      </Show>
                     </div>
                   </div>
 
