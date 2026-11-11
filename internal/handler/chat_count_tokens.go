@@ -50,35 +50,41 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If the model belongs to an active official Anthropic connection, attempt upstream counting
-	if modelInfo, err := provider.ResolveModel(modelStr, s.DB); err == nil && (modelInfo.Provider == "anthropic" || modelInfo.Provider == "claude") {
-		if conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider); err == nil && len(conns) > 0 {
-			if conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, ""); conn != nil {
-				providerInfo, _ := provider.GetProvider(modelInfo.Provider)
-				baseURL := providerInfo.BaseURL
-				if conn.Data.BaseURL != "" {
-					baseURL = conn.Data.BaseURL
-				}
-				targetURL := strings.TrimRight(baseURL, "/") + "/v1/messages/count_tokens"
-				allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
-				if _, err := provider.ValidateUpstreamURL(targetURL, allowPrivate); err == nil {
-					if upReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes)); err == nil {
-						transport := provider.ResolveTransport(providerInfo, baseURL, providerInfo.APIType, conn)
-						provider.ApplyAuth(upReq, transport, provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
-						upReq.Header.Set("Content-Type", "application/json")
-						if anthVer := r.Header.Get("anthropic-version"); anthVer != "" {
-							upReq.Header.Set("anthropic-version", anthVer)
-						} else {
-							upReq.Header.Set("anthropic-version", provider.AnthropicAPIVersion)
-						}
+	if modelInfo, err := provider.ResolveModel(modelStr, s.DB); err == nil {
+		if provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelStr)})
+			return
+		}
+		if modelInfo.Provider == "anthropic" || modelInfo.Provider == "claude" {
+			if conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider); err == nil && len(conns) > 0 {
+				if conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, ""); conn != nil {
+					providerInfo, _ := provider.GetProvider(modelInfo.Provider)
+					baseURL := providerInfo.BaseURL
+					if conn.Data.BaseURL != "" {
+						baseURL = conn.Data.BaseURL
+					}
+					targetURL := strings.TrimRight(baseURL, "/") + "/v1/messages/count_tokens"
+					allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
+					if _, err := provider.ValidateUpstreamURL(targetURL, allowPrivate); err == nil {
+						if upReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes)); err == nil {
+							transport := provider.ResolveTransport(providerInfo, baseURL, providerInfo.APIType, conn)
+							provider.ApplyAuth(upReq, transport, provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
+							upReq.Header.Set("Content-Type", "application/json")
+							if anthVer := r.Header.Get("anthropic-version"); anthVer != "" {
+								upReq.Header.Set("anthropic-version", anthVer)
+							} else {
+								upReq.Header.Set("anthropic-version", provider.AnthropicAPIVersion)
+							}
 
-						client := s.getHTTPClient(10 * time.Second)
-						if resp, err := client.Do(upReq); err == nil {
-							defer resp.Body.Close()
-							if resp.StatusCode == http.StatusOK {
-								w.Header().Set("Content-Type", "application/json")
-								w.WriteHeader(http.StatusOK)
-								io.Copy(w, resp.Body)
-								return
+							client := s.getHTTPClient(10 * time.Second)
+							if resp, err := client.Do(upReq); err == nil {
+								defer resp.Body.Close()
+								if resp.StatusCode == http.StatusOK {
+									w.Header().Set("Content-Type", "application/json")
+									w.WriteHeader(http.StatusOK)
+									io.Copy(w, resp.Body)
+									return
+								}
 							}
 						}
 					}

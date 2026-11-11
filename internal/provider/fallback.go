@@ -91,9 +91,10 @@ var ErrorRules = []ErrorRule{
 
 // FallbackResult is the outcome of error classification.
 type FallbackResult struct {
-	ShouldFallback  bool
-	Cooldown        time.Duration
-	NewBackoffLevel int
+	ShouldFallback    bool
+	IsModelSaturation bool
+	Cooldown          time.Duration
+	NewBackoffLevel   int
 }
 
 // GetQuotaCooldown calculates exponential backoff cooldown.
@@ -113,6 +114,17 @@ func GetQuotaCooldown(backoffLevel int) time.Duration {
 // CheckFallbackError classifies an upstream error and determines cooldown.
 func CheckFallbackError(status int, errorText string, backoffLevel int) FallbackResult {
 	lowerErr := strings.ToLower(errorText)
+
+	// Model-level saturation (e.g. CodeBuddy 14003 "Model busy. Please switch models or retry later")
+	// Upstream model pool is overloaded, not an individual account quota issue.
+	if strings.Contains(lowerErr, "14003") || strings.Contains(lowerErr, "model busy") {
+		return FallbackResult{
+			ShouldFallback:    true,
+			IsModelSaturation: true,
+			Cooldown:          15 * time.Second,
+			NewBackoffLevel:   1,
+		}
+	}
 
 	// 1. Text-based rules take precedence (e.g. rate limit, quota exceeded on any status code)
 	for _, rule := range ErrorRules {

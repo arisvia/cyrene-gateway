@@ -168,14 +168,6 @@ func IsModelDisabled(modelStr string, database *db.DB) bool {
 		if _, ok := disabled[bare]; ok {
 			return true
 		}
-	} else {
-		// If modelStr is bare, check if any "*/bare" entry is disabled
-		suffix := "/" + modelStr
-		for k := range disabled {
-			if strings.HasSuffix(k, suffix) {
-				return true
-			}
-		}
 	}
 	return false
 }

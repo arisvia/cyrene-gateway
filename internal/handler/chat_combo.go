@@ -241,7 +241,16 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			// on the SAME model; request-scoped 4xx repeat everywhere, so advance
 			// to the next model (9router#5057 parity) — or surface them on the wire
 			// when this already was the final model.
-			if !provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel).ShouldFallback {
+			fbRes := provider.CheckFallbackError(resp.StatusCode, string(errBody), conn.Data.BackoffLevel)
+			if fbRes.IsModelSaturation {
+				slog.Warn("Combo model upstream saturated, skipping account loop to next model",
+					slog.String("model", modelStr),
+					slog.Int("status", resp.StatusCode),
+				)
+				s.Combos.RecordModelFailure(modelStr)
+				break accountLoop
+			}
+			if !fbRes.ShouldFallback {
 				if i == len(models)-1 {
 					s.Combos.RecordModelFailure(modelStr)
 					s.recordComboFailure(r, combo.Name, resp.StatusCode, string(errBody), start, extractPromptSummary(req.Messages))

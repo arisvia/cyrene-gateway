@@ -327,7 +327,10 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
 		return
 	}
-
+	if provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", req.Model)})
+		return
+	}
 	// Get provider info
 	providerInfo, ok := provider.GetProvider(modelInfo.Provider)
 	if !ok {
@@ -398,6 +401,14 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 		lastStatus, lastBody, lastProvider = status, body, conn.Provider
 		if pinned != nil {
 			// Pinned: nothing to fail over to, the error surfaces below.
+			break
+		}
+		if provider.CheckFallbackError(status, string(body), conn.Data.BackoffLevel).IsModelSaturation {
+			slog.Warn("Upstream model saturated across accounts, stopping failover loop",
+				slog.String("provider", modelInfo.Provider),
+				slog.String("model", modelInfo.Model),
+				slog.Int("status", status),
+			)
 			break
 		}
 		slog.Warn("Account unavailable, failing over to the next one",

@@ -20,13 +20,18 @@ func TestIsModelDisabledMatchesBareAndPrefixedForms(t *testing.T) {
 	if err := database.KVSet(model.KVScopeDisabledModels, "openai/gpt-4o", "true"); err != nil {
 		t.Fatalf("seed disabled model: %v", err)
 	}
+	if err := database.KVSet(model.KVScopeDisabledModels, "global-disabled", "true"); err != nil {
+		t.Fatalf("seed disabled model: %v", err)
+	}
 
 	cases := []struct {
 		modelStr string
 		want     bool
 	}{
 		{"openai/gpt-4o", true},
-		{"gpt-4o", true},
+		{"azure/gpt-4o", false}, // disabling openai/gpt-4o must not disable azure/gpt-4o
+		{"global-disabled", true},
+		{"other/global-disabled", true}, // globally disabled bare model disabled under any provider
 		{"openai/gpt-4o-mini", false},
 		{"gpt-4o-mini", false},
 	}

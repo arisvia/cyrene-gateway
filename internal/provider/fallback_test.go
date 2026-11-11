@@ -58,6 +58,17 @@ func TestCheckFallbackError(t *testing.T) {
 		t.Errorf("expected CooldownLong for 403, got %v", result.Cooldown)
 	}
 
+	// Model-level saturation (e.g. CodeBuddy 14003)
+	satResult := CheckFallbackError(429, `{"code":14003,"msg":"Model busy. Please switch models or retry later"}`, 0)
+	if !satResult.ShouldFallback {
+		t.Error("expected ShouldFallback=true for model saturation")
+	}
+	if !satResult.IsModelSaturation {
+		t.Error("expected IsModelSaturation=true for 14003")
+	}
+	if satResult.Cooldown != 15*time.Second {
+		t.Errorf("expected 15s cooldown for model saturation, got %v", satResult.Cooldown)
+	}
 	// Status-based: 404 → deterministic non-fallback (does not bench connection)
 	result = CheckFallbackError(404, "model unavailable", 0)
 	if result.ShouldFallback {

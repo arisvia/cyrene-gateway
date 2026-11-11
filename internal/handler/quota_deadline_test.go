@@ -26,8 +26,8 @@ func TestPersistQuotaDeadlineWritesThrough(t *testing.T) {
 	}
 
 	res := usage.QuotaResult{Quotas: map[string]usage.Quota{
-		"soon":  {Used: 10, Total: 100, Remaining: 90, ResetAt: "2026-11-07T08:00:00Z"},
-		"later": {Used: 0, Total: 100, Remaining: 100, ResetAt: "2026-12-01T00:00:00Z"},
+		"soon":  {Used: 10, Total: 100, Remaining: 90, ResetAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)},
+		"later": {Used: 0, Total: 100, Remaining: 100, ResetAt: time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)},
 	}}
 	srv.persistQuotaDeadline(&conn, res)
 
@@ -36,8 +36,9 @@ func TestPersistQuotaDeadlineWritesThrough(t *testing.T) {
 		t.Fatalf("reload connection: %v", err)
 	}
 	got, _ := stored.Data.ProviderSpecificData["quotaDeadline"].(string)
-	if got != "2026-11-07T08:00:00Z" {
-		t.Fatalf("stored deadline = %q, want the soonest bucket", got)
+	want := res.Quotas["soon"].ResetAt
+	if got != want {
+		t.Fatalf("stored deadline = %q, want %q", got, want)
 	}
 }
 

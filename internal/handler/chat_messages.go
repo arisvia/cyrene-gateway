@@ -209,6 +209,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		lastStatus, lastBody = status, body
+		if provider.CheckFallbackError(status, string(body), cur.Data.BackoffLevel).IsModelSaturation {
+			slog.Warn("Upstream model saturated across accounts, stopping failover loop",
+				slog.String("provider", modelInfo.Provider),
+				slog.String("model", modelInfo.Model),
+				slog.Int("status", status),
+			)
+			break
+		}
 		slog.Warn("Messages account unavailable, failing over to the next one",
 			slog.String("provider", modelInfo.Provider),
 			slog.String("model", modelInfo.Model),
