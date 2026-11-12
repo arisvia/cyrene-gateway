@@ -238,6 +238,8 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("GET /api/quota", s.handleQuota)
 	// Per-connection real usage/quota from provider APIs (Phase 31)
 	s.Router.HandleFunc("GET /api/usage/connection/{id}", s.handleConnectionUsage)
+	// One-click daily check-in / campaign credits per connection account
+	s.Router.HandleFunc("POST /api/usage/connection/{id}/campaigns/claim", s.handleConnectionCampaignClaim)
 
 	s.Router.HandleFunc("GET /api/endpoints", s.Endpoints.HandleEndpoints)
 }

@@ -1,7 +1,7 @@
 import { type Component, For, Show, Switch, Match, createSignal, createResource, createEffect, onMount, onCleanup } from 'solid-js'
 import { A, useParams, useNavigate } from '@solidjs/router'
 import { useGatewayStore } from '@/stores/gateway'
-import { api } from '@/lib/api'
+import { api, apiPost } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { keyPlaceholder } from '@/lib/credentialHint'
 import { useOAuthFlow } from '@/lib/oauthFlow'
@@ -12,7 +12,15 @@ import ModelMetaModal from '@/components/provider/ModelMetaModal'
 import OAuthFlowModal from '@/components/provider/OAuthFlowModal'
 import { useI18n } from '@/i18n'
 import type { Provider } from '@/types/domain'
-import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, confirm, TabTransition } from '@/components/ui'
+import { Card, Badge, AuthBadge, Button, IconButton, Input, Textarea, Toggle, Field, Empty, Skeleton, Select, Modal, Alert, PageHeader, SegmentedControl, ProviderAvatar, IconBulb, IconCheck, IconClose, IconGift, confirm, TabTransition } from '@/components/ui'
+
+interface ClaimOutcome {
+  supported: boolean
+  outcome: string
+  amount?: number
+  count?: number
+  message?: string
+}
 
 const ProviderDetail: Component = () => {
   const params = useParams<{ id: string }>()
@@ -116,6 +124,34 @@ const ProviderDetail: Component = () => {
       .sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50))
   }
   const allAccountsActive = () => accounts().length === 0 ? (conn()?.isActive ?? false) : accounts().every(a => a.isActive)
+
+  // ── 每日签到 / 活动 Credits 一键领取 ──
+  const [claimingId, setClaimingId] = createSignal('')
+  async function claimAccountCampaigns(acc: Provider) {
+    setClaimingId(acc.id)
+    try {
+      const res = await apiPost<ClaimOutcome>(`/api/usage/connection/${acc.id}/campaigns/claim`)
+      switch (res.outcome) {
+        case 'claimed':
+          toast.success(res.amount
+            ? t('providerDetail.campaignClaimed', { count: res.count ?? 1, amount: res.amount })
+            : t('providerDetail.campaignClaimedPlain', { count: res.count ?? 1 }))
+          break
+        case 'already':
+          toast.info(t('providerDetail.campaignAlready'))
+          break
+        case 'none':
+          toast.info(t('providerDetail.campaignNone'))
+          break
+        default:
+          toast.error(res.message || t('providerDetail.campaignFailed'))
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : t('providerDetail.campaignFailed'))
+    } finally {
+      setClaimingId('')
+    }
+  }
 
   const providerDisplayName = () => regInfo()?.name || conn()?.provider || t('providerDetail.details')
 
@@ -569,6 +605,19 @@ const ProviderDetail: Component = () => {
                                 </div>
 
                                 <div class="flex items-center gap-1.5 shrink-0">
+                                  <Show when={regInfo()?.campaignKind}>
+                                    <IconButton size="sm" variant="ghost"
+                                      type="button"
+                                      class={`text-muted hover:text-accent ${claimingId() === acc.id ? 'animate-pulse' : ''}`}
+                                      title={t('providerDetail.campaignClaimTitle')}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        claimAccountCampaigns(acc)
+                                      }}
+                                    >
+                                      <IconGift size={12} />
+                                    </IconButton>
+                                  </Show>
                                   <Toggle
                                     ariaLabel={`${t('common.enabled')}: ${getAccountDisplayName(acc, idx())}`}
                                     checked={acc.isActive}

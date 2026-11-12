@@ -33,6 +33,7 @@ export interface RegistryProvider {
   authHint?: string
   color?: string
   capabilities?: string[]
+  campaignKind?: string
 }
 
 export interface RegistryCategory {

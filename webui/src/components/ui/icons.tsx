@@ -614,3 +614,16 @@ export const IconRotateCcw: Component<IconProps> = props => {
     </svg>
   )
 }
+
+// 礼盒/每日签到领取 (Gift)
+export const IconGift: Component<IconProps> = props => {
+  const [local, others] = splitProps(props, ['size', 'class'])
+  return (
+    <svg {...baseAttrs(local)} class={local.class} {...others}>
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+      <path d="M16 5.2V15a2 2 0 0 0 2 2 2 2 0 0 1 2 2v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2 2 2 0 0 0 2-2V5.2" />
+      <path d="M12 15V7" />
+      <path d="M12 7a3 3 0 1 0-3-3h3Zm0 0a3 3 0 1 1 3-3h-3Z" />
+    </svg>
+  )
+}

@@ -148,6 +148,7 @@ func init() {
 		ForceStream:    true,
 		ThinkingFormat: "openai",
 		ModelsURL:      "https://copilot.tencent.com/v3/config",
+		CampaignKind:   "codebuddy",
 	}
 	Registry["codebuddy"] = ProviderInfo{
 		ID: "codebuddy", Name: "CodeBuddy (Intl)",
@@ -174,6 +175,7 @@ func init() {
 		ForceStream:    true,
 		ThinkingFormat: "openai",
 		ModelsURL:      "https://www.codebuddy.ai/v3/config",
+		CampaignKind:   "codebuddy",
 	}
 	Registry["cline"] = ProviderInfo{
 		ID: "cline", Name: "Cline",
@@ -627,6 +629,7 @@ func init() {
 		AuthHint:      "Personal Access Token (pt-...) from https://qoder.com/account/integrations",
 		DeviceCodeURL: "https://openapi.qoder.sh/api/v1/deviceToken/poll",
 		LoginURL:      "https://qoder.com/device/selectAccounts",
+		CampaignKind:  "qoder",
 	}
 	Registry["qoder-cn"] = ProviderInfo{
 		ID: "qoder-cn", Name: "Qoder (CN)",
@@ -642,6 +645,7 @@ func init() {
 		AuthHint:      "Personal Access Token (pt-...) from https://qoder.com.cn/account/integrations",
 		DeviceCodeURL: "https://openapi.qoder.com.cn/api/v1/deviceToken/poll",
 		LoginURL:      "https://qoder.com.cn/device/selectAccounts",
+		CampaignKind:  "qoder",
 	}
 	Registry["tencent"] = ProviderInfo{
 		ID: "tencent", Name: "Tencent Hunyuan",
