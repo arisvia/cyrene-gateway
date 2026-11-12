@@ -165,23 +165,41 @@ func TestMergeMetadata(t *testing.T) {
 	}
 }
 
-func TestNormalizeOpenAICompat(t *testing.T) {
+func TestNormalizeModelsEnrichesFromModelsDev(t *testing.T) {
 	seedModelsDev(t, map[string]ModelsDevEntry{
-		"gpt-5.4": {Name: "GPT-5.4", Family: "gpt-5", Context: 256000, Output: 32768},
+		"gpt-5.4":        {Name: "GPT-5.4", Family: "gpt-5", Context: 256000, Output: 32768},
+		"gemini-2.5-pro": {Name: "Gemini 2.5 Pro", Family: "gemini", Context: 1048576, Output: 65536},
 	})
+
+	// OpenAI-compat path: the raw /v1/models payload carries no specs; the
+	// normalizeModels chokepoint fills them from models.dev.
 	body := []byte(`{"data":[{"id":"gpt-5.4","object":"model","owned_by":"openai"},{"id":"custom-model","object":"model","owned_by":"user"}]}`)
-	models, err := normalizeOpenAICompat(body)
+	models, err := normalizeModels("openai", body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(models) != 2 {
 		t.Fatalf("expected 2 models, got %d", len(models))
 	}
-	if models[0].DisplayName != "GPT-5.4" {
-		t.Errorf("expected enriched display name, got %q", models[0].DisplayName)
+	if models[0].DisplayName != "GPT-5.4" || models[0].ContextLength != 256000 {
+		t.Errorf("expected gpt-5.4 enriched from models.dev, got %+v", models[0])
 	}
 	if models[1].ID != "custom-model" {
-		t.Errorf("expected custom-model, got %q", models[1].ID)
+		t.Errorf("expected custom-model id, got %q", models[1].ID)
+	}
+
+	// Google path used to have NO catalog fallback: a gemini model whose upstream
+	// omitted inputTokenLimit/outputTokenLimit must now still get specs via models.dev.
+	googleBody := []byte(`{"models":[{"name":"models/gemini-2.5-pro","displayName":"Gemini 2.5 Pro","supportedGenerationMethods":["generateContent"]}]}`)
+	gmodels, err := normalizeModels("gemini", googleBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gmodels) != 1 {
+		t.Fatalf("expected 1 gemini model, got %d", len(gmodels))
+	}
+	if gmodels[0].ContextLength != 1048576 || gmodels[0].MaxOutput != 65536 {
+		t.Errorf("expected gemini specs backfilled from models.dev, got %+v", gmodels[0])
 	}
 }
 

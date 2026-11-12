@@ -121,22 +121,34 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 	return normalizeModels(providerID, body)
 }
 
-// normalizeModels dispatches to provider-specific normalizers.
+// normalizeModels dispatches to provider-specific normalizers and then runs a
+// single enrichment chokepoint so every provider is covered uniformly.
 func normalizeModels(providerID string, body []byte) ([]ModelMetadata, error) {
+	var models []ModelMetadata
+	var err error
 	switch {
 	case providerID == "openrouter", providerID == "cline", providerID == "kilocode":
-		return normalizeOpenRouter(body)
+		models, err = normalizeOpenRouter(body)
 	case providerID == "anthropic" || providerID == "claude":
-		return normalizeAnthropic(body)
+		models, err = normalizeAnthropic(body)
 	case strings.HasPrefix(providerID, "gemini") || providerID == "vertex":
-		return normalizeGoogle(body)
+		models, err = normalizeGoogle(body)
 	case providerID == "mistral":
-		return normalizeMistral(body)
+		models, err = normalizeMistral(body)
 	case strings.HasPrefix(providerID, "codebuddy"):
-		return normalizeCodebuddy(body)
+		models, err = normalizeCodebuddy(body)
 	default:
-		return normalizeOpenAICompat(body)
+		models, err = normalizeOpenAICompat(body)
 	}
+	if err != nil {
+		return models, err
+	}
+	// Single enrichment pass: any spec the upstream provider did not send is
+	// resolved from models.dev (by id or display name). Upstream-provided values
+	// are never overwritten; whatever models.dev also lacks stays blank for the
+	// operator to fill in manually. There is no curated static table anymore.
+	EnrichModelsFromCatalog(models)
+	return models, nil
 }
 
 // normalizeOpenAICompat handles the standard OpenAI /v1/models response format.
@@ -207,27 +219,8 @@ func normalizeOpenAICompat(body []byte) ([]ModelMetadata, error) {
 			meta.Family = m.Capabilities.Family
 		}
 
-		// 2. Enrich missing fields from static catalog
-		if cat := LookupCatalog(m.ID); cat != nil {
-			if meta.DisplayName == "" {
-				meta.DisplayName = cat.DisplayName
-			}
-			if meta.ContextLength == 0 {
-				meta.ContextLength = cat.ContextLength
-			}
-			if meta.MaxOutput == 0 {
-				meta.MaxOutput = cat.MaxOutput
-			}
-			if len(meta.Capabilities) == 0 {
-				meta.Capabilities = cat.Capabilities
-			}
-			if len(meta.Modalities) == 0 {
-				meta.Modalities = cat.Modalities
-			}
-			if meta.Family == "" {
-				meta.Family = cat.Family
-			}
-		}
+		// Missing specs are filled by the models.dev enrichment chokepoint in
+		// normalizeModels (by id and display name) — never hardcoded here.
 		models = append(models, meta)
 	}
 	return models, nil
@@ -461,17 +454,8 @@ func normalizeAnthropic(body []byte) ([]ModelMetadata, error) {
 			ID:          m.ID,
 			DisplayName: m.DisplayName,
 		}
-		// Enrich from catalog
-		if cat := LookupCatalog(m.ID); cat != nil {
-			if meta.DisplayName == "" {
-				meta.DisplayName = cat.DisplayName
-			}
-			meta.ContextLength = cat.ContextLength
-			meta.MaxOutput = cat.MaxOutput
-			meta.Capabilities = cat.Capabilities
-			meta.Modalities = cat.Modalities
-			meta.Family = cat.Family
-		}
+		// Anthropic /v1/models ships only id + display_name; specs are filled by the
+		// models.dev enrichment chokepoint in normalizeModels.
 		models = append(models, meta)
 	}
 	return models, nil
@@ -576,20 +560,17 @@ func normalizeMistral(body []byte) ([]ModelMetadata, error) {
 			meta.Capabilities = []string{"chat"}
 		}
 
-		// Enrich display name from catalog
-		if cat := LookupCatalog(m.ID); cat != nil {
-			meta.DisplayName = cat.DisplayName
-		}
-
+		// Display name and remaining specs come from the models.dev enrichment
+		// chokepoint in normalizeModels (Mistral upstream has no name field).
 		models = append(models, meta)
 	}
 	return models, nil
 }
 
 // MergeMetadata implements the three-layer merge:
-// user override > live cache > static catalog > ID inference.
+// user override > live cache > models.dev catalog > ID inference.
 func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMetadata) ModelMetadata {
-	// Start with static catalog
+	// Start with the models.dev catalog resolution
 	result := ModelMetadata{ID: modelID}
 	if cat := LookupCatalog(modelID); cat != nil {
 		result = *cat
