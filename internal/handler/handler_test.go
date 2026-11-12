@@ -678,6 +678,63 @@ func TestSetDisabledModelsAPI(t *testing.T) {
 	}
 }
 
+func TestDeleteLastConnectionPurgesDisabledModels(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	mkConn := func(id, provider string) {
+		if err := database.CreateConnection(&model.ProviderConnection{
+			ID:       id,
+			Provider: provider,
+			AuthType: "api-key",
+			IsActive: true,
+			Data:     model.ConnectionData{APIKey: "sk-test"},
+		}); err != nil {
+			t.Fatalf("seed connection %s: %v", id, err)
+		}
+	}
+	mkConn("qoder-a", "qoder")
+	mkConn("qoder-b", "qoder")
+	mkConn("openai-1", "openai")
+	for _, key := range []string{"qoder/model-x", "qoder/model-y", "openai/gpt-4o", "global-off"} {
+		if err := database.KVSet(model.KVScopeDisabledModels, key, "true"); err != nil {
+			t.Fatalf("seed disabled %s: %v", key, err)
+		}
+	}
+
+	deleteConn := func(id string) {
+		req := newLocalRequest("DELETE", "/api/providers/"+id, nil)
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("delete %s: expected 200, got %d: %s", id, w.Code, w.Body.String())
+		}
+	}
+
+	// A sibling connection remains: disables must survive.
+	deleteConn("qoder-a")
+	list, _ := database.KVList(model.KVScopeDisabledModels)
+	if list["qoder/model-x"] != "true" || list["qoder/model-y"] != "true" {
+		t.Fatalf("qoder disables should persist while another qoder connection exists, got %+v", list)
+	}
+
+	// Last qoder connection gone: its provider-scoped flags are stale.
+	deleteConn("qoder-b")
+	list, _ = database.KVList(model.KVScopeDisabledModels)
+	if _, ok := list["qoder/model-x"]; ok {
+		t.Fatalf("qoder/model-x should be purged after last qoder connection deleted")
+	}
+	if _, ok := list["qoder/model-y"]; ok {
+		t.Fatalf("qoder/model-y should be purged after last qoder connection deleted")
+	}
+	// Other providers and bare global disables are untouched.
+	if list["openai/gpt-4o"] != "true" {
+		t.Fatalf("openai/gpt-4o disable must not be purged, got %+v", list)
+	}
+	if list["global-off"] != "true" {
+		t.Fatalf("bare global disable must not be purged, got %+v", list)
+	}
+}
+
 func TestOpenCodeHeadersInjection(t *testing.T) {
 	var capturedHeaders http.Header
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

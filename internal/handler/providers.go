@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -204,11 +205,45 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	conn, _ := s.DB.GetConnection(id)
 	if err := s.DB.DeleteConnection(id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete connection"})
 		return
 	}
+	if conn != nil {
+		s.purgeDisabledModelsIfUnused(conn.Provider)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})
+}
+
+// purgeDisabledModelsIfUnused drops provider-scoped disabled-model flags once
+// no connection of that provider remains. Disable marks are keyed by
+// provider/model and were aimed at the accounts being removed (e.g. a
+// quota-exhausted one); a freshly added connection of the same provider must
+// not silently inherit their 403s. Bare-name global disables and other
+// providers' entries are untouched.
+func (s *Server) purgeDisabledModelsIfUnused(providerID string) {
+	conns, err := s.DB.ListConnections()
+	if err != nil {
+		return
+	}
+	for _, c := range conns {
+		if c.Provider == providerID {
+			return
+		}
+	}
+	disabled, err := s.DB.KVList(model.KVScopeDisabledModels)
+	if err != nil || len(disabled) == 0 {
+		return
+	}
+	prefix := providerID + "/"
+	var stale []string
+	for key := range disabled {
+		if strings.HasPrefix(key, prefix) {
+			stale = append(stale, key)
+		}
+	}
+	_ = s.DB.KVBatchDelete(model.KVScopeDisabledModels, stale)
 }
 
 func (s *Server) handleResetProviderStatus(w http.ResponseWriter, r *http.Request) {
