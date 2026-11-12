@@ -2,6 +2,18 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.10.2] - 2026-11-12
+
+### Added
+- **每日额度领取（Campaign）**：Qoder 与 CodeBuddy/WorkBuddy 每个账号的每日赠送额度（Qoder 100 credits、CodeBuddy 加油站签到）现可在 Provider 详情页按账号一键领取，网关复用上游客户端自身的活动接口并做幂等处理，重复领取回报「已领取」而非报错；国际版 Qoder 为账号级投放（Teams/Enterprise 席位账号不在活动范围），CodeBuddy 国际版签到接口已就绪但上游尚未对免费个人账号开放。
+
+### Changed
+- **模型元数据补齐收敛为单层**：删除内置静态模型表，缺失的上下文/最大输出/能力等字段统一在写入模型缓存时用 models.dev 补齐一次，详情页与 `/v1/models` 均直读该缓存；此前 Gemini/Vertex、Qoder、Antigravity 等上游不下发规格的模型在面板显示为空的问题随之修复，两处显示口径保持一致。
+
+### Fixed
+- **删除连接后残留禁用标记**：删除某 Provider 的最后一条连接时连带清除其 `provider/*` 作用域的禁用模型标记，避免新建同 Provider 连接继承上一账号的静默 403；裸名全局禁用与其他 Provider 的标记不受影响。
+- **CodeBuddy 国际版模型同步 502**：模型目录仅在 CLI 身份下下发，改用 CLI 指纹抓取 `/v3/config` 后同步恢复（国际版取回 26 个模型），聊天链路仍保持 IDE 身份不变。
+
 ## [1.10.1] - 2026-11-11
 
 ### Fixed
