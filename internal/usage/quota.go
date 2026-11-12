@@ -44,9 +44,6 @@ type QuotaCredentials struct {
 	AccessToken  string
 	ProjectID    string
 	Organization string
-	// MachineID is the per-connection device fingerprint (Qoder COSY machine
-	// id). Campaign endpoints gate daily grants on it.
-	MachineID string
 	// BaseURL optionally overrides the provider's upstream host. Used by tests
 	// to point fetchers at a mock server; empty means the real endpoint.
 	BaseURL string

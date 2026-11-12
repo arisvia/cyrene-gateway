@@ -35,9 +35,6 @@ func (s *Server) handleConnectionCampaignClaim(w http.ResponseWriter, r *http.Re
 		AccessToken: conn.Data.AccessToken,
 		BaseURL:     conn.Data.BaseURL,
 	}
-	if conn.Data.ProviderSpecificData != nil {
-		creds.MachineID, _ = conn.Data.ProviderSpecificData["machineId"].(string)
-	}
 
 	writeJSON(w, http.StatusOK, usage.ClaimCampaigns(r.Context(), s.getHTTPClient(20*time.Second), creds))
 }

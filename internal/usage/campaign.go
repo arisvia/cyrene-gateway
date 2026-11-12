@@ -133,21 +133,19 @@ func qoderCampaignURL(c QuotaCredentials, campaignID string) string {
 }
 
 // qoderCampaignHeaders replicates the claim-capable client identity: the
-// campaigns list is served empty without Cosy-ClientType=10, and the daily
-// grant is gated on the account's registered device identity. The machine
-// fields mirror the values the gateway already signs inference calls with,
-// so the claim looks like the same install rather than a second device.
-func qoderCampaignHeaders(token, machineID string) map[string]string {
+// campaigns list comes back empty without Cosy-ClientType=10.
+//
+// Deliberately NO Cosy-Machine* headers: the daily grant is gated on a real
+// UMID device fingerprint issued by the desktop client, and a live probe on
+// qoder-cn showed a fabricated machine id (our device-flow UUID) makes the
+// risk filter drop the CLAIM_BENEFIT campaign entirely, while the request
+// without device headers receives it reliably. We are the second "device"
+// for the account either way, so the honest anonymous form wins.
+func qoderCampaignHeaders(token string) map[string]string {
 	h := bearer(token)
 	h["User-Agent"] = provider.QoderCLIUserAgent
 	h[provider.QoderCosyVersionHeader] = provider.QoderIDEVersion
 	h["Cosy-ClientType"] = "10"
-	if machineID != "" {
-		h["Cosy-MachineId"] = machineID
-		h["Cosy-MachineToken"] = machineID
-		h["Cosy-MachineType"] = "5"
-		h["Cosy-MachineOS"] = "x86_64_windows"
-	}
 	return h
 }
 
@@ -178,7 +176,7 @@ func qoderCampaignState(ctx context.Context, client *http.Client, c QuotaCredent
 	if err != nil {
 		return nil, "Qoder campaign request failed: " + err.Error()
 	}
-	status, data, _, err := getJSON(ctx, client, qoderCampaignURL(c, ""), qoderCampaignHeaders(token, c.MachineID))
+	status, data, _, err := getJSON(ctx, client, qoderCampaignURL(c, ""), qoderCampaignHeaders(token))
 	if err != nil {
 		return nil, "Qoder campaign fetch error: " + err.Error()
 	}
@@ -229,6 +227,15 @@ func qoderCampaignState(ctx context.Context, client *http.Client, c QuotaCredent
 	return out, ""
 }
 
+// qoderGrantAmount digs benefit.amount out of a claim receipt (top-level or
+// data-wrapped).
+func qoderGrantAmount(inner map[string]any) float64 {
+	if benefit, ok := orMap(inner, "benefit"); ok {
+		return num(benefit["amount"])
+	}
+	return 0
+}
+
 func claimQoderCampaigns(ctx context.Context, client *http.Client, c QuotaCredentials) ClaimSummary {
 	campaigns, fail := qoderCampaignState(ctx, client, c)
 	if fail != "" {
@@ -254,10 +261,15 @@ func claimQoderCampaigns(ctx context.Context, client *http.Client, c QuotaCreden
 	if err != nil {
 		return ClaimSummary{Supported: true, Outcome: ClaimOutcomeError, Message: err.Error()}
 	}
-	headers := qoderCampaignHeaders(token, c.MachineID)
+	headers := qoderCampaignHeaders(token)
 
 	summary := ClaimSummary{Supported: true}
 	var errs []string
+	// Live qoder-cn probe: a fresh claim answers 200 with an empty body, while
+	// a replayed one returns a bare receipt at top level; the community-captured
+	// shape wraps the receipt in "data". All three must land as claimed, so
+	// receipts without an explicit status are re-confirmed against the list.
+	var verify []Campaign
 	for _, cp := range claimable {
 		status, data, _, err := postJSON(ctx, client, qoderCampaignURL(c, cp.ID), headers, []byte("{}"))
 		if err != nil {
@@ -268,23 +280,46 @@ func claimQoderCampaigns(ctx context.Context, client *http.Client, c QuotaCreden
 		if inner == nil {
 			inner = data
 		}
-		// Upstream answers {status:"CLAIMED", replayed:bool}; replayed=true means
-		// an earlier claim already landed — treat it as success, not a miss.
-		if status == http.StatusOK && strAny(inner["status"]) == "CLAIMED" {
+		if status != http.StatusOK {
+			msg := strAny(inner["message"])
+			if msg == "" {
+				msg = fmt.Sprintf("HTTP %d", status)
+			}
+			errs = append(errs, msg)
+			continue
+		}
+		if strAny(inner["status"]) == "CLAIMED" {
 			summary.Count++
-			if cp.Amount > 0 {
+			if amt := qoderGrantAmount(inner); amt > 0 {
+				summary.Amount += amt
+			} else {
 				summary.Amount += cp.Amount
-			} else if benefit, ok := orMap(inner, "benefit"); ok {
-				summary.Amount += num(benefit["amount"])
 			}
 			continue
 		}
-		msg := strAny(inner["message"])
-		if msg == "" {
-			msg = fmt.Sprintf("HTTP %d", status)
-		}
-		errs = append(errs, msg)
+		verify = append(verify, cp)
 	}
+
+	if len(verify) > 0 {
+		fresh, fail := qoderCampaignState(ctx, client, c)
+		if fail != "" {
+			errs = append(errs, fail)
+		} else {
+			stillOpen := make(map[string]bool, len(fresh))
+			for _, cp := range fresh {
+				stillOpen[cp.ID] = cp.Status == CampaignStatusClaimable
+			}
+			for _, cp := range verify {
+				if open, known := stillOpen[cp.ID]; known && open {
+					errs = append(errs, "claim not confirmed for "+cp.ID)
+					continue
+				}
+				summary.Count++
+				summary.Amount += cp.Amount
+			}
+		}
+	}
+
 	switch {
 	case summary.Count > 0:
 		summary.Outcome = ClaimOutcomeClaimed

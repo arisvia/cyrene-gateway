@@ -33,8 +33,10 @@ func newQoderCampaignMock(t *testing.T) (*httptest.Server, map[string]string) {
 			if got := r.Header.Get("Cosy-ClientType"); got != "10" {
 				t.Errorf("campaigns list requires Cosy-ClientType=10, got %q", got)
 			}
-			if got := r.Header.Get("Cosy-MachineId"); got != "machine-1" {
-				t.Errorf("campaign list gated on device identity, got machine %q", got)
+			// Live probe on qoder-cn: a fabricated Cosy-MachineId makes the risk
+			// filter drop the daily CLAIM_BENEFIT campaign entirely.
+			if got := r.Header.Get("Cosy-MachineId"); got != "" {
+				t.Errorf("campaign requests must not send device identity, got %q", got)
 			}
 			if got := r.Header.Get("Authorization"); got != "Bearer dt-token" {
 				t.Errorf("unexpected auth: %q", got)
@@ -76,7 +78,7 @@ func newQoderCampaignMock(t *testing.T) (*httptest.Server, map[string]string) {
 
 func TestQoderCampaignClaimFlow(t *testing.T) {
 	ts, claimStatus := newQoderCampaignMock(t)
-	creds := QuotaCredentials{Provider: "qoder", AccessToken: "dt-token", MachineID: "machine-1", BaseURL: ts.URL}
+	creds := QuotaCredentials{Provider: "qoder", AccessToken: "dt-token", BaseURL: ts.URL}
 
 	res := ClaimCampaigns(context.Background(), ts.Client(), creds)
 	if !res.Supported {
@@ -109,6 +111,40 @@ func TestQoderCampaignTokenFailure(t *testing.T) {
 	})
 	if res.Outcome != ClaimOutcomeError || !strings.Contains(res.Message, "unauthorized") {
 		t.Fatalf("expired token = %+v, want error mentioning unauthorized", res)
+	}
+}
+
+// Live qoder-cn behavior differs from the community capture: a FRESH claim
+// answers 200 with an empty body, and a replay returns the receipt bare at
+// top level. Both must land as claimed — the empty one confirmed by the
+// status re-fetch, never as a false error after the money already landed.
+func TestQoderClaimEmptyReceiptAndBareGrant(t *testing.T) {
+	statuses := map[string]string{"camp-empty": "CLAIMABLE", "camp-bare": "CLAIMABLE"}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			items := []map[string]any{}
+			for _, id := range []string{"camp-empty", "camp-bare"} {
+				items = append(items, map[string]any{
+					"campaignId": id, "actionType": "CLAIM_BENEFIT", "claimStatus": statuses[id],
+					"benefit": map[string]any{"amount": 100},
+				})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"campaigns": items})
+			return
+		}
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/sash/api/v1/me/campaigns/"), "/claim")
+		statuses[id] = "CLAIMED"
+		if id == "camp-bare" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "CLAIMED", "campaignId": id})
+		}
+		// camp-empty: 200 with no body at all.
+	}))
+	defer ts.Close()
+	res := ClaimCampaigns(context.Background(), ts.Client(), QuotaCredentials{
+		Provider: "qoder-cn", AccessToken: "dt-token", BaseURL: ts.URL,
+	})
+	if res.Outcome != ClaimOutcomeClaimed || res.Count != 2 || res.Amount != 200 {
+		t.Fatalf("mixed receipts = %+v, want claimed count=2 amount=200", res)
 	}
 }
 
