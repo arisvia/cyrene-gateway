@@ -172,6 +172,20 @@ func init() {
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
 		},
+		// The model catalog (/v3/config) is only populated under the CLI
+		// identity; the IDE identity returns just productFeatures with an
+		// empty model list. The official IDE client reads its model dropdown
+		// the same way — CLI for the catalog, IDE for chat — so this is not
+		// the relayed-client signal (that is a chat-fingerprint mismatch).
+		ModelsHeaders: map[string]string{
+			"User-Agent":          CodebuddyCLIUA,
+			"X-Product":           "SaaS",
+			"X-IDE-Type":          "CLI",
+			"X-IDE-Name":          "CLI",
+			"X-Domain":            "www.codebuddy.ai",
+			"x-requested-with":    "XMLHttpRequest",
+			"x-codebuddy-request": "1",
+		},
 		ForceStream:    true,
 		ThinkingFormat: "openai",
 		ModelsURL:      "https://www.codebuddy.ai/v3/config",

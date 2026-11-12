@@ -457,6 +457,14 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 			receivedUA = r.Header.Get("User-Agent")
 			receivedDomain = r.Header.Get("X-Domain")
 			w.Header().Set("Content-Type", "application/json")
+			// Mirror real upstream: the IDE identity returns only
+			// productFeatures with an EMPTY model list; the catalog is
+			// populated solely under the CLI identity. This pins the
+			// regression where intl sync sent IDE headers and cached 0 models.
+			if r.Header.Get("X-IDE-Type") != "CLI" {
+				w.Write([]byte(`{"code":0,"data":{"enterpriseId":"","productFeatures":{},"productFeaturesConfig":{}}}`))
+				return
+			}
 			w.Write([]byte(`{
 				"code": 0,
 				"data": {
@@ -500,8 +508,8 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK on live config fetch, got %d: %s", w.Code, w.Body.String())
 	}
-	if receivedUA != provider.CodebuddyIDEUA {
-		t.Errorf("expected User-Agent %s, got %q", provider.CodebuddyIDEUA, receivedUA)
+	if receivedUA != provider.CodebuddyCLIUA {
+		t.Errorf("expected catalog User-Agent %s (CLI identity), got %q", provider.CodebuddyCLIUA, receivedUA)
 	}
 	if receivedDomain != "www.codebuddy.ai" {
 		t.Errorf("expected X-Domain www.codebuddy.ai, got %q", receivedDomain)

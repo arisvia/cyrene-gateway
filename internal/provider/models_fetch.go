@@ -16,6 +16,12 @@ func ModelsFetchFor(p ProviderInfo) model.ModelsFetchConfig {
 		Auth:    p.ModelsAuth,
 		Headers: p.Headers,
 	}
+	// The catalog may live under a different client identity than chat
+	// (CodeBuddy Intl: IDE for chat, CLI for the model list). Prefer the
+	// provider's dedicated catalog headers when declared.
+	if len(p.ModelsHeaders) > 0 {
+		cfg.Headers = p.ModelsHeaders
+	}
 	if cfg.Auth == "" {
 		switch p.APIType {
 		case "anthropic":

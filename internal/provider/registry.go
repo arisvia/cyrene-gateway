@@ -5,12 +5,18 @@ import "strings"
 // ProviderInfo defines a known provider's configuration
 type ProviderInfo struct {
 	// Extra headers sent on every upstream request (e.g. x-opencode-client)
-	Headers  map[string]string `json:"headers,omitempty"`
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	BaseURL  string            `json:"baseUrl"`
-	APIType  string            `json:"apiType"`  // "openai", "anthropic", "gemini"
-	AuthType string            `json:"authType"` // "api-key", "oauth"
+	Headers map[string]string `json:"headers,omitempty"`
+	// ModelsHeaders overrides Headers for the model-catalog fetch only. Some
+	// providers serve the catalog under a different client identity than the
+	// one required for chat: CodeBuddy (Intl) must chat as the IDE product but
+	// its /v3/config model list is populated only under the CLI identity, so
+	// the catalog read uses these headers while chat keeps the IDE Headers.
+	ModelsHeaders map[string]string `json:"modelsHeaders,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	BaseURL       string            `json:"baseUrl"`
+	APIType       string            `json:"apiType"`  // "openai", "anthropic", "gemini"
+	AuthType      string            `json:"authType"` // "api-key", "oauth"
 	// Category and auth metadata (Phase 10)
 	Category string `json:"category"` // "apikey", "oauth", "freeTier", "custom"
 	// Brand/Region grouping (Phase 36): brand siblings (e.g. glm/glm-cn) are
