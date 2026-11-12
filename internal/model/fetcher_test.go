@@ -164,11 +164,11 @@ func TestFetchModels_DeriveModelsURL_StrictPath(t *testing.T) {
 	}
 }
 
-func TestModelsDevBackfill(t *testing.T) {
-	catalog := map[string]modelsDevEntry{
+func TestModelsDevEnrich(t *testing.T) {
+	seedModelsDev(t, map[string]ModelsDevEntry{
 		"gpt-4o":         {Name: "GPT-4o", Family: "gpt", Context: 128000, Output: 16384},
 		"claude-fable-5": {Name: "Claude Fable 5", Family: "claude", Context: 200000, Output: 32768},
-	}
+	})
 
 	models := []ModelMetadata{
 		{ID: "gpt-4o"},        // exact match
@@ -176,7 +176,7 @@ func TestModelsDevBackfill(t *testing.T) {
 		{ID: "claude-fable-5", ContextLength: 999}, // existing value preserved
 		{ID: "unknown-model"},                      // no match
 	}
-	BackfillFromModelsDev(models, catalog)
+	EnrichModelsFromCatalog(models)
 
 	if models[0].ContextLength != 128000 || models[0].MaxOutput != 16384 || models[0].DisplayName != "GPT-4o" {
 		t.Errorf("exact match backfill failed: %+v", models[0])

@@ -230,31 +230,3 @@ func GetModelsDevCatalog() map[string]ModelsDevEntry {
 	defer modelsDevMu.RUnlock()
 	return modelsDevCache
 }
-
-// BackfillFromModelsDev fills missing ContextLength/MaxOutput/Family/
-// DisplayName on live-fetched models using the models.dev catalog. Existing
-// values are never overwritten.
-func BackfillFromModelsDev(models []ModelMetadata, catalog map[string]modelsDevEntry) {
-	for i := range models {
-		m := &models[i]
-		e, ok := LookupModelsDev(catalog, m.ID)
-		if !ok && m.DisplayName != "" && m.DisplayName != m.ID {
-			e, ok = LookupModelsDev(catalog, m.DisplayName)
-		}
-		if !ok {
-			continue
-		}
-		if m.DisplayName == "" {
-			m.DisplayName = e.Name
-		}
-		if m.ContextLength == 0 {
-			m.ContextLength = e.Context
-		}
-		if m.MaxOutput == 0 {
-			m.MaxOutput = e.Output
-		}
-		if m.Family == "" {
-			m.Family = e.Family
-		}
-	}
-}

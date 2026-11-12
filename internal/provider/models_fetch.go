@@ -92,9 +92,8 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 		}
 		out = append(out, m)
 	}
-	// Anything the COSY catalog did not send is resolved from models.dev (by id or
-	// display name); whatever still misses stays blank for manual entry — no static table.
-	model.EnrichModelsFromCatalog(out)
+	// No enrichment here: the cache-write layer runs the single models.dev pass for
+	// every provider (qoder included), so serve paths read fully-enriched cache.
 	return out
 }
 

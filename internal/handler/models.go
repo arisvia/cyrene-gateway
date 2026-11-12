@@ -265,18 +265,9 @@ func populateStaticModels(pInfo provider.ProviderInfo) []model.ModelMetadata {
 	}
 	out := make([]model.ModelMetadata, 0, len(pInfo.Models))
 	for _, m := range pInfo.Models {
-		meta := model.ModelMetadata{ID: m.ID, DisplayName: m.Name}
-		if cat := model.LookupCatalog(m.ID); cat != nil {
-			if meta.DisplayName == "" || meta.DisplayName == m.ID {
-				meta.DisplayName = cat.DisplayName
-			}
-			meta.ContextLength = cat.ContextLength
-			meta.MaxOutput = cat.MaxOutput
-			meta.Capabilities = cat.Capabilities
-			meta.Modalities = cat.Modalities
-			meta.Family = cat.Family
-		}
-		out = append(out, meta)
+		// Raw registry seed only; context/output/capabilities are filled by the
+		// single cache-layer enrichment pass before the models are stored.
+		out = append(out, model.ModelMetadata{ID: m.ID, DisplayName: m.Name})
 	}
 	return out
 }
@@ -380,13 +371,14 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 		} else {
 			models = fetched
 		}
-
-		// models.dev backfill for context/output metadata when the provider
-		// API omits it (best-effort, never overwrites live values).
-		if catalog := s.loadModelsDevCatalog(client); len(catalog) > 0 {
-			model.BackfillFromModelsDev(models, catalog)
-		}
 	}
+
+	// Single cache-layer enrichment for every provider (qoder / antigravity /
+	// standard): fill anything the upstream catalog omitted from models.dev (by id
+	// or display name); live values are never overwritten. Consumers — the model
+	// detail page and /v1/models downstream — read this enriched cache verbatim.
+	s.loadModelsDevCatalog(client)
+	model.EnrichModelsFromCatalog(models)
 
 	// Store in KV cache
 	cached := model.CachedModels{
@@ -573,9 +565,8 @@ func (s *Server) syncAllActiveConnections() {
 			continue
 		}
 
-		if catalog := s.loadModelsDevCatalog(client); len(catalog) > 0 {
-			model.BackfillFromModelsDev(models, catalog)
-		}
+		// Cache-layer enrichment (single pass, see handleRefreshModels).
+		s.loadModelsDevCatalog(client)
 		model.EnrichModelsFromCatalog(models)
 
 		cached := model.CachedModels{
@@ -623,9 +614,8 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 		}
 	}
 	if len(models) > 0 {
-		if catalog := s.loadModelsDevCatalog(client); len(catalog) > 0 {
-			model.BackfillFromModelsDev(models, catalog)
-		}
+		// Cache-layer enrichment (single pass, see handleRefreshModels).
+		s.loadModelsDevCatalog(client)
 		model.EnrichModelsFromCatalog(models)
 		cached := model.CachedModels{
 			FetchedAt: time.Now().UTC(),

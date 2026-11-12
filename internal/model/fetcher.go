@@ -121,8 +121,11 @@ func FetchModels(client *http.Client, providerID, baseURL, apiKey, accessToken s
 	return normalizeModels(providerID, body)
 }
 
-// normalizeModels dispatches to provider-specific normalizers and then runs a
-// single enrichment chokepoint so every provider is covered uniformly.
+// normalizeModels dispatches to the provider-specific normalizer. It performs NO
+// metadata enrichment: raw upstream values are returned as-is. The single models.dev
+// enrichment pass happens in the cache-write layer (handler/models.go) so every
+// provider — including the bespoke qoder/antigravity catalogs — is covered once and
+// serve paths read the already-enriched cache verbatim.
 func normalizeModels(providerID string, body []byte) ([]ModelMetadata, error) {
 	var models []ModelMetadata
 	var err error
@@ -140,15 +143,7 @@ func normalizeModels(providerID string, body []byte) ([]ModelMetadata, error) {
 	default:
 		models, err = normalizeOpenAICompat(body)
 	}
-	if err != nil {
-		return models, err
-	}
-	// Single enrichment pass: any spec the upstream provider did not send is
-	// resolved from models.dev (by id or display name). Upstream-provided values
-	// are never overwritten; whatever models.dev also lacks stays blank for the
-	// operator to fill in manually. There is no curated static table anymore.
-	EnrichModelsFromCatalog(models)
-	return models, nil
+	return models, err
 }
 
 // normalizeOpenAICompat handles the standard OpenAI /v1/models response format.
@@ -219,8 +214,8 @@ func normalizeOpenAICompat(body []byte) ([]ModelMetadata, error) {
 			meta.Family = m.Capabilities.Family
 		}
 
-		// Missing specs are filled by the models.dev enrichment chokepoint in
-		// normalizeModels (by id and display name) — never hardcoded here.
+		// Missing specs are filled by the single models.dev enrichment pass in the
+		// cache-write layer (by id and display name) — never hardcoded here.
 		models = append(models, meta)
 	}
 	return models, nil
@@ -455,7 +450,7 @@ func normalizeAnthropic(body []byte) ([]ModelMetadata, error) {
 			DisplayName: m.DisplayName,
 		}
 		// Anthropic /v1/models ships only id + display_name; specs are filled by the
-		// models.dev enrichment chokepoint in normalizeModels.
+		// single models.dev enrichment pass in the cache-write layer.
 		models = append(models, meta)
 	}
 	return models, nil
@@ -560,8 +555,8 @@ func normalizeMistral(body []byte) ([]ModelMetadata, error) {
 			meta.Capabilities = []string{"chat"}
 		}
 
-		// Display name and remaining specs come from the models.dev enrichment
-		// chokepoint in normalizeModels (Mistral upstream has no name field).
+		// Mistral upstream sends no display name; the cache-write layer fills it
+		// (and any missing specs) from models.dev before the models are stored.
 		models = append(models, meta)
 	}
 	return models, nil
