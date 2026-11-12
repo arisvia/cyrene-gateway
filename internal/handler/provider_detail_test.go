@@ -52,7 +52,7 @@ func TestGetProviderModels(t *testing.T) {
 	}
 }
 
-func TestGetProviderModels_DisplayNameFallback(t *testing.T) {
+func TestGetProviderModels_UpstreamBlankStaysEditable(t *testing.T) {
 	srv, database := setupTestServer(t)
 
 	conn := &model.ProviderConnection{
@@ -97,14 +97,16 @@ func TestGetProviderModels_DisplayNameFallback(t *testing.T) {
 	if m.Name != "Kimi-K3" {
 		t.Errorf("expected Name Kimi-K3, got %s", m.Name)
 	}
-	if m.ContextLength != 1048576 {
-		t.Errorf("expected ContextLength 1048576 via DisplayName fallback, got %d", m.ContextLength)
+	// Upstream sent no context/max-output: the gateway must NOT guess from the static
+	// catalog. The fields stay blank so operators fill them via the detail override UI.
+	if m.ContextLength != 0 {
+		t.Errorf("expected ContextLength 0 (no static-catalog guess), got %d", m.ContextLength)
 	}
-	if m.MaxOutput != 131072 {
-		t.Errorf("expected MaxOutput 131072 via DisplayName fallback, got %d", m.MaxOutput)
+	if m.MaxOutput != 0 {
+		t.Errorf("expected MaxOutput 0 (no static-catalog guess), got %d", m.MaxOutput)
 	}
 	if !m.CanEdit {
-		t.Errorf("expected CanEdit=true for fallback-matched model, got false")
+		t.Errorf("expected CanEdit=true so operators can supply metadata manually, got false")
 	}
 }
 

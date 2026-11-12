@@ -160,6 +160,29 @@ func LookupModelsDev(catalog map[string]ModelsDevEntry, modelID string) (ModelsD
 	if bestLen > 0 {
 		return best, true
 	}
+	// Display-name resolution: opaque provider ids (e.g. Qoder's "kmodel_latest")
+	// never match a models.dev key, but the provider's human-readable display name
+	// ("Kimi-K3") is a real model name. When the query itself is a name, match it
+	// against each entry's Name field. Exact normalized-name hits win outright;
+	// otherwise the longest containment (min 4 chars) wins.
+	nameNorm := lowerDashed
+	bestName, bestNameLen := ModelsDevEntry{}, 0
+	for _, e := range catalog {
+		if e.Name == "" {
+			continue
+		}
+		en := strings.ReplaceAll(strings.ToLower(e.Name), " ", "-")
+		if en == nameNorm {
+			return e, true
+		}
+		if len(en) >= 4 && len(en) > bestNameLen &&
+			(strings.Contains(nameNorm, en) || (len(nameNorm) >= 6 && strings.Contains(en, nameNorm))) {
+			bestName, bestNameLen = e, len(en)
+		}
+	}
+	if bestNameLen > 0 {
+		return bestName, true
+	}
 	return ModelsDevEntry{}, false
 }
 

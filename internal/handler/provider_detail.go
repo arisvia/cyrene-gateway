@@ -176,7 +176,8 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			// 未包含确切动态元数据的内置或自定义模型，允许用户自由编辑
 			item.CanEdit = true
 		}
-		// 若动态缓存中未定义上下文长度（ContextLength == 0），尝试使用模型名称及 ID 向底层 Catalog 匹配元数据
+		// 上游未下发上下文/最大输出时，用模型名与 ID 去 models.dev 兜底查询；仍查不到则留空，
+		// 交由用户在详情页手动覆盖（不再维护任何静态硬编码表）。
 		if item.ContextLength == 0 {
 			if cat := model.LookupCatalog(id, name); cat != nil && cat.ContextLength > 0 {
 				item.ContextLength = cat.ContextLength
@@ -184,7 +185,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 					item.MaxOutput = cat.MaxOutput
 				}
 			}
-			// 兜底匹配无论是否命中，始终允许用户自由编辑
+			// 无论 models.dev 是否命中，缺省项始终允许用户自由编辑。
 			item.CanEdit = true
 		}
 		return item

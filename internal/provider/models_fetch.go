@@ -58,8 +58,6 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 			m.DisplayName = title
 		} else if desc, ok := raw["description"].(string); ok && desc != "" {
 			m.DisplayName = desc
-		} else if fallback, ok := qoderModelDisplayNames[key]; ok {
-			m.DisplayName = fallback
 		} else {
 			m.DisplayName = key
 		}
@@ -94,28 +92,12 @@ func QoderCatalogModels(creds QoderCosyCreds, client *http.Client, force bool) [
 		}
 		out = append(out, m)
 	}
+	// Anything the COSY catalog did not send is resolved from models.dev (by id or
+	// display name); whatever still misses stays blank for manual entry — no static table.
 	model.EnrichModelsFromCatalog(out)
 	return out
 }
 
-// qoderModelDisplayNames provides human-friendly names for Qoder model keys when the live catalog omits name.
-var qoderModelDisplayNames = map[string]string{
-	"ultimate":      "Ultimate",
-	"auto":          "Auto",
-	"performance":   "Performance",
-	"efficient":     "Efficient",
-	"lite":          "Lite",
-	"qmodel_38max":  "Qwen3.8-Max",
-	"qmodel_latest": "Qwen3.7-Max",
-	"qmodel":        "Qwen3.7-Plus",
-	"qfmodel":       "Qwen3.8-Flash",
-	"kmodel_latest": "Kimi-K3",
-	"kmodel":        "Kimi-K2.8-Preview",
-	"gmodel":        "GLM-5.3",
-	"gfmodel":       "GLM-5.3-Flash",
-	"gm51model":     "GLM-5.3",
-	"dmodel":        "DeepSeek-V4-Pro",
-	"dfmodel":       "DeepSeek-Flash",
-	"mmodel":        "MiniMax-M3",
-	"cmodel":        "Cantus",
-}
+// QoderCatalogModels reads model names straight from the live COSY catalog; there is
+// intentionally no hardcoded key→name table here (AGENTS.md #5: keep model catalogs
+// upstream-driven, not baked into the binary).
