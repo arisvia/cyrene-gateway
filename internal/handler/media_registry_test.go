@@ -656,32 +656,86 @@ func TestMediaResolvedDisabledModel(t *testing.T) {
 	}
 }
 
-func TestMediaSearchListingSurvivesHardcodedEngineDisable(t *testing.T) {
-	// The hardcoded web-search engines (gemini-2.5-flash/pro) can be disabled
-	// for chat cost control; the listing must then fall back to live
-	// Gemini-family chat engines from the provider model cache so the
-	// search surface does not vanish.
+// Antigravity carries no static media model entries: both the search engine
+// list and the image engine list are projections of the live catalog, so an
+// upstream tier that has been retired (or is a placeholder the API 404s on)
+// cannot linger as an unroutable option.
+func TestMediaAntigravityListingsComeFromLiveCatalog(t *testing.T) {
 	srv, _ := setupMediaAuthTest(t, nil, func(*http.Request) {})
-	for _, id := range []string{"antigravity/gemini-2.5-flash", "antigravity/gemini-2.5-pro"} {
-		if err := srv.DB.KVSet(model.KVScopeDisabledModels, id, "true"); err != nil {
-			t.Fatal(err)
-		}
+	// Operator disabled this engine for chat cost control: it must drop out of
+	// the search listing even though it is still a live Gemini chat model.
+	if err := srv.DB.KVSet(model.KVScopeDisabledModels, "antigravity/gemini-2.5-flash", "true"); err != nil {
+		t.Fatal(err)
 	}
 	cached := model.CachedModels{Models: []model.ModelMetadata{
-		{ID: "gemini-3.8-flash-high", DisplayName: "Gemini 3.8 Flash High", Capabilities: []string{"chat"}},
-		{ID: "gemini-3.1-flash-image", DisplayName: "Image", Capabilities: []string{"image-generation"}},
+		{ID: "claude-opus-5-5-high", DisplayName: "Claude Opus 5.5 (High)", Capabilities: []string{"chat"}},
+		{ID: "gemini-4-hydrogen-high", DisplayName: "Gemini 4 Hydrogen (High)", Capabilities: []string{"chat"}},
+		{ID: "gemini-2.5-flash", DisplayName: "Gemini 2.5 Flash", Capabilities: []string{"chat"}},
+		{ID: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", Capabilities: []string{"image-generation"}},
 	}}
 	raw, _ := json.Marshal(cached)
 	if err := srv.DB.KVSet(model.KVScopeProviderModelCache, "antigravity", string(raw)); err != nil {
 		t.Fatal(err)
 	}
 
+	listAntigravity := func(kind string) []string {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/media-providers?kind="+kind+"&connectedOnly=true", nil)
+		// /api/* management routes treat non-loopback hosts as WAN (session auth
+		// required); pin both peer and Host to loopback like the other tests.
+		req.RemoteAddr = "127.0.0.1:1234"
+		req.Host = "127.0.0.1:20128"
+		srv.Handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("listing %s failed: %d %s", kind, w.Code, w.Body.String())
+		}
+		var body struct {
+			Providers []struct {
+				Provider string `json:"provider"`
+				Models   []struct {
+					ID string `json:"id"`
+				} `json:"models"`
+			} `json:"providers"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		ids := []string{}
+		for _, p := range body.Providers {
+			if p.Provider != "antigravity" {
+				continue
+			}
+			for _, m := range p.Models {
+				ids = append(ids, m.ID)
+			}
+		}
+		return ids
+	}
+
+	// Claude cannot ground a search, the image engine is not a chat engine, and
+	// the disabled one is withheld — exactly the live Gemini chat engine remains.
+	if got := listAntigravity("web-search"); !reflect.DeepEqual(got, []string{"gemini-4-hydrogen-high"}) {
+		t.Errorf("web-search listing = %v, want [gemini-4-hydrogen-high]", got)
+	}
+	if got := listAntigravity("image"); !reflect.DeepEqual(got, []string{"gemini-3.1-flash-image"}) {
+		t.Errorf("image listing = %v, want [gemini-3.1-flash-image]", got)
+	}
+}
+
+// Search-only providers (brave/tavily/exa) carry no model list at all, so they
+// have nothing to filter. Dropping providers whose model list came out empty
+// would hide a configured provider from its own tab instead of just its models.
+func TestMediaListingKeepsConnectedProviderWithoutModels(t *testing.T) {
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "tavily-conn", Provider: "tavily", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "tv-key"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/media-providers?kind=web-search&connectedOnly=true", nil)
-	// /api/* management routes treat non-loopback hosts as WAN (session auth
-	// required); pin both peer and Host to loopback like the other tests.
-	req.RemoteAddr = "127.0.0.1:1234"
-	req.Host = "127.0.0.1:20128"
+	req := newLocalRequest("GET", "/api/media-providers?kind=web-search&connectedOnly=true", nil)
 	srv.Handler.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("listing failed: %d %s", w.Code, w.Body.String())
@@ -697,8 +751,11 @@ func TestMediaSearchListingSurvivesHardcodedEngineDisable(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Providers) != 1 || len(body.Providers[0].Models) != 1 || body.Providers[0].Models[0].ID != "gemini-3.8-flash-high" {
-		t.Fatalf("live chat engine not offered for web search: %s", w.Body.String())
+	if len(body.Providers) != 1 || body.Providers[0].Provider != "tavily" {
+		t.Fatalf("model-less connected provider must stay listed, got %s", w.Body.String())
+	}
+	if len(body.Providers[0].Models) != 0 {
+		t.Errorf("tavily has no model concept, got %v", body.Providers[0].Models)
 	}
 }
 
@@ -711,7 +768,9 @@ func TestMediaOpenModeWithoutKey(t *testing.T) {
 		{"/v1/audio/transcriptions", "openai/whisper-1", ""},
 		{"/v1/videos/generations", "", "xai"},
 		{"/v1/videos/job-test", "", "xai"},
-		{"/v1/search", "", "antigravity"},
+		// Antigravity resolves its search engine from the live catalog, which no
+		// test server has synced, so this route pins the engine explicitly.
+		{"/v1/search", "antigravity/gemini-4-argon-high", "antigravity"},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			calls := 0
@@ -733,24 +792,59 @@ func TestMediaOpenModeWithoutKey(t *testing.T) {
 	}
 }
 
+// The search surface has no pinned default engine: with the static registry
+// entries gone, the model a bare /v1/search resolves to is the first live
+// Gemini chat engine the operator has not disabled, and an un-synced catalog
+// must refuse instead of inventing an upstream model name.
 func TestMediaSearchDefaultModelWhitelist(t *testing.T) {
+	const (
+		firstEngine    = "antigravity/gemini-4-argon-high"
+		secondEngine   = "antigravity/gemini-4-hydrogen-high"
+		firstEngineID  = "gemini-4-argon-high"
+		secondEngineID = "gemini-4-hydrogen-high"
+	)
 	for _, tc := range []struct {
-		name    string
-		allowed []string
-		disable []string
-		want    int
+		name      string
+		allowed   []string
+		disable   []string
+		noCatalog bool
+		want      int
+		wantModel string
 	}{
-		{"denied", []string{"openai/*"}, nil, http.StatusForbidden},
-		// The default engine is the first non-disabled registry entry.
-		{"allowed_default", []string{"antigravity/gemini-3.8-flash-high"}, nil, http.StatusOK},
-		// Disabling the default falls through to the next enabled engine;
-		// whitelisting only the disabled one must still deny.
-		{"default_disabled_falls_through", []string{"antigravity/gemini-3.8-flash-high"}, []string{"antigravity/gemini-3.8-flash-high"}, http.StatusForbidden},
-		{"all_engines_disabled", nil, []string{"antigravity/gemini-3.8-flash-high", "antigravity/gemini-2.5-flash", "antigravity/gemini-2.5-pro"}, http.StatusServiceUnavailable},
+		{"denied", []string{"openai/*"}, nil, false, http.StatusForbidden, ""},
+		{"allowed_default", []string{firstEngine}, nil, false, http.StatusOK, firstEngineID},
+		// Disabling the default moves it to the next enabled catalog entry.
+		{"default_disabled_falls_through", []string{secondEngine}, []string{firstEngine}, false, http.StatusOK, secondEngineID},
+		// Whitelisting only the disabled engine still denies: the resolved
+		// default is the second engine, which is not on the key.
+		{"whitelist_only_disabled_engine", []string{firstEngine}, []string{firstEngine}, false, http.StatusForbidden, ""},
+		{"all_engines_disabled", nil, []string{firstEngine, secondEngine}, false, http.StatusServiceUnavailable, ""},
+		{"catalog_not_synced", nil, nil, true, http.StatusServiceUnavailable, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			srv, key := setupMediaAuthTest(t, tc.allowed, func(*http.Request) { calls++ })
+			gotModel := ""
+			srv, key := setupMediaAuthTest(t, tc.allowed, func(r *http.Request) {
+				calls++
+				var envelope struct {
+					Model string `json:"model"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+					t.Fatal(err)
+				}
+				gotModel = envelope.Model
+			})
+			if !tc.noCatalog {
+				cached := model.CachedModels{Models: []model.ModelMetadata{
+					{ID: firstEngineID, DisplayName: "Gemini 4 Argon (High)", Capabilities: []string{"chat"}},
+					{ID: secondEngineID, DisplayName: "Gemini 4 Hydrogen (High)", Capabilities: []string{"chat"}},
+					{ID: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", Capabilities: []string{"image-generation"}},
+				}}
+				raw, _ := json.Marshal(cached)
+				if err := srv.DB.KVSet(model.KVScopeProviderModelCache, "antigravity", string(raw)); err != nil {
+					t.Fatal(err)
+				}
+			}
 			for _, id := range tc.disable {
 				if err := srv.DB.KVSet(model.KVScopeDisabledModels, id, "true"); err != nil {
 					t.Fatal(err)
@@ -766,6 +860,9 @@ func TestMediaSearchDefaultModelWhitelist(t *testing.T) {
 			}
 			if tc.want != http.StatusOK && calls != 0 {
 				t.Errorf("want zero upstream requests, got %d", calls)
+			}
+			if gotModel != tc.wantModel {
+				t.Errorf("want upstream engine %q, got %q", tc.wantModel, gotModel)
 			}
 		})
 	}

@@ -537,10 +537,10 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("provider '%s' does not support web search", providerID)})
 		return
 	}
-	// Authorize the same default model that the Antigravity client would use,
+	// Authorize the same default engine that the Antigravity client would use,
 	// skipping engines the operator disabled for chat cost control.
 	if modelName == "" && providerID == "antigravity" {
-		modelName = s.defaultSearchModel(providerID)
+		modelName = s.defaultAntigravitySearchEngine()
 		if modelName == "" {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "all web search engines are disabled"})
 			return
@@ -597,39 +597,38 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	s.proxyMediaResponse(w, resp)
 }
 
-// defaultSearchModel picks the first enabled web-search engine for a
-// provider: static registry entries first, then live Gemini-family chat
-// engines from the provider model cache.
-func (s *Server) defaultSearchModel(providerID string) string {
-	cfg := media.GetConfig(providerID, media.KindWebSearch)
-	if cfg == nil {
+// isAntigravitySearchEngine reports whether a live catalog entry can drive
+// Google Search grounding: search is a tool mounted on Gemini-family chat
+// engines, so every non-image Gemini chat model qualifies. Keying off the
+// catalog instead of a pinned engine list keeps the search surface from going
+// stale as upstream retires tiers.
+func isAntigravitySearchEngine(id string, capabilities []string) bool {
+	lower := strings.ToLower(id)
+	return strings.HasPrefix(lower, "gemini-") &&
+		!strings.Contains(lower, "-image") &&
+		slices.Contains(capabilities, "chat")
+}
+
+// defaultAntigravitySearchEngine picks the first catalog engine that is not
+// disabled for chat cost control, as "antigravity/<id>".
+func (s *Server) defaultAntigravitySearchEngine() string {
+	raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, "antigravity")
+	if err != nil || raw == "" {
+		return ""
+	}
+	var cached model.CachedModels
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
 		return ""
 	}
 	disabledMap, _ := s.DB.KVList(model.KVScopeDisabledModels)
-	isDisabled := func(fullID string) bool { return disabledMap != nil && disabledMap[fullID] != "" }
-	for _, p := range media.GetProvidersByKind(media.KindWebSearch) {
-		if p.Provider != providerID {
+	for _, cm := range cached.Models {
+		if !isAntigravitySearchEngine(cm.ID, cm.Capabilities) {
 			continue
 		}
-		for _, m := range p.Models {
-			if m.Kind == media.KindWebSearch && !isDisabled(providerID+"/"+m.ID) {
-				return providerID + "/" + m.ID
-			}
+		if disabledMap != nil && disabledMap["antigravity/"+cm.ID] != "" {
+			continue
 		}
-	}
-	if raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, providerID); err == nil && raw != "" {
-		var cached model.CachedModels
-		if json.Unmarshal([]byte(raw), &cached) == nil {
-			for _, cm := range cached.Models {
-				lowerID := strings.ToLower(cm.ID)
-				if providerID == "antigravity" && strings.HasPrefix(lowerID, "gemini-") &&
-					!strings.Contains(lowerID, "-image") &&
-					slices.Contains(cm.Capabilities, "chat") &&
-					!isDisabled(providerID+"/"+cm.ID) {
-					return providerID + "/" + cm.ID
-				}
-			}
-		}
+		return "antigravity/" + cm.ID
 	}
 	return ""
 }
@@ -688,15 +687,19 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 			// 按当前 Tab 的能力过滤 models，避免多能力提供商把 image/tts/stt 等所有 model 混在一起返回
 			seenModel := make(map[string]bool)
 			var matchedModels []media.ModelEntry
+			// hasCandidate 记录该能力下有无任何可选模型（含被运营者禁用的）：纯 API
+			// 型提供商（brave/tavily/exa 搜索）本就没有模型概念，必须照常列出。
+			hasCandidate := false
 			for _, m := range e.Models {
-				fullID := e.Provider + "/" + m.ID
-				if isModelDisabled(fullID, m.ID) {
+				if filterKind != "" && m.Kind != filterKind {
 					continue
 				}
-				if filterKind == "" || m.Kind == filterKind {
-					seenModel[m.ID] = true
-					matchedModels = append(matchedModels, m)
+				hasCandidate = true
+				if isModelDisabled(e.Provider+"/"+m.ID, m.ID) {
+					continue
 				}
+				seenModel[m.ID] = true
+				matchedModels = append(matchedModels, m)
 			}
 
 			// 动态提取：从 providerModelCache 融合上游实时同步出的多媒体能力模型
@@ -704,10 +707,6 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 				var cached model.CachedModels
 				if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
 					for _, cm := range cached.Models {
-						fullID := e.Provider + "/" + cm.ID
-						if isModelDisabled(fullID, cm.ID) {
-							continue
-						}
 						lowerID := strings.ToLower(cm.ID)
 						match := false
 						switch filterKind {
@@ -722,31 +721,32 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 								strings.Contains(lowerID, "bge") ||
 								strings.Contains(lowerID, "gte")
 						case media.KindWebSearch:
-							// Web search is a tool capability of Gemini-family chat
-							// engines: any active, non-disabled chat model can drive
-							// it, so match the live catalog instead of a hardcoded
-							// engine list (which goes stale as upstream retires tiers).
 							match = e.Provider == "antigravity" &&
-								strings.HasPrefix(lowerID, "gemini-") &&
-								!strings.Contains(lowerID, "-image") &&
-								slices.Contains(cm.Capabilities, "chat")
+								isAntigravitySearchEngine(cm.ID, cm.Capabilities)
 						}
-						if match && !seenModel[cm.ID] {
-							seenModel[cm.ID] = true
-							displayName := cm.DisplayName
-							if displayName == "" {
-								displayName = cm.ID
-							}
-							matchedModels = append(matchedModels, media.ModelEntry{
-								ID:   cm.ID,
-								Name: displayName,
-								Kind: filterKind,
-							})
+						if !match {
+							continue
 						}
+						hasCandidate = true
+						if isModelDisabled(e.Provider+"/"+cm.ID, cm.ID) || seenModel[cm.ID] {
+							continue
+						}
+						seenModel[cm.ID] = true
+						displayName := cm.DisplayName
+						if displayName == "" {
+							displayName = cm.ID
+						}
+						matchedModels = append(matchedModels, media.ModelEntry{
+							ID:   cm.ID,
+							Name: displayName,
+							Kind: filterKind,
+						})
 					}
 				}
 			}
-			if connectedOnly && len(matchedModels) == 0 {
+			// 仅当该能力的候选模型全被禁用时才隐藏已连接的提供商；
+			// 无模型概念或目录尚未同步的提供商保留卡片，交由运营者刷新目录。
+			if connectedOnly && len(matchedModels) == 0 && hasCandidate {
 				continue
 			}
 			out = append(out, EnrichedProvider{

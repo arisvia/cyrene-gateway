@@ -576,15 +576,16 @@ func (c *Client) HandleWebSearch(ctx context.Context, providerID string, body []
 			"type":       "auto",
 		})
 	case "antigravity":
-		// Google Code Assist Search Grounding via gemini-2.5-flash
+		// Google Code Assist Search Grounding: a Gemini-family chat engine with
+		// the googleSearch tool mounted. The engine is resolved upstream from the
+		// live catalog, so an empty model here is a routing bug, not a default.
+		if req.Model == "" {
+			return nil, fmt.Errorf("missing required field: model")
+		}
 		targetURL = strings.TrimRight(cfg.BaseURL, "/") + "/v1internal:generateContent"
 		method = "POST"
-		searchModel := "gemini-2.5-flash"
-		if req.Model != "" {
-			searchModel = req.Model
-		}
 		envelope := map[string]any{
-			"model":       searchModel,
+			"model":       req.Model,
 			"userAgent":   "antigravity",
 			"requestType": "search",
 			"request": map[string]any{

@@ -56,14 +56,11 @@ func registerImageProviders() {
 		},
 	)
 
-	// Antigravity (Google Code Assist) image generation via Imagen 3 & Gemini Flash
-	mergeProvider("antigravity", "Antigravity", KindImage,
-		[]ModelEntry{
-			{ID: "gemini-3.1-flash-image", Name: "Gemini 3.1 Flash Image", Kind: KindImage},
-			{ID: "imagen-3.0-generate-002", Name: "Google Imagen 3", Kind: KindImage},
-			{ID: "gemini-2.5-flash-image", Name: "Gemini 2.5 Flash Image", Kind: KindImage},
-			{ID: "gemini-nano-banana-2.1", Name: "Gemini Nano Banana 2.1 (Sandbox)", Kind: KindImage},
-		},
+	// Antigravity (Google Code Assist) image generation. Upstream ships exactly
+	// one image engine and retires tiers freely, so the model list is discovered
+	// live (dedicated engines carry the image-generation capability) instead of
+	// being pinned here.
+	mergeProvider("antigravity", "Antigravity", KindImage, nil,
 		ProviderConfig{
 			Provider:   "antigravity",
 			Kind:       KindImage,
