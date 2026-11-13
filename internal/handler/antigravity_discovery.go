@@ -196,13 +196,16 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				SupportsThinking bool   `json:"supportsThinking"`
 				SupportsImages   bool   `json:"supportsImages"`
 				IsInternal       bool   `json:"isInternal"`
+				Disabled         bool   `json:"disabled"`
 			} `json:"models"`
 		}
 		if err := json.Unmarshal(respBytes, &resultMap); err == nil && len(resultMap.Models) > 0 {
 			var out []model.ModelMetadata
 			for id, m := range resultMap.Models {
-				// Filter out internal Google test/telemetry endpoints and completion-only tab anchors
-				if m.IsInternal || strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") {
+				// Filter out internal Google test/telemetry endpoints, completion-only
+				// tab anchors, and placeholders upstream marks disabled (calling them
+				// returns 404 NOT_FOUND, so they are not servable inventory).
+				if m.IsInternal || m.Disabled || strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") {
 					continue
 				}
 				name := m.DisplayName
