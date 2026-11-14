@@ -43,7 +43,7 @@ func TestFetchQoder(t *testing.T) {
 	if !strings.Contains(res.Plan, "25%") {
 		t.Errorf("expected plan with 25%% usage, got %q", res.Plan)
 	}
-	q, ok := res.Quotas["user"]
+	q, ok := res.Quotas["userQuota"]
 	if !ok {
 		t.Fatalf("expected user quota, got %v", res.Quotas)
 	}
@@ -53,7 +53,7 @@ func TestFetchQoder(t *testing.T) {
 	if q.ResetAt == "" {
 		t.Error("expected resetAt from expiresAt")
 	}
-	if _, ok := res.Quotas["organization"]; ok {
+	if _, ok := res.Quotas["orgResourcePackage"]; ok {
 		t.Error("zero-value org quota should be omitted")
 	}
 }
@@ -128,7 +128,7 @@ func TestFetchQoder_BucketPercentageUsesBalances(t *testing.T) {
 			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
 				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
 			})
-			q, ok := res.Quotas["user"]
+			q, ok := res.Quotas["userQuota"]
 			if !ok {
 				t.Fatalf("expected user quota, got %+v", res)
 			}
@@ -151,25 +151,25 @@ func TestFetchQoder_ExceededUsesGenerallyAvailableBalances(t *testing.T) {
 			buckets: `"userQuota":{"total":100,"used":100,"remaining":0},
 				"dedicatedResourcePackages":[{"total":4000,"used":0,"remaining":4000}]`,
 			wantPlan:      "Qoder (Quota Exceeded)",
-			wantRemaining: map[string]float64{"user": 0, "dedicatedResourcePackages_1": 4000},
+			wantRemaining: map[string]float64{"userQuota": 0, "dedicatedResourcePackages_1": 4000},
 		},
 		{
 			name:          "unavailable_organization",
 			buckets:       `"orgResourcePackage":{"cap":2000,"used":0,"remaining":2000,"available":false}`,
 			wantPlan:      "Qoder (Quota Exceeded)",
-			wantRemaining: map[string]float64{"organization": 2000},
+			wantRemaining: map[string]float64{"orgResourcePackage": 2000},
 		},
 		{
 			name:          "available_organization",
 			buckets:       `"orgResourcePackage":{"cap":2000,"used":0,"remaining":2000,"available":true}`,
 			wantPlan:      "Qoder (Teams)",
-			wantRemaining: map[string]float64{"organization": 2000},
+			wantRemaining: map[string]float64{"orgResourcePackage": 2000},
 		},
 		{
 			name:          "organization_availability_unspecified",
 			buckets:       `"orgResourcePackage":{"cap":2000,"used":0,"remaining":2000}`,
 			wantPlan:      "Qoder (Teams)",
-			wantRemaining: map[string]float64{"organization": 2000},
+			wantRemaining: map[string]float64{"orgResourcePackage": 2000},
 		},
 		{
 			name: "exhausted_global_balances",
@@ -177,19 +177,19 @@ func TestFetchQoder_ExceededUsesGenerallyAvailableBalances(t *testing.T) {
 				"addOnQuota":{"total":100,"used":100,"remaining":0},
 				"orgResourcePackage":{"cap":2000,"used":2000,"remaining":0,"available":true}`,
 			wantPlan:      "Qoder (Quota Exceeded)",
-			wantRemaining: map[string]float64{"user": 0, "addOn": 0, "organization": 0},
+			wantRemaining: map[string]float64{"userQuota": 0, "addOnQuota": 0, "orgResourcePackage": 0},
 		},
 		{
 			name:          "available_user",
 			buckets:       `"userQuota":{"total":100,"used":1,"remaining":99}`,
 			wantPlan:      "Qoder (Teams)",
-			wantRemaining: map[string]float64{"user": 99},
+			wantRemaining: map[string]float64{"userQuota": 99},
 		},
 		{
 			name:          "available_add_on",
 			buckets:       `"addOnQuota":{"total":100,"used":1,"remaining":99}`,
 			wantPlan:      "Qoder (Teams)",
-			wantRemaining: map[string]float64{"addOn": 99},
+			wantRemaining: map[string]float64{"addOnQuota": 99},
 		},
 		{
 			name:          "unrecognized_promotional_balance",
@@ -263,7 +263,7 @@ func TestFetchQoder_AddOnQuotaAndDynamicBuckets(t *testing.T) {
 		t.Errorf("expected plan to mention Personal Standard, got %q", res.Plan)
 	}
 
-	addOn, ok := res.Quotas["addOn"]
+	addOn, ok := res.Quotas["addOnQuota"]
 	if !ok {
 		t.Fatalf("expected addOn quota to be unpacked, got %v", res.Quotas)
 	}
@@ -359,7 +359,7 @@ func TestFetchQoder_DisplayLabelsAndTeamsPlan(t *testing.T) {
 		t.Errorf("unexpected dedicated package values: %+v", pkg)
 	}
 
-	org, ok := res.Quotas["organization"]
+	org, ok := res.Quotas["orgResourcePackage"]
 	if !ok {
 		t.Fatalf("expected organization quota to be extracted, got %v", res.Quotas)
 	}
@@ -411,7 +411,7 @@ func TestFetchQoder_StandardBucketLabels(t *testing.T) {
 			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
 				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL, Organization: tt.organization,
 			})
-			for key, want := range map[string]string{"user": "", "organization": tt.wantName, "addOn": ""} {
+			for key, want := range map[string]string{"userQuota": "", "orgResourcePackage": tt.wantName, "addOnQuota": ""} {
 				q, ok := res.Quotas[key]
 				if !ok {
 					t.Fatalf("missing quota %q: %+v", key, res)
@@ -485,7 +485,7 @@ func TestFetchQoder_LocalizedLabels(t *testing.T) {
 			res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
 				Provider: "qoder", AccessToken: "jt-test-token", BaseURL: srv.URL,
 			})
-			q, ok := res.Quotas["user"]
+			q, ok := res.Quotas["userQuota"]
 			if !ok {
 				t.Fatalf("missing user quota: %+v", res)
 			}

@@ -97,15 +97,12 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	}
 
 	quotas := make(map[string]Quota)
-	periodNames := map[string]string{
-		"rolling": "Rolling",
-		"weekly":  "Weekly",
-		"monthly": "Monthly",
-	}
-
-	for period, displayName := range periodNames {
-		window, ok := data.Usage[period]
-		if !ok {
+	// The panel shows the upstream window name (weekly / monthly / anything Google
+	// or OpenCode adds later), so a new window surfaces as itself instead of being
+	// dropped by a translation table this gateway has to keep current.
+	for period, window := range data.Usage {
+		name := strings.ToLower(strings.TrimSpace(period))
+		if name == "" {
 			continue
 		}
 		pVal := num(window.Percent)
@@ -117,14 +114,13 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 		}
 		used := pVal
 		remaining := 100 - used
-		quotas[displayName] = Quota{
+		quotas[name] = Quota{
 			Used:                used,
 			Total:               100,
 			Remaining:           remaining,
 			RemainingPercentage: remaining,
 			ResetAt:             parseResetTime(window.ResetsAt),
 			Unit:                "%",
-			DisplayName:         displayName,
 		}
 	}
 

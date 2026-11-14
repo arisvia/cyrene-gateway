@@ -14,19 +14,26 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
-// Quota is a single quota bucket (e.g. "Balance (CNY)", "M-series (5h)").
+// Quota is a single quota bucket, one row per pool or window the upstream account
+// actually exposes. Map keys are upstream identifiers (a bucket id, a model id, a
+// currency code, a package name) and DisplayName carries upstream wording only:
+// rows the API gives no name for keep the identifier, and fields upstream leaves
+// unspecified (an absolute request count, a window length) stay zero rather than
+// being filled in here, because the panel renders them as unknown.
 // Field semantics mirror 9router usage handlers so the panel renders identically.
 type Quota struct {
-	Used                float64           `json:"used"`
-	Total               float64           `json:"total"`
-	Remaining           float64           `json:"remaining,omitempty"`
-	RemainingPercentage float64           `json:"remainingPercentage"`
-	ResetAt             string            `json:"resetAt,omitempty"`
-	ResetSoon           bool              `json:"resetSoon,omitempty"`
-	Unlimited           bool              `json:"unlimited,omitempty"`
-	Unit                string            `json:"unit,omitempty"`
-	DisplayName         string            `json:"displayName,omitempty"`
-	DisplayNameI18n     map[string]string `json:"displayNameI18n,omitempty"`
+	Used                float64 `json:"used"`
+	Total               float64 `json:"total"`
+	Remaining           float64 `json:"remaining,omitempty"`
+	RemainingPercentage float64 `json:"remainingPercentage"`
+	ResetAt             string  `json:"resetAt,omitempty"`
+	ResetSoon           bool    `json:"resetSoon,omitempty"`
+	Unlimited           bool    `json:"unlimited,omitempty"`
+	Unit                string  `json:"unit,omitempty"`
+	DisplayName         string  `json:"displayName,omitempty"`
+	// Upstream's own localized wording when the API returns it (Qoder, Antigravity
+	// campaign copy); absent, the panel falls back to DisplayName then the key.
+	DisplayNameI18n map[string]string `json:"displayNameI18n,omitempty"`
 }
 
 type QuotaResult struct {

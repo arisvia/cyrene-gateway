@@ -146,10 +146,14 @@ func fetchDeepseek(ctx context.Context, client *http.Client, c QuotaCredentials)
 		if total > 0 {
 			remainingPct = 100
 		}
-		quotas["Balance ("+currency+")"] = Quota{
+		// The currency code is the upstream identity of a balance_infos entry, so
+		// every balance keeps its own row. "Balance (CNY)" wrapped the same data in a
+		// label this gateway composed.
+		quotas[uniqueQuotaKey(quotas, currency)] = Quota{
 			Used:                0,
 			Total:               total,
 			RemainingPercentage: remainingPct,
+			Unit:                currency,
 			Unlimited:           total > 0,
 		}
 	}
@@ -204,7 +208,16 @@ func fetchGLM(ctx context.Context, client *http.Client, c QuotaCredentials) Quot
 		if remaining < 0 {
 			remaining = 0
 		}
-		quotas["session"] = Quota{
+		// One row per limit the account actually has. Keying every TOKENS_LIMIT as
+		// "session" collapsed them into whichever entry came last, so a plan with a
+		// rolling window plus a weekly one reported a single, arbitrary bucket. The
+		// bucket's own upstream name wins; otherwise the limit type with an index.
+		key := strings.ToLower(strings.TrimSpace(fmt.Sprint(lm["name"])))
+		if key == "" || key == "<nil>" {
+			key = strings.ToLower(strings.TrimSpace(fmt.Sprint(lm["type"])))
+		}
+		key = uniqueQuotaKey(quotas, key)
+		quotas[key] = Quota{
 			Used:                usedPct,
 			Total:               100,
 			Remaining:           remaining,
@@ -280,14 +293,17 @@ func fetchMiniMax(ctx context.Context, client *http.Client, c QuotaCredentials) 
 		capturedAt := time.Now()
 		quotas := map[string]Quota{}
 
-		for _, m := range modelRemains {
+		for i, m := range modelRemains {
 			model, ok := m.(map[string]any)
 			if !ok || !minimaxHasQuota(model) {
 				continue
 			}
-			name := minimaxDisplayName(model)
-			minimaxAddQuota(quotas, name+" (5h)", model, capturedAt, countMeansRemaining, false)
-			minimaxAddQuota(quotas, name+" (7d)", model, capturedAt, countMeansRemaining, true)
+			// Window tokens are the upstream counter families (current_interval_* /
+			// current_weekly_*). Upstream never states how long the interval runs, so
+			// the rows stopped asserting "(5h)"/"(7d)" as fact.
+			name := minimaxModelName(model, i)
+			minimaxAddQuota(quotas, name+" (interval)", model, capturedAt, countMeansRemaining, false)
+			minimaxAddQuota(quotas, name+" (weekly)", model, capturedAt, countMeansRemaining, true)
 		}
 		if len(quotas) == 0 {
 			return QuotaResult{Message: "MiniMax connected. No quota data was returned."}
@@ -312,13 +328,13 @@ func minimaxHasQuota(m map[string]any) bool {
 	return ok
 }
 
-func minimaxDisplayName(m map[string]any) string {
+// minimaxModelName keeps upstream's model_name verbatim, including the "MiniMax-M*"
+// wildcard the coding plan uses for the whole series. Rewriting it to "M-series" put
+// our wording on a row that carried no upstream name at all.
+func minimaxModelName(m map[string]any, i int) string {
 	raw := strings.TrimSpace(fmt.Sprint(orKey(m, "model_name", "modelName")))
 	if raw == "" || raw == "<nil>" {
-		return "MiniMax"
-	}
-	if raw == "MiniMax-M*" || raw == "general" {
-		return "M-series"
+		return fmt.Sprintf("model-%d", i+1)
 	}
 	return raw
 }
@@ -359,7 +375,7 @@ func minimaxAddQuota(quotas map[string]Quota, key string, m map[string]any, capt
 	effectiveTotal := total
 	effectiveCount := count
 	if total <= 0 {
-		// M-series bucket: percent-only. Normalize to total=100.
+		// Percent-only bucket: normalize to total=100.
 		effectiveTotal = 100
 		if countMeansRemaining {
 			effectiveCount = float64(int(effectiveTotal*(providedPct/100) + 0.5))
@@ -400,7 +416,7 @@ func minimaxAddQuota(quotas map[string]Quota, key string, m map[string]any, capt
 	}
 
 	resetAt := minimaxResetAt(m, capturedAt, remainsKey, endKey)
-	quotas[key] = Quota{
+	quotas[uniqueQuotaKey(quotas, key)] = Quota{
 		Used:                used,
 		Total:               effectiveTotal,
 		Remaining:           remaining,

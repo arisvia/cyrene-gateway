@@ -84,9 +84,12 @@ func TestFetchCodebuddy(t *testing.T) {
 		t.Errorf("unexpected plan: %q", res.Plan)
 	}
 
-	monthly, ok := res.Quotas["Monthly"]
+	monthly, ok := res.Quotas["codebuddy个人体验版"]
 	if !ok {
-		t.Fatalf("expected 'Monthly' quota bucket, got %v", res.Quotas)
+		t.Fatalf("expected the upstream package name to key the refill pack, got %v", res.Quotas)
+	}
+	if monthly.DisplayName != "CodeBuddy个人体验版" {
+		t.Errorf("expected the upstream casing preserved in DisplayName, got %q", monthly.DisplayName)
 	}
 	if monthly.Total != 500 || monthly.Used != 358.5 || monthly.Remaining != 141.5 {
 		t.Errorf("unexpected monthly quota: %+v", monthly)
@@ -98,15 +101,16 @@ func TestFetchCodebuddy(t *testing.T) {
 		t.Error("expected non-empty resetAt for Monthly pack")
 	}
 
-	bonus, ok := res.Quotas["Bonus Pack 1"]
+	bonus, ok := res.Quotas["codebuddy赠送包"]
 	if !ok {
-		t.Fatalf("expected 'Bonus Pack 1' quota bucket, got %v", res.Quotas)
+		t.Fatalf("expected the upstream bonus pack name to key its row, got %v", res.Quotas)
 	}
 	if bonus.Total != 3000 || bonus.Remaining != 3000 || bonus.Used != 0 {
 		t.Errorf("unexpected bonus pack quota: %+v", bonus)
 	}
 
-	if _, ok := res.Quotas["Bonus Pack 2"]; ok {
+	// An expired pack with no balance left is dropped, not renamed.
+	if _, ok := res.Quotas["已过期裂变包"]; ok {
 		t.Error("expired zero-balance account should be excluded")
 	}
 }

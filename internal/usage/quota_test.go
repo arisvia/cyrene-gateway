@@ -34,7 +34,7 @@ func TestFetchDeepseek(t *testing.T) {
 			t.Errorf("expected Bearer auth, got %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"42.5","granted_balance":"2.5","topped_up_balance":"40.0"}]}`))
+		w.Write([]byte(`{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"42.5","granted_balance":"2.5","topped_up_balance":"40.0"},{"currency":"USD","total_balance":"10.0","granted_balance":"0","topped_up_balance":"10.0"}]}`))
 	}))
 	defer srv.Close()
 
@@ -44,15 +44,19 @@ func TestFetchDeepseek(t *testing.T) {
 	if res.Plan != "DeepSeek" {
 		t.Errorf("expected plan DeepSeek, got %q", res.Plan)
 	}
-	q, ok := res.Quotas["Balance (CNY)"]
+	// One row per balance_infos entry, keyed by the upstream currency code.
+	cny, ok := res.Quotas["CNY"]
 	if !ok {
-		t.Fatalf("expected Balance (CNY) quota, got %v", res.Quotas)
+		t.Fatalf("expected a CNY row, got %v", res.Quotas)
 	}
-	if q.Total != 42.5 {
-		t.Errorf("expected total 42.5, got %v", q.Total)
+	if cny.Total != 42.5 || cny.Unit != "CNY" {
+		t.Errorf("unexpected CNY balance: %+v", cny)
 	}
-	if !q.Unlimited {
+	if !cny.Unlimited {
 		t.Error("expected unlimited=true for positive balance")
+	}
+	if usd, ok := res.Quotas["USD"]; !ok || usd.Total != 10.0 {
+		t.Errorf("a second currency lost its row: %+v", res.Quotas)
 	}
 }
 
@@ -76,7 +80,11 @@ func TestFetchGLM(t *testing.T) {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","percentage":30,"nextResetTime":1893456000000}]}}`))
+		w.Write([]byte(`{"data":{"level":"pro","limits":[
+			{"type":"TOKENS_LIMIT","name":"Pro-Max","percentage":30,"nextResetTime":1893456000000},
+			{"type":"TOKENS_LIMIT","percentage":80,"nextResetTime":1896048000000},
+			{"type":"REQUEST_LIMIT","percentage":50}
+		]}}`))
 	}))
 	defer srv.Close()
 
@@ -86,45 +94,64 @@ func TestFetchGLM(t *testing.T) {
 	if res.Plan != "Pro" {
 		t.Errorf("expected plan Pro, got %q", res.Plan)
 	}
-	q, ok := res.Quotas["session"]
+	// Every limit keeps its own row: keying them all "session" reported whichever
+	// entry came last and hid the rest of the account.
+	if len(res.Quotas) != 2 {
+		t.Fatalf("expected the two TOKENS_LIMIT buckets, got %v", res.Quotas)
+	}
+	named, ok := res.Quotas["pro-max"]
 	if !ok {
-		t.Fatalf("expected session quota, got %v", res.Quotas)
+		t.Fatalf("expected the bucket named by upstream, got %v", res.Quotas)
 	}
-	if q.Used != 30 || q.Total != 100 || q.Remaining != 70 {
-		t.Errorf("unexpected quota values: %+v", q)
+	if named.Used != 30 || named.Total != 100 || named.Remaining != 70 {
+		t.Errorf("unexpected named quota: %+v", named)
 	}
-	if q.ResetAt == "" {
+	if named.ResetAt == "" {
 		t.Error("expected resetAt to be parsed")
+	}
+	unnamed, ok := res.Quotas["tokens_limit"]
+	if !ok {
+		t.Fatalf("expected a row keyed by the limit type, got %v", res.Quotas)
+	}
+	if unnamed.Used != 80 || unnamed.Remaining != 20 || unnamed.ResetAt == named.ResetAt {
+		t.Errorf("unexpected unnamed quota: %+v", unnamed)
 	}
 }
 
 func TestFetchMiniMax(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		// count-based bucket: total 100, used 40 → remaining 60.
-		w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"success"},"model_remains":[{"model_name":"MiniMax-M1","current_interval_total_count":100,"current_interval_usage_count":40,"current_weekly_total_count":1000,"current_weekly_usage_count":200}]}`))
+		// count-based bucket: total 100, used 40 → remaining 60. The second entry is
+		// the whole-series wildcard, which upstream spells "MiniMax-M*".
+		w.Write([]byte(`{"base_resp":{"status_code":0,"status_msg":"success"},"model_remains":[{"model_name":"MiniMax-M1","current_interval_total_count":100,"current_interval_usage_count":40,"current_weekly_total_count":1000,"current_weekly_usage_count":200},{"model_name":"MiniMax-M*","current_interval_total_count":50,"current_interval_usage_count":10}]}`))
 	}))
 	defer srv.Close()
 
 	res := FetchQuota(context.Background(), srv.Client(), QuotaCredentials{
 		Provider: "minimax", APIKey: "sk-mm", BaseURL: srv.URL,
 	})
-	q5, ok := res.Quotas["MiniMax-M1 (5h)"]
+	// Window tokens name the upstream counter families; the response never states
+	// how long an interval runs, so rows stopped claiming "(5h)"/"(7d)".
+	q5, ok := res.Quotas["MiniMax-M1 (interval)"]
 	if !ok {
-		t.Fatalf("expected 5h quota, got %v", res.Quotas)
+		t.Fatalf("expected the interval bucket, got %v", res.Quotas)
 	}
 	if q5.Used != 40 || q5.Total != 100 || q5.Remaining != 60 {
-		t.Errorf("unexpected 5h quota: %+v", q5)
+		t.Errorf("unexpected interval quota: %+v", q5)
 	}
 	if q5.RemainingPercentage != 60 {
 		t.Errorf("expected 60%% remaining, got %v", q5.RemainingPercentage)
 	}
-	q7, ok := res.Quotas["MiniMax-M1 (7d)"]
+	q7, ok := res.Quotas["MiniMax-M1 (weekly)"]
 	if !ok {
-		t.Fatalf("expected 7d quota, got %v", res.Quotas)
+		t.Fatalf("expected the weekly bucket, got %v", res.Quotas)
 	}
 	if q7.Used != 200 || q7.Total != 1000 {
-		t.Errorf("unexpected 7d quota: %+v", q7)
+		t.Errorf("unexpected weekly quota: %+v", q7)
+	}
+	// The series wildcard reaches the panel as upstream wrote it.
+	if star, ok := res.Quotas["MiniMax-M* (interval)"]; !ok || star.Total != 50 || star.Used != 10 {
+		t.Errorf("wildcard model row = %+v (present: %t)", star, ok)
 	}
 }
 

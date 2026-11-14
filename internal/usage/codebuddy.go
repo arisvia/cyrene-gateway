@@ -81,6 +81,20 @@ func parseCodebuddyDate(s string) (time.Time, string) {
 	return time.Time{}, s
 }
 
+// codebuddyBucketKey identifies a credit pack by upstream's own product naming
+// (PackageName, else SubProductName), lowercased only so equal names collide loudly
+// through uniqueQuotaKey rather than silently. Falls back to the loop index.
+func codebuddyBucketKey(acc codebuddyAccount, fallback string) string {
+	name := strings.TrimSpace(acc.PackageName)
+	if name == "" {
+		name = strings.TrimSpace(acc.SubProductName)
+	}
+	if name == "" {
+		return strings.ToLower(fallback)
+	}
+	return strings.ToLower(name)
+}
+
 func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials) QuotaResult {
 	token := strings.TrimSpace(c.AccessToken)
 	if token == "" {
@@ -179,10 +193,10 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 	plan := "CodeBuddy"
 
 	for i, acc := range refills {
-		name := "Monthly"
-		if i > 0 {
-			name = fmt.Sprintf("Monthly %d", i+1)
-		}
+		// Upstream's own product name identifies the pack; "Monthly"/"Monthly 2"
+		// described the refill cadence we assumed rather than the quota we were
+		// shown, and hid which pack a drained row belonged to.
+		name := codebuddyBucketKey(acc, fmt.Sprintf("monthly-%d", i+1))
 		total := parseCodebuddyFloat(acc.CycleCapacitySizePrecise, acc.CycleCapacitySize)
 		used := parseCodebuddyFloat(acc.CycleCapacityUsedPrecise, acc.CycleCapacityUsed)
 		remaining := parseCodebuddyFloat(acc.CycleCapacityRemainPrecise, acc.CycleCapacityRemain)
@@ -205,7 +219,7 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 		if plan == "CodeBuddy" && dispName != "" {
 			plan = dispName
 		}
-		quotas[name] = Quota{
+		quotas[uniqueQuotaKey(quotas, name)] = Quota{
 			Used:                used,
 			Total:               total,
 			Remaining:           remaining,
@@ -217,7 +231,7 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 	}
 
 	for i, acc := range bonuses {
-		name := fmt.Sprintf("Bonus Pack %d", i+1)
+		name := codebuddyBucketKey(acc, fmt.Sprintf("bonus-%d", i+1))
 		total := parseCodebuddyFloat(acc.CapacitySizePrecise, acc.CapacitySize)
 		used := parseCodebuddyFloat(acc.CapacityUsedPrecise, acc.CapacityUsed)
 		remaining := parseCodebuddyFloat(acc.CapacityRemainPrecise, acc.CapacityRemain)
@@ -243,7 +257,7 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 		if plan == "CodeBuddy" && dispName != "" {
 			plan = dispName
 		}
-		quotas[name] = Quota{
+		quotas[uniqueQuotaKey(quotas, name)] = Quota{
 			Used:                used,
 			Total:               total,
 			Remaining:           remaining,

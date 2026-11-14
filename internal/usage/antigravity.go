@@ -81,6 +81,10 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		// Both quota endpoints sit behind a CDN that caches a POST response for ~20s
+		// unless the caller says otherwise: a refresh could otherwise keep showing the
+		// pre-reset numbers. Same header the upstream CLI sends.
+		req.Header.Set("X-Goog-Cloud-Code-Hybrid-Quota-No-Cache", "true")
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -102,7 +106,8 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 		}
 	}
 
-	// 2. Second attempt: fetchAvailableModels (standard per-model quota pooling fallback)
+	// 2. Second attempt: fetchAvailableModels, one row per advertised model window.
+	// This endpoint carries no pool identity, so no aggregate is synthesized.
 	for _, ep := range endpoints {
 		url := ep + "/v1internal:fetchAvailableModels"
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))

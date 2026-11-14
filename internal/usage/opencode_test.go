@@ -28,11 +28,12 @@ func TestFetchOpenCode(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
+		w.Write([]byte(`{
 			"usage": {
 				"rolling": { "percent": 15.5, "resetsAt": "2026-09-10T18:00:00Z" },
 				"weekly": { "percent": 42.0, "resetsAt": "2026-09-14T00:00:00Z" },
-				"monthly": { "percent": 75.0, "resetsAt": "2026-10-01T00:00:00Z" }
+				"monthly": { "percent": 75.0, "resetsAt": "2026-10-01T00:00:00Z" },
+				"yearly": { "percent": 5.0, "resetsAt": "2027-01-01T00:00:00Z" }
 			}
 		}`))
 	}))
@@ -47,13 +48,17 @@ func TestFetchOpenCode(t *testing.T) {
 	if res.Plan != "OpenCode Go" {
 		t.Errorf("expected plan OpenCode Go, got %s", res.Plan)
 	}
-	if len(res.Quotas) != 3 {
-		t.Fatalf("expected 3 quotas, got %d", len(res.Quotas))
+	if len(res.Quotas) != 4 {
+		t.Fatalf("expected one row per upstream period, got %d: %+v", len(res.Quotas), res.Quotas)
+	}
+	// A window this gateway has never heard of still reaches the panel as itself.
+	if yearly, ok := res.Quotas["yearly"]; !ok || yearly.Used != 5.0 {
+		t.Errorf("unknown upstream period dropped: %+v", res.Quotas)
 	}
 
-	rolling, ok := res.Quotas["Rolling"]
+	rolling, ok := res.Quotas["rolling"]
 	if !ok {
-		t.Fatal("expected Rolling quota")
+		t.Fatal("expected rolling quota keyed by the upstream period")
 	}
 	if rolling.Used != 15.5 || rolling.Remaining != 84.5 {
 		t.Errorf("unexpected rolling quota values: %+v", rolling)

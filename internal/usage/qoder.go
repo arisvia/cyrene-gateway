@@ -156,9 +156,13 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 	orgQuota, _ := data["orgResourcePackage"].(map[string]any)
 	addOnQuota, _ := data["addOnQuota"].(map[string]any)
 
-	extractQuotaBucket("user", userQuota, "")
-	extractQuotaBucket("organization", orgQuota, strings.TrimSpace(c.Organization))
-	extractQuotaBucket("addOn", addOnQuota, "")
+	// Row identity is the upstream field that carries the bucket, matching how the
+	// dynamic pass below keys everything else; the short "user"/"addOn" names were
+	// ours and made the same value appear under two vocabularies depending on where
+	// it came from in the payload.
+	extractQuotaBucket("userQuota", userQuota, "")
+	extractQuotaBucket("orgResourcePackage", orgQuota, strings.TrimSpace(c.Organization))
+	extractQuotaBucket("addOnQuota", addOnQuota, "")
 
 	// 2. Dynamically unpack any other quota or package structures in response
 	for k, v := range data {
@@ -187,7 +191,7 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		if unit == "" {
 			unit = "credits"
 		}
-		quotas["user"] = Quota{
+		quotas["userQuota"] = Quota{
 			Used:                0,
 			Total:               0,
 			Remaining:           0,
@@ -212,9 +216,9 @@ func fetchQoder(ctx context.Context, client *http.Client, c QuotaCredentials) Qu
 		plan = fmt.Sprintf("Qoder (%.0f%% used)", pct)
 	}
 	// Dedicated/promotional credits do not establish general quota availability.
-	hasAvailableQuota := quotas["user"].Remaining > 0 || quotas["addOn"].Remaining > 0
+	hasAvailableQuota := quotas["userQuota"].Remaining > 0 || quotas["addOnQuota"].Remaining > 0
 	if available, ok := orgQuota["available"].(bool); !ok || available {
-		hasAvailableQuota = hasAvailableQuota || quotas["organization"].Remaining > 0
+		hasAvailableQuota = hasAvailableQuota || quotas["orgResourcePackage"].Remaining > 0
 	}
 	if exceeded, _ := data["isQuotaExceeded"].(bool); exceeded && !hasAvailableQuota {
 		plan = "Qoder (Quota Exceeded)"
