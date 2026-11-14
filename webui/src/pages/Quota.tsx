@@ -25,10 +25,15 @@ interface ConnQuota {
   message?: string
 }
 
+// Quota rows carry upstream's own wording; these three are the only buckets whose
+// upstream identity is a bare payload field name with no display text attached, so
+// they get a translated word here. Anything else renders upstream's name, or the
+// identifier itself when upstream has none — inventing labels for pools we guessed
+// at is what made the panel disagree with the vendor's own console.
 const BUCKET_FALLBACK_LABELS: Record<string, I18nKey | undefined> = {
-  user: 'quota.bucketUser',
-  organization: 'quota.bucketOrg',
-  addOn: 'quota.bucketAddOn',
+  userQuota: 'quota.bucketUser',
+  orgResourcePackage: 'quota.bucketOrg',
+  addOnQuota: 'quota.bucketAddOn',
 }
 
 const Quota: Component = () => {
@@ -217,16 +222,26 @@ const Quota: Component = () => {
             </span>
           </div>
           <div class="flex items-center gap-1.5 shrink-0 font-mono tabular-nums text-[11px]">
-            <span
-              class="text-muted/80"
-              title={t('quota.remainingTotalTitle', {
-                remaining: formatNumber(props.quota.remaining),
-                total: formatNumber(props.quota.total),
-                used: props.quota.used != null ? t('quota.usedSuffix', { used: formatNumber(props.quota.used) }) : '',
-              })}
+            <Show
+              when={props.quota.total > 0}
+              fallback={
+                // A bucket that only ever has a fraction (Antigravity windows) keeps
+                // total/used at zero: an em dash beats rendering "0 / 0", and the bar
+                // plus the percentage on the right carry the row.
+                <span class="text-muted/60" title={t('quota.percentOnlyTitle')}>—</span>
+              }
             >
-              {formatNumber(props.quota.remaining)} / {formatNumber(props.quota.total)}
-            </span>
+              <span
+                class="text-muted/80"
+                title={t('quota.remainingTotalTitle', {
+                  remaining: formatNumber(props.quota.remaining),
+                  total: formatNumber(props.quota.total),
+                  used: props.quota.used != null ? t('quota.usedSuffix', { used: formatNumber(props.quota.used) }) : '',
+                })}
+              >
+                {formatNumber(props.quota.remaining)} / {formatNumber(props.quota.total)}
+              </span>
+            </Show>
             <span class={`font-medium min-w-7 text-right ${colorClass().text}`}>
               {pct()}%
             </span>

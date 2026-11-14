@@ -767,6 +767,7 @@ export const zhCN = {
     noOnlineApiShort: "该供应商暂无官方在线配额接口，调度以网关路由与 Fallback 限流探测为准。",
     remainingTotalTitle: "余量: {remaining} / 总量: {total}{used}",
     usedSuffix: " (已用: {used})",
+    percentOnlyTitle: "上游只返回剩余比例，不提供绝对请求数",
     bucketUser: "用户个人额度",
     bucketOrg: "组织共享包",
     bucketAddOn: "附加额度",

@@ -769,6 +769,7 @@ export const enUS: TranslationDict = {
     noOnlineApiShort: "This provider exposes no official online quota API; scheduling relies on gateway routing and fallback probe throttling.",
     remainingTotalTitle: "Remaining: {remaining} / Total: {total}{used}",
     usedSuffix: " (used: {used})",
+    percentOnlyTitle: "Upstream reports only the remaining share, never an absolute request count",
     bucketUser: "Personal quota",
     bucketOrg: "Organization pool",
     bucketAddOn: "Add-on Credits",

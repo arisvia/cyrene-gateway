@@ -33,7 +33,7 @@ const summary = (requests = 123) => ({
 })
 const quota = (remaining = 90) => ({
   plan: 'Pro',
-  quotas: { user: { used: 100 - remaining, total: 100, remaining, remainingPercentage: remaining, resetAt: '', unit: 'USD' } },
+  quotas: { userQuota: { used: 100 - remaining, total: 100, remaining, remainingPercentage: remaining, resetAt: '', unit: 'USD' } },
 })
 const unsupported = { message: 'Usage API not implemented for anthropic' }
 const skeletons = (element: Element) => element.querySelectorAll('.animate-pulse[aria-hidden="true"]')
@@ -292,7 +292,7 @@ describe('Quota bucket localization', () => {
     request(quotaPath('first')).resolve({
       quotas: {
         dedicatedResourcePackages_1: {
-          ...quota().quotas.user,
+          ...quota().quotas.userQuota,
           displayName: 'sota model series',
           displayNameI18n: { 'zh-CN': 'SOTA 专属积分', 'en-US': 'SOTA Exclusive Credits' },
         },
@@ -318,11 +318,11 @@ describe('Quota bucket localization', () => {
 
   it('translates standard buckets while keeping custom organization and package names', async () => {
     await mount()
-    const bucket = quota().quotas.user
-    request(quotaPath('first')).resolve({ quotas: { user: bucket, organization: bucket, addOn: bucket } })
+    const bucket = quota().quotas.userQuota
+    request(quotaPath('first')).resolve({ quotas: { userQuota: bucket, orgResourcePackage: bucket, addOnQuota: bucket } })
     request(quotaPath('second')).resolve({
       quotas: {
-        organization: { ...bucket, displayName: '麦穗通信' },
+        orgResourcePackage: { ...bucket, displayName: '麦穗通信' },
         dedicatedResourcePackages_1: { ...bucket, displayName: 'My credits' },
       },
     })
@@ -345,11 +345,11 @@ describe('Quota bucket localization', () => {
   it('falls back to raw names or bucket translations when the current locale is missing', async () => {
     setLocale('en-US')
     await mount()
-    const bucket = quota().quotas.user
+    const bucket = quota().quotas.userQuota
     request(quotaPath('first')).resolve({
       quotas: {
         dedicatedResourcePackages_1: { ...bucket, displayName: 'Raw credits', displayNameI18n: { 'zh-CN': '专属积分' } },
-        organization: { ...bucket, displayNameI18n: { 'zh-CN': '团队积分' } },
+        orgResourcePackage: { ...bucket, displayNameI18n: { 'zh-CN': '团队积分' } },
       },
     })
     await flush()
@@ -361,5 +361,27 @@ describe('Quota bucket localization', () => {
     expect(within(card('first')).getByText('专属积分')).toBeTruthy()
     expect(within(card('first')).getByText('团队积分')).toBeTruthy()
     expect(card('first').textContent).not.toContain('Raw credits')
+  })
+})
+
+describe('Quota rows that only have a fraction', () => {
+  it('shows the percentage and the upstream identifier without an invented total', async () => {
+    await mount()
+    request(quotaPath('first')).resolve({
+      quotas: { 'gemini-5h': { used: 0, total: 0, remainingPercentage: 42, resetAt: '', unit: '' } },
+    })
+    await flush()
+    const text = card('first').textContent ?? ''
+    expect(text).toContain('gemini-5h')
+    expect(text).toContain('42%')
+    expect(text).not.toContain('0 / 0')
+    expect(within(card('first')).getByText('—').getAttribute('title')).toBeTruthy()
+  })
+
+  it('still prints absolute figures when upstream reports them', async () => {
+    await mount()
+    request(quotaPath('first')).resolve(quota(90))
+    await flush()
+    expect(card('first').textContent).toContain('90 / 100')
   })
 })
