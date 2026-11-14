@@ -1369,9 +1369,9 @@ func splitAntigravityTier(id string) (string, int, bool) {
 }
 
 // resolveAntigravityModel maps a requested model plus reasoning_effort onto the
-// upstream model id to call and the thinkingLevel to request from it. Tiers are
-// read off the live catalog, so upstream retiring one (extra-low) or adding one
-// (xhigh) is a catalog change, not a code change.
+// upstream model id to call and the thinkingLevel to request from it. Tiers come
+// from the live catalog, so upstream renaming a tier or adding a new depth needs
+// no code change here.
 func resolveAntigravityModel(
 	rawModel string,
 	reasoningEffort string,
