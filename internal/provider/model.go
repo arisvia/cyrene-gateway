@@ -53,9 +53,10 @@ func ParseModel(modelStr string) model.ModelInfo {
 }
 
 // ResolveModel resolves a model string to full ModelInfo using:
-// 1. Explicit provider prefix (e.g. "openai/gpt-4o")
-// 2. Dynamic search in cached models of active connections
-// 3. Fallback: prefix-based inference
+//  1. Explicit provider prefix (e.g. "openai/gpt-4o")
+//  2. Dynamic search in cached models of active connections
+//  3. Fallback: prefix-based inference, preferring the credential form (API key
+//     vs OAuth) that actually has a connection
 func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	parsed := ParseModel(modelStr)
 
@@ -122,11 +123,45 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 		return parsed, nil
 	}
 
-	// 5. Fallback: infer provider from model name
+	// 5. Fallback: infer provider from model name, then honor the credential form
+	//    that is actually connected.
 	return model.ModelInfo{
-		Provider: InferProviderFromModel(parsed.Model),
+		Provider: activeAuthFormProvider(InferProviderFromModel(parsed.Model), database),
 		Model:    parsed.Model,
 	}, nil
+}
+
+// anthropicOAuthProvider is the provider id a Claude Code OAuth login connects
+// under. The prefix table maps bare claude-* names to "anthropic" (Console API
+// key form), so an operator who authorized only the OAuth account — and whose
+// synced catalog does not happen to list that id — was told there were no
+// credentials for a model their own account serves. openai carries both forms
+// under one id (api-key plus Codex OAuth) and needs no sibling.
+const anthropicOAuthProvider = "claude"
+
+// activeAuthFormProvider swaps an inferred API-key provider for its OAuth twin
+// when the inferred one has no active connection and the twin does.
+func activeAuthFormProvider(inferred string, database *db.DB) string {
+	if database == nil || inferred != "anthropic" {
+		return inferred
+	}
+	if hasActiveConnection(database, inferred) || !hasActiveConnection(database, anthropicOAuthProvider) {
+		return inferred
+	}
+	return anthropicOAuthProvider
+}
+
+func hasActiveConnection(database *db.DB, providerID string) bool {
+	conns, err := database.ListConnectionsByProvider(providerID)
+	if err != nil {
+		return false
+	}
+	for _, c := range conns {
+		if c.IsActive {
+			return true
+		}
+	}
+	return false
 }
 
 // ResolveCombo checks if a bare model string matches a combo name.

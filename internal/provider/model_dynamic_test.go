@@ -153,6 +153,7 @@ func TestExtractModelReasoningEffort(t *testing.T) {
 		{"claude-3-7-sonnet[1m](high)", "claude-3-7-sonnet", "high"},
 		{"claude-3-7-sonnet(high)[1m]", "claude-3-7-sonnet", "high"},
 		{"cc/claude-sonnet-4.5[1m]", "cc/claude-sonnet-4.5", ""},
+		{"gemini-4-hydrogen(xhigh)", "gemini-4-hydrogen", "xhigh"},
 		{"deepseek-r1", "deepseek-r1", ""},
 		{"custom-model(unknown)", "custom-model(unknown)", ""},
 	}
@@ -162,5 +163,53 @@ func TestExtractModelReasoningEffort(t *testing.T) {
 			t.Errorf("ExtractModelReasoningEffort(%q) = (%q, %q), want (%q, %q)",
 				tt.input, gotModel, gotEffort, tt.wantModel, tt.wantEffort)
 		}
+	}
+}
+
+// A bare claude-* id infers the "anthropic" API-key provider, while a Claude Code
+// login connects under provider "claude". When only the OAuth account exists and
+// no synced catalog entry names that exact id, resolution has to land on the
+// account that can serve it instead of reporting missing credentials.
+func TestResolveModelBareClaudeIDPrefersConnectedAuthForm(t *testing.T) {
+	oauthConn := model.ProviderConnection{ID: "claude-oauth", Provider: "claude", AuthType: "oauth", IsActive: true}
+	keyConn := model.ProviderConnection{ID: "anthropic-key", Provider: "anthropic", AuthType: "api-key", IsActive: true}
+
+	for _, tc := range []struct {
+		name     string
+		conns    []model.ProviderConnection
+		wantProv string
+	}{
+		{"oauth account only", []model.ProviderConnection{oauthConn}, "claude"},
+		// Both forms connected: the canonical API-key provider keeps priority.
+		{"api key account present", []model.ProviderConnection{oauthConn, keyConn}, "anthropic"},
+		// A stale OAuth connection must not steal the route.
+		{"oauth connection disabled", []model.ProviderConnection{{ID: oauthConn.ID, Provider: "claude", AuthType: "oauth", IsActive: false}}, "anthropic"},
+		{"nothing connected", nil, "anthropic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, err := db.Open(":memory:")
+			if err != nil {
+				t.Fatalf("open db: %v", err)
+			}
+			defer database.Close()
+
+			for i := range tc.conns {
+				c := tc.conns[i]
+				if err := database.CreateConnection(&c); err != nil {
+					t.Fatalf("create connection: %v", err)
+				}
+			}
+
+			info, err := ResolveModel("claude-opus-5-5-high", database)
+			if err != nil {
+				t.Fatalf("resolve: %v", err)
+			}
+			if info.Provider != tc.wantProv {
+				t.Errorf("provider = %q, want %q", info.Provider, tc.wantProv)
+			}
+			if info.Model != "claude-opus-5-5-high" {
+				t.Errorf("model = %q, want the bare id unchanged", info.Model)
+			}
+		})
 	}
 }
