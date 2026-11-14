@@ -282,7 +282,12 @@ func newSafeTransport(allowPrivate bool, proxyURL *url.URL) *safeTransport {
 		allowPrivate: allowPrivate, proxy: proxy, routes: make(map[string]*http.Transport),
 		transport: &http.Transport{
 			ForceAttemptHTTP2: true, MaxIdleConns: 100,
-			IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: safeConnectTimeout,
+			// Cloudflare, Google's frontends and the NIM gateways in front of most
+			// coding APIs idle-close inside a minute and often without a close_notify,
+			// so a socket kept longer than that comes back poisoned and the next write
+			// dies with ECONNRESET/EOF. Stay under the shortest common window rather
+			// than leaning on the replay path.
+			IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: safeConnectTimeout,
 			ResponseHeaderTimeout: 3 * time.Minute,
 			ExpectContinueTimeout: time.Second,
 		},

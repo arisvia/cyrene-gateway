@@ -494,8 +494,12 @@ func (s *Server) attemptSingleModelChat(
 	}
 	client := s.getHTTPClient(clientTimeout)
 	resp, err := client.Do(upstreamReq)
-	if err != nil && r.Context().Err() == nil {
-		// In-place micro-retry for transient network errors (preserves upstream KV cache)
+	if err != nil && r.Context().Err() == nil && provider.IsReplayableTransportError(err) {
+		// In-place micro-retry for stale-socket transport errors only: replaying a
+		// request the upstream edge never received preserves the prompt KV cache
+		// and costs nothing, while anything that may already have reached the model
+		// (response-header timeout, refused route) goes to cross-account failover
+		// instead of risking a second billed completion.
 		time.Sleep(200 * time.Millisecond)
 		if retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
 			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
