@@ -97,7 +97,6 @@ var ErrorRules = []ErrorRule{
 	{Text: "insufficient credit", CooldownMs: CooldownQuota},
 	{Text: "insufficient balance", CooldownMs: CooldownQuota},
 	{Text: "daily limit", CooldownMs: CooldownQuota},
-	{Text: "weekly limit", CooldownMs: CooldownQuota},
 	{Text: "5-hour limit", CooldownMs: CooldownQuota},
 
 	{Text: "rate limit", Backoff: true},
