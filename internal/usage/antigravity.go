@@ -19,14 +19,25 @@ import (
 )
 
 type AntigravityModelsResponse struct {
-	Models map[string]struct {
-		DisplayName string `json:"displayName"`
-		QuotaInfo   *struct {
-			RemainingFraction *float64 `json:"remainingFraction"`
-			ResetTime         string   `json:"resetTime"`
-			IsExhausted       bool     `json:"isExhausted"`
-		} `json:"quotaInfo"`
-	} `json:"models"`
+	Models map[string]AntigravityModelEntry `json:"models"`
+}
+
+// AntigravityModelEntry is one advertised model. Servability is upstream's own
+// statement, not a reading of the id: isInternal and the INTERNAL api surface mark
+// test endpoints, requiresLeadInGeneration marks the editor's inline-completion
+// anchors (they carry quotaInfo but no chat surface), and disabled placeholders
+// advertise no quotaInfo at all.
+type AntigravityModelEntry struct {
+	DisplayName    string `json:"displayName"`
+	APIProvider    string `json:"apiProvider"`
+	IsInternal     bool   `json:"isInternal"`
+	Disabled       bool   `json:"disabled"`
+	RequiresLeadIn bool   `json:"requiresLeadInGeneration"`
+	QuotaInfo      *struct {
+		RemainingFraction *float64 `json:"remainingFraction"`
+		ResetTime         string   `json:"resetTime"`
+		IsExhausted       bool     `json:"isExhausted"`
+	} `json:"quotaInfo"`
 }
 
 // AntigravityQuotaSummaryResponse mirrors /v1internal:retrieveUserQuotaSummary:
@@ -160,11 +171,10 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 
 	quotas := make(map[string]Quota, len(parsed.Models))
 	for id, m := range parsed.Models {
-		// Internal test endpoints, completion-only tab anchors and reverb builds
-		// carry no servable quota; entries upstream marks disabled advertise no
-		// quotaInfo at all and drop out on the nil guard.
+		// Upstream flags its test endpoints and inline-completion anchors; entries it
+		// marks disabled advertise no quotaInfo and drop out on the nil guard.
 		if m.QuotaInfo == nil ||
-			strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") || strings.HasPrefix(id, "rev_") {
+			provider.AntigravityInternalEngine(m.IsInternal, m.APIProvider, m.RequiresLeadIn) {
 			continue
 		}
 

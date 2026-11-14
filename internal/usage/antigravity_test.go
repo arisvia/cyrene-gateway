@@ -38,14 +38,20 @@ func TestClusterAntigravityQuotas(t *testing.T) {
 		"gpt-oss-120b-medium":      {"quotaInfo":{"remainingFraction":0.5,"resetTime":"2099-09-10T15:00:00Z"}},
 		"imagen-3.0-generate":      {"displayName":"Imagen 3.0","quotaInfo":{"remainingFraction":0.0,"isExhausted":true}},
 		"gemini-4-carbon-disabled": {"displayName":"Gemini 4 Carbon"},
-		"chat_experimental_internal": {"displayName":"Internal Test","quotaInfo":{"remainingFraction":0.95}},
-		"tab_flash_lite_preview":   {"displayName":"Tab Anchor","quotaInfo":{"remainingFraction":0.95}}
+		"chat_experimental_internal": {"displayName":"Internal Test","isInternal":true,"apiProvider":"API_PROVIDER_INTERNAL","quotaInfo":{"remainingFraction":0.95}},
+		"tab_flash_lite_preview":   {"requiresLeadInGeneration":true,"supportsCumulativeContext":true,"quotaInfo":{"remainingFraction":0.95}},
+		"tab_named_chat_engine":    {"displayName":"Tab Named Chat Engine","apiProvider":"API_PROVIDER_GOOGLE_GEMINI","quotaInfo":{"remainingFraction":0.8}}
 	}}`)
 
 	quotas := clusterAntigravityQuotas(resp)
 
-	if len(quotas) != 4 {
+	if len(quotas) != 5 {
 		t.Fatalf("expected one row per servable model, got %d: %+v", len(quotas), quotas)
+	}
+	// Servability is what upstream flags, not what the id looks like: an engine named
+	// tab_* that upstream advertises as a normal chat model keeps its quota row.
+	if named, ok := quotas["tab_named_chat_engine"]; !ok || named.RemainingPercentage != 80.0 {
+		t.Errorf("a servable engine was dropped for its name: %+v", quotas)
 	}
 	gemini := quotas["gemini-3.8-flash-high"]
 	if gemini.DisplayName != "Gemini 3.8 Flash (High)" || gemini.RemainingPercentage != 95.0 {

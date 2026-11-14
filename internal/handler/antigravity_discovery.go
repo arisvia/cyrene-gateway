@@ -187,7 +187,8 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 			continue
 		}
 
-		// 1. Try Models as map (standard response with rich metadata)
+		// Upstream answers with a map keyed by model id, each entry carrying its own
+		// limits, capabilities, quota window and api surface.
 		var resultMap struct {
 			Models map[string]struct {
 				DisplayName      string `json:"displayName"`
@@ -199,6 +200,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				SupportsImages   bool   `json:"supportsImages"`
 				IsInternal       bool   `json:"isInternal"`
 				Disabled         bool   `json:"disabled"`
+				RequiresLeadIn   bool   `json:"requiresLeadInGeneration"`
 				QuotaInfo        *struct {
 					ResetTime string `json:"resetTime"`
 				} `json:"quotaInfo"`
@@ -207,10 +209,11 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		if err := json.Unmarshal(respBytes, &resultMap); err == nil && len(resultMap.Models) > 0 {
 			var out []model.ModelMetadata
 			for id, m := range resultMap.Models {
-				// Filter out internal Google test/telemetry endpoints, completion-only
-				// tab anchors, and placeholders upstream marks disabled (calling them
-				// returns 404 NOT_FOUND, so they are not servable inventory).
-				if m.IsInternal || m.Disabled || strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") {
+				// Upstream flags what is not servable inventory: its own test endpoints
+				// (isInternal / INTERNAL api surface), the editor's inline-completion
+				// anchors (requiresLeadInGeneration), and placeholders marked disabled
+				// that answer 404 NOT_FOUND on call.
+				if m.Disabled || provider.AntigravityInternalEngine(m.IsInternal, m.APIProvider, m.RequiresLeadIn) {
 					continue
 				}
 				name := m.DisplayName
@@ -219,7 +222,10 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				}
 				var caps []string
 				var mods []string
-				// Distinguish dedicated image generation models (e.g. gemini-3.1-flash-image)
+				// The one classification upstream does not state: no field marks an
+				// image engine (checked the union of every key it sends — no image
+				// flag, and supportedMimeTypes overlaps the chat engines), so the id
+				// suffix is the only signal for gemini-3.1-flash-image.
 				isImageGen := strings.Contains(strings.ToLower(id), "-image")
 				if isImageGen {
 					caps = append(caps, "image-generation")
@@ -260,33 +266,6 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				sort.Slice(out, func(i, j int) bool {
 					return out[i].ID < out[j].ID
 				})
-				return out
-			}
-		}
-
-		// 2. Try Models as array
-		var resultSlice struct {
-			Models []struct {
-				ID          string `json:"id"`
-				DisplayName string `json:"displayName"`
-			} `json:"models"`
-		}
-		if err := json.Unmarshal(respBytes, &resultSlice); err == nil && len(resultSlice.Models) > 0 {
-			var out []model.ModelMetadata
-			for _, m := range resultSlice.Models {
-				if strings.HasPrefix(m.ID, "chat_") || strings.HasPrefix(m.ID, "tab_") {
-					continue
-				}
-				name := m.DisplayName
-				if name == "" || name == m.ID {
-					name = model.FormatFallbackDisplayName(m.ID)
-				}
-				out = append(out, model.ModelMetadata{
-					ID:          m.ID,
-					DisplayName: name,
-				})
-			}
-			if len(out) > 0 {
 				return out
 			}
 		}

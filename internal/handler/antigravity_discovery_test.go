@@ -46,8 +46,9 @@ func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 		"claude-sonnet-5-5-high": {"displayName": "Claude Sonnet 5.5 (High)", "apiProvider": "API_PROVIDER_ANTHROPIC_VERTEX", "maxTokens": 1000000, "maxOutputTokens": 128000, "thinkingLevel": 3, "supportsThinking": true},
 		"gemini-4-carbon-disabled": {"displayName": "Gemini 4 Carbon", "maxTokens": 1048576, "maxOutputTokens": 65536, "disabled": true},
 		"gemini-internal-preview": {"displayName": "Gemini Internal Preview", "isInternal": true},
-		"tab_flash_lite_preview": {"displayName": "Tab Flash Lite Preview", "maxTokens": 16384},
-		"chat_20706": {"displayName": "Chat 20706"}
+		"tab_flash_lite_preview": {"maxTokens": 16384, "maxOutputTokens": 4096, "apiProvider": "API_PROVIDER_GOOGLE_GEMINI", "requiresLeadInGeneration": true, "supportsCumulativeContext": true},
+		"chat_20706": {"displayName": "Chat 20706", "isInternal": true, "apiProvider": "API_PROVIDER_INTERNAL"},
+		"tab_named_chat_engine": {"displayName": "Tab Named Chat Engine", "apiProvider": "API_PROVIDER_GOOGLE_GEMINI", "maxTokens": 131072, "maxOutputTokens": 8192, "supportsThinking": true}
 	}}`
 	client := &http.Client{Transport: antigravityCatalogTransport{body: body}}
 
@@ -57,7 +58,7 @@ func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 	for _, m := range got {
 		ids = append(ids, m.ID)
 	}
-	want := []string{"claude-sonnet-5-5-high", "gemini-3.1-flash-image", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"}
+	want := []string{"claude-sonnet-5-5-high", "gemini-3.1-flash-image", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh", "tab_named_chat_engine"}
 	if !reflect.DeepEqual(ids, want) {
 		t.Fatalf("catalog ids = %v, want %v", ids, want)
 	}
