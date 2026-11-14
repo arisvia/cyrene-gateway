@@ -154,7 +154,9 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		if m.QuotaInfo == nil {
 			continue
 		}
-		// Filter out internal Google test/telemetry endpoints and completion-only tab anchors
+		// Filter out internal Google test/telemetry endpoints and completion-only tab
+		// anchors. Upstream-disabled placeholders are already excluded by the nil
+		// quotaInfo guard above: they advertise no quota window at all.
 		if strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") || strings.HasPrefix(id, "rev_") {
 			continue
 		}
@@ -200,9 +202,13 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 		}
 
 		lowerID := strings.ToLower(id)
-		if strings.HasPrefix(lowerID, "gemini-4") {
-			// Gemini 4 Argon draws from its own weekly pool, separate from
-			// the 3.x Flash/Pro window.
+		if strings.HasPrefix(lowerID, "gemini-4-argon") {
+			// Only Argon carries its own weekly pool. Verified against live
+			// fetchAvailableModels resetTime: gemini-4-argon-* resets a week
+			// later than every other Gemini entry, while gemini-4-hydrogen-*
+			// resets on the same window as the 3.x Flash/Pro family. Matching
+			// the whole "gemini-4" family here folded Hydrogen into the Argon
+			// bucket, so one exhausted pool understated the other.
 			argonModels = append(argonModels, raw)
 		} else if strings.HasPrefix(lowerID, "gemini-") {
 			geminiModels = append(geminiModels, raw)

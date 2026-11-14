@@ -359,3 +359,39 @@ func TestClusterAntigravitySummaryKeepsArgonPoolSeparate(t *testing.T) {
 		t.Errorf("argon display = %q", a.DisplayName)
 	}
 }
+
+// Live fetchAvailableModels puts gemini-4-hydrogen-* on the same reset window as
+// the 3.x family and gives only gemini-4-argon-* its own weekly pool. Pooling by
+// the whole "gemini-4" prefix let a drained Hydrogen family report an exhausted
+// Argon bucket (and vice versa), which then parked the wrong accounts.
+func TestClusterAntigravityQuotasKeepsHydrogenOutOfArgonPool(t *testing.T) {
+	var resp AntigravityModelsResponse
+	raw := []byte(`{"models":{
+		"gemini-4-hydrogen-high":  {"displayName":"Gemini 4 Hydrogen (High)","quotaInfo":{"remainingFraction":0.2,"resetTime":"2026-11-14T06:28:02Z"}},
+		"gemini-3.8-flash-medium": {"displayName":"Gemini 3.8 Flash (Medium)","quotaInfo":{"remainingFraction":0.9,"resetTime":"2026-11-14T06:28:02Z"}},
+		"gemini-4-argon-high":     {"displayName":"Gemini 4 Argon (High)","quotaInfo":{"remainingFraction":0.66,"resetTime":"2026-11-21T01:28:02Z"}}
+	}}`)
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+
+	quotas := clusterAntigravityQuotas(resp)
+	gem, ok := quotas["gemini"]
+	if !ok {
+		t.Fatalf("gemini pool missing: %+v", quotas)
+	}
+	// Worst-case fraction wins, and hydrogen belongs in that aggregate.
+	if gem.RemainingPercentage != 20.0 {
+		t.Errorf("gemini pool = %v%%, want 20%% (hydrogen folded into the Gemini window)", gem.RemainingPercentage)
+	}
+	argon, ok := quotas["gemini4"]
+	if !ok {
+		t.Fatalf("argon pool missing: %+v", quotas)
+	}
+	if argon.RemainingPercentage != 66.0 {
+		t.Errorf("argon pool = %v%%, want 66%% (argon-only)", argon.RemainingPercentage)
+	}
+	if argon.DisplayName != "Gemini 4 Argon" {
+		t.Errorf("argon display = %q", argon.DisplayName)
+	}
+}

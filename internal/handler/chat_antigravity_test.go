@@ -1224,9 +1224,13 @@ func TestAntigravityQuotaPoolMapping(t *testing.T) {
 		"gpt-oss-120b-medium":    "claude",
 		"gemini-3.8-flash-high":  "gemini",
 		"gemini-3.1-flash-image": "gemini",
-		"gemini-4-argon-high":    "gemini4",
-		"gemini-4":               "gemini4",
-		"mystery-model":          "",
+		// 4 Hydrogen resets on the same window as the 3.x family, so it draws
+		// from the shared Gemini pool; only 4 Argon carries its own weekly pool.
+		"gemini-4-hydrogen-xhigh": "gemini",
+		"gemini-4-hydrogen-low":   "gemini",
+		"gemini-4-argon-high":     "gemini4",
+		"gemini-4-argon-medium":   "gemini4",
+		"mystery-model":           "",
 	}
 	for m, want := range cases {
 		if got := antigravityQuotaPool(m); got != want {

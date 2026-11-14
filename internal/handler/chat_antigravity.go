@@ -603,15 +603,16 @@ func antigravityFinishToOpenAI(fr string) string {
 }
 
 // antigravityQuotaPool maps a resolved upstream model onto the Google quota
-// pool it draws from (verified against live retrieveUserQuotaSummary buckets):
-// Claude & GPT-OSS share one pool, the Gemini family (text/search/image)
-// shares another, and Gemini 4 Argon carries its own weekly pool.
+// pool it draws from (verified against live retrieveUserQuotaSummary buckets and
+// fetchAvailableModels resetTime): Claude & GPT-OSS share one pool, the Gemini
+// family (2.x/3.x text, 4 Hydrogen, image and search) shares another, and
+// Gemini 4 Argon alone carries its own weekly pool.
 func antigravityQuotaPool(targetModel string) string {
 	lower := strings.ToLower(targetModel)
 	switch {
 	case strings.HasPrefix(lower, "claude-"), strings.HasPrefix(lower, "gpt-"):
 		return "claude"
-	case strings.HasPrefix(lower, "gemini-4"):
+	case strings.HasPrefix(lower, "gemini-4-argon"):
 		return "gemini4"
 	case strings.HasPrefix(lower, "gemini-"):
 		return "gemini"
