@@ -9,7 +9,7 @@ func registerSTTProviders() {
 		ProviderConfig{
 			Provider:   "openai",
 			Kind:       KindSTT,
-			BaseURL:    "https://api.openai.com/v1/audio/transcriptions",
+			BaseURL:    chatOriginURL("openai", "/v1/audio/transcriptions"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -26,7 +26,7 @@ func registerSTTProviders() {
 		ProviderConfig{
 			Provider:   "groq",
 			Kind:       KindSTT,
-			BaseURL:    "https://api.groq.com/openai/v1/audio/transcriptions",
+			BaseURL:    chatOriginURL("groq", "/openai/v1/audio/transcriptions"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -59,7 +59,7 @@ func registerSTTProviders() {
 		ProviderConfig{
 			Provider:   "gemini",
 			Kind:       KindSTT,
-			BaseURL:    "https://generativelanguage.googleapis.com/v1beta/models",
+			BaseURL:    chatOriginURL("gemini", "/v1beta/models"),
 			AuthType:   "apikey",
 			AuthHeader: "key",
 			Format:     "gemini-stt",

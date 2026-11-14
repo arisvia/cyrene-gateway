@@ -12,7 +12,7 @@ func registerImageProviders() {
 		ProviderConfig{
 			Provider:   "openai",
 			Kind:       KindImage,
-			BaseURL:    "https://api.openai.com/v1/images/generations",
+			BaseURL:    chatOriginURL("openai", "/v1/images/generations"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -31,7 +31,7 @@ func registerImageProviders() {
 		ProviderConfig{
 			Provider:   "openrouter",
 			Kind:       KindImage,
-			BaseURL:    "https://openrouter.ai/api/v1/images/generations",
+			BaseURL:    chatOriginURL("openrouter", "/api/v1/images/generations"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -49,7 +49,7 @@ func registerImageProviders() {
 		ProviderConfig{
 			Provider:   "gemini",
 			Kind:       KindImage,
-			BaseURL:    "https://generativelanguage.googleapis.com/v1beta/models",
+			BaseURL:    chatOriginURL("gemini", "/v1beta/models"),
 			AuthType:   "apikey",
 			AuthHeader: "key",
 			Format:     "gemini",

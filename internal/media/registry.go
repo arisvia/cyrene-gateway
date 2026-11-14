@@ -1,9 +1,30 @@
 package media
 
 import (
+	"net/url"
 	"slices"
 	"strings"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
+
+// chatOriginURL builds a media endpoint on the origin the provider registry already
+// declares for that provider's chat traffic, so only the path — a different API
+// surface on the same host — is written here. A domain or region move then lands once
+// in registry_data.go instead of in every media registry. Media-only providers
+// (Stability, fal, ElevenLabs, Deepgram, AssemblyAI, Cartesia) have no chat entry and
+// keep their own absolute URL.
+func chatOriginURL(providerID, path string) string {
+	info, ok := provider.GetProvider(providerID)
+	if !ok || info.BaseURL == "" {
+		return ""
+	}
+	u, err := url.Parse(info.BaseURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + path
+}
 
 // Kind represents a media service type.
 type Kind string

@@ -1,8 +1,11 @@
 package media
 
 import (
+	"net/url"
 	"slices"
 	"testing"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestRegistryPopulated(t *testing.T) {
@@ -230,6 +233,37 @@ func TestMediaProvidersDeclareBrandMetadata(t *testing.T) {
 		}
 		if p.Color == "" {
 			t.Errorf("provider %q has no colour and is not in mediaProvidersWithoutOwnBrand", id)
+		}
+	}
+}
+
+// A media endpoint sits on the same origin as that provider's chat traffic, so the
+// host is declared once in the provider registry and only the path lives here. This
+// guards both halves: a provider id typo in chatOriginURL would leave an empty
+// endpoint, and a hand-written host would drift from the registry on a domain move.
+func TestMediaEndpointsShareTheChatOrigin(t *testing.T) {
+	for id, info := range Registry {
+		for kind, cfg := range info.Configs {
+			if cfg.BaseURL == "" {
+				t.Errorf("%s/%s has no endpoint: chatOriginURL could not resolve the provider", id, kind)
+				continue
+			}
+			chat, ok := provider.GetProvider(id)
+			if !ok || chat.BaseURL == "" {
+				continue // media-only vendor: its own host is the only declaration
+			}
+			mediaURL, err := url.Parse(cfg.BaseURL)
+			if err != nil {
+				t.Errorf("%s/%s endpoint %q does not parse: %v", id, kind, cfg.BaseURL, err)
+				continue
+			}
+			chatURL, err := url.Parse(chat.BaseURL)
+			if err != nil {
+				t.Fatalf("registry BaseURL for %s does not parse: %v", id, err)
+			}
+			if mediaURL.Scheme != chatURL.Scheme || mediaURL.Host != chatURL.Host {
+				t.Errorf("%s/%s endpoint %q is not on the registry origin %q", id, kind, cfg.BaseURL, chatURL.Host)
+			}
 		}
 	}
 }

@@ -10,7 +10,7 @@ func registerTTSProviders() {
 		ProviderConfig{
 			Provider:   "openai",
 			Kind:       KindTTS,
-			BaseURL:    "https://api.openai.com/v1/audio/speech",
+			BaseURL:    chatOriginURL("openai", "/v1/audio/speech"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -44,7 +44,7 @@ func registerTTSProviders() {
 		ProviderConfig{
 			Provider:   "gemini",
 			Kind:       KindTTS,
-			BaseURL:    "https://generativelanguage.googleapis.com/v1beta/models",
+			BaseURL:    chatOriginURL("gemini", "/v1beta/models"),
 			AuthType:   "apikey",
 			AuthHeader: "key",
 			Format:     "gemini-tts",

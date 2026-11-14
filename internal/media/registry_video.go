@@ -9,7 +9,7 @@ func registerVideoProviders() {
 		ProviderConfig{
 			Provider:   "xai",
 			Kind:       KindVideo,
-			BaseURL:    "https://api.x.ai/v1/videos",
+			BaseURL:    chatOriginURL("xai", "/v1/videos"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "xai-video",

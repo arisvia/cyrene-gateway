@@ -11,7 +11,7 @@ func registerEmbeddingProviders() {
 		ProviderConfig{
 			Provider:   "openai",
 			Kind:       KindEmbedding,
-			BaseURL:    "https://api.openai.com/v1/embeddings",
+			BaseURL:    chatOriginURL("openai", "/v1/embeddings"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -28,7 +28,7 @@ func registerEmbeddingProviders() {
 		ProviderConfig{
 			Provider:   "openrouter",
 			Kind:       KindEmbedding,
-			BaseURL:    "https://openrouter.ai/api/v1/embeddings",
+			BaseURL:    chatOriginURL("openrouter", "/api/v1/embeddings"),
 			AuthType:   "apikey",
 			AuthHeader: "bearer",
 			Format:     "openai",
@@ -46,7 +46,7 @@ func registerEmbeddingProviders() {
 		ProviderConfig{
 			Provider:   "gemini",
 			Kind:       KindEmbedding,
-			BaseURL:    "https://generativelanguage.googleapis.com/v1beta/models",
+			BaseURL:    chatOriginURL("gemini", "/v1beta/models"),
 			AuthType:   "apikey",
 			AuthHeader: "key",
 			Format:     "gemini",
