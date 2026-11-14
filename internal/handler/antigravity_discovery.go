@@ -191,6 +191,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 		var resultMap struct {
 			Models map[string]struct {
 				DisplayName      string `json:"displayName"`
+				APIProvider      string `json:"apiProvider"`
 				MaxTokens        int    `json:"maxTokens"`
 				MaxOutputTokens  int    `json:"maxOutputTokens"`
 				ThinkingLevel    int    `json:"thinkingLevel"`
@@ -236,12 +237,6 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 						mods = append(mods, "image")
 					}
 				}
-				family := "gemini"
-				if strings.Contains(id, "claude") {
-					family = "claude"
-				} else if strings.Contains(id, "gpt-oss") {
-					family = "gpt-oss"
-				}
 				quotaReset := ""
 				if m.QuotaInfo != nil {
 					quotaReset = m.QuotaInfo.ResetTime
@@ -254,9 +249,9 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					MaxOutput:     m.MaxOutputTokens,
 					ThinkingLevel: m.ThinkingLevel,
 					QuotaResetAt:  quotaReset,
+					APIProvider:   m.APIProvider,
 					Capabilities:  caps,
 					Modalities:    mods,
-					Family:        family,
 					FromUpstream:  m.MaxTokens > 0,
 				})
 			}

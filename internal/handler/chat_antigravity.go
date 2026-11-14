@@ -1368,6 +1368,21 @@ func antigravityTierName(level int) (string, bool) {
 	return "", false
 }
 
+// antigravityGoogleEngine reports whether a catalog entry is served by Google's own
+// Gemini API surface — the one whose generateContent schema owns thinkingConfig and
+// Google Search grounding. Upstream says so directly in apiProvider
+// (API_PROVIDER_GOOGLE_GEMINI, versus API_PROVIDER_ANTHROPIC_VERTEX and
+// API_PROVIDER_OPENAI_VERTEX for the third-party rows on the same account), so this
+// does not assume Google keeps naming its models gemini-*. With a cold catalog the
+// id prefix is the only hint left, which is also when the reasoning depth falls back
+// to the tier suffix.
+func antigravityGoogleEngine(apiProvider, id string) bool {
+	if apiProvider != "" {
+		return strings.Contains(strings.ToUpper(apiProvider), "GOOGLE")
+	}
+	return strings.HasPrefix(strings.ToLower(id), "gemini-")
+}
+
 // splitAntigravityTier peels a known tier suffix off a model id:
 // "gemini-4-hydrogen-xhigh" -> ("gemini-4-hydrogen", 100, true).
 func splitAntigravityTier(id string) (string, int, bool) {
@@ -1496,13 +1511,16 @@ func resolveAntigravityModel(
 		}
 	}
 
-	// Only Gemini-family reasoning models take thinkingConfig; Claude, GPT-OSS
-	// and non-thinking models must NEVER receive it.
+	// Only models served by Google's own Gemini surface take thinkingConfig; the
+	// Claude and GPT-OSS rows on the same account must never receive it. The catalog
+	// states that surface per model, so the decision is not a guess about Google's
+	// naming. "reasoning" is upstream's own supportsThinking flag.
 	if thinkingLevel > 0 {
-		shouldInjectThinking = strings.HasPrefix(strings.ToLower(targetModel), "gemini-")
-		if meta, ok := availMap[targetModel]; ok {
-			shouldInjectThinking = (meta.Family == "" || meta.Family == "gemini") &&
+		if meta, known := availMap[targetModel]; known {
+			shouldInjectThinking = antigravityGoogleEngine(meta.APIProvider, targetModel) &&
 				slices.Contains(meta.Capabilities, "reasoning")
+		} else {
+			shouldInjectThinking = antigravityGoogleEngine("", targetModel)
 		}
 	}
 

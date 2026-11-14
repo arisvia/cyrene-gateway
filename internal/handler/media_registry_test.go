@@ -937,3 +937,30 @@ func TestWebSearchAndFetchInferProviderFromModel(t *testing.T) {
 		t.Fatalf("fetch failed to infer provider from model: %s", wFetch.Body.String())
 	}
 }
+
+// Search grounding is a tool on Google's own Gemini chat engines. The catalog states
+// the surface (apiProvider) and whether the entry generates images, so those decide
+// instead of a model-name pattern that breaks the day Google names a family
+// differently — and instead of claiming an Anthropic or GPT-OSS row on the same
+// account can ground a search.
+func TestIsAntigravitySearchEngine(t *testing.T) {
+	cases := []struct {
+		name  string
+		entry model.ModelMetadata
+		want  bool
+	}{
+		{"gemini chat", model.ModelMetadata{ID: "gemini-3.8-flash-high", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"chat", "code", "reasoning"}}, true},
+		{"renamed google engine", model.ModelMetadata{ID: "vela-2026-pro-high", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"chat", "code"}}, true},
+		{"argon keeps its own window but the same surface", model.ModelMetadata{ID: "gemini-4-argon-high", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"chat", "code", "reasoning"}}, true},
+		{"image engine", model.ModelMetadata{ID: "gemini-3.1-flash-image", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"image-generation"}}, false},
+		{"anthropic row", model.ModelMetadata{ID: "claude-sonnet-5-5-high", APIProvider: "API_PROVIDER_ANTHROPIC_VERTEX", Capabilities: []string{"chat", "code", "reasoning"}}, false},
+		{"openai row", model.ModelMetadata{ID: "gpt-oss-120b-medium", APIProvider: "API_PROVIDER_OPENAI_VERTEX", Capabilities: []string{"chat", "code"}}, false},
+		{"no chat capability", model.ModelMetadata{ID: "gemini-2.5-flash", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"code"}}, false},
+		{"cold cache falls back to the name", model.ModelMetadata{ID: "gemini-3.8-flash-high", Capabilities: []string{"chat", "code"}}, true},
+	}
+	for _, c := range cases {
+		if got := isAntigravitySearchEngine(c.entry); got != c.want {
+			t.Errorf("%s: isAntigravitySearchEngine(%s) = %t, want %t", c.name, c.entry.ID, got, c.want)
+		}
+	}
+}

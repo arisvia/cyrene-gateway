@@ -14,7 +14,13 @@ type ModelMetadata struct {
 	Capabilities  []string `json:"capabilities,omitempty"`
 	Modalities    []string `json:"modalities,omitempty"`
 	Family        string   `json:"family,omitempty"`
-	FromUpstream  bool     `json:"from_upstream,omitempty"`
+	// APIProvider is the upstream enum stating which API surface serves this model
+	// (Antigravity: API_PROVIDER_GOOGLE_GEMINI, API_PROVIDER_ANTHROPIC_VERTEX,
+	// API_PROVIDER_OPENAI_VERTEX). It is what decides request-shape compatibility —
+	// which vendor's generateContent schema owns the fields we send — instead of
+	// reading a vendor's naming convention off the model id.
+	APIProvider  string `json:"api_provider,omitempty"`
+	FromUpstream bool   `json:"from_upstream,omitempty"`
 	// ThinkingLevel is the reasoning depth upstream advertises for this exact
 	// model id (Antigravity fetchAvailableModels.thinkingLevel enum). Sending it
 	// back overrides the depth the model runs at, so tiers a given deployment

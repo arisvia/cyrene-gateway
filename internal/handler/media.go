@@ -618,16 +618,15 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 	s.proxyMediaResponse(w, resp)
 }
 
-// isAntigravitySearchEngine reports whether a live catalog entry can drive
-// Google Search grounding: search is a tool mounted on Gemini-family chat
-// engines, so every non-image Gemini chat model qualifies. Keying off the
-// catalog instead of a pinned engine list keeps the search surface from going
-// stale as upstream retires tiers.
-func isAntigravitySearchEngine(id string, capabilities []string) bool {
-	lower := strings.ToLower(id)
-	return strings.HasPrefix(lower, "gemini-") &&
-		!strings.Contains(lower, "-image") &&
-		slices.Contains(capabilities, "chat")
+// isAntigravitySearchEngine reports whether a live catalog entry can drive Google
+// Search grounding: search is a tool mounted on Google's own Gemini chat engines, so
+// the entry has to come from that API surface (apiProvider), advertise chat, and not
+// be a dedicated image engine. Reading the catalog instead of a pinned engine list
+// keeps the search surface correct as upstream retires tiers or renames families.
+func isAntigravitySearchEngine(entry model.ModelMetadata) bool {
+	return antigravityGoogleEngine(entry.APIProvider, entry.ID) &&
+		slices.Contains(entry.Capabilities, "chat") &&
+		!slices.Contains(entry.Capabilities, "image-generation")
 }
 
 // defaultAntigravitySearchEngine picks the first catalog engine that is not
@@ -643,7 +642,7 @@ func (s *Server) defaultAntigravitySearchEngine() string {
 	}
 	disabledMap, _ := s.DB.KVList(model.KVScopeDisabledModels)
 	for _, cm := range cached.Models {
-		if !isAntigravitySearchEngine(cm.ID, cm.Capabilities) {
+		if !isAntigravitySearchEngine(cm) {
 			continue
 		}
 		if disabledMap != nil && disabledMap["antigravity/"+cm.ID] != "" {
@@ -743,7 +742,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 								strings.Contains(lowerID, "gte")
 						case media.KindWebSearch:
 							match = e.Provider == "antigravity" &&
-								isAntigravitySearchEngine(cm.ID, cm.Capabilities)
+								isAntigravitySearchEngine(cm)
 						}
 						if !match {
 							continue

@@ -1317,3 +1317,41 @@ func TestAntigravityQuotaExhaustionParksByCatalogWindow(t *testing.T) {
 		t.Errorf("selector must still serve the window that has headroom")
 	}
 }
+
+// Which API surface serves a model is upstream's fact, not ours to infer from its
+// name: apiProvider separates Google's Gemini engines (whose generateContent schema
+// owns thinkingConfig) from the Claude and GPT-OSS rows that share the same account,
+// and it keeps working if Google names a family something other than gemini-*.
+func TestAntigravityThinkingGateReadsAPIProvider(t *testing.T) {
+	catalog := []model.ModelMetadata{
+		{ID: "gemini-4-hydrogen-high", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"chat", "code", "reasoning"}, ThinkingLevel: 3},
+		{ID: "vela-2026-pro-high", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"chat", "code", "reasoning"}, ThinkingLevel: 3},
+		{ID: "claude-sonnet-5-5-high", APIProvider: "API_PROVIDER_ANTHROPIC_VERTEX", Capabilities: []string{"chat", "code", "reasoning"}, ThinkingLevel: 3},
+		{ID: "gpt-oss-120b-medium", APIProvider: "API_PROVIDER_OPENAI_VERTEX", Capabilities: []string{"chat", "code", "reasoning"}, ThinkingLevel: 2},
+		{ID: "gemini-3.1-flash-image", APIProvider: "API_PROVIDER_GOOGLE_GEMINI", Capabilities: []string{"image-generation"}},
+	}
+
+	for _, id := range []string{"gemini-4-hydrogen-high", "vela-2026-pro-high"} {
+		target, level, inject, _ := resolveAntigravityModel(id, "", catalog)
+		if target != id || level != 3 || !inject {
+			t.Errorf("%s: target=%s level=%d inject=%t, want it injected at the catalog depth", id, target, level, inject)
+		}
+	}
+	for _, id := range []string{"claude-sonnet-5-5-high", "gpt-oss-120b-medium"} {
+		if _, _, inject, _ := resolveAntigravityModel(id, "", catalog); inject {
+			t.Errorf("%s is not on Google's Gemini surface and must never receive thinkingConfig", id)
+		}
+	}
+	if _, level, inject, _ := resolveAntigravityModel("gemini-3.1-flash-image", "", catalog); inject || level != 0 {
+		t.Errorf("image engine declares no depth: level=%d inject=%t, want 0/false", level, inject)
+	}
+
+	// Cold catalog: the id prefix is the only hint left, and it is used rather than
+	// dropping the caller's requested reasoning depth entirely.
+	if _, _, inject, _ := resolveAntigravityModel("gemini-4-hydrogen-high", "", nil); !inject {
+		t.Error("cold catalog must still inject for a gemini- id")
+	}
+	if _, _, inject, _ := resolveAntigravityModel("claude-sonnet-5-5-high", "high", nil); inject {
+		t.Error("cold catalog must not inject for a claude id")
+	}
+}
