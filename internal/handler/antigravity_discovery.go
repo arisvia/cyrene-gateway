@@ -193,6 +193,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				DisplayName      string `json:"displayName"`
 				MaxTokens        int    `json:"maxTokens"`
 				MaxOutputTokens  int    `json:"maxOutputTokens"`
+				ThinkingLevel    int    `json:"thinkingLevel"`
 				SupportsThinking bool   `json:"supportsThinking"`
 				SupportsImages   bool   `json:"supportsImages"`
 				IsInternal       bool   `json:"isInternal"`
@@ -244,6 +245,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					DisplayName:   name,
 					ContextLength: m.MaxTokens,
 					MaxOutput:     m.MaxOutputTokens,
+					ThinkingLevel: m.ThinkingLevel,
 					Capabilities:  caps,
 					Modalities:    mods,
 					Family:        family,

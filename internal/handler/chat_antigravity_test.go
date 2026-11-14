@@ -330,74 +330,87 @@ func TestAntigravityToolAndThoughtOnlyUsage(t *testing.T) {
 	}
 }
 
+// Cold-cache routing (no catalog yet) maps the caller's words onto upstream's
+// tier suffixes: the id the caller named outranks a generic reasoning_effort, and
+// an unexpressed preference lands on the mid tier.
 func TestAntigravityThinkingTierRouting(t *testing.T) {
 	cases := []struct {
 		model          string
 		effort         string
 		expectedTarget string
-		expectedTier   string
+		expectedLevel  int
 	}{
-		// 1. gemini-3.8-flash default medium
-		{
-			model:          "antigravity/gemini-3.8-flash",
-			effort:         "",
-			expectedTarget: "gemini-3.8-flash-medium",
-			expectedTier:   "medium",
-		},
-		// 2. gemini-3.8-flash explicit high
-		{
-			model:          "antigravity/gemini-3.8-flash",
-			effort:         "high",
-			expectedTarget: "gemini-3.8-flash-high",
-			expectedTier:   "high",
-		},
-		// 3. gemini-3.8-flash explicit low
-		{
-			model:          "gemini-3.8-flash",
-			effort:         "low",
-			expectedTarget: "gemini-3.8-flash-low",
-			expectedTier:   "low",
-		},
-		// 4. catalog-miss family keeps the requested tier as suffix
-		{
-			model:          "antigravity/gemini-3.5-flash",
-			effort:         "high",
-			expectedTarget: "gemini-3.5-flash-high",
-			expectedTier:   "high",
-		},
-		// 5. dead extra-low mapping removed: generic suffix, no family table
-		{
-			model:          "antigravity/gemini-3.5-flash",
-			effort:         "low",
-			expectedTarget: "gemini-3.5-flash-low",
-			expectedTier:   "low",
-		},
-		// 6. claude families get the same tier suffix treatment
-		{
-			model:          "antigravity/claude-sonnet-5-5",
-			effort:         "low",
-			expectedTarget: "claude-sonnet-5-5-low",
-			expectedTier:   "low",
-		},
-		// 7. explicit model suffix preservation
-		{
-			model:          "gemini-3.8-flash-high",
-			effort:         "low", // model suffix takes precedence
-			expectedTarget: "gemini-3.8-flash-high",
-			expectedTier:   "high",
-		},
+		// 1. family root with no preference -> mid tier
+		{"antigravity/gemini-3.8-flash", "", "gemini-3.8-flash-medium", 2},
+		// 2-3. reasoning_effort selects the tier
+		{"antigravity/gemini-3.8-flash", "high", "gemini-3.8-flash-high", 3},
+		{"gemini-3.8-flash", "low", "gemini-3.8-flash-low", 1},
+		// 4-5. retired families keep the requested suffix
+		{"antigravity/gemini-3.5-flash", "high", "gemini-3.5-flash-high", 3},
+		{"antigravity/gemini-3.5-flash", "low", "gemini-3.5-flash-low", 1},
+		// 6. claude families get the same suffix treatment
+		{"antigravity/claude-sonnet-5-5", "low", "claude-sonnet-5-5-low", 1},
+		// 7. the tier baked into the id takes precedence over reasoning_effort
+		{"gemini-3.8-flash-high", "low", "gemini-3.8-flash-high", 3},
+		// 8. a tier absent from every older build still resolves
+		{"gemini-4-hydrogen", "xhigh", "gemini-4-hydrogen-xhigh", 100},
+		{"gemini-4-hydrogen-xhigh", "", "gemini-4-hydrogen-xhigh", 100},
 	}
 
 	for _, c := range cases {
 		t.Run(c.model+"_"+c.effort, func(t *testing.T) {
-			targetModel, tier := resolveAntigravityModelTier(c.model, c.effort)
+			targetModel, level, _, _ := resolveAntigravityModel(c.model, c.effort, nil)
 			if targetModel != c.expectedTarget {
 				t.Errorf("model=%s effort=%s: expected target %s, got %s", c.model, c.effort, c.expectedTarget, targetModel)
 			}
-			if tier != c.expectedTier {
-				t.Errorf("model=%s effort=%s: expected tier %s, got %s", c.model, c.effort, c.expectedTier, tier)
+			if level != c.expectedLevel {
+				t.Errorf("model=%s effort=%s: expected level %d, got %d", c.model, c.effort, c.expectedLevel, level)
 			}
 		})
+	}
+}
+
+// The live catalog declares the depth each model runs at, so a tier this build
+// never compiled is honored instead of downgraded: gemini-4-hydrogen-xhigh used to
+// miss the suffix table, default to "medium" and get sent upstream as
+// thinkingLevel=medium, silently changing the model the caller picked.
+func TestAntigravityThinkingLevelComesFromCatalog(t *testing.T) {
+	catalog := []model.ModelMetadata{
+		{ID: "gemini-4-hydrogen-xhigh", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 100},
+		{ID: "gemini-4-hydrogen-medium", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 2},
+		{ID: "gemini-4-argon-high", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 3},
+		{ID: "gemini-3.8-flash-tiered", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 3},
+	}
+
+	target, level, inject, _ := resolveAntigravityModel("gemini-4-hydrogen-xhigh", "", catalog)
+	if target != "gemini-4-hydrogen-xhigh" || level != 100 || !inject {
+		t.Errorf("named xhigh: target=%s level=%d inject=%t, want gemini-4-hydrogen-xhigh/100/true", target, level, inject)
+	}
+
+	// reasoning_effort picks the sibling; the depth still comes from the catalog.
+	target, level, inject, _ = resolveAntigravityModel("gemini-4-hydrogen", "xhigh", catalog)
+	if target != "gemini-4-hydrogen-xhigh" || level != 100 || !inject {
+		t.Errorf("effort xhigh: target=%s level=%d inject=%t, want gemini-4-hydrogen-xhigh/100/true", target, level, inject)
+	}
+
+	// No preference: the mid sibling wins over the deeper one in the same family.
+	target, level, _, _ = resolveAntigravityModel("gemini-4-hydrogen", "", catalog)
+	if target != "gemini-4-hydrogen-medium" || level != 2 {
+		t.Errorf("no preference: target=%s level=%d, want gemini-4-hydrogen-medium/2", target, level)
+	}
+
+	// "-tiered" is a variant, not a thinking level: upstream answers 400 for
+	// thinkingLevel "tiered", so the catalog's own declared level is sent and the
+	// conflicting reasoning_effort is ignored.
+	target, level, inject, _ = resolveAntigravityModel("gemini-3.8-flash-tiered", "low", catalog)
+	if target != "gemini-3.8-flash-tiered" || level != 3 || !inject {
+		t.Errorf("tiered variant: target=%s level=%d inject=%t, want gemini-3.8-flash-tiered/3/true", target, level, inject)
+	}
+
+	// Models outside the family still get no thinkingConfig at all.
+	target, level, inject, _ = resolveAntigravityModel("claude-sonnet-4-6", "high", catalog)
+	if target != "claude-sonnet-4-6-high" || inject {
+		t.Errorf("claude must not take thinkingConfig: target=%s level=%d inject=%t", target, level, inject)
 	}
 }
 
@@ -433,13 +446,15 @@ func TestAntigravityAdaptiveModelResolution(t *testing.T) {
 		t.Errorf("gpt-oss-120b-medium must never inject thinkingConfig")
 	}
 
-	// 3. Dynamic effort probing for new future model (gemini-4.0-flash + high)
-	target, tier, injectThinking, _ := resolveAntigravityModel("gemini-4.0-flash", "high", mockCatalog)
+	// 3. Dynamic effort probing for a new future model (gemini-4.0-flash + high).
+	// These fixtures carry no declared ThinkingLevel, so the depth falls back to
+	// the tier suffix table.
+	target, level, injectThinking, _ := resolveAntigravityModel("gemini-4.0-flash", "high", mockCatalog)
 	if target != "gemini-4.0-flash-high" {
 		t.Errorf("expected gemini-4.0-flash-high via dynamic probe, got %s", target)
 	}
-	if tier != "high" {
-		t.Errorf("expected tier high, got %s", tier)
+	if level != 3 {
+		t.Errorf("expected level 3 from the tier suffix, got %d", level)
 	}
 	if !injectThinking {
 		t.Errorf("gemini-4.0-flash-high with reasoning capability should inject thinkingConfig")

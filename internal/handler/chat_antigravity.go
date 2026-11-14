@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -143,7 +145,7 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	availableModels := s.getAntigravityAvailableModels()
-	targetModel, tier, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
+	targetModel, thinkingLevel, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
 
 	if !isImage {
 		innerRequest["model"] = modelInfo.Model
@@ -154,16 +156,25 @@ func (s *Server) handleAntigravityChat(
 	if isImage {
 		genConfig["maxOutputTokens"] = 8192
 		genConfig["imageConfig"] = map[string]any{"aspectRatio": "1:1"}
-	} else if shouldInjectThinking && genConfig != nil && (tier == "high" || tier == "medium" || tier == "low") {
+	} else if shouldInjectThinking && genConfig != nil && thinkingLevel > 0 {
+		// The level is the enum upstream advertises for the resolved model id, so
+		// a tier this build never compiled still runs at its advertised depth
+		// instead of being downgraded to medium.
 		genConfig["thinkingConfig"] = map[string]any{
-			"thinkingLevel":   tier,
+			"thinkingLevel":   thinkingLevel,
 			"includeThoughts": true,
 		}
-		// Ensure maxOutputTokens strictly exceeds thinking budget to prevent 400 INVALID_ARGUMENT (9router#3981)
+		// maxOutputTokens must strictly exceed the thinking budget or upstream
+		// answers 400 INVALID_ARGUMENT (9router#3981). The reservation grows with
+		// the level: the same prompt measured 592 thinking tokens at low and 2045
+		// at xhigh on gemini-4-hydrogen, so mid tiers land in between.
 		minBudget := 4096
-		if tier == "high" {
+		switch {
+		case thinkingLevel >= 100:
+			minBudget = 32768
+		case thinkingLevel >= 3:
 			minBudget = 16384
-		} else if tier == "medium" {
+		case thinkingLevel >= 2:
 			minBudget = 8192
 		}
 		if mt, ok := genConfig["maxOutputTokens"].(int); ok && mt <= minBudget {
@@ -1304,125 +1315,183 @@ func (s *Server) getAntigravityAvailableModels() []model.ModelMetadata {
 	return nil
 }
 
-// resolveAntigravityModel dynamically resolves the target upstream model ID and tier from available models.
+// antigravityThinkingTiers pairs each tier suffix upstream spells in a model id
+// with the thinkingLevel enum it advertises for that id (live
+// fetchAvailableModels: -low=1, -medium=2, -high=3, -xhigh=100). Suffix and enum
+// are two names for one upstream axis, so this table only stands in when no
+// catalog entry describes the id (cold cache); whenever the catalog has the
+// model, its declared level wins and a tier this build never heard of needs no
+// code change. Note the axis has gaps: "-tiered" is a variant, not a thinking
+// level, and upstream rejects thinkingLevel "tiered" outright with a 400.
+var antigravityThinkingTiers = []struct {
+	name  string
+	level int
+}{
+	{"low", 1},
+	{"medium", 2},
+	{"high", 3},
+	{"xhigh", 100},
+}
+
+// defaultAntigravityThinkingLevel is the mid tier — what upstream's own client
+// runs when the caller expresses no reasoning preference.
+const defaultAntigravityThinkingLevel = 2
+
+func antigravityTierByName(name string) (int, bool) {
+	for _, t := range antigravityThinkingTiers {
+		if t.name == strings.ToLower(strings.TrimSpace(name)) {
+			return t.level, true
+		}
+	}
+	return 0, false
+}
+
+func antigravityTierName(level int) (string, bool) {
+	for _, t := range antigravityThinkingTiers {
+		if t.level == level {
+			return t.name, true
+		}
+	}
+	return "", false
+}
+
+// splitAntigravityTier peels a known tier suffix off a model id:
+// "gemini-4-hydrogen-xhigh" -> ("gemini-4-hydrogen", 100, true).
+func splitAntigravityTier(id string) (string, int, bool) {
+	i := strings.LastIndex(id, "-")
+	if i <= 0 {
+		return id, 0, false
+	}
+	if level, ok := antigravityTierByName(id[i+1:]); ok {
+		return id[:i], level, true
+	}
+	return id, 0, false
+}
+
+// resolveAntigravityModel maps a requested model plus reasoning_effort onto the
+// upstream model id to call and the thinkingLevel to request from it. Tiers are
+// read off the live catalog, so upstream retiring one (extra-low) or adding one
+// (xhigh) is a catalog change, not a code change.
 func resolveAntigravityModel(
 	rawModel string,
 	reasoningEffort string,
 	availableModels []model.ModelMetadata,
-) (targetModel string, tier string, shouldInjectThinking bool, isImage bool) {
-	cleanModel := rawModel
-	cleanModel = strings.TrimPrefix(cleanModel, "antigravity/")
+) (targetModel string, thinkingLevel int, shouldInjectThinking bool, isImage bool) {
+	cleanModel := strings.TrimPrefix(strings.TrimSpace(rawModel), "antigravity/")
 	cleanModel = strings.TrimSpace(cleanModel)
 
 	if strings.Contains(strings.ToLower(cleanModel), "image") {
-		return cleanModel, "", false, true
+		return cleanModel, 0, false, true
 	}
 
-	lowerEffort := strings.ToLower(strings.TrimSpace(reasoningEffort))
-	switch lowerEffort {
-	case "high", "medium", "low", "extra-low":
-		tier = lowerEffort
-	}
-
-	for _, t := range []string{"high", "medium", "low", "extra-low"} {
-		if strings.HasSuffix(cleanModel, "-"+t) {
-			tier = t
-			break
-		}
-	}
-	if tier == "" {
-		tier = "medium"
-	}
 	availMap := make(map[string]model.ModelMetadata, len(availableModels))
 	for _, m := range availableModels {
 		availMap[m.ID] = m
 	}
+	exists := func(id string) bool { _, ok := availMap[id]; return ok }
 
-	// 1. Exact match
-	if _, ok := availMap[cleanModel]; ok {
+	effort := strings.ToLower(strings.TrimSpace(reasoningEffort))
+
+	// A tier baked into the model id outranks a generic reasoning_effort: the
+	// caller named that exact model.
+	base, ownLevel := cleanModel, 0
+	if b, level, ok := splitAntigravityTier(cleanModel); ok {
+		base, ownLevel = b, level
+	}
+	chosen := ownLevel
+	if chosen == 0 {
+		chosen, _ = antigravityTierByName(effort)
+	}
+
+	// 1. The id as given, then the effort spelled as a catalog suffix (this is
+	//    what routes tiers absent from the table above), then the effort
+	//    normalized to its enum name.
+	switch {
+	case exists(cleanModel):
 		targetModel = cleanModel
+	case effort != "" && exists(cleanModel+"-"+effort):
+		targetModel = cleanModel + "-" + effort
+	}
+	if targetModel == "" && chosen > 0 {
+		if name, ok := antigravityTierName(chosen); ok && exists(base+"-"+name) {
+			targetModel = base + "-" + name
+		}
 	}
 
-	// 2. Effort suffix probing if not resolved yet
-	if targetModel == "" {
-		effectiveTier := tier
-		if effectiveTier == "" {
-			effectiveTier = "medium"
+	// 2. Nothing matched: take the family sibling whose declared level sits
+	//    closest to the mid tier (the cheaper one wins ties, then id so the
+	//    choice never depends on map order).
+	if targetModel == "" && len(availMap) > 0 {
+		type sibling struct {
+			id    string
+			dist  int
+			level int
 		}
-		probe := cleanModel + "-" + effectiveTier
-		if _, ok := availMap[probe]; ok {
-			targetModel = probe
-		} else {
-			for _, alt := range []string{"medium", "high", "low"} {
-				probeAlt := cleanModel + "-" + alt
-				if _, ok := availMap[probeAlt]; ok {
-					targetModel = probeAlt
-					if tier == "" {
-						tier = alt
-					}
-					break
-				}
+		var candidates []sibling
+		for id, meta := range availMap {
+			if !strings.HasPrefix(id, base+"-") {
+				continue
 			}
-		}
-	}
-
-	// 3. Prefix matching in available models
-	if targetModel == "" {
-		for id := range availMap {
-			if strings.HasPrefix(id, cleanModel+"-") {
-				targetModel = id
-				break
+			dist := meta.ThinkingLevel - defaultAntigravityThinkingLevel
+			if dist < 0 {
+				dist = -dist
 			}
+			candidates = append(candidates, sibling{id, dist, meta.ThinkingLevel})
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			a, b := candidates[i], candidates[j]
+			if a.dist != b.dist {
+				return a.dist < b.dist
+			}
+			if a.level != b.level {
+				return a.level < b.level
+			}
+			return a.id < b.id
+		})
+		if len(candidates) > 0 {
+			targetModel = candidates[0].id
 		}
 	}
 
-	// 4. Default / Passthrough fallback
+	// 3. Catalog miss (cold cache or retired family): keep the caller's spelling,
+	//    defaulting to the mid tier when nothing was expressed.
 	if targetModel == "" {
-		if tier != "" && !strings.HasSuffix(cleanModel, "-"+tier) {
-			targetModel = cleanModel + "-" + tier
+		if chosen == 0 {
+			chosen = defaultAntigravityThinkingLevel
+		}
+		name, _ := antigravityTierName(chosen)
+		if name == "" {
+			// An effort outside the enum vocabulary: append it verbatim so a
+			// future tier still reaches upstream as the suffix it advertises.
+			name = effort
+		}
+		if name != "" && !strings.HasSuffix(cleanModel, "-"+name) {
+			targetModel = cleanModel + "-" + name
 		} else {
 			targetModel = cleanModel
 		}
 	}
 
-	if tier == "" {
-		for _, t := range []string{"high", "medium", "low", "extra-low"} {
-			if strings.HasSuffix(targetModel, "-"+t) {
-				tier = t
-				break
-			}
-		}
-	}
-	if tier == "" {
-		tier = "medium"
-	}
-
-	// Determine if thinkingConfig should be injected:
-	// Only Gemini family models with thinking capability should receive thinkingConfig.
-	// Claude, GPT-OSS, and non-thinking models must NEVER receive thinkingConfig.
-	isGemini := strings.HasPrefix(targetModel, "gemini-")
+	// The depth to request comes from the catalog entry for the resolved id; the
+	// suffix table is only the cold-cache stand-in.
 	if meta, ok := availMap[targetModel]; ok {
-		if meta.Family != "" && meta.Family != "gemini" {
-			isGemini = false
+		thinkingLevel = meta.ThinkingLevel
+	}
+	if thinkingLevel == 0 {
+		if _, level, ok := splitAntigravityTier(targetModel); ok {
+			thinkingLevel = level
 		}
-		hasReasoning := false
-		for _, cap := range meta.Capabilities {
-			if cap == "reasoning" {
-				hasReasoning = true
-				break
-			}
-		}
-		shouldInjectThinking = isGemini && hasReasoning && (tier == "high" || tier == "medium" || tier == "low")
-	} else {
-		// Non-cached fallback heuristic: only gemini- models get thinkingConfig
-		shouldInjectThinking = isGemini && (tier == "high" || tier == "medium" || tier == "low")
 	}
 
-	return targetModel, tier, shouldInjectThinking, false
-}
+	// Only Gemini-family reasoning models take thinkingConfig; Claude, GPT-OSS
+	// and non-thinking models must NEVER receive it.
+	if thinkingLevel > 0 {
+		shouldInjectThinking = strings.HasPrefix(strings.ToLower(targetModel), "gemini-")
+		if meta, ok := availMap[targetModel]; ok {
+			shouldInjectThinking = (meta.Family == "" || meta.Family == "gemini") &&
+				slices.Contains(meta.Capabilities, "reasoning")
+		}
+	}
 
-// resolveAntigravityModelTier maps requested model and reasoning_effort to upstream tiered model (compat).
-func resolveAntigravityModelTier(rawModel, reasoningEffort string) (targetModel string, tier string) {
-	targetModel, tier, _, _ = resolveAntigravityModel(rawModel, reasoningEffort, nil)
-	return targetModel, tier
+	return targetModel, thinkingLevel, shouldInjectThinking, false
 }

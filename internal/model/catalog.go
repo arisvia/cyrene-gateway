@@ -15,6 +15,11 @@ type ModelMetadata struct {
 	Modalities    []string `json:"modalities,omitempty"`
 	Family        string   `json:"family,omitempty"`
 	FromUpstream  bool     `json:"from_upstream,omitempty"`
+	// ThinkingLevel is the reasoning depth upstream advertises for this exact
+	// model id (Antigravity fetchAvailableModels.thinkingLevel enum). Sending it
+	// back overrides the depth the model runs at, so tiers a given deployment
+	// never heard of still route at their advertised level. 0 = not declared.
+	ThinkingLevel int `json:"thinking_level,omitempty"`
 }
 
 // LookupCatalog resolves a model id or a human-readable display name against the

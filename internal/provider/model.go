@@ -32,7 +32,7 @@ func ExtractModelReasoningEffort(modelStr string) (string, string) {
 	if idx := strings.LastIndex(clean, "("); idx != -1 && strings.HasSuffix(clean, ")") {
 		cand := strings.ToLower(clean[idx+1 : len(clean)-1])
 		switch cand {
-		case "low", "medium", "high", "max", "adaptive", "none", "off":
+		case "low", "medium", "high", "xhigh", "max", "adaptive", "none", "off":
 			clean = clean[:idx]
 			effort = cand
 		}

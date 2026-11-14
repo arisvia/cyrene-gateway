@@ -40,7 +40,8 @@ func (t antigravityCatalogTransport) RoundTrip(r *http.Request) (*http.Response,
 func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	body := `{"models":{
-		"gemini-4-hydrogen-high": {"displayName": "Gemini 4 Hydrogen (High)", "maxTokens": 1048576, "maxOutputTokens": 262144, "supportsThinking": true, "supportsImages": true},
+		"gemini-4-hydrogen-high": {"displayName": "Gemini 4 Hydrogen (High)", "maxTokens": 1048576, "maxOutputTokens": 262144, "thinkingLevel": 3, "supportsThinking": true, "supportsImages": true},
+		"gemini-4-hydrogen-xhigh": {"displayName": "Gemini 4 Hydrogen (XHigh)", "maxTokens": 1048576, "maxOutputTokens": 262144, "thinkingLevel": 100, "supportsThinking": true, "supportsImages": true},
 		"gemini-3.1-flash-image": {"displayName": "Gemini 3.1 Flash Image", "maxTokens": 1048576, "maxOutputTokens": 1024, "supportsImages": true},
 		"gemini-4-carbon-disabled": {"displayName": "Gemini 4 Carbon", "maxTokens": 1048576, "maxOutputTokens": 65536, "disabled": true},
 		"gemini-internal-preview": {"displayName": "Gemini Internal Preview", "isInternal": true},
@@ -55,7 +56,7 @@ func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 	for _, m := range got {
 		ids = append(ids, m.ID)
 	}
-	want := []string{"gemini-3.1-flash-image", "gemini-4-hydrogen-high"}
+	want := []string{"gemini-3.1-flash-image", "gemini-4-hydrogen-high", "gemini-4-hydrogen-xhigh"}
 	if !reflect.DeepEqual(ids, want) {
 		t.Fatalf("catalog ids = %v, want %v", ids, want)
 	}
@@ -71,5 +72,13 @@ func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 	}
 	if caps := byID["gemini-4-hydrogen-high"].Capabilities; !slices.Contains(caps, "chat") || !slices.Contains(caps, "reasoning") {
 		t.Errorf("chat engine capabilities = %v, want chat and reasoning", caps)
+	}
+	// thinkingLevel is the depth upstream runs each id at; chat routing sends it
+	// back instead of guessing from the tier suffix.
+	if byID["gemini-4-hydrogen-xhigh"].ThinkingLevel != 100 {
+		t.Errorf("xhigh thinking level = %d, want 100", byID["gemini-4-hydrogen-xhigh"].ThinkingLevel)
+	}
+	if byID["gemini-3.1-flash-image"].ThinkingLevel != 0 {
+		t.Errorf("image engine declares no thinking level, got %d", byID["gemini-3.1-flash-image"].ThinkingLevel)
 	}
 }
