@@ -198,6 +198,9 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				SupportsImages   bool   `json:"supportsImages"`
 				IsInternal       bool   `json:"isInternal"`
 				Disabled         bool   `json:"disabled"`
+				QuotaInfo        *struct {
+					ResetTime string `json:"resetTime"`
+				} `json:"quotaInfo"`
 			} `json:"models"`
 		}
 		if err := json.Unmarshal(respBytes, &resultMap); err == nil && len(resultMap.Models) > 0 {
@@ -239,6 +242,10 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 				} else if strings.Contains(id, "gpt-oss") {
 					family = "gpt-oss"
 				}
+				quotaReset := ""
+				if m.QuotaInfo != nil {
+					quotaReset = m.QuotaInfo.ResetTime
+				}
 
 				out = append(out, model.ModelMetadata{
 					ID:            id,
@@ -246,6 +253,7 @@ func (s *Server) fetchAntigravityCatalog(ctx context.Context, client *http.Clien
 					ContextLength: m.MaxTokens,
 					MaxOutput:     m.MaxOutputTokens,
 					ThinkingLevel: m.ThinkingLevel,
+					QuotaResetAt:  quotaReset,
 					Capabilities:  caps,
 					Modalities:    mods,
 					Family:        family,

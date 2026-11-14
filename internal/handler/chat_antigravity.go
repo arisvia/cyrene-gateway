@@ -613,61 +613,74 @@ func antigravityFinishToOpenAI(fr string) string {
 	}
 }
 
-// antigravityQuotaPool maps a resolved upstream model onto the Google quota
-// pool it draws from (verified against live retrieveUserQuotaSummary buckets and
-// fetchAvailableModels resetTime): Claude & GPT-OSS share one pool, the Gemini
-// family (2.x/3.x text, 4 Hydrogen, image and search) shares another, and
-// Gemini 4 Argon alone carries its own weekly pool.
-func antigravityQuotaPool(targetModel string) string {
-	lower := strings.ToLower(targetModel)
-	switch {
-	case strings.HasPrefix(lower, "claude-"), strings.HasPrefix(lower, "gpt-"):
-		return "claude"
-	case strings.HasPrefix(lower, "gemini-4-argon"):
-		return "gemini4"
-	case strings.HasPrefix(lower, "gemini-"):
-		return "gemini"
+// antigravityQuotaPoolID reports the upstream quota window a model draws from, as
+// the catalog snapshot states it: fetchAvailableModels.quotaInfo.resetTime. Models
+// whose current window resets at the same instant are drained by the same window,
+// and that equality is the only pool evidence a model entry carries upstream — no
+// entry names its bucket, and retrieveUserQuotaSummary lists buckets without
+// members. Verified live: the 16-model Gemini family shares one instant, the
+// Claude/GPT-OSS group another, Gemini 4 Argon a third (its own weekly window).
+// "" means the snapshot has nothing to say about the model (cold cache, or an entry
+// upstream sends no quotaInfo for) and the park then stops at what actually failed.
+func antigravityQuotaPoolID(models []model.ModelMetadata, targetModel string) string {
+	for _, m := range models {
+		if m.ID == targetModel {
+			return m.QuotaResetAt
+		}
 	}
 	return ""
 }
 
-// parkAntigravityQuota converts an account-wide quota park into pool-scoped
-// model locks. Must be called AFTER ApplyErrorState: returns true when the
-// failure is quota-class on a mapped antigravity pool, having already cleared
-// the global RateLimitedUntil and persisted the locks (chat AND media traffic
-// for that pool are then skipped by the selector; sibling pools keep serving).
+// parkAntigravityQuota converts an account-wide quota park into window-scoped model
+// locks. Must be called AFTER ApplyErrorState: it clears the global
+// RateLimitedUntil, locks every model that shares the exhausted window, and returns
+// once the locks are applied (chat AND media traffic for those models is then
+// skipped by the selector; sibling windows keep serving).
 func (s *Server) parkAntigravityQuota(conn *model.ProviderConnection, poolModel, requestedModel string, status int, errorText string) bool {
-	pool := antigravityQuotaPool(poolModel)
-	if conn == nil || pool == "" {
+	// The media and combo walks call this for every provider, and only an
+	// Antigravity account has shared quota windows to reason about: elsewhere the
+	// account-level park ApplyErrorState already applied is the correct one.
+	if conn == nil || !strings.HasPrefix(conn.Provider, "antigravity") {
 		return false
 	}
 	if provider.CheckFallbackError(status, errorText, conn.Data.BackoffLevel).Cooldown < provider.CooldownQuota {
 		return false
 	}
+	models := s.getAntigravityAvailableModels()
+	pool := antigravityQuotaPoolID(models, poolModel)
+	if pool == "" {
+		pool = antigravityQuotaPoolID(models, requestedModel)
+	}
 	conn.Data.RateLimitedUntil = ""
-	if lockPatch := s.lockAntigravityPool(conn, pool, poolModel, requestedModel); lockPatch != nil && s.DB != nil {
+	if lockPatch := antigravityWindowLock(conn, pool, models, poolModel, requestedModel); lockPatch != nil && s.DB != nil {
 		_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
 	}
 	return true
 }
 
-// lockAntigravityPool parks every same-pool model on this connection via the
-// existing model-lock mechanism (the credential selector already skips locked
-// models per request). One exhausted pool must not melt down the whole
-// account: the sibling pools keep their headroom and keep serving.
-// Returns the provider-data patch to persist (nil when nothing to lock).
-func (s *Server) lockAntigravityPool(conn *model.ProviderConnection, pool, targetModel, requestedModel string) map[string]any {
+// antigravityWindowLock builds the provider-data patch that parks an exhausted
+// quota window through the existing model-lock mechanism (the credential selector
+// already skips locked models per request). The models that just failed are always
+// locked; every catalog model sharing their reset instant goes with them, so one
+// drained window neither melts down the whole account nor leaves its siblings to be
+// retried one by one. Returns nil when there is nothing to lock.
+func antigravityWindowLock(conn *model.ProviderConnection, pool string, models []model.ModelMetadata, failed ...string) map[string]any {
 	until := time.Now().Add(provider.CooldownQuota).UTC().Format(time.RFC3339)
 	patch := map[string]any{}
 	lock := func(name string) {
-		if name != "" && antigravityQuotaPool(name) == pool {
+		if name != "" {
 			patch["modelLock_"+name] = until
 		}
 	}
-	lock(targetModel)
-	lock(requestedModel)
-	for _, m := range s.getAntigravityAvailableModels() {
-		lock(m.ID)
+	for _, name := range failed {
+		lock(name)
+	}
+	if pool != "" {
+		for _, m := range models {
+			if m.QuotaResetAt == pool {
+				lock(m.ID)
+			}
+		}
 	}
 	if len(patch) == 0 {
 		return nil

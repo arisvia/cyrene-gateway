@@ -40,8 +40,8 @@ func (t antigravityCatalogTransport) RoundTrip(r *http.Request) (*http.Response,
 func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 	srv, _ := setupTestServer(t)
 	body := `{"models":{
-		"gemini-4-hydrogen-high": {"displayName": "Gemini 4 Hydrogen (High)", "maxTokens": 1048576, "maxOutputTokens": 262144, "thinkingLevel": 3, "supportsThinking": true, "supportsImages": true},
-		"gemini-4-hydrogen-xhigh": {"displayName": "Gemini 4 Hydrogen (XHigh)", "maxTokens": 1048576, "maxOutputTokens": 262144, "thinkingLevel": 100, "supportsThinking": true, "supportsImages": true},
+		"gemini-4-hydrogen-high": {"displayName": "Gemini 4 Hydrogen (High)", "maxTokens": 1048576, "maxOutputTokens": 262144, "thinkingLevel": 3, "supportsThinking": true, "supportsImages": true, "quotaInfo": {"remainingFraction": 0.99, "resetTime": "2026-11-14T06:28:03Z"}},
+		"gemini-4-hydrogen-xhigh": {"displayName": "Gemini 4 Hydrogen (XHigh)", "maxTokens": 1048576, "maxOutputTokens": 262144, "thinkingLevel": 100, "supportsThinking": true, "supportsImages": true, "quotaInfo": {"remainingFraction": 0.99, "resetTime": "2026-11-14T06:28:03Z"}},
 		"gemini-3.1-flash-image": {"displayName": "Gemini 3.1 Flash Image", "maxTokens": 1048576, "maxOutputTokens": 1024, "supportsImages": true},
 		"gemini-4-carbon-disabled": {"displayName": "Gemini 4 Carbon", "maxTokens": 1048576, "maxOutputTokens": 65536, "disabled": true},
 		"gemini-internal-preview": {"displayName": "Gemini Internal Preview", "isInternal": true},
@@ -80,5 +80,16 @@ func TestFetchAntigravityCatalogDropsUnservableEntries(t *testing.T) {
 	}
 	if byID["gemini-3.1-flash-image"].ThinkingLevel != 0 {
 		t.Errorf("image engine declares no thinking level, got %d", byID["gemini-3.1-flash-image"].ThinkingLevel)
+	}
+	// The reset instant is what the quota park groups models by — models that reset
+	// together drain on the same window — so it has to survive into the cache.
+	if got := byID["gemini-4-hydrogen-high"].QuotaResetAt; got != "2026-11-14T06:28:03Z" {
+		t.Errorf("hydrogen quota window reset = %q, want the upstream instant", got)
+	}
+	if byID["gemini-4-hydrogen-xhigh"].QuotaResetAt != byID["gemini-4-hydrogen-high"].QuotaResetAt {
+		t.Errorf("tiers of one family must report one window")
+	}
+	if got := byID["gemini-3.1-flash-image"].QuotaResetAt; got != "" {
+		t.Errorf("an entry upstream sends no quotaInfo for gained a window: %q", got)
 	}
 }

@@ -20,6 +20,12 @@ type ModelMetadata struct {
 	// back overrides the depth the model runs at, so tiers a given deployment
 	// never heard of still route at their advertised level. 0 = not declared.
 	ThinkingLevel int `json:"thinking_level,omitempty"`
+	// QuotaResetAt is the instant upstream says this model's current quota window
+	// resets (Antigravity fetchAvailableModels.quotaInfo.resetTime). Models whose
+	// window resets at the same instant are drained by the same window, so it is the
+	// only pool evidence a model entry carries. Empty when upstream sends no
+	// quotaInfo for the model.
+	QuotaResetAt string `json:"quota_reset_at,omitempty"`
 }
 
 // LookupCatalog resolves a model id or a human-readable display name against the

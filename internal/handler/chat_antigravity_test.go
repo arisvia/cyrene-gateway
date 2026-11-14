@@ -1233,23 +1233,87 @@ func TestAntigravityQuotaExhaustionParksPoolNotAccount(t *testing.T) {
 	}
 }
 
-func TestAntigravityQuotaPoolMapping(t *testing.T) {
-	cases := map[string]string{
-		"claude-opus-5-5-high":   "claude",
-		"gpt-oss-120b-medium":    "claude",
-		"gemini-3.8-flash-high":  "gemini",
-		"gemini-3.1-flash-image": "gemini",
-		// 4 Hydrogen resets on the same window as the 3.x family, so it draws
-		// from the shared Gemini pool; only 4 Argon carries its own weekly pool.
-		"gemini-4-hydrogen-xhigh": "gemini",
-		"gemini-4-hydrogen-low":   "gemini",
-		"gemini-4-argon-high":     "gemini4",
-		"gemini-4-argon-medium":   "gemini4",
-		"mystery-model":           "",
+// Pool membership comes from the catalog's own evidence: upstream states when each
+// model's current quota window resets, and models that reset at the same instant are
+// drained by the same window. Live fetchAvailableModels puts the 16-model Gemini
+// family on one instant, Claude + GPT-OSS on another and Gemini 4 Argon on a third
+// (its own weekly window) — which no model-name rule can tell apart, since Argon and
+// Hydrogen are both "gemini-4-*".
+func TestAntigravityQuotaPoolIDFromCatalogWindow(t *testing.T) {
+	models := []model.ModelMetadata{
+		{ID: "gemini-3.8-flash-high", QuotaResetAt: "2026-11-14T06:28:03Z"},
+		{ID: "gemini-4-hydrogen-high", QuotaResetAt: "2026-11-14T06:28:03Z"},
+		{ID: "gemini-3.1-flash-image", QuotaResetAt: "2026-11-14T06:28:03Z"},
+		{ID: "claude-sonnet-5-5-high", QuotaResetAt: "2026-11-14T07:42:04Z"},
+		{ID: "gpt-oss-120b-medium", QuotaResetAt: "2026-11-14T07:42:04Z"},
+		{ID: "gemini-4-argon-high", QuotaResetAt: "2026-11-21T03:19:23Z"},
+		{ID: "tab_anchor_preview"}, // upstream sends no quotaInfo for these
 	}
-	for m, want := range cases {
-		if got := antigravityQuotaPool(m); got != want {
-			t.Errorf("antigravityQuotaPool(%q) = %q, want %q", m, got, want)
+
+	if antigravityQuotaPoolID(models, "gemini-4-hydrogen-high") != antigravityQuotaPoolID(models, "gemini-3.8-flash-high") {
+		t.Errorf("hydrogen must draw from the gemini window it resets with")
+	}
+	if antigravityQuotaPoolID(models, "gpt-oss-120b-medium") != antigravityQuotaPoolID(models, "claude-sonnet-5-5-high") {
+		t.Errorf("gpt-oss shares the third-party window with claude")
+	}
+	if antigravityQuotaPoolID(models, "gemini-4-argon-high") == antigravityQuotaPoolID(models, "gemini-3.8-flash-high") {
+		t.Errorf("argon owns a separate weekly window and must not join the gemini pool")
+	}
+	for _, id := range []string{"tab_anchor_preview", "model-the-catalog-never-advertised"} {
+		if got := antigravityQuotaPoolID(models, id); got != "" {
+			t.Errorf("antigravityQuotaPoolID(%q) = %q, want no window", id, got)
 		}
+	}
+}
+
+// A drained window parks exactly the models that reset with it, so the account keeps
+// serving its other windows; a model the catalog cannot place locks only itself
+// instead of taking the whole account out of rotation.
+func TestAntigravityQuotaExhaustionParksByCatalogWindow(t *testing.T) {
+	srv, database := setupTestServer(t)
+	cached, _ := json.Marshal(model.CachedModels{FetchedAt: time.Now(), Models: []model.ModelMetadata{
+		{ID: "claude-sonnet-5-5-high", QuotaResetAt: "2026-11-14T07:42:04Z"},
+		{ID: "gpt-oss-120b-medium", QuotaResetAt: "2026-11-14T07:42:04Z"},
+		{ID: "gemini-3.8-flash-high", QuotaResetAt: "2026-11-14T06:28:03Z"},
+		{ID: "gemini-4-argon-high", QuotaResetAt: "2026-11-21T03:19:23Z"},
+	}})
+	if err := database.KVSet("providerModelCache", "antigravity", string(cached)); err != nil {
+		t.Fatalf("seed catalog: %v", err)
+	}
+
+	conn := &model.ProviderConnection{
+		ID: "pool-account", Provider: "antigravity", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "tok", ProviderSpecificData: map[string]any{"projectId": "p"}},
+	}
+	exhausted := `{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}`
+	if !srv.parkAntigravityQuota(conn, "claude-sonnet-5-5-high", "claude-sonnet-5-5-high", http.StatusTooManyRequests, exhausted) {
+		t.Fatal("quota-class failure must park the window")
+	}
+	if conn.Data.RateLimitedUntil != "" {
+		t.Errorf("account-level park must yield to window locks: %s", conn.Data.RateLimitedUntil)
+	}
+
+	locked := map[string]bool{}
+	for k, v := range conn.Data.ProviderSpecificData {
+		if name, ok := strings.CutPrefix(k, "modelLock_"); ok && v != "" {
+			locked[name] = true
+		}
+	}
+	for _, want := range []string{"claude-sonnet-5-5-high", "gpt-oss-120b-medium"} {
+		if !locked[want] {
+			t.Errorf("%s resets with the exhausted window and must be locked: %+v", want, locked)
+		}
+	}
+	for _, reject := range []string{"gemini-3.8-flash-high", "gemini-4-argon-high"} {
+		if locked[reject] {
+			t.Errorf("%s draws from another window and must keep serving", reject)
+		}
+	}
+	conns := []model.ProviderConnection{*conn}
+	if c := provider.SelectCredential(conns, "claude-sonnet-5-5-high", nil); c != nil {
+		t.Errorf("selector must skip the locked model")
+	}
+	if c := provider.SelectCredential(conns, "gemini-3.8-flash-high", nil); c == nil {
+		t.Errorf("selector must still serve the window that has headroom")
 	}
 }
