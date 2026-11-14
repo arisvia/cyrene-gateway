@@ -186,6 +186,37 @@ func LookupModelsDev(catalog map[string]ModelsDevEntry, modelID string) (ModelsD
 	return ModelsDevEntry{}, false
 }
 
+// ModelsDevOutputLimit returns the maximum output length models.dev advertises for
+// this model, or 0 when nothing is known. Only exact identifier matches count here:
+// the value is used to cap a request, and a fuzzy hit would silently shorten answers
+// for a model whose real ceiling is higher — a wrong cap is invisible, a rejected
+// request is not.
+func ModelsDevOutputLimit(providerID, modelID string) int {
+	modelsDevMu.RLock()
+	defer modelsDevMu.RUnlock()
+	cat := modelsDevCache
+	if len(cat) == 0 {
+		return 0
+	}
+	for _, raw := range []string{providerID + "/" + modelID, modelID} {
+		lower := strings.ToLower(raw)
+		if e, ok := cat[lower]; ok && e.Output > 0 {
+			return e.Output
+		}
+		if idx := strings.Index(lower, "/"); idx > 0 {
+			if e, ok := cat[lower[idx+1:]]; ok && e.Output > 0 {
+				return e.Output
+			}
+		}
+		if dashed := strings.ReplaceAll(lower, " ", "-"); dashed != lower {
+			if e, ok := cat[dashed]; ok && e.Output > 0 {
+				return e.Output
+			}
+		}
+	}
+	return 0
+}
+
 // LookupModelsDevGlobal resolves a model id or display name against the cached models.dev catalog.
 func LookupModelsDevGlobal(identifiers ...string) *ModelMetadata {
 	modelsDevMu.RLock()
