@@ -33,6 +33,12 @@ const (
 	// seconds later cannot succeed, so it stays out of the rotation long enough
 	// for the other accounts to carry the load.
 	CooldownQuota = 15 * time.Minute
+
+	// CooldownTOS parks an account suspended by upstream Terms-of-Service
+	// enforcement (Antigravity TOS_VIOLATION). Retrying cannot succeed until
+	// the account is appealed or re-authorized; a 24-hour park stops the
+	// failover loop from hammering a banned credential every 2 minutes.
+	CooldownTOS = 24 * time.Hour
 )
 
 // ErrorRule defines a classification rule for upstream errors.
@@ -74,6 +80,9 @@ var ErrorRules = []ErrorRule{
 	{Code: "rate_limit_error", Backoff: true},
 
 	// Text-based rules
+	// Account-level TOS suspension: the error body carries reason TOS_VIOLATION
+	// and an appeal_url. Park long instead of the generic 403 two-minute cooldown.
+	{Text: "tos_violation", CooldownMs: CooldownTOS},
 	{Text: "no credentials", CooldownMs: CooldownLong},
 	{Text: "request not allowed", CooldownMs: CooldownShort},
 	{Text: "improperly formed request", CooldownMs: 0}, // Non-fallback

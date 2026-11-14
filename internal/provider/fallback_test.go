@@ -104,6 +104,14 @@ func TestCheckFallbackError(t *testing.T) {
 	if result.Cooldown != TransientCooldown {
 		t.Errorf("expected TransientCooldown for unknown error, got %v", result.Cooldown)
 	}
+	// TOS_VIOLATION: account-level suspension parks for 24h, not the generic 2min
+	result = CheckFallbackError(403, `{"error":{"code":403,"message":"This service has been disabled in this account for violation of Terms of Service.","status":"PERMISSION_DENIED","details":[{"reason":"TOS_VIOLATION","metadata":{"appeal_url":"https://forms.gle/hGzM9MEUv question"}}]}}`, 0)
+	if !result.ShouldFallback {
+		t.Error("expected ShouldFallback=true for TOS_VIOLATION (another account may work)")
+	}
+	if result.Cooldown != CooldownTOS {
+		t.Errorf("expected CooldownTOS (24h) for TOS_VIOLATION, got %v", result.Cooldown)
+	}
 }
 
 func TestSelectCredential(t *testing.T) {
