@@ -2,6 +2,11 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.11.1] - 2026-11-14
+
+### Fixed
+- **Antigravity ToS 封禁不再被降级为短锁**：配额窗口停放误把 24 小时账号级 TOS 封禁当配额耗尽，清空全局冷却换成 15 分钟模型锁致反复重试；现账号级封禁保留整账号长停放。
+
 ## [1.11.0] - 2026-11-14
 
 ### Added
