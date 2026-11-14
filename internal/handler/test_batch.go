@@ -223,6 +223,61 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 				return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: "failed to persist project discovery"}
 			}
 		}
+		// Generation-surface probe: loadCodeAssist can return 200 while
+		// generateContent is TOS-blocked (surface-scoped enforcement). A minimal
+		// request proves the account can actually serve inference.
+		genModel := s.probeModel(conn)
+		if genModel == "" {
+			genModel = "gemini-3-flash"
+		}
+		genBody, _ := json.Marshal(map[string]any{
+			"project": projID,
+			"model":   genModel,
+			"request": map[string]any{
+				"contents":         []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "ping"}}}},
+				"generationConfig": map[string]any{"maxOutputTokens": 1},
+			},
+		})
+		genURL := provider.AntigravityBaseURL + "/v1internal:generateContent"
+		if conn.Data.BaseURL != "" {
+			genURL = strings.TrimRight(conn.Data.BaseURL, "/") + "/v1internal:generateContent"
+		}
+		genReq, genErr := http.NewRequestWithContext(r.Context(), "POST", genURL, bytes.NewReader(genBody))
+		if genErr != nil {
+			return testResult{OK: false, Error: "failed to create generation probe"}
+		}
+		genReq.Header.Set("Authorization", "Bearer "+conn.Data.AccessToken)
+		genReq.Header.Set("Content-Type", "application/json")
+		genReq.Header.Set("User-Agent", provider.AntigravityUserAgent)
+		genResp, genErr := client.Do(genReq)
+		if genErr != nil {
+			conn.Data.TestStatus = "error"
+			conn.Data.LastError = "generation probe: " + genErr.Error()
+			if conn.ID != "" {
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			}
+			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: conn.Data.LastError}
+		}
+		genRespBody, _ := io.ReadAll(genResp.Body)
+		genResp.Body.Close()
+		if genResp.StatusCode != http.StatusOK {
+			errMsg := fmt.Sprintf("generation probe HTTP %d", genResp.StatusCode)
+			var errEnvelope struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(genRespBody, &errEnvelope) == nil && errEnvelope.Error.Message != "" {
+				errMsg = errEnvelope.Error.Message
+			}
+			conn.Data.TestStatus = "error"
+			conn.Data.LastError = errMsg
+			if conn.ID != "" {
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			}
+			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: genResp.StatusCode, Error: errMsg}
+		}
+		latency = time.Since(start)
 		// Mirror the 2xx path below: a successful probe proves the credential is
 		// live, so clear the account's error state and any parked model locks.
 		provider.ResetAccountState(conn)
