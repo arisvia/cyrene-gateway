@@ -204,6 +204,14 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 		projID, err := DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
 		latency := time.Since(start)
 		if err != nil {
+			// Without this persist a recovered account keeps showing its old failure
+			// in the panel forever: this branch returns before the status block at
+			// the end of the function.
+			conn.Data.TestStatus = "error"
+			conn.Data.LastError = err.Error()
+			if conn.ID != "" {
+				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			}
 			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
 		}
 		if conn.Data.ProviderSpecificData == nil {
@@ -213,6 +221,19 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 		if conn.ID != "" {
 			if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": projID}); err != nil {
 				return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: "failed to persist project discovery"}
+			}
+		}
+		// Mirror the 2xx path below: a successful probe proves the credential is
+		// live, so clear the account's error state and any parked model locks.
+		provider.ResetAccountState(conn)
+		lockPatch := provider.ModelLockRemovalPatch(conn.Data.ProviderSpecificData)
+		provider.ClearModelLocks(conn)
+		if conn.ID != "" {
+			conn.Data.TestStatus = "ok"
+			conn.Data.LastError = ""
+			s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+			if len(lockPatch) > 0 {
+				_ = s.DB.UpdateConnectionProviderData(conn.ID, lockPatch)
 			}
 		}
 		return testResult{OK: true, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Code: http.StatusOK}
