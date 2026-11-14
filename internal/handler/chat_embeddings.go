@@ -13,6 +13,7 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/cache"
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
@@ -47,7 +48,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modelInfo, err := provider.ResolveModel(req.Model, s.DB)
+	modelInfo, err := s.resolveMediaModel(req.Model, media.KindEmbedding)
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", req.Model)})
 		return

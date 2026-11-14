@@ -49,7 +49,10 @@ func TestInferProviderFromModel(t *testing.T) {
 		{"grok-2", "xai"},
 		{"llama-3-70b", "openrouter"},
 		{"kimi-k2", "kimi"},
-		{"unknown-model", "openai"},
+		// An id no rule recognises stays unknown: ResolveModel then tries the sole
+		// connected provider and otherwise reports the model as unresolvable,
+		// instead of routing it to OpenAI and blaming its missing credentials.
+		{"unknown-model", ""},
 	}
 
 	for _, tt := range tests {

@@ -213,3 +213,52 @@ func TestResolveModelBareClaudeIDPrefersConnectedAuthForm(t *testing.T) {
 		})
 	}
 }
+
+// A bare id that neither a synced catalog nor the naming rule recognises is
+// attributed to the only provider with credentials, and refused when several are
+// connected. It used to be handed to OpenAI, which surfaced "no active credentials
+// for provider: openai" for a model the caller never aimed at that vendor.
+func TestResolveModelUnattributedName(t *testing.T) {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	defer database.Close()
+
+	if _, err := ResolveModel("mystery-4000", database); err == nil {
+		t.Error("a bare id with no provider connected must not resolve")
+	}
+
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "solo", Provider: "qoder", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "tok"},
+	}); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+	info, err := ResolveModel("mystery-4000", database)
+	if err != nil {
+		t.Fatalf("sole connected provider should answer: %v", err)
+	}
+	if info.Provider != "qoder" || info.Model != "mystery-4000" {
+		t.Errorf("resolved = %+v, want qoder/mystery-4000", info)
+	}
+
+	// A second provider makes the name ambiguous again: refuse rather than guess,
+	// while a name whose vendor is legible still routes by its own prefix.
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID: "second", Provider: "gemini", AuthType: "api-key", IsActive: true,
+		Data: model.ConnectionData{APIKey: "k"},
+	}); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+	if _, err := ResolveModel("mystery-4000", database); err == nil {
+		t.Error("an ambiguous bare id must not be guessed")
+	}
+	if info, err := ResolveModel("gemini-3.8-flash", database); err != nil || info.Provider != "gemini" {
+		t.Errorf("prefixed name = %+v err=%v, want gemini", info, err)
+	}
+	// An explicit address is kept even when the provider id is unknown here.
+	if info, err := ResolveModel("private/gemma-4-27b", database); err != nil || info.Provider != "private" {
+		t.Errorf("explicit provider = %+v err=%v, want it untouched", info, err)
+	}
+}

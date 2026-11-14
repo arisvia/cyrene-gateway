@@ -1,6 +1,9 @@
 package media
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 // Kind represents a media service type.
 type Kind string
@@ -99,6 +102,25 @@ func SupportsKind(provider string, kind Kind) bool {
 		return false
 	}
 	return slices.Contains(p.Kinds, kind)
+}
+
+// ProvidersForModel lists the providers whose advertised inventory carries this
+// model id for the given kind, sorted so the result is deterministic. Media request
+// bodies often name only the model ("dall-e-3", "whisper-1"); this is who sells it,
+// read from the same inventory the media page publishes, instead of defaulting
+// unrecognised names to some provider.
+func ProvidersForModel(modelID string, kind Kind) []string {
+	var owners []string
+	for id, p := range Registry {
+		for _, m := range p.Models {
+			if m.Kind == kind && strings.EqualFold(m.ID, modelID) {
+				owners = append(owners, id)
+				break
+			}
+		}
+	}
+	slices.Sort(owners)
+	return owners
 }
 
 // displayMeta carries the brand metadata the per-kind registration files would

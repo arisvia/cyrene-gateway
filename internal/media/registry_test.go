@@ -1,10 +1,34 @@
 package media
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRegistryPopulated(t *testing.T) {
 	if len(Registry) == 0 {
 		t.Fatal("media registry is empty")
+	}
+}
+
+// Bare media ids are attributed by the inventory that advertises them, so a request
+// for "dall-e-3" means OpenAI without the chat-side naming rule having to know what
+// media vendors sell.
+func TestProvidersForModel(t *testing.T) {
+	if got := ProvidersForModel("dall-e-3", KindImage); !slices.Equal(got, []string{"openai"}) {
+		t.Errorf("dall-e-3 image owners = %v, want [openai]", got)
+	}
+	if got := ProvidersForModel("DALL-E-3", KindImage); !slices.Equal(got, []string{"openai"}) {
+		t.Errorf("lookup must ignore case, got %v", got)
+	}
+	if got := ProvidersForModel("dall-e-3", KindTTS); len(got) != 0 {
+		t.Errorf("an image id must not resolve for another kind: %v", got)
+	}
+	if got := ProvidersForModel("whisper-1", KindSTT); !slices.Equal(got, []string{"openai"}) {
+		t.Errorf("whisper-1 stt owners = %v, want [openai]", got)
+	}
+	if got := ProvidersForModel("model-nobody-sells", KindImage); len(got) != 0 {
+		t.Errorf("unknown id matched an owner: %v", got)
 	}
 }
 

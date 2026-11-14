@@ -2,6 +2,7 @@ package provider
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -56,7 +57,9 @@ func ParseModel(modelStr string) model.ModelInfo {
 //  1. Explicit provider prefix (e.g. "openai/gpt-4o")
 //  2. Dynamic search in cached models of active connections
 //  3. Fallback: prefix-based inference, preferring the credential form (API key
-//     vs OAuth) that actually has a connection
+//     vs OAuth) that actually has a connection, then the sole connected provider
+//     when the name matches nothing
+//  4. An explicit error when a bare name cannot be attributed, rather than a guess
 func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 	parsed := ParseModel(modelStr)
 
@@ -123,12 +126,46 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 		return parsed, nil
 	}
 
-	// 5. Fallback: infer provider from model name, then honor the credential form
-	//    that is actually connected.
-	return model.ModelInfo{
-		Provider: activeAuthFormProvider(InferProviderFromModel(parsed.Model), database),
-		Model:    parsed.Model,
-	}, nil
+	// 5. No catalog knows the model: fall back to what its name says, preferring the
+	//    credential form (API key vs OAuth) that is actually connected.
+	inferred := activeAuthFormProvider(InferProviderFromModel(parsed.Model), database)
+	if inferred == "" {
+		// A single-provider gateway has one honest answer left: the only provider
+		// with credentials is the one the caller meant. With several connected the
+		// name has to carry the provider, because guessing used to route unknown ids
+		// to OpenAI and report its missing credentials instead of the real problem.
+		if sole, ok := soleActiveProvider(database); ok {
+			inferred = sole
+		}
+	}
+	if inferred == "" {
+		return model.ModelInfo{}, fmt.Errorf("cannot resolve provider for model %q: no connected provider advertises it, address it as provider/model", modelStr)
+	}
+	return model.ModelInfo{Provider: inferred, Model: parsed.Model}, nil
+}
+
+// soleActiveProvider returns the one provider with an active connection, and false
+// when none or several qualify. Cold catalogs and brand-new upstream ids are what it
+// covers: with a single provider connected there is nothing else the name can mean.
+func soleActiveProvider(database *db.DB) (string, bool) {
+	if database == nil {
+		return "", false
+	}
+	conns, err := database.ListConnections()
+	if err != nil {
+		return "", false
+	}
+	found := ""
+	for _, c := range conns {
+		if !c.IsActive {
+			continue
+		}
+		if found != "" && found != c.Provider {
+			return "", false
+		}
+		found = c.Provider
+	}
+	return found, found != ""
 }
 
 // anthropicOAuthProvider is the provider id a Claude Code OAuth login connects

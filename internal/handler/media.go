@@ -97,6 +97,27 @@ func (s *Server) checkMediaModelAccess(w http.ResponseWriter, r *http.Request, m
 	return true
 }
 
+// resolveMediaModel attributes a media request to a provider. Chat-side resolution
+// (synced catalogs, then vendor id prefixes, then the sole connected provider) does
+// not know media inventory, and bare ids like "dall-e-3" or "whisper-1" used to reach
+// OpenAI only because unrecognised names defaulted there. When nothing recognises the
+// name, the media registry that advertises it for this kind answers instead; an id no
+// provider sells for the kind stays an error rather than a guess.
+func (s *Server) resolveMediaModel(modelName string, kind media.Kind) (model.ModelInfo, error) {
+	info, err := provider.ResolveModel(modelName, s.DB)
+	if err == nil {
+		return info, nil
+	}
+	// An explicit provider/... address is never second-guessed by registry lookup.
+	if strings.Contains(modelName, "/") {
+		return model.ModelInfo{}, err
+	}
+	if owners := media.ProvidersForModel(modelName, kind); len(owners) == 1 {
+		return model.ModelInfo{Provider: owners[0], Model: modelName}, nil
+	}
+	return model.ModelInfo{}, err
+}
+
 // handleImageGeneration handles POST /v1/images/generations
 func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := readRequestBody(r)
@@ -118,7 +139,7 @@ func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
 	if !s.checkMediaModelAccess(w, r, modelName) {
 		return
 	}
-	modelInfo, err := provider.ResolveModel(modelName, s.DB)
+	modelInfo, err := s.resolveMediaModel(modelName, media.KindImage)
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
 		return
@@ -198,7 +219,7 @@ func (s *Server) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 	if !s.checkMediaModelAccess(w, r, modelName) {
 		return
 	}
-	modelInfo, err := provider.ResolveModel(modelName, s.DB)
+	modelInfo, err := s.resolveMediaModel(modelName, media.KindTTS)
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
 		return
@@ -272,7 +293,7 @@ func (s *Server) handleAudioTranscriptions(w http.ResponseWriter, r *http.Reques
 	if !s.checkMediaModelAccess(w, r, modelStr) {
 		return
 	}
-	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
+	modelInfo, err := s.resolveMediaModel(modelStr, media.KindSTT)
 	if err != nil || modelInfo.Provider == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelStr)})
 		return
@@ -341,7 +362,7 @@ func (s *Server) handleVideoGenerations(w http.ResponseWriter, r *http.Request) 
 	}
 	resolvedModel := modelName
 	if modelName != "" {
-		modelInfo, err := provider.ResolveModel(modelName, s.DB)
+		modelInfo, err := s.resolveMediaModel(modelName, media.KindVideo)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
 			return
@@ -550,7 +571,7 @@ func (s *Server) handleWebSearch(w http.ResponseWriter, r *http.Request) {
 		if !s.checkMediaModelAccess(w, r, modelName) {
 			return
 		}
-		modelInfo, err := provider.ResolveModel(modelName, s.DB)
+		modelInfo, err := s.resolveMediaModel(modelName, media.KindWebSearch)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelName)})
 			return

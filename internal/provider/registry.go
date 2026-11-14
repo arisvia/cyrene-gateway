@@ -161,7 +161,12 @@ var modelPrefixProviders = []struct {
 	{"minimax-", "minimax"},
 }
 
-// InferProviderFromModel infers provider from model name prefix
+// InferProviderFromModel is the last-resort naming rule, consulted only after
+// ResolveModel has failed to find the model in any connected provider's synced
+// catalog: it maps the vendor-visible id prefix onto its provider. An id this rule
+// does not recognise is reported as unknown ("") rather than guessed as "openai" —
+// that guess used to send unrecognised models to whatever OpenAI credential existed,
+// and to a confusing "no active credentials for provider: openai" when none did.
 func InferProviderFromModel(modelName string) string {
 	lower := strings.ToLower(modelName)
 	for _, mp := range modelPrefixProviders {
@@ -169,5 +174,5 @@ func InferProviderFromModel(modelName string) string {
 			return mp.provider
 		}
 	}
-	return "openai"
+	return ""
 }
