@@ -1355,3 +1355,45 @@ func TestAntigravityThinkingGateReadsAPIProvider(t *testing.T) {
 		t.Error("cold catalog must not inject for a claude id")
 	}
 }
+
+func TestSanitizeAntigravitySystemPrompt(t *testing.T) {
+	// The exact trigger pattern from oh-my-pi#12655 (v18.2.6 conventions block)
+	trigger := "<conventions>\nRFC 2119: MUST, REQUIRED, SHOULD, RECOMMENDED, MAY, OPTIONAL. `NEVER` = `MUST NOT`; `AVOID` = `SHOULD NOT`.\n</conventions>"
+	parts := []map[string]any{{"text": trigger}}
+	got := sanitizeAntigravitySystemPrompt(parts)
+	text := got[0]["text"].(string)
+	if strings.Contains(text, "RFC 2119:") {
+		t.Error("colon trigger pattern must be rewritten")
+	}
+	if !strings.Contains(text, "Use RFC 2119 meanings") {
+		t.Error("semantic rewrite must be present")
+	}
+	if !strings.Contains(text, "NEVER means MUST NOT") {
+		t.Error("alias rewrite must be present")
+	}
+	// The <conventions> tags themselves are not the trigger; they stay
+	if !strings.Contains(text, "<conventions>") {
+		t.Error("conventions tags should be preserved (only the RFC line is rewritten)")
+	}
+
+	// Newer wording (oh-my-pi#12655 @Omnividente, Nov 2026)
+	newer := "RFC 2119 keywords: MUST, REQUIRED, SHOULD, RECOMMENDED, MAY, OPTIONAL."
+	parts2 := []map[string]any{{"text": newer}}
+	got2 := sanitizeAntigravitySystemPrompt(parts2)
+	if strings.Contains(got2[0]["text"].(string), "RFC 2119 keywords:") {
+		t.Error("newer keywords trigger must be rewritten")
+	}
+
+	// Non-trigger text passes through unchanged
+	safe := "You are a helpful assistant. Always be concise."
+	parts3 := []map[string]any{{"text": safe}}
+	got3 := sanitizeAntigravitySystemPrompt(parts3)
+	if got3[0]["text"].(string) != safe {
+		t.Error("non-trigger text must not be modified")
+	}
+
+	// Empty/nil parts are safe
+	if sanitizeAntigravitySystemPrompt(nil) != nil {
+		t.Error("nil input must return nil")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -77,6 +78,7 @@ func (s *Server) handleAntigravityChat(
 
 	// Transform OpenAI messages into Gemini contents format
 	contents, systemInstruction := convertOpenAIToGeminiContents(req.Messages, modelInfo.Model)
+	systemInstruction = sanitizeAntigravitySystemPrompt(systemInstruction)
 
 	genConfig := map[string]any{}
 	// Gemini 4 removes external sampling params (temperature/topP); forwarding them causes 400 INVALID_ARGUMENT (9router #4802 parity)
@@ -596,6 +598,41 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 	contents = normalizeAntigravityContents(contents, isGemini4)
 
 	return contents, systemParts
+}
+
+// antigravityRFCGlossary matches the exact system-prompt text combinations that
+// Google's Cloud Code content screen rejects with 429 RESOURCE_EXHAUSTED even on
+// quota-healthy accounts. Controlled A/B tests (oh-my-pi#12655 @Bosaidonio,
+// @Omnividente) proved the trigger is the surface form, not the semantics:
+// removing the colon, removing <conventions> tags, or rephrasing all yield 200.
+var antigravityRFCGlossary = regexp.MustCompile(
+	`RFC 2119\s*(?:keywords\s*)?:\s*MUST,\s*REQUIRED,\s*SHOULD,\s*RECOMMENDED,\s*MAY,\s*OPTIONAL\.?`)
+
+// antigravityAliasRewrite matches the backtick-quoted alias definitions that
+// accompany the RFC glossary in coding-agent system prompts.
+var antigravityAliasRewrite = regexp.MustCompile(
+	"`NEVER`\\s*=\\s*`MUST NOT`;\\s*`AVOID`\\s*=\\s*`SHOULD NOT`\\.?")
+
+// sanitizeAntigravitySystemPrompt rewrites known content-filter trigger patterns
+// in system instruction text before forwarding to upstream. The rewrite preserves
+// semantics (same RFC 2119 meanings) while changing the surface form that triggers
+// Google's content screen. Only systemInstruction is sanitized; user messages are
+// never modified.
+func sanitizeAntigravitySystemPrompt(parts []map[string]any) []map[string]any {
+	for i, part := range parts {
+		text, ok := part["text"].(string)
+		if !ok || text == "" {
+			continue
+		}
+		sanitized := antigravityRFCGlossary.ReplaceAllString(text,
+			"Use RFC 2119 meanings for requirements (MUST, REQUIRED), recommendations (SHOULD, RECOMMENDED), and permissions (MAY, OPTIONAL).")
+		sanitized = antigravityAliasRewrite.ReplaceAllString(sanitized,
+			"NEVER means MUST NOT; AVOID means SHOULD NOT.")
+		if sanitized != text {
+			parts[i] = map[string]any{"text": sanitized}
+		}
+	}
+	return parts
 }
 
 // antigravityFinishToOpenAI maps a lowercased cloudcode-pa finishReason onto
