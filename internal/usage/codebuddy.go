@@ -17,10 +17,10 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
-const (
-	codebuddyCnBillingURL   = "https://copilot.tencent.com/v2/billing/meter/get-user-resource"
-	codebuddyIntlBillingURL = "https://www.codebuddy.ai/v2/billing/meter/get-user-resource"
-)
+// The billing meter sits on the same origin as each CodeBuddy product's inference
+// API, so the host comes from the registry (copilot.tencent.com for CN,
+// www.codebuddy.ai for Intl) and only this path is declared here.
+const codebuddyBillingResourcePath = "/v2/billing/meter/get-user-resource"
 
 type codebuddyBillingResp struct {
 	Code int    `json:"code"`
@@ -104,17 +104,19 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 		return QuotaResult{Message: "CodeBuddy quota unavailable: no access token"}
 	}
 
-	targetURL := codebuddyCnBillingURL
+	targetURL := sameOriginURL(c, codebuddyBillingResourcePath)
 	userAgent := provider.CodebuddyCLIUA
 	ideType := "CLI"
 
 	if c.Provider == "codebuddy" {
-		targetURL = codebuddyIntlBillingURL
 		userAgent = provider.CodebuddyIDEUA
 		ideType = "IDE"
 	}
 	if c.BaseURL != "" {
 		targetURL = c.BaseURL
+	}
+	if targetURL == "" {
+		return QuotaResult{Message: "CodeBuddy billing endpoint unknown for provider: " + c.Provider}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader([]byte("{}")))

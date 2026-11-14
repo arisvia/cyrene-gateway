@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	qoderQuotaUsageURL   = "https://openapi.qoder.sh/api/v2/quota/usage"
-	qoderCnQuotaUsageURL = "https://openapi.qoder.com.cn/api/v2/quota/usage"
+	qoderQuotaUsageURL   = provider.QoderOpenAPIHost + "/api/v2/quota/usage"
+	qoderCnQuotaUsageURL = provider.QoderCnOpenAPIHost + "/api/v2/quota/usage"
 )
 
 func qoderQuotaURL(providerID, baseURL string) string {

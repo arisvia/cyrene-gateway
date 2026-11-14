@@ -188,3 +188,49 @@ func TestParseResetTime(t *testing.T) {
 		t.Errorf("expected empty for 0, got %q", got)
 	}
 }
+
+// Quota, billing and check-in APIs are served from the same origin as the provider's
+// inference traffic, so the fetchers take that host from the registry instead of
+// keeping a private copy: a domain or region change then lands once in
+// registry_data.go. Only the path — a different API surface — is declared locally.
+func TestSameOriginURLFollowsRegistry(t *testing.T) {
+	cases := map[string]string{
+		"glm":            "https://api.z.ai",
+		"glm-cn":         "https://open.bigmodel.cn",
+		"codebuddy":      "https://www.codebuddy.ai",
+		"codebuddy-cn":   "https://copilot.tencent.com",
+		"minimax":        "https://api.minimax.io",
+		"minimax-cn":     "https://api.minimaxi.com",
+		"deepseek":       "https://api.deepseek.com",
+		"not-a-provider": "",
+	}
+	for id, origin := range cases {
+		want := origin + "/some/path"
+		if origin == "" {
+			want = ""
+		}
+		if got := sameOriginURL(QuotaCredentials{Provider: id}, "/some/path"); got != want {
+			t.Errorf("sameOriginURL(%s) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+// MiniMax's CN counters were listed twice with the same URL, so a failing route was
+// probed twice before giving up.
+func TestMiniMaxPlanURLsAreDistinct(t *testing.T) {
+	for _, id := range []string{"minimax", "minimax-cn"} {
+		seen := map[string]bool{}
+		for _, u := range minimaxPlanURLs(QuotaCredentials{Provider: id}) {
+			if u == "" {
+				t.Fatalf("%s yielded an empty endpoint", id)
+			}
+			if seen[u] {
+				t.Errorf("%s probes %s twice", id, u)
+			}
+			seen[u] = true
+		}
+	}
+	if got := minimaxPlanURLs(QuotaCredentials{Provider: "minimax"}); len(got) != 2 {
+		t.Errorf("minimax should try the token-plan and coding-plan hosts, got %v", got)
+	}
+}

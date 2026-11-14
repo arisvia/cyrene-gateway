@@ -115,13 +115,13 @@ func boolAny(v any) bool {
 
 // ── Qoder: /sash/api/v1/me/campaigns ───────────────────────────────────────
 
-// qoderCampaignBase returns the openapi host for the region; the campaigns
-// endpoint lives on the same host as the device-token/quota APIs.
+// qoderCampaignBase returns the openapi origin for the region; the campaigns endpoint
+// lives on the same host as the device-token and quota APIs.
 func qoderCampaignBase(providerID string) string {
 	if strings.Contains(providerID, "cn") {
-		return "https://openapi.qoder.com.cn"
+		return provider.QoderCnOpenAPIHost
 	}
-	return "https://openapi.qoder.sh"
+	return provider.QoderOpenAPIHost
 }
 
 func qoderCampaignURL(c QuotaCredentials, campaignID string) string {
@@ -343,11 +343,10 @@ const (
 )
 
 func codebuddyCheckinURL(c QuotaCredentials, path string) string {
-	host := "https://copilot.tencent.com"
-	if c.Provider == "codebuddy" {
-		host = "https://www.codebuddy.ai"
-	}
-	return endpoint(host+path, c.BaseURL)
+	// The meter namespace is served from the same origin as the billing quota call
+	// (copilot.tencent.com for CodeBuddy CN, www.codebuddy.ai for the Intl product),
+	// which the registry already declares per provider.
+	return endpoint(sameOriginURL(c, path), c.BaseURL)
 }
 
 // codebuddyCheckinHeaders mirrors the billing quota call identity; the meter

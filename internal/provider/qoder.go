@@ -55,11 +55,19 @@ const (
 	qoderMachineType  = "5"
 )
 
+// QoderOpenAPIHost / QoderCnOpenAPIHost are the account-API origins per region
+// (device token, userinfo, quota usage, campaigns). They are not the inference gateway
+// host the registry declares, so this is where the pair is written down — once.
+const (
+	QoderOpenAPIHost   = "https://openapi.qoder.sh"
+	QoderCnOpenAPIHost = "https://openapi.qoder.com.cn"
+)
+
 var (
-	QoderDeviceTokenURL   = "https://openapi.qoder.sh/api/v1/deviceToken/poll"
-	QoderCnDeviceTokenURL = "https://openapi.qoder.com.cn/api/v1/deviceToken/poll"
-	QoderUserinfoURL      = "https://openapi.qoder.sh/api/v1/userinfo"
-	QoderCnUserinfoURL    = "https://openapi.qoder.com.cn/api/v1/userinfo"
+	QoderDeviceTokenURL   = QoderOpenAPIHost + "/api/v1/deviceToken/poll"
+	QoderCnDeviceTokenURL = QoderCnOpenAPIHost + "/api/v1/deviceToken/poll"
+	QoderUserinfoURL      = QoderOpenAPIHost + "/api/v1/userinfo"
+	QoderCnUserinfoURL    = QoderCnOpenAPIHost + "/api/v1/userinfo"
 )
 
 // RSA public key for COSY encryption (from Qoder IDE v0.9).

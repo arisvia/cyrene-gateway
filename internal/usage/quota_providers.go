@@ -11,10 +11,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // parseResetTime normalizes a provider reset value (unix seconds/ms, numeric
@@ -96,6 +99,36 @@ const deepseekBalanceURL = "https://api.deepseek.com/user/balance"
 // endpoint resolves a fetcher's target URL, honoring the test BaseURL override.
 // When override is set it replaces the scheme+host of the default URL, keeping
 // the path so a mock server can serve the same route.
+// registryOrigin returns the scheme://host the provider registry declares for this
+// provider's chat traffic. Quota, billing and check-in APIs normally live on the same
+// origin as the inference API, so their fetchers add a path instead of repeating a
+// host: a domain or region move then lands once in registry_data.go rather than in
+// every endpoint table in this package.
+func registryOrigin(providerID string) string {
+	info, ok := provider.GetProvider(providerID)
+	if !ok || info.BaseURL == "" {
+		return ""
+	}
+	u, err := url.Parse(info.BaseURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// sameOriginURL resolves an API path against the registry origin for the connection's
+// provider. "" means the provider has no registered host, and the caller reports that
+// rather than guessing an endpoint.
+func sameOriginURL(c QuotaCredentials, path string) string {
+	if origin := registryOrigin(c.Provider); origin != "" {
+		return origin + path
+	}
+	return ""
+}
+
+// endpoint applies a connection-level BaseURL override: the override replaces the
+// scheme+host of the default URL, keeping the path so a mock server can serve the
+// same route.
 func endpoint(defaultURL, override string) string {
 	if override == "" {
 		return defaultURL
@@ -169,22 +202,22 @@ func fetchDeepseek(ctx context.Context, client *http.Client, c QuotaCredentials)
 }
 
 // ── GLM ──────────────────────────────────────────────────────────────────
-// Region-aware quota endpoints — port of getGlmUsage (misc.js).
+// Region-aware quota endpoint — port of getGlmUsage (misc.js). The host comes from
+// the registry entry for the connection's provider (api.z.ai for GLM Coding Intl,
+// open.bigmodel.cn for the CN product); only the path, a different API surface, is
+// declared here.
 
-var glmQuotaURLs = map[string]string{
-	"glm":    "https://api.z.ai/api/monitor/usage/quota/limit",
-	"glm-cn": "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
-}
+const glmQuotaPath = "/api/monitor/usage/quota/limit"
 
 func fetchGLM(ctx context.Context, client *http.Client, c QuotaCredentials) QuotaResult {
 	if c.APIKey == "" {
 		return QuotaResult{Message: "GLM API key not available."}
 	}
-	url, ok := glmQuotaURLs[c.Provider]
-	if !ok {
-		url = glmQuotaURLs["glm"]
+	quotaURL := sameOriginURL(c, glmQuotaPath)
+	if quotaURL == "" {
+		return QuotaResult{Message: "GLM quota endpoint unknown for provider: " + c.Provider}
 	}
-	status, data, _, err := getJSON(ctx, client, endpoint(url, c.BaseURL), bearer(c.APIKey))
+	status, data, _, err := getJSON(ctx, client, endpoint(quotaURL, c.BaseURL), bearer(c.APIKey))
 	if err != nil {
 		return QuotaResult{Message: "GLM error: " + err.Error()}
 	}
@@ -234,17 +267,27 @@ func fetchGLM(ctx context.Context, client *http.Client, c QuotaCredentials) Quot
 }
 
 // ── MiniMax ──────────────────────────────────────────────────────────────
-// Try endpoints in order with fallback — port of getMiniMaxUsage.
+// Plan-counter endpoints, tried in order with fallback — port of getMiniMaxUsage.
+// The coding-plan API on the same origin the registry declares for inference is
+// derived, so it follows that provider's host automatically; the www.* hosts are
+// where MiniMax actually serves the older token-plan API, a different origin from its
+// API host, so they stay spelled out.
+const (
+	minimaxTokenPlanPath  = "/v1/token_plan/remains"
+	minimaxCodingPlanPath = "/v1/api/openplatform/coding_plan/remains"
+)
 
-var minimaxUsageURLs = map[string][]string{
-	"minimax": {
-		"https://www.minimax.io/v1/token_plan/remains",
-		"https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
-	},
-	"minimax-cn": {
-		"https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains",
-		"https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
-	},
+func minimaxPlanURLs(c QuotaCredentials) []string {
+	if c.Provider == "minimax-cn" {
+		// CN reports the coding plan from its console host, not api.minimaxi.com. The
+		// old table listed this same URL twice, which only re-asked a failing route.
+		return []string{"https://www.minimaxi.com" + minimaxCodingPlanPath}
+	}
+	urls := []string{"https://www.minimax.io" + minimaxTokenPlanPath}
+	if same := sameOriginURL(c, minimaxCodingPlanPath); same != "" {
+		urls = append(urls, same)
+	}
+	return urls
 }
 
 var minimaxAuthLike = regexp.MustCompile(`(?i)token plan|coding plan|invalid api key|invalid key|unauthorized|inactive`)
@@ -253,14 +296,11 @@ func fetchMiniMax(ctx context.Context, client *http.Client, c QuotaCredentials) 
 	if c.APIKey == "" {
 		return QuotaResult{Message: "MiniMax API key not available."}
 	}
-	urls := minimaxUsageURLs[c.Provider]
-	if len(urls) == 0 {
-		urls = minimaxUsageURLs["minimax"]
-	}
+	urls := minimaxPlanURLs(c)
 	lastErr := ""
-	for i, url := range urls {
+	for i, candidate := range urls {
 		canFallback := i < len(urls)-1
-		status, payload, raw, err := getJSON(ctx, client, endpoint(url, c.BaseURL), bearer(c.APIKey))
+		status, payload, raw, err := getJSON(ctx, client, endpoint(candidate, c.BaseURL), bearer(c.APIKey))
 		if err != nil {
 			lastErr = err.Error()
 			if !canFallback {
@@ -289,7 +329,7 @@ func fetchMiniMax(ctx context.Context, client *http.Client, c QuotaCredentials) 
 		}
 
 		modelRemains, _ := orSlice(payload, "model_remains", "modelRemains")
-		countMeansRemaining := strings.Contains(url, "/coding_plan/remains")
+		countMeansRemaining := strings.Contains(candidate, "/coding_plan/remains")
 		capturedAt := time.Now()
 		quotas := map[string]Quota{}
 
