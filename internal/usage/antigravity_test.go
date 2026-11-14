@@ -6,198 +6,109 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
-func TestClusterAntigravityQuotas(t *testing.T) {
-	rem95 := 0.95
-	rem100 := 1.0
-
-	resp := AntigravityModelsResponse{
-		Models: map[string]struct {
-			DisplayName string `json:"displayName"`
-			QuotaInfo   *struct {
-				RemainingFraction *float64 `json:"remainingFraction"`
-				ResetTime         string   `json:"resetTime"`
-				IsExhausted       bool     `json:"isExhausted"`
-			} `json:"quotaInfo"`
-		}{
-			// Gemini text family models
-			"gemini-3.8-flash-high": {
-				DisplayName: "Gemini 3.8 Flash (High)",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem95,
-					ResetTime:         "2026-09-10T14:21:00Z",
-				},
-			},
-			"gemini-3.8-flash-medium": {
-				DisplayName: "Gemini 3.8 Flash (Medium)",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem95,
-					ResetTime:         "2026-09-10T14:21:00Z",
-				},
-			},
-			"gemini-3.7-flash-high": {
-				DisplayName: "Gemini 3.7 Flash (High)",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem95,
-					ResetTime:         "2026-09-10T14:21:00Z",
-				},
-			},
-			// Claude family models
-			"claude-sonnet-4-6": {
-				DisplayName: "Claude Sonnet 4.6 (Thinking)",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem100,
-					ResetTime:         "2026-09-10T15:00:00Z",
-				},
-			},
-			"claude-opus-4-6-thinking": {
-				DisplayName: "Claude Opus 4.6 (Thinking)",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem100,
-					ResetTime:         "2026-09-10T15:00:00Z",
-				},
-			},
-			// Standalone model
-			"gpt-oss-120b-medium": {
-				DisplayName: "GPT-OSS 120B (Medium)",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem100,
-					ResetTime:         "2026-09-10T15:00:00Z",
-				},
-			},
-			// Dedicated image model
-			"imagen-3.0-generate": {
-				DisplayName: "Imagen 3.0",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem95,
-					ResetTime:         "2026-09-10T14:21:00Z",
-				},
-			},
-			// Internal / completion model to ignore
-			"chat_experimental_internal": {
-				DisplayName: "Internal Test",
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem95,
-				},
-			},
-		},
+func modelsFixture(t *testing.T, raw string) AntigravityModelsResponse {
+	t.Helper()
+	var resp AntigravityModelsResponse
+	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+		t.Fatalf("models fixture: %v", err)
 	}
+	return resp
+}
+
+func summaryFixture(t *testing.T, raw string) AntigravityQuotaSummaryResponse {
+	t.Helper()
+	var summary AntigravityQuotaSummaryResponse
+	if err := json.Unmarshal([]byte(raw), &summary); err != nil {
+		t.Fatalf("summary fixture: %v", err)
+	}
+	return summary
+}
+
+// fetchAvailableModels (the fallback endpoint) reports one quota window per model
+// and never names the pool it belongs to, so rows carry the upstream model id and
+// the upstream display name. Inventing "gemini"/"claude"/"gemini4" aggregates hid
+// which model drained and published labels upstream never uses.
+func TestClusterAntigravityQuotas(t *testing.T) {
+	resp := modelsFixture(t, `{"models":{
+		"gemini-3.8-flash-high":    {"displayName":"Gemini 3.8 Flash (High)","quotaInfo":{"remainingFraction":0.95,"resetTime":"2099-09-10T14:21:00Z"}},
+		"claude-sonnet-4-6":        {"displayName":"Claude Sonnet 4.6 (Thinking)","quotaInfo":{"remainingFraction":1.0,"resetTime":"2099-09-10T15:00:00Z"}},
+		"gpt-oss-120b-medium":      {"quotaInfo":{"remainingFraction":0.5,"resetTime":"2099-09-10T15:00:00Z"}},
+		"imagen-3.0-generate":      {"displayName":"Imagen 3.0","quotaInfo":{"remainingFraction":0.0,"isExhausted":true}},
+		"gemini-4-carbon-disabled": {"displayName":"Gemini 4 Carbon"},
+		"chat_experimental_internal": {"displayName":"Internal Test","quotaInfo":{"remainingFraction":0.95}},
+		"tab_flash_lite_preview":   {"displayName":"Tab Anchor","quotaInfo":{"remainingFraction":0.95}}
+	}}`)
 
 	quotas := clusterAntigravityQuotas(resp)
 
-	// Claude and GPT-OSS are now clustered together in the shared pool, plus Gemini and Imagen = 3 buckets
-	if len(quotas) != 3 {
-		t.Fatalf("expected exactly 3 clustered quota buckets, got %d: %+v", len(quotas), quotas)
+	if len(quotas) != 4 {
+		t.Fatalf("expected one row per servable model, got %d: %+v", len(quotas), quotas)
 	}
-
-	geminiQ, ok := quotas["gemini"]
-	if !ok {
-		t.Fatalf("missing 'gemini' quota")
+	gemini := quotas["gemini-3.8-flash-high"]
+	if gemini.DisplayName != "Gemini 3.8 Flash (High)" || gemini.RemainingPercentage != 95.0 {
+		t.Errorf("gemini row = %+v", gemini)
 	}
-	if geminiQ.DisplayName != "Gemini (Flash / Pro / Image / Search)" {
-		t.Errorf("expected 'Gemini (Flash / Pro / Image / Search)', got %q", geminiQ.DisplayName)
+	if gemini.ResetAt != "2099-09-10T14:21:00Z" || gemini.ResetSoon {
+		t.Errorf("gemini reset = %q soon=%t", gemini.ResetAt, gemini.ResetSoon)
 	}
-	if geminiQ.Used != 50 || geminiQ.Remaining != 950 || geminiQ.RemainingPercentage != 95.0 {
-		t.Errorf("unexpected gemini quota math: %+v", geminiQ)
+	// A model upstream gives no display name still keys and labels by its id.
+	if oss := quotas["gpt-oss-120b-medium"]; oss.DisplayName != "gpt-oss-120b-medium" || oss.RemainingPercentage != 50.0 {
+		t.Errorf("unnamed model row = %+v", oss)
 	}
-
-	claudeQ, ok := quotas["claude"]
-	if !ok {
-		t.Fatalf("missing 'claude' quota")
+	// isExhausted overrides the fraction, matching what a call would experience.
+	if img := quotas["imagen-3.0-generate"]; img.RemainingPercentage != 0.0 {
+		t.Errorf("exhausted image row = %+v", img)
 	}
-	if claudeQ.DisplayName != "Claude & GPT (Shared)" {
-		t.Errorf("expected 'Claude & GPT (Shared)', got %q", claudeQ.DisplayName)
+	// Google returns a fraction and a reset time, never a request count: nothing
+	// absolute may be fabricated from it.
+	for key, q := range quotas {
+		if q.Total != 0 || q.Used != 0 || q.Remaining != 0 {
+			t.Errorf("%s publishes an absolute total upstream never reports: %+v", key, q)
+		}
 	}
-	if claudeQ.Used != 0 || claudeQ.Remaining != 1000 || claudeQ.RemainingPercentage != 100.0 {
-		t.Errorf("unexpected claude quota math: %+v", claudeQ)
-	}
-	imgQ, ok := quotas["imagen-3.0-generate"]
-	if !ok {
-		t.Fatalf("missing 'imagen-3.0-generate' quota")
-	}
-	if imgQ.DisplayName != "Imagen 3.0" {
-		t.Errorf("expected 'Imagen 3.0', got %q", imgQ.DisplayName)
+	for _, absent := range []string{"gemini", "gemini4", "claude", "chat_experimental_internal", "tab_flash_lite_preview", "gemini-4-carbon-disabled"} {
+		if _, ok := quotas[absent]; ok {
+			t.Errorf("%q must not appear as a quota row: %+v", absent, quotas)
+		}
 	}
 }
+
 func TestClusterAntigravityQuotas_ResetTimeNormalization(t *testing.T) {
-	rem := 0.5
-	resp := AntigravityModelsResponse{
-		Models: map[string]struct {
-			DisplayName string `json:"displayName"`
-			QuotaInfo   *struct {
-				RemainingFraction *float64 `json:"remainingFraction"`
-				ResetTime         string   `json:"resetTime"`
-				IsExhausted       bool     `json:"isExhausted"`
-			} `json:"quotaInfo"`
-		}{
-			"gemini-2.5-flash": {
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem,
-					ResetTime:         "即将重置",
-				},
-			},
-			"claude-3-7-sonnet": {
-				QuotaInfo: &struct {
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					IsExhausted       bool     `json:"isExhausted"`
-				}{
-					RemainingFraction: &rem,
-					ResetTime:         "not-a-valid-time",
-				},
-			},
-		},
-	}
+	future := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+	resp := modelsFixture(t, `{"models":{
+		"gemini-sentinel": {"quotaInfo":{"remainingFraction":0.5,"resetTime":"即将重置"}},
+		"gemini-future":   {"quotaInfo":{"remainingFraction":0.5,"resetTime":"`+future+`"}},
+		"gemini-stale":    {"quotaInfo":{"remainingFraction":0.5,"resetTime":"2020-01-01T00:00:00Z"}},
+		"gemini-garbage":  {"quotaInfo":{"remainingFraction":0.5,"resetTime":"not-a-valid-time"}}
+	}}`)
 
 	quotas := clusterAntigravityQuotas(resp)
-	geminiQ := quotas["gemini"]
-	if !geminiQ.ResetSoon {
-		t.Errorf("expected ResetSoon=true for 即将重置 sentinel, got false")
-	}
-	if geminiQ.ResetAt != "" {
-		t.Errorf("expected empty ResetAt on sentinel text, got %q", geminiQ.ResetAt)
-	}
 
-	claudeQ := quotas["claude"]
-	if claudeQ.ResetAt != "" {
-		t.Errorf("expected empty ResetAt for unparseable time string, got %q", claudeQ.ResetAt)
+	sentinel := quotas["gemini-sentinel"]
+	if !sentinel.ResetSoon || sentinel.ResetAt != "" {
+		t.Errorf("sentinel reset = %+v", sentinel)
+	}
+	futureRow := quotas["gemini-future"]
+	if futureRow.ResetSoon || futureRow.ResetAt == "" {
+		t.Errorf("future reset = %+v", futureRow)
+	}
+	// A stamp already in the past is reported as imminent: selection ignores
+	// past-deadline buckets rather than pinning traffic to a stale snapshot.
+	stale := quotas["gemini-stale"]
+	if !stale.ResetSoon {
+		t.Errorf("stale reset = %+v", stale)
+	}
+	garbage := quotas["gemini-garbage"]
+	if garbage.ResetAt != "" || garbage.ResetSoon {
+		t.Errorf("garbage reset = %+v", garbage)
+	}
+	for key, q := range quotas {
+		if q.RemainingPercentage != 50.0 {
+			t.Errorf("%s percentage = %v, want 50", key, q.RemainingPercentage)
+		}
 	}
 }
 
@@ -212,17 +123,11 @@ func TestFetchAntigravity_MockServer(t *testing.T) {
 			"models": {
 				"gemini-3.8-flash-high": {
 					"displayName": "Gemini 3.8 Flash",
-					"quotaInfo": {
-						"remainingFraction": 0.8,
-						"resetTime": "2026-09-10T18:00:00Z"
-					}
+					"quotaInfo": {"remainingFraction": 0.8, "resetTime": "2099-09-10T18:00:00Z"}
 				},
 				"claude-sonnet-4-6": {
 					"displayName": "Claude Sonnet 4.6",
-					"quotaInfo": {
-						"remainingFraction": 1.0,
-						"resetTime": "2026-09-10T19:00:00Z"
-					}
+					"quotaInfo": {"remainingFraction": 1.0, "resetTime": "2099-09-10T19:00:00Z"}
 				}
 			}
 		}`))
@@ -238,160 +143,169 @@ func TestFetchAntigravity_MockServer(t *testing.T) {
 	if len(res.Quotas) != 2 {
 		t.Fatalf("expected 2 quotas, got %d: %+v", len(res.Quotas), res.Quotas)
 	}
-	if res.Quotas["gemini"].DisplayName != "Gemini (Flash / Pro / Image / Search)" {
-		t.Errorf("unexpected gemini label: %s", res.Quotas["gemini"].DisplayName)
+	if res.Quotas["gemini-3.8-flash-high"].DisplayName != "Gemini 3.8 Flash" {
+		t.Errorf("unexpected gemini label: %+v", res.Quotas["gemini-3.8-flash-high"])
 	}
-	if res.Quotas["claude"].DisplayName != "Claude & GPT (Shared)" {
-		t.Errorf("unexpected claude label: %s", res.Quotas["claude"].DisplayName)
+	if res.Quotas["claude-sonnet-4-6"].DisplayName != "Claude Sonnet 4.6" {
+		t.Errorf("unexpected claude label: %+v", res.Quotas["claude-sonnet-4-6"])
 	}
 }
 
+// retrieveUserQuotaSummary is the authoritative pool view: it hands back its own
+// bucket ids and window tokens, so the panel keys by those ids and labels with the
+// upstream group name. Keyword-matching the group name to synthesize
+// "gemini_session"/"Claude & GPT (5h Rolling)" replaced upstream text with strings
+// that had to be maintained by hand.
 func TestClusterAntigravitySummary(t *testing.T) {
-	remSession := 0.8
-	remWeekly := 0.6
-	summary := AntigravityQuotaSummaryResponse{
-		Groups: []struct {
-			DisplayName string `json:"displayName"`
-			Description string `json:"description"`
-			Buckets     []struct {
-				BucketID          string   `json:"bucketId"`
-				Window            string   `json:"window"`
-				RemainingFraction *float64 `json:"remainingFraction"`
-				ResetTime         string   `json:"resetTime"`
-				DisplayName       string   `json:"displayName"`
-				Description       string   `json:"description"`
-			} `json:"buckets"`
-		}{
-			{
-				DisplayName: "Gemini Models",
-				Buckets: []struct {
-					BucketID          string   `json:"bucketId"`
-					Window            string   `json:"window"`
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					DisplayName       string   `json:"displayName"`
-					Description       string   `json:"description"`
-				}{
-					{
-						BucketID:          "gemini-session",
-						Window:            "5h",
-						RemainingFraction: &remSession,
-					},
-					{
-						BucketID:          "gemini-weekly",
-						Window:            "7d",
-						RemainingFraction: &remWeekly,
-					},
-				},
-			},
-			{
-				DisplayName: "Claude and GPT models",
-				Buckets: []struct {
-					BucketID          string   `json:"bucketId"`
-					Window            string   `json:"window"`
-					RemainingFraction *float64 `json:"remainingFraction"`
-					ResetTime         string   `json:"resetTime"`
-					DisplayName       string   `json:"displayName"`
-					Description       string   `json:"description"`
-				}{
-					{
-						BucketID:          "claude-gpt-session",
-						Window:            "5h",
-						RemainingFraction: &remSession,
-					},
-					{
-						BucketID:          "claude-gpt-weekly",
-						Window:            "7d",
-						RemainingFraction: &remWeekly,
-					},
-				},
-			},
-		},
-	}
+	summary := summaryFixture(t, `{"groups":[
+		{"displayName":"Gemini Models","buckets":[
+			{"bucketId":"gemini-5h","window":"5h","displayName":"Five Hour Limit Remaining","remainingFraction":0.8},
+			{"bucketId":"gemini-weekly","window":"weekly","displayName":"Weekly Limit Remaining","remainingFraction":0.6}
+		]},
+		{"displayName":"Claude and GPT models","buckets":[
+			{"bucketId":"3p-5h","window":"5h","remainingFraction":0.4},
+			{"bucketId":"3p-weekly","window":"weekly","remainingFraction":0.6}
+		]}
+	]}`)
 
 	quotas := clusterAntigravitySummary(summary)
 	if len(quotas) != 4 {
-		t.Fatalf("expected 4 summary quota buckets, got %d: %+v", len(quotas), quotas)
+		t.Fatalf("expected one row per upstream bucket, got %d: %+v", len(quotas), quotas)
 	}
 
-	gSess, ok := quotas["gemini_session"]
-	if !ok || gSess.DisplayName != "Gemini (Search / Image) (5h Rolling)" || gSess.RemainingPercentage != 80.0 {
-		t.Errorf("unexpected gemini_session: %+v", gSess)
+	cases := map[string]struct {
+		display string
+		pct     float64
+	}{
+		"gemini-5h":     {"Gemini Models · 5h", 80.0},
+		"gemini-weekly": {"Gemini Models · weekly", 60.0},
+		"3p-5h":         {"Claude and GPT models · 5h", 40.0},
+		"3p-weekly":     {"Claude and GPT models · weekly", 60.0},
 	}
-
-	gWeek, ok := quotas["gemini_weekly"]
-	if !ok || gWeek.DisplayName != "Gemini (Search / Image) (Weekly)" || gWeek.RemainingPercentage != 60.0 {
-		t.Errorf("unexpected gemini_weekly: %+v", gWeek)
+	for key, want := range cases {
+		q, ok := quotas[key]
+		if !ok {
+			t.Fatalf("bucket %q missing: %+v", key, quotas)
+		}
+		if q.DisplayName != want.display || q.RemainingPercentage != want.pct {
+			t.Errorf("bucket %q = %+v, want label %q at %v%%", key, q, want.display, want.pct)
+		}
+		if q.Total != 0 || q.Remaining != 0 {
+			t.Errorf("bucket %q fabricates an absolute total: %+v", key, q)
+		}
 	}
-
-	cSess, ok := quotas["claude_session"]
-	if !ok || cSess.DisplayName != "Claude & GPT (5h Rolling)" || cSess.RemainingPercentage != 80.0 {
-		t.Errorf("unexpected claude_session: %+v", cSess)
-	}
-
-	cWeek, ok := quotas["claude_weekly"]
-	if !ok || cWeek.DisplayName != "Claude & GPT (Weekly)" || cWeek.RemainingPercentage != 60.0 {
-		t.Errorf("unexpected claude_weekly: %+v", cWeek)
+	for _, synthesized := range []string{"gemini_session", "gemini_weekly", "claude_session", "gemini4"} {
+		if _, ok := quotas[synthesized]; ok {
+			t.Errorf("synthesized key %q survived: %+v", synthesized, quotas)
+		}
 	}
 }
 
+// Argon is a separate pool because upstream publishes it as a separate bucket id,
+// not because a name matched "gemini-4": grouping by upstream identity keeps a new
+// pool from being folded into an existing row.
 func TestClusterAntigravitySummaryKeepsArgonPoolSeparate(t *testing.T) {
-	raw := []byte(`{"groups":[
-		{"displayName":"Gemini models","buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":1.0}]},
-		{"displayName":"Gemini 4 Argon","buckets":[{"bucketId":"argon-weekly","window":"weekly","remainingFraction":0.42}]}
+	summary := summaryFixture(t, `{"groups":[
+		{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":1.0,"resetTime":"2099-11-14T06:28:03Z"}]},
+		{"displayName":"Gemini 4 Argon","buckets":[{"bucketId":"gemini-argon-wtu-weekly","window":"weekly","remainingFraction":0.42,"resetTime":"2099-11-21T01:28:03Z"}]}
 	]}`)
-	var summary AntigravityQuotaSummaryResponse
-	if err := json.Unmarshal(raw, &summary); err != nil {
-		t.Fatalf("fixture: %v", err)
-	}
+
 	quotas := clusterAntigravitySummary(summary)
-	if _, ok := quotas["gemini_session"]; !ok {
-		t.Fatalf("gemini session bucket lost: %+v", quotas)
+	gemini, ok := quotas["gemini-5h"]
+	if !ok || gemini.RemainingPercentage != 100.0 {
+		t.Fatalf("gemini bucket lost: %+v", quotas)
 	}
-	a, ok := quotas["gemini4_weekly"]
+	if gemini.ResetAt != "2099-11-14T06:28:03Z" || gemini.ResetSoon {
+		t.Errorf("gemini reset = %+v", gemini)
+	}
+	argon, ok := quotas["gemini-argon-wtu-weekly"]
 	if !ok {
-		t.Fatalf("argon weekly bucket merged into gemini keys (collision): %+v", quotas)
+		t.Fatalf("argon bucket lost or collided with the gemini row: %+v", quotas)
 	}
-	if a.RemainingPercentage < 40 || a.RemainingPercentage > 45 {
-		t.Errorf("argon percentage = %v, want ~42", a.RemainingPercentage)
-	}
-	if a.DisplayName != "Gemini 4 Argon (Weekly)" {
-		t.Errorf("argon display = %q", a.DisplayName)
+	if argon.RemainingPercentage != 42.0 || argon.DisplayName != "Gemini 4 Argon · weekly" {
+		t.Errorf("argon bucket = %+v", argon)
 	}
 }
 
-// Live fetchAvailableModels puts gemini-4-hydrogen-* on the same reset window as
-// the 3.x family and gives only gemini-4-argon-* its own weekly pool. Pooling by
-// the whole "gemini-4" prefix let a drained Hydrogen family report an exhausted
-// Argon bucket (and vice versa), which then parked the wrong accounts.
-func TestClusterAntigravityQuotasKeepsHydrogenOutOfArgonPool(t *testing.T) {
-	var resp AntigravityModelsResponse
-	raw := []byte(`{"models":{
-		"gemini-4-hydrogen-high":  {"displayName":"Gemini 4 Hydrogen (High)","quotaInfo":{"remainingFraction":0.2,"resetTime":"2026-11-14T06:28:02Z"}},
-		"gemini-3.8-flash-medium": {"displayName":"Gemini 3.8 Flash (Medium)","quotaInfo":{"remainingFraction":0.9,"resetTime":"2026-11-14T06:28:02Z"}},
-		"gemini-4-argon-high":     {"displayName":"Gemini 4 Argon (High)","quotaInfo":{"remainingFraction":0.66,"resetTime":"2026-11-21T01:28:02Z"}}
-	}}`)
-	if err := json.Unmarshal(raw, &resp); err != nil {
-		t.Fatalf("fixture: %v", err)
-	}
+// Google reuses window ids across plan tiers on some accounts; a duplicate must
+// not silently overwrite the row already on screen.
+func TestClusterAntigravitySummaryDedupesRepeatedBucketID(t *testing.T) {
+	summary := summaryFixture(t, `{"groups":[
+		{"displayName":"Gemini Models","buckets":[{"bucketId":"shared-window","window":"5h","remainingFraction":0.9}]},
+		{"displayName":"Claude and GPT models","buckets":[{"bucketId":"shared-window","window":"5h","remainingFraction":0.2}]}
+	]}`)
 
-	quotas := clusterAntigravityQuotas(resp)
-	gem, ok := quotas["gemini"]
+	quotas := clusterAntigravitySummary(summary)
+	if len(quotas) != 2 {
+		t.Fatalf("duplicate bucket id collapsed a row: %+v", quotas)
+	}
+	if _, ok := quotas["shared-window"]; !ok {
+		t.Errorf("first occurrence lost: %+v", quotas)
+	}
+	if second, ok := quotas["shared-window-2"]; !ok || second.RemainingPercentage != 20.0 {
+		t.Errorf("second occurrence = %+v (ok=%t)", second, ok)
+	}
+}
+
+// A bucket without a group name still needs a readable label; the window token and
+// then the bucket id are the fallbacks.
+func TestClusterAntigravitySummaryLabelFallsBackUpstreamFields(t *testing.T) {
+	summary := summaryFixture(t, `{"groups":[
+		{"buckets":[{"bucketId":"bare-window","window":"weekly","remainingFraction":1.0}]},
+		{"buckets":[{"bucketId":"unnamed-group-2","remainingFraction":1.0,"displayName":"Weekly Limit Remaining"}]},
+		{"buckets":[{"bucketId":"nameless","remainingFraction":1.0}]}
+	]}`)
+
+	quotas := clusterAntigravitySummary(summary)
+	if got := quotas["bare-window"].DisplayName; got != "bare-window · weekly" {
+		t.Errorf("window-only label = %q", got)
+	}
+	if got := quotas["unnamed-group-2"].DisplayName; got != "Weekly Limit Remaining" {
+		t.Errorf("bucket-name label = %q", got)
+	}
+	if got := quotas["nameless"].DisplayName; got != "nameless" {
+		t.Errorf("id-only label = %q", got)
+	}
+}
+
+// The summary endpoint is the primary source: while it answers, the panel shows
+// upstream pool buckets instead of per-model rows.
+func TestFetchAntigravity_PrefersQuotaSummary(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1internal:retrieveUserQuotaSummary":
+			w.Write([]byte(`{"groups":[{"displayName":"Gemini Models","buckets":[
+				{"bucketId":"gemini-5h","window":"5h","remainingFraction":0.75,"resetTime":"2099-09-10T18:00:00Z"}]}]}`))
+		case "/v1internal:fetchAvailableModels":
+			w.Write([]byte(`{"models":{"gemini-3.8-flash-high":{"displayName":"Gemini 3.8 Flash","quotaInfo":{"remainingFraction":0.75,"resetTime":"2099-09-10T18:00:00Z"}}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	res := FetchQuota(context.Background(), ts.Client(), QuotaCredentials{
+		Provider:    "antigravity",
+		AccessToken: "mock-token",
+		BaseURL:     ts.URL,
+	})
+
+	if len(res.Quotas) != 1 {
+		t.Fatalf("expected the single upstream bucket, got %+v", res.Quotas)
+	}
+	q, ok := res.Quotas["gemini-5h"]
 	if !ok {
-		t.Fatalf("gemini pool missing: %+v", quotas)
+		t.Fatalf("row is not keyed by the upstream bucket id: %+v", res.Quotas)
 	}
-	// Worst-case fraction wins, and hydrogen belongs in that aggregate.
-	if gem.RemainingPercentage != 20.0 {
-		t.Errorf("gemini pool = %v%%, want 20%% (hydrogen folded into the Gemini window)", gem.RemainingPercentage)
+	if q.DisplayName != "Gemini Models · 5h" || q.RemainingPercentage != 75.0 {
+		t.Errorf("bucket row = %+v", q)
 	}
-	argon, ok := quotas["gemini4"]
-	if !ok {
-		t.Fatalf("argon pool missing: %+v", quotas)
-	}
-	if argon.RemainingPercentage != 66.0 {
-		t.Errorf("argon pool = %v%%, want 66%% (argon-only)", argon.RemainingPercentage)
-	}
-	if argon.DisplayName != "Gemini 4 Argon" {
-		t.Errorf("argon display = %q", argon.DisplayName)
+}
+
+func TestFetchAntigravity_MissingToken(t *testing.T) {
+	res := FetchQuota(context.Background(), http.DefaultClient, QuotaCredentials{Provider: "antigravity"})
+	if res.Message == "" {
+		t.Errorf("expected failure message for missing token, got %+v", res)
 	}
 }

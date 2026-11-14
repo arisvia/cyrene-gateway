@@ -1,5 +1,7 @@
-// antigravity.go extracts per-model quota buckets from Cloud Code Assist
-// /v1internal:fetchAvailableModels endpoint. Ported from 9router and picoclaw.
+// antigravity.go reads Google Code Assist quota. retrieveUserQuotaSummary is the
+// primary source: it reports the grouped pools with upstream-owned bucket ids and
+// window tokens. fetchAvailableModels is the fallback and only exposes one quota
+// window per model. Ported from 9router and picoclaw.
 
 package usage
 
@@ -8,8 +10,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,19 +29,27 @@ type AntigravityModelsResponse struct {
 	} `json:"models"`
 }
 
+// AntigravityQuotaSummaryResponse mirrors /v1internal:retrieveUserQuotaSummary:
+// upstream-owned groups, each carrying the quota windows it exposes. The bucket id
+// and window token are the only stable pool identifiers Google returns, so they
+// drive both the map key and the label of every panel row.
 type AntigravityQuotaSummaryResponse struct {
-	Groups []struct {
-		DisplayName string `json:"displayName"`
-		Description string `json:"description"`
-		Buckets     []struct {
-			BucketID          string   `json:"bucketId"`
-			Window            string   `json:"window"`
-			RemainingFraction *float64 `json:"remainingFraction"`
-			ResetTime         string   `json:"resetTime"`
-			DisplayName       string   `json:"displayName"`
-			Description       string   `json:"description"`
-		} `json:"buckets"`
-	} `json:"groups"`
+	Groups []AntigravityQuotaGroup `json:"groups"`
+}
+
+type AntigravityQuotaGroup struct {
+	DisplayName string                   `json:"displayName"`
+	Description string                   `json:"description"`
+	Buckets     []AntigravityQuotaBucket `json:"buckets"`
+}
+
+type AntigravityQuotaBucket struct {
+	BucketID          string   `json:"bucketId"`
+	Window            string   `json:"window"`
+	RemainingFraction *float64 `json:"remainingFraction"`
+	ResetTime         string   `json:"resetTime"`
+	DisplayName       string   `json:"displayName"`
+	Description       string   `json:"description"`
 }
 
 func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentials) QuotaResult {
@@ -55,7 +65,6 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 	if c.BaseURL != "" {
 		endpoints = []string{c.BaseURL}
 	}
-
 	body := map[string]any{}
 	if c.ProjectID != "" {
 		body["project"] = c.ProjectID
@@ -132,38 +141,26 @@ func fetchAntigravity(ctx context.Context, client *http.Client, c QuotaCredentia
 	}
 }
 
-type modelQuotaRaw struct {
-	id          string
-	displayName string
-	remFrac     float64
-	resetAt     string
-	resetSoon   bool
-}
-
+// clusterAntigravityQuotas turns the fallback endpoint's per-model windows into
+// panel rows. fetchAvailableModels never names the pool a window belongs to, so
+// each advertised model gets its own row keyed by that upstream model id.
+// Collapsing models into invented aggregates ("gemini", "claude", "gemini4")
+// displayed labels upstream never uses and hid which model actually drained.
+// Upstream reports a fraction and a reset time and no request count, so no
+// absolute figure is published either.
 func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota {
 	if len(parsed.Models) == 0 {
 		return nil
 	}
 
-	var geminiModels []modelQuotaRaw
-	var argonModels []modelQuotaRaw
-	var claudeGptModels []modelQuotaRaw
-	var imageModels []modelQuotaRaw
-	var otherModels []modelQuotaRaw
+	quotas := make(map[string]Quota, len(parsed.Models))
 	for id, m := range parsed.Models {
-		if m.QuotaInfo == nil {
+		// Internal test endpoints, completion-only tab anchors and reverb builds
+		// carry no servable quota; entries upstream marks disabled advertise no
+		// quotaInfo at all and drop out on the nil guard.
+		if m.QuotaInfo == nil ||
+			strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") || strings.HasPrefix(id, "rev_") {
 			continue
-		}
-		// Filter out internal Google test/telemetry endpoints and completion-only tab
-		// anchors. Upstream-disabled placeholders are already excluded by the nil
-		// quotaInfo guard above: they advertise no quota window at all.
-		if strings.HasPrefix(id, "chat_") || strings.HasPrefix(id, "tab_") || strings.HasPrefix(id, "rev_") {
-			continue
-		}
-
-		dispName := m.DisplayName
-		if dispName == "" {
-			dispName = id
 		}
 
 		remFrac := 1.0
@@ -174,226 +171,106 @@ func clusterAntigravityQuotas(parsed AntigravityModelsResponse) map[string]Quota
 			remFrac = 0.0
 		}
 
-		resetAt := ""
-		resetSoon := false
-		rawReset := strings.TrimSpace(m.QuotaInfo.ResetTime)
-		if rawReset != "" {
-			if t, err := time.Parse(time.RFC3339Nano, rawReset); err == nil {
-				resetAt = t.UTC().Format(time.RFC3339)
-				if time.Until(t) <= 0 {
-					resetSoon = true
-				}
-			} else if t, err := time.Parse(time.RFC3339, rawReset); err == nil {
-				resetAt = t.UTC().Format(time.RFC3339)
-				if time.Until(t) <= 0 {
-					resetSoon = true
-				}
-			} else if rawReset == "即将重置" || strings.EqualFold(rawReset, "reset soon") || strings.EqualFold(rawReset, "resetting soon") {
-				resetSoon = true
-			}
+		displayName := strings.TrimSpace(m.DisplayName)
+		if displayName == "" {
+			displayName = id
 		}
+		resetAt, resetSoon := antigravityReset(m.QuotaInfo.ResetTime)
 
-		raw := modelQuotaRaw{
-			id:          id,
-			displayName: dispName,
-			remFrac:     remFrac,
-			resetAt:     resetAt,
-			resetSoon:   resetSoon,
-		}
-
-		lowerID := strings.ToLower(id)
-		if strings.HasPrefix(lowerID, "gemini-4-argon") {
-			// Only Argon carries its own weekly pool. Verified against live
-			// fetchAvailableModels resetTime: gemini-4-argon-* resets a week
-			// later than every other Gemini entry, while gemini-4-hydrogen-*
-			// resets on the same window as the 3.x Flash/Pro family. Matching
-			// the whole "gemini-4" family here folded Hydrogen into the Argon
-			// bucket, so one exhausted pool understated the other.
-			argonModels = append(argonModels, raw)
-		} else if strings.HasPrefix(lowerID, "gemini-") {
-			geminiModels = append(geminiModels, raw)
-		} else if strings.HasPrefix(lowerID, "claude-") || strings.HasPrefix(lowerID, "gpt-") {
-			// Claude and GPT-OSS share the exact same quota pool in Antigravity
-			claudeGptModels = append(claudeGptModels, raw)
-		} else if strings.Contains(lowerID, "image") || strings.HasPrefix(lowerID, "imagen-") {
-			imageModels = append(imageModels, raw)
-		} else {
-			otherModels = append(otherModels, raw)
+		quotas[id] = Quota{
+			DisplayName:         displayName,
+			RemainingPercentage: remFrac * 100.0,
+			ResetAt:             resetAt,
+			ResetSoon:           resetSoon,
 		}
 	}
-
-	quotas := make(map[string]Quota)
-	const total = 1000.0
-
-	// 1. Aggregate Gemini text models pool (worst-case remainingFraction wins)
-	if len(geminiModels) > 0 {
-		rep := geminiModels[0]
-		for _, m := range geminiModels[1:] {
-			if m.remFrac < rep.remFrac {
-				rep = m
-			}
-		}
-		rem := math.Round(rep.remFrac * total)
-		quotas["gemini"] = Quota{
-			DisplayName:         "Gemini (Flash / Pro / Image / Search)",
-			Total:               total,
-			Used:                total - rem,
-			Remaining:           rem,
-			RemainingPercentage: rep.remFrac * 100.0,
-			ResetAt:             rep.resetAt,
-			ResetSoon:           rep.resetSoon,
-			Unit:                "requests",
-		}
-	}
-
-	// 2. Aggregate Gemini 4 Argon pool (independent weekly window per Google rollout)
-	if len(argonModels) > 0 {
-		rep := argonModels[0]
-		for _, m := range argonModels[1:] {
-			if m.remFrac < rep.remFrac {
-				rep = m
-			}
-		}
-		rem := math.Round(rep.remFrac * total)
-		quotas["gemini4"] = Quota{
-			DisplayName:         "Gemini 4 Argon",
-			Total:               total,
-			Used:                total - rem,
-			Remaining:           rem,
-			RemainingPercentage: rep.remFrac * 100.0,
-			ResetAt:             rep.resetAt,
-			ResetSoon:           rep.resetSoon,
-			Unit:                "requests",
-		}
-	}
-
-	// 3. Aggregate Claude & GPT shared models pool (worst-case remainingFraction wins)
-	if len(claudeGptModels) > 0 {
-		rep := claudeGptModels[0]
-		for _, m := range claudeGptModels[1:] {
-			if m.remFrac < rep.remFrac {
-				rep = m
-			}
-		}
-		rem := math.Round(rep.remFrac * total)
-		quotas["claude"] = Quota{
-			DisplayName:         "Claude & GPT (Shared)",
-			Total:               total,
-			Used:                total - rem,
-			Remaining:           rem,
-			RemainingPercentage: rep.remFrac * 100.0,
-			ResetAt:             rep.resetAt,
-			ResetSoon:           rep.resetSoon,
-			Unit:                "requests",
-		}
-	}
-	// 3. Image generation models
-	for _, m := range imageModels {
-		rem := math.Round(m.remFrac * total)
-		quotas[m.id] = Quota{
-			DisplayName:         m.displayName,
-			Total:               total,
-			Used:                total - rem,
-			Remaining:           rem,
-			RemainingPercentage: m.remFrac * 100.0,
-			ResetAt:             m.resetAt,
-			ResetSoon:           m.resetSoon,
-			Unit:                "requests",
-		}
-	}
-
-	// 4. Other standalone models (e.g. gpt-oss-120b-medium)
-	for _, m := range otherModels {
-		rem := math.Round(m.remFrac * total)
-		quotas[m.id] = Quota{
-			DisplayName:         m.displayName,
-			Total:               total,
-			Used:                total - rem,
-			Remaining:           rem,
-			RemainingPercentage: m.remFrac * 100.0,
-			ResetAt:             m.resetAt,
-			ResetSoon:           m.resetSoon,
-			Unit:                "requests",
-		}
-	}
-
 	return quotas
 }
 
+// clusterAntigravitySummary keys each row by the upstream bucket id (live:
+// gemini-5h, gemini-weekly, 3p-5h, 3p-weekly, gemini-argon-wtu-weekly) and labels
+// it with the upstream group name plus window token. Keyword matching on the group
+// name used to rewrite those into "gemini_session"/"claude_weekly" with constant
+// labels, which hid upstream copy changes behind strings we had to keep current by
+// hand — and the "gemini"/"gemini4" collision forced an Argon special case.
 func clusterAntigravitySummary(summary AntigravityQuotaSummaryResponse) map[string]Quota {
-	quotas := make(map[string]Quota)
-	const total = 1000.0
-
+	quotas := make(map[string]Quota, len(summary.Groups)*2)
 	for _, g := range summary.Groups {
-		groupName := strings.TrimSpace(g.DisplayName)
-		lowerGroup := strings.ToLower(groupName)
-
-		baseKey := "other"
-		baseDisplay := groupName
-		if strings.Contains(lowerGroup, "argon") || strings.Contains(lowerGroup, "gemini 4") || strings.Contains(lowerGroup, "gemini-4") {
-			// Argon carries its own weekly pool; merging it into "gemini"
-			// would overwrite the Gemini buckets (same map keys).
-			baseKey = "gemini4"
-			baseDisplay = "Gemini 4 Argon"
-		} else if strings.Contains(lowerGroup, "gemini") {
-			baseKey = "gemini"
-			baseDisplay = "Gemini (Search / Image)"
-		} else if strings.Contains(lowerGroup, "claude") || strings.Contains(lowerGroup, "gpt") {
-			baseKey = "claude"
-			baseDisplay = "Claude & GPT"
-		}
-
 		for _, b := range g.Buckets {
+			key := strings.ToLower(strings.TrimSpace(b.BucketID))
+			if key == "" {
+				continue // nothing stable to key or translate on
+			}
+
 			remFrac := 1.0
 			if b.RemainingFraction != nil {
 				remFrac = *b.RemainingFraction
 			}
-			rem := math.Round(remFrac * total)
+			resetAt, resetSoon := antigravityReset(b.ResetTime)
 
-			resetAt := ""
-			resetSoon := false
-			rawReset := strings.TrimSpace(b.ResetTime)
-			if rawReset != "" {
-				if t, err := time.Parse(time.RFC3339Nano, rawReset); err == nil {
-					resetAt = t.UTC().Format(time.RFC3339)
-					if time.Until(t) <= 0 {
-						resetSoon = true
-					}
-				} else if t, err := time.Parse(time.RFC3339, rawReset); err == nil {
-					resetAt = t.UTC().Format(time.RFC3339)
-					if time.Until(t) <= 0 {
-						resetSoon = true
-					}
-				} else if rawReset == "即将重置" || strings.EqualFold(rawReset, "reset soon") || strings.EqualFold(rawReset, "resetting soon") {
-					resetSoon = true
-				}
-			}
-
-			window := strings.ToLower(strings.TrimSpace(b.Window))
-			bucketID := strings.ToLower(strings.TrimSpace(b.BucketID))
-			isWeekly := window == "7d" || window == "weekly" || strings.Contains(bucketID, "weekly") || strings.Contains(strings.ToLower(b.DisplayName), "week")
-
-			key := baseKey
-			label := baseDisplay
-			if isWeekly {
-				key = baseKey + "_weekly"
-				label = baseDisplay + " (Weekly)"
-			} else {
-				key = baseKey + "_session"
-				label = baseDisplay + " (5h Rolling)"
-			}
-
-			quotas[key] = Quota{
-				DisplayName:         label,
-				Total:               total,
-				Used:                total - rem,
-				Remaining:           rem,
+			quotas[uniqueQuotaKey(quotas, key)] = Quota{
+				DisplayName:         antigravityBucketLabel(g, b),
 				RemainingPercentage: remFrac * 100.0,
 				ResetAt:             resetAt,
 				ResetSoon:           resetSoon,
-				Unit:                "requests",
 			}
 		}
 	}
 	return quotas
+}
+
+// antigravityBucketLabel picks the most human upstream string available: group and
+// window together, then the bucket's own name, then the bucket id plus window. A
+// pool this build never saw still reads as upstream text instead of vanishing
+// behind a name we failed to predict.
+func antigravityBucketLabel(g AntigravityQuotaGroup, b AntigravityQuotaBucket) string {
+	group := strings.TrimSpace(g.DisplayName)
+	window := strings.TrimSpace(b.Window)
+	bucket := strings.TrimSpace(b.BucketID)
+	name := strings.TrimSpace(b.DisplayName)
+	switch {
+	case group != "" && window != "":
+		return group + " · " + window
+	case group != "":
+		return group
+	case name != "":
+		return name
+	case window != "":
+		return bucket + " · " + window
+	}
+	return bucket
+}
+
+// uniqueQuotaKey keeps a repeated upstream bucket id from overwriting an earlier
+// row: Google reuses window ids across plan tiers on some accounts.
+func uniqueQuotaKey(quotas map[string]Quota, key string) string {
+	if _, taken := quotas[key]; !taken {
+		return key
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := key + "-" + strconv.Itoa(suffix)
+		if _, taken := quotas[candidate]; !taken {
+			return candidate
+		}
+	}
+}
+
+// antigravityReset normalizes an upstream reset stamp. Google returns either an
+// RFC3339 instant or a localized "resets soon" phrase; an instant already in the
+// past is reported as imminent rather than as a future deadline, so selection
+// ignores it instead of pinning traffic to a stale snapshot.
+func antigravityReset(raw string) (resetAt string, resetSoon bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t.UTC().Format(time.RFC3339), !t.After(time.Now())
+		}
+	}
+	if raw == "即将重置" || strings.EqualFold(raw, "reset soon") || strings.EqualFold(raw, "resetting soon") {
+		return "", true
+	}
+	return "", false
 }
