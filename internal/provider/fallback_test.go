@@ -435,3 +435,69 @@ func TestCheckFallbackError_QuotaExhaustionParksAccount(t *testing.T) {
 		t.Errorf("plain rate limit must keep short backoff, got %v level=%d", got.Cooldown, got.NewBackoffLevel)
 	}
 }
+
+// A structured identifier outranks prose, and prose no longer has to survive a
+// vendor rephrasing its message for the classification to hold.
+func TestCheckFallbackErrorStructuredCodes(t *testing.T) {
+	cases := []struct {
+		name         string
+		status       int
+		body         string
+		wantCooldown time.Duration
+		wantFallback bool
+	}{
+		{
+			name:         "antigravity grpc enum parks the account",
+			status:       429,
+			body:         `{"error":{"code":429,"message":"Capacity has been reset for another account.","status":"RESOURCE_EXHAUSTED"}}`,
+			wantCooldown: CooldownQuota,
+			wantFallback: true,
+		},
+		{
+			name:         "rephrased quota message still classifies by status",
+			status:       429,
+			body:         `{"error":{"status":"rateLimitExceeded","message":"Nothing matches any rule text today."}}`,
+			wantCooldown: CooldownQuota,
+			wantFallback: true,
+		},
+		{
+			name:         "openai error code",
+			status:       429,
+			body:         `{"error":{"message":"You exceeded your current quota.","type":"insufficient_quota","code":"insufficient_quota"}}`,
+			wantCooldown: CooldownQuota,
+			wantFallback: true,
+		},
+		{
+			name:         "anthropic overload backs off instead of parking",
+			status:       529,
+			body:         `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`,
+			wantCooldown: 2 * time.Second,
+			wantFallback: true,
+		},
+		{
+			// The digits only mean saturation when they ARE the code: as prose they
+			// matched any payload mentioning 14003 (a token count, an id).
+			name:         "unrelated digits are not error code 14003",
+			status:       500,
+			body:         `{"error":{"message":"queue depth 140030 exceeded while draining stream"}}`,
+			wantCooldown: TransientCooldown,
+			wantFallback: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CheckFallbackError(tc.status, tc.body, 0)
+			if got.ShouldFallback != tc.wantFallback {
+				t.Errorf("ShouldFallback = %v, want %v", got.ShouldFallback, tc.wantFallback)
+			}
+			if got.Cooldown != tc.wantCooldown {
+				t.Errorf("Cooldown = %v, want %v", got.Cooldown, tc.wantCooldown)
+			}
+		})
+	}
+
+	if res := CheckFallbackError(429, `{"code":14003,"msg":"模型繁忙，请稍后重试"}`, 0); !res.IsModelSaturation {
+		t.Errorf("numeric code 14003 must classify as model saturation regardless of language: %+v", res)
+	}
+}

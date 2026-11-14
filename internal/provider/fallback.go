@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"slices"
 	"sort"
 	"strconv"
@@ -35,19 +36,43 @@ const (
 )
 
 // ErrorRule defines a classification rule for upstream errors.
+//
+// Code is an exact match against a machine-readable identifier the upstream put in
+// its own error body (error.code, error.status, error.type and their top-level
+// twins). Text is a substring match on the serialised error, kept for vendors whose
+// only signal is prose. Code rules are consulted first: a vendor rephrasing a
+// message then degrades the wording match, not the classification.
 type ErrorRule struct {
+	Code       string        // exact match on a structured error identifier
 	Text       string        // substring match (case-insensitive) on error message
 	Status     int           // HTTP status code match
 	CooldownMs time.Duration // fixed cooldown
 	Backoff    bool          // use exponential backoff
 }
 
-// ErrorRules are checked top-to-bottom: text rules first, then status rules.
+// ErrorRules are checked top-to-bottom: structured codes first, then text rules,
+// then status rules.
 var ErrorRules = []ErrorRule{
 	// Non-fallback deterministic errors
 	{Status: 400, CooldownMs: 0},
 	{Status: 404, CooldownMs: 0},
 	{Status: 422, CooldownMs: 0},
+
+	// Quota-class identifiers. Kept ahead of the throttle wording below because an
+	// account out of credits must leave the rotation for minutes, not retry in
+	// seconds: Antigravity reports the gRPC status RESOURCE_EXHAUSTED or Google's
+	// camelCase rateLimitExceeded, OpenAI its error.code insufficient_quota /
+	// rate_limit_exceeded. The prose rules that follow stay for bodies that carry
+	// no JSON at all.
+	{Code: "resource_exhausted", CooldownMs: CooldownQuota},
+	{Code: "ratelimitexceeded", CooldownMs: CooldownQuota},
+	{Code: "rate_limit_exceeded", CooldownMs: CooldownQuota},
+	{Code: "insufficient_quota", CooldownMs: CooldownQuota},
+	// Anthropic's stream/error type for a saturated region: a real throttle, so it
+	// backs off rather than parks.
+	{Code: "overloaded_error", Backoff: true},
+	{Code: "rate_limit_error", Backoff: true},
+
 	// Text-based rules
 	{Text: "no credentials", CooldownMs: CooldownLong},
 	{Text: "request not allowed", CooldownMs: CooldownShort},
@@ -55,12 +80,10 @@ var ErrorRules = []ErrorRule{
 	{Text: "freetiererror", CooldownMs: 0},             // Non-fallback: unauthenticated free tier blocked upstream
 	{Text: "only be used from within opencode", CooldownMs: 0},
 
-	// Quota exhaustion must be matched before the generic rate-limit rules: the
-	// account is out of credits, not briefly throttled, so it has to leave the
-	// rotation for a long time instead of backing off for a couple of seconds.
-	// Antigravity reports "RESOURCE_EXHAUSTED" / "rateLimitExceeded" per window,
-	// or the canonical gRPC prose "Resource has been exhausted (e.g. check quota)."
-	// CodeBuddy reports "usage limit" / "insufficient credits".
+	// Vendor wording, for error bodies that carry no structured identifier:
+	// Antigravity's canonical gRPC prose "Resource has been exhausted (e.g. check
+	// quota).", CodeBuddy's "usage limit" / "insufficient credits", the plan-limit
+	// sentences Qoder and MiniMax put in plain messages.
 	{Text: "resource_exhausted", CooldownMs: CooldownQuota},
 	{Text: "resource exhausted", CooldownMs: CooldownQuota},
 	{Text: "has been exhausted", CooldownMs: CooldownQuota},
@@ -111,13 +134,57 @@ func GetQuotaCooldown(backoffLevel int) time.Duration {
 	return cooldown
 }
 
+// upstreamErrorSignals collects the machine-readable identifiers an upstream put in
+// its error body — gRPC status enums (RESOURCE_EXHAUSTED), Google's camelCase
+// statuses (rateLimitExceeded), OpenAI/Anthropic error codes and types, and numeric
+// vendor codes such as CodeBuddy's 14003 — lowercased for exact comparison. A body
+// that is not JSON yields nothing and classification falls back to its prose rules.
+func upstreamErrorSignals(errorText string) map[string]bool {
+	if !strings.Contains(errorText, "{") {
+		return nil
+	}
+	var envelope struct {
+		Type   string          `json:"type"`
+		Status string          `json:"status"`
+		Code   json.RawMessage `json:"code"`
+		Error  *struct {
+			Type   string          `json:"type"`
+			Status string          `json:"status"`
+			Code   json.RawMessage `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(errorText), &envelope); err != nil {
+		return nil
+	}
+	signals := map[string]bool{}
+	add := func(s string) {
+		// Numeric codes arrive bare, string codes quoted; both spell the identifier.
+		if s = strings.Trim(strings.TrimSpace(s), `"`); s != "" {
+			signals[strings.ToLower(s)] = true
+		}
+	}
+	add(envelope.Type)
+	add(envelope.Status)
+	add(string(envelope.Code))
+	if envelope.Error != nil {
+		add(envelope.Error.Type)
+		add(envelope.Error.Status)
+		add(string(envelope.Error.Code))
+	}
+	return signals
+}
+
 // CheckFallbackError classifies an upstream error and determines cooldown.
 func CheckFallbackError(status int, errorText string, backoffLevel int) FallbackResult {
 	lowerErr := strings.ToLower(errorText)
+	signals := upstreamErrorSignals(errorText)
 
-	// Model-level saturation (e.g. CodeBuddy 14003 "Model busy. Please switch models or retry later")
-	// Upstream model pool is overloaded, not an individual account quota issue.
-	if strings.Contains(lowerErr, "14003") || strings.Contains(lowerErr, "model busy") {
+	// Model-level saturation (e.g. CodeBuddy 14003 "Model busy. Please switch models
+	// or retry later"): the upstream model pool is overloaded, which is not this
+	// account being out of credits, so the account only steps aside briefly. The code
+	// is matched exactly — as prose the same digits inside any other payload (a token
+	// count, a request id) read as a saturated model.
+	if signals["14003"] || strings.Contains(lowerErr, "model busy") {
 		return FallbackResult{
 			ShouldFallback:    true,
 			IsModelSaturation: true,
@@ -126,50 +193,61 @@ func CheckFallbackError(status int, errorText string, backoffLevel int) Fallback
 		}
 	}
 
-	// 1. Text-based rules take precedence (e.g. rate limit, quota exceeded on any status code)
+	// One rule shape, three sources of evidence: structured code, prose, HTTP status.
+	apply := func(rule ErrorRule) (FallbackResult, bool) {
+		switch {
+		case rule.CooldownMs == 0 && !rule.Backoff:
+			return FallbackResult{ShouldFallback: false}, true
+		case rule.Backoff:
+			newLevel := min(backoffLevel+1, BackoffMaxLevel)
+			return FallbackResult{
+				ShouldFallback:  true,
+				Cooldown:        GetQuotaCooldown(newLevel),
+				NewBackoffLevel: newLevel,
+			}, true
+		default:
+			return FallbackResult{ShouldFallback: true, Cooldown: rule.CooldownMs}, true
+		}
+	}
+
+	// 1. Structured codes decide first.
+	for _, rule := range ErrorRules {
+		if rule.Code != "" && signals[rule.Code] {
+			if res, ok := apply(rule); ok {
+				return res
+			}
+		}
+	}
+
+	// 2. Text-based rules take precedence over status (e.g. quota exceeded on any
+	// status code). Quota exhaustion is listed ahead of the generic rate-limit
+	// wording: an account that is out of credits must leave the rotation for the
+	// longer window instead of backing off for a couple of seconds.
 	for _, rule := range ErrorRules {
 		if rule.Text != "" && lowerErr != "" && strings.Contains(lowerErr, rule.Text) {
-			if rule.CooldownMs == 0 && !rule.Backoff {
-				return FallbackResult{ShouldFallback: false}
+			if res, ok := apply(rule); ok {
+				return res
 			}
-			if rule.Backoff {
-				newLevel := min(backoffLevel+1, BackoffMaxLevel)
-				return FallbackResult{
-					ShouldFallback:  true,
-					Cooldown:        GetQuotaCooldown(newLevel),
-					NewBackoffLevel: newLevel,
-				}
-			}
-			return FallbackResult{ShouldFallback: true, Cooldown: rule.CooldownMs}
 		}
 	}
 
-	// 2. Account-scoped status rules (401, 402, 403, 404, 429)
+	// 3. Account-scoped status rules (401, 402, 403, 404, 429)
 	for _, rule := range ErrorRules {
 		if rule.Status != 0 && rule.Status == status {
-			if rule.CooldownMs == 0 && !rule.Backoff {
-				return FallbackResult{ShouldFallback: false}
+			if res, ok := apply(rule); ok {
+				return res
 			}
-			if rule.Backoff {
-				newLevel := min(backoffLevel+1, BackoffMaxLevel)
-				return FallbackResult{
-					ShouldFallback:  true,
-					Cooldown:        GetQuotaCooldown(newLevel),
-					NewBackoffLevel: newLevel,
-				}
-			}
-			return FallbackResult{ShouldFallback: true, Cooldown: rule.CooldownMs}
 		}
 	}
 
-	// 3. Request-scoped client errors that matched no rule above (context length overflow,
+	// 4. Request-scoped client errors that matched no rule above (context length overflow,
 	// payload too large 413, invalid request body 400/422).
 	// Cooling the account down for request-scoped errors unfairly locks healthy connections.
 	if status >= 400 && status < 500 && status != 401 && status != 402 && status != 403 && status != 429 {
 		return FallbackResult{ShouldFallback: false, Cooldown: 0}
 	}
 
-	// 4. Default: transient cooldown for unmatched server/network errors
+	// 5. Default: transient cooldown for unmatched server/network errors
 	return FallbackResult{ShouldFallback: true, Cooldown: TransientCooldown}
 }
 
