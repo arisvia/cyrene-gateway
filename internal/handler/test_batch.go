@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -125,6 +126,67 @@ type testResult struct {
 	OK        bool
 }
 
+// probeModel names a model this connection can actually serve, read from the
+// provider's synced catalog and the connection's own custom models. The connectivity
+// probe used to hard-name one vendor model per API shape, so an upstream retiring
+// that id (or a plan that never had it) made the panel report a healthy credential as
+// broken — the failure was our stale name, not the account. "" means nothing is known
+// yet and the caller keeps its built-in default.
+//
+// Image, TTS and embedding entries are skipped because the probe sends chat contents,
+// and reasoning models are avoided when a plain chat model is available: the probe
+// budget is a few tokens, which a thinking model can spend entirely on reasoning and
+// answer with an empty completion.
+func (s *Server) probeModel(conn *model.ProviderConnection) string {
+	if s.DB == nil || conn == nil {
+		return ""
+	}
+	type candidate struct {
+		id   string
+		chat bool
+		lean bool
+	}
+	var candidates []candidate
+
+	if raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, conn.Provider); err == nil && raw != "" {
+		var cached model.CachedModels
+		if json.Unmarshal([]byte(raw), &cached) == nil {
+			for _, m := range cached.Models {
+				if m.ID == "" {
+					continue
+				}
+				candidates = append(candidates, candidate{
+					id:   m.ID,
+					chat: len(m.Capabilities) == 0 || slices.Contains(m.Capabilities, "chat"),
+					lean: !slices.Contains(m.Capabilities, "reasoning"),
+				})
+			}
+		}
+	}
+	for _, cm := range s.loadCustomModels(conn.ID) {
+		if cm.ID != "" {
+			candidates = append(candidates, candidate{id: cm.ID, chat: true, lean: true})
+		}
+	}
+
+	lean, any := "", ""
+	for _, c := range candidates {
+		if !c.chat || provider.IsModelDisabled(conn.Provider+"/"+c.id, s.DB) {
+			continue
+		}
+		if any == "" {
+			any = c.id
+		}
+		if c.lean && lean == "" {
+			lean = c.id
+		}
+	}
+	if lean != "" {
+		return lean
+	}
+	return any
+}
+
 // testConnection performs a single provider connection test with the caller's transport.
 func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection, client *http.Client) testResult {
 	providerInfo, ok := provider.GetProvider(conn.Provider)
@@ -182,16 +244,25 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 	var targetURL string
 	var testBody []byte
 	var qoderCredential *provider.QoderResolvedCredential
+	// Prefer a model this account really has; the literals are cold-cache defaults.
+	probe := func(fallback string) string {
+		if m := s.probeModel(conn); m != "" {
+			return m
+		}
+		return fallback
+	}
 	switch effectiveAPIType {
 	case "anthropic":
-		targetURL = provider.BuildTransportURL(transport, "claude-3-haiku-20240307", false)
+		chatModel := probe("claude-3-haiku-20240307")
+		targetURL = provider.BuildTransportURL(transport, chatModel, false)
 		testBody, _ = json.Marshal(map[string]any{
-			"model":      "claude-3-haiku-20240307",
+			"model":      chatModel,
 			"max_tokens": 5,
 			"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
 		})
 	case "gemini":
-		targetURL = provider.BuildTransportURL(transport, "gemini-2.0-flash", false)
+		chatModel := probe("gemini-2.0-flash")
+		targetURL = provider.BuildTransportURL(transport, chatModel, false)
 		testBody, _ = json.Marshal(map[string]any{
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
@@ -225,9 +296,10 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 			testBody = nil
 		} else if conn.Provider == "codebuddy-cn" {
 			// CodeBuddy CN only accepts streaming chat completions and has no /models endpoint.
+			chatModel := probe("glm-5.3-flash")
 			targetURL = baseURL
 			testBody, _ = json.Marshal(map[string]any{
-				"model":      "glm-5.3-flash",
+				"model":      chatModel,
 				"max_tokens": 1,
 				"stream":     true,
 				"messages":   []any{map[string]any{"role": "user", "content": "Hi"}},
@@ -246,7 +318,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 			if !strings.HasSuffix(targetURL, "/chat/completions") {
 				targetURL = strings.TrimRight(targetURL, "/") + "/chat/completions"
 			}
-			testModel := "big-pickle"
+			testModel := probe("big-pickle")
 			creds = provider.ResolveCredentials(conn, conn.Provider, testModel)
 			testBody, _ = json.Marshal(map[string]any{
 				"model":      testModel,
