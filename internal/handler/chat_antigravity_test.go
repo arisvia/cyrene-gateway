@@ -1397,3 +1397,24 @@ func TestSanitizeAntigravitySystemPrompt(t *testing.T) {
 		t.Error("nil input must return nil")
 	}
 }
+
+// TestParkAntigravityQuotaPreservesTOSPark guards the regression where the
+// window-scoped quota park downgraded an account-level TOS suspension: the guard
+// used to accept any cooldown >= CooldownQuota, so CooldownTOS (24h) passed and
+// RateLimitedUntil was cleared into 15-minute per-model locks, re-hammering the ban.
+func TestParkAntigravityQuotaPreservesTOSPark(t *testing.T) {
+	conn := &model.ProviderConnection{Provider: "antigravity"}
+	tosBody := `{"error":{"code":403,"message":"This service has been disabled in this account for violation of Terms of Service.","status":"PERMISSION_DENIED","details":[{"reason":"TOS_VIOLATION","metadata":{"appeal_url":"https://forms.gle/x"}}]}}`
+	provider.ApplyErrorState(conn, 403, tosBody)
+	if conn.Data.RateLimitedUntil == "" {
+		t.Fatal("ApplyErrorState must set the TOS account-wide park")
+	}
+	parked := conn.Data.RateLimitedUntil
+	s := &Server{}
+	if s.parkAntigravityQuota(conn, "gemini-3-flash", "gemini-3-flash", 403, tosBody) {
+		t.Error("TOS suspension must not be converted into a window-scoped quota park")
+	}
+	if conn.Data.RateLimitedUntil != parked {
+		t.Errorf("TOS account-wide park must be preserved, got %q want %q", conn.Data.RateLimitedUntil, parked)
+	}
+}

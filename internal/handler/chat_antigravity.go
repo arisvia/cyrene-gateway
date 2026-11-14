@@ -680,7 +680,11 @@ func (s *Server) parkAntigravityQuota(conn *model.ProviderConnection, poolModel,
 	if conn == nil || !strings.HasPrefix(conn.Provider, "antigravity") {
 		return false
 	}
-	if provider.CheckFallbackError(status, errorText, conn.Data.BackoffLevel).Cooldown < provider.CooldownQuota {
+	cooldown := provider.CheckFallbackError(status, errorText, conn.Data.BackoffLevel).Cooldown
+	// Window-scoped parking is for quota exhaustion only. An account-level TOS
+	// suspension (CooldownTOS) keeps its account-wide park instead of being
+	// downgraded to a short per-model lock that expires and re-hammers the ban.
+	if cooldown < provider.CooldownQuota || cooldown >= provider.CooldownTOS {
 		return false
 	}
 	models := s.getAntigravityAvailableModels()
