@@ -16,30 +16,126 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
+// clientModelEntry is one published model on the client-facing /v1 surface.
+// Naming follows the two ecosystems this gateway serves at once: `name` is the
+// spelling OpenAI-compatible discoverers read, `display_name` is Anthropic's own
+// field. Both carry the same value so neither family falls back to the raw
+// "provider/model" id as its label.
+type clientModelEntry struct {
+	ID            string   `json:"id"`
+	Object        string   `json:"object"`
+	OwnedBy       string   `json:"owned_by"`
+	Name          string   `json:"name,omitempty"`
+	DisplayName   string   `json:"display_name,omitempty"`
+	Capabilities  []string `json:"capabilities,omitempty"`
+	Modalities    []string `json:"modalities,omitempty"`
+	ContextLength int      `json:"context_length,omitempty"`
+	MaxOutput     int      `json:"max_output_tokens,omitempty"`
+}
+
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-	conns, err := s.DB.ListConnections()
+	models, err := s.buildClientModels()
 	if err != nil {
 		slog.Error("Failed to list connections", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
 	}
 
-	type ModelEntry struct {
-		ID      string `json:"id"`
-		Object  string `json:"object"`
-		OwnedBy string `json:"owned_by"`
-		// Name is the spelling OpenAI-compatible discoverers read; DisplayName is
-		// what Anthropic's own /v1/models uses. One value, both spellings, so
-		// neither client family falls back to the raw "provider/model" id.
-		Name          string   `json:"name,omitempty"`
-		DisplayName   string   `json:"display_name,omitempty"`
-		Capabilities  []string `json:"capabilities,omitempty"`
-		Modalities    []string `json:"modalities,omitempty"`
-		ContextLength int      `json:"context_length,omitempty"`
-		MaxOutput     int      `json:"max_output_tokens,omitempty"`
+	// Filter query parameter: ?type=image or ?kind=image
+	targetKind := strings.ToLower(r.URL.Query().Get("type"))
+	if targetKind == "" {
+		targetKind = strings.ToLower(r.URL.Query().Get("kind"))
+	}
+	models = filterModelsByKind(models, targetKind)
+
+	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil && len(keyObj.AllowedModels) > 0 {
+		allowed := make([]clientModelEntry, 0, len(models))
+		for _, m := range models {
+			if keyObj.IsModelAllowed(m.ID) {
+				allowed = append(allowed, m)
+			}
+		}
+		models = allowed
 	}
 
-	var models []ModelEntry
+	writeJSON(w, http.StatusOK, map[string]any{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+// handleModelRetrieve serves GET /v1/models/{id} — the retrieve call both the
+// OpenAI and Anthropic SDKs issue after listing. It reuses the very same builder
+// as the list endpoint, so retrieving a model the client just saw returns
+// byte-identical fields instead of a second, drifting definition.
+func (s *Server) handleModelRetrieve(w http.ResponseWriter, r *http.Request) {
+	wanted := r.PathValue("id")
+	models, err := s.buildClientModels()
+	if err != nil {
+		slog.Error("Failed to list connections for model retrieve", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+
+	entry, found := lookupClientModel(models, wanted)
+	// A key scoped to specific models must not learn about the ones it cannot
+	// call, so a scoped-out model reports the same 404 as an unknown one.
+	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil && len(keyObj.AllowedModels) > 0 {
+		if found && !keyObj.IsModelAllowed(entry.ID) {
+			found = false
+		}
+	}
+	if !found {
+		writeModelNotFound(w, wanted)
+		return
+	}
+	writeJSON(w, http.StatusOK, entry)
+}
+
+// lookupClientModel resolves a retrieve id against the published list: the exact
+// "provider/model" id first, then a bare model id. Bare names take the first
+// match in list order, which is registry-priority order — the same connection the
+// router would pick for that name.
+func lookupClientModel(models []clientModelEntry, wanted string) (clientModelEntry, bool) {
+	if wanted == "" {
+		return clientModelEntry{}, false
+	}
+	for _, m := range models {
+		if m.ID == wanted {
+			return m, true
+		}
+	}
+	for _, m := range models {
+		if _, bare, ok := strings.Cut(m.ID, "/"); ok && bare == wanted {
+			return m, true
+		}
+	}
+	return clientModelEntry{}, false
+}
+
+func writeModelNotFound(w http.ResponseWriter, id string) {
+	writeJSON(w, http.StatusNotFound, map[string]any{
+		"error": map[string]string{
+			"message": fmt.Sprintf("The model '%s' does not exist", id),
+			"type":    "invalid_request_error",
+			"code":    "model_not_found",
+		},
+	})
+}
+
+// buildClientModels assembles every model the gateway publishes to clients:
+// combo names, then per-provider catalog + custom models in registry priority
+// order, with metadata overrides applied and disabled models removed. Kind and
+// API-key scoping filters are the callers' business — the retrieve endpoint must
+// see image models too. A nil slice is never returned, so the list endpoint
+// encodes "data": [] rather than null.
+func (s *Server) buildClientModels() ([]clientModelEntry, error) {
+	conns, err := s.DB.ListConnections()
+	if err != nil {
+		return nil, err
+	}
+
+	var models []clientModelEntry
 
 	// Load cached model metadata for all providers
 	cacheIndex := s.loadModelCacheIndex()
@@ -56,7 +152,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		if len(c.Models) > 0 {
 			displayName = fmt.Sprintf("%s (组合: %s)", c.Name, strings.Join(c.Models, " → "))
 		}
-		models = append(models, ModelEntry{
+		models = append(models, clientModelEntry{
 			ID:          c.Name,
 			Object:      "model",
 			OwnedBy:     "cyrene-gateway",
@@ -145,7 +241,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			models = append(models, ModelEntry{
+			models = append(models, clientModelEntry{
 				ID:            fullID,
 				Object:        "model",
 				OwnedBy:       providerID,
@@ -157,12 +253,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 				Modalities:    meta.Modalities,
 			})
 		}
-	}
-
-	// Filter query parameter: ?type=image or ?kind=image
-	targetKind := strings.ToLower(r.URL.Query().Get("type"))
-	if targetKind == "" {
-		targetKind = strings.ToLower(r.URL.Query().Get("kind"))
 	}
 
 	// Deterministic sorting of providers by registry priority, then by provider ID
@@ -194,45 +284,25 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		appendProviderModels(providerID, pConns)
 	}
 
-	// Capability filtering: if targetKind == "image", only return image-generation models.
-	// Otherwise (default chat completions), filter out dedicated image generation models.
-	var filtered []ModelEntry
+	return models, nil
+}
+
+// filterModelsByKind applies the ?type=image contract: "image" keeps only
+// dedicated image generators, anything else (the default chat surface) hides
+// them. Non-image results are returned as a non-nil slice so the list endpoint
+// encodes "data": [] rather than null.
+func filterModelsByKind(models []clientModelEntry, targetKind string) []clientModelEntry {
+	filtered := make([]clientModelEntry, 0, len(models))
 	for _, m := range models {
 		isImageGen := slices.Contains(m.Capabilities, "image-generation") ||
 			strings.Contains(strings.ToLower(m.ID), "-image") ||
 			strings.Contains(strings.ToLower(m.ID), "dall-e") ||
 			strings.Contains(strings.ToLower(m.ID), "flux")
-		if targetKind == "image" {
-			if isImageGen {
-				filtered = append(filtered, m)
-			}
-		} else {
-			if !isImageGen {
-				filtered = append(filtered, m)
-			}
+		if (targetKind == "image") == isImageGen {
+			filtered = append(filtered, m)
 		}
 	}
-	models = filtered
-
-	keyObj := auth.APIKeyFromContext(r.Context())
-	if keyObj != nil && len(keyObj.AllowedModels) > 0 {
-		var allowed []ModelEntry
-		for _, m := range models {
-			if keyObj.IsModelAllowed(m.ID) {
-				allowed = append(allowed, m)
-			}
-		}
-		models = allowed
-	}
-
-	// Only exposed models for providers that actually have configured active connections
-	if models == nil {
-		models = []ModelEntry{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"object": "list",
-		"data":   models,
-	})
+	return filtered
 }
 
 // loadModelCacheIndex loads all cached provider model metadata into a lookup

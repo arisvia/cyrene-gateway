@@ -146,6 +146,10 @@ func (s *Server) registerRoutes() {
 
 	// OpenAI-compatible API surface
 	s.Router.HandleFunc("GET /v1/models", s.handleModels)
+	// Retrieve is `{id...}`, not `{id}`: our published ids are "provider/model",
+	// which clients percent-encode to openai%2Fgpt-4o — the mux unescapes that
+	// back into two segments.
+	s.Router.HandleFunc("GET /v1/models/{id...}", s.handleModelRetrieve)
 	s.Router.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
 	s.Router.HandleFunc("POST /v1/responses", s.handleResponses)
 	s.Router.HandleFunc("POST /v1/embeddings", s.handleEmbeddings)
