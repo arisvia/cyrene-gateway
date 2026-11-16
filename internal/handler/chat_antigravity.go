@@ -1357,16 +1357,8 @@ func randomHex(n int) string {
 }
 
 func (s *Server) getAntigravityAvailableModels() []model.ModelMetadata {
-	if s.DB == nil {
-		return nil
-	}
-	if raw, err := s.DB.KVGet("providerModelCache", "antigravity"); err == nil && raw != "" {
-		var cached model.CachedModels
-		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
-			return cached.Models
-		}
-	}
-	return nil
+	cached, _ := s.cachedProviderModels("antigravity")
+	return cached
 }
 
 // antigravityThinkingTiers pairs each tier suffix upstream spells in a model id

@@ -299,27 +299,12 @@ func (s *Server) resolveModelCostFactor(modelStr string) float64 {
 	if err != nil || modelInfo.Provider == "" {
 		return 1.0
 	}
-	if s.DB != nil {
-		if raw, err := s.DB.KVGet("providerModelCache", modelInfo.Provider); err == nil && raw != "" {
-			var cache struct {
-				Models []struct {
-					ID          string  `json:"id"`
-					PriceFactor float64 `json:"price_factor"`
-					IsFree      bool    `json:"is_free"`
-				} `json:"models"`
-			}
-			if err := json.Unmarshal([]byte(raw), &cache); err == nil {
-				for _, m := range cache.Models {
-					if m.ID == modelInfo.Model || m.ID == modelStr {
-						if m.IsFree {
-							return 0.0
-						}
-						if m.PriceFactor > 0 {
-							return m.PriceFactor
-						}
-					}
-				}
-			}
+	if entry := s.cachedModelEntry(modelInfo.Provider, modelInfo.Model, modelStr); entry != nil {
+		if entry.IsFree {
+			return 0.0
+		}
+		if entry.PriceFactor > 0 {
+			return entry.PriceFactor
 		}
 	}
 	return 1.0

@@ -148,20 +148,16 @@ func (s *Server) probeModel(conn *model.ProviderConnection) string {
 	}
 	var candidates []candidate
 
-	if raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, conn.Provider); err == nil && raw != "" {
-		var cached model.CachedModels
-		if json.Unmarshal([]byte(raw), &cached) == nil {
-			for _, m := range cached.Models {
-				if m.ID == "" {
-					continue
-				}
-				candidates = append(candidates, candidate{
-					id:   m.ID,
-					chat: len(m.Capabilities) == 0 || slices.Contains(m.Capabilities, "chat"),
-					lean: !slices.Contains(m.Capabilities, "reasoning"),
-				})
-			}
+	cached, _ := s.cachedProviderModels(conn.Provider)
+	for _, m := range cached {
+		if m.ID == "" {
+			continue
 		}
+		candidates = append(candidates, candidate{
+			id:   m.ID,
+			chat: len(m.Capabilities) == 0 || slices.Contains(m.Capabilities, "chat"),
+			lean: !slices.Contains(m.Capabilities, "reasoning"),
+		})
 	}
 	for _, cm := range s.loadCustomModels(conn.ID) {
 		if cm.ID != "" {

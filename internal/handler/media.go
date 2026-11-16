@@ -632,16 +632,9 @@ func isAntigravitySearchEngine(entry model.ModelMetadata) bool {
 // defaultAntigravitySearchEngine picks the first catalog engine that is not
 // disabled for chat cost control, as "antigravity/<id>".
 func (s *Server) defaultAntigravitySearchEngine() string {
-	raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, "antigravity")
-	if err != nil || raw == "" {
-		return ""
-	}
-	var cached model.CachedModels
-	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
-		return ""
-	}
+	cached, _ := s.cachedProviderModels("antigravity")
 	disabledMap, _ := s.DB.KVList(model.KVScopeDisabledModels)
-	for _, cm := range cached.Models {
+	for _, cm := range cached {
 		if !isAntigravitySearchEngine(cm) {
 			continue
 		}
@@ -722,47 +715,43 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 				matchedModels = append(matchedModels, m)
 			}
 
-			// 动态提取：从 providerModelCache 融合上游实时同步出的多媒体能力模型
-			if raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, e.Provider); err == nil && raw != "" {
-				var cached model.CachedModels
-				if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
-					for _, cm := range cached.Models {
-						lowerID := strings.ToLower(cm.ID)
-						match := false
-						switch filterKind {
-						case media.KindImage:
-							match = slices.Contains(cm.Capabilities, "image-generation") ||
-								strings.Contains(lowerID, "-image") ||
-								strings.Contains(lowerID, "dall-e") ||
-								strings.Contains(lowerID, "flux")
-						case media.KindEmbedding:
-							match = slices.Contains(cm.Capabilities, "embeddings") ||
-								strings.Contains(lowerID, "embed") ||
-								strings.Contains(lowerID, "bge") ||
-								strings.Contains(lowerID, "gte")
-						case media.KindWebSearch:
-							match = e.Provider == "antigravity" &&
-								isAntigravitySearchEngine(cm)
-						}
-						if !match {
-							continue
-						}
-						hasCandidate = true
-						if isModelDisabled(e.Provider+"/"+cm.ID, cm.ID) || seenModel[cm.ID] {
-							continue
-						}
-						seenModel[cm.ID] = true
-						displayName := cm.DisplayName
-						if displayName == "" {
-							displayName = cm.ID
-						}
-						matchedModels = append(matchedModels, media.ModelEntry{
-							ID:   cm.ID,
-							Name: displayName,
-							Kind: filterKind,
-						})
-					}
+			// 动态提取：融合上游实时同步出的多媒体能力模型
+			live, _ := s.cachedProviderModels(e.Provider)
+			for _, cm := range live {
+				lowerID := strings.ToLower(cm.ID)
+				match := false
+				switch filterKind {
+				case media.KindImage:
+					match = slices.Contains(cm.Capabilities, "image-generation") ||
+						strings.Contains(lowerID, "-image") ||
+						strings.Contains(lowerID, "dall-e") ||
+						strings.Contains(lowerID, "flux")
+				case media.KindEmbedding:
+					match = slices.Contains(cm.Capabilities, "embeddings") ||
+						strings.Contains(lowerID, "embed") ||
+						strings.Contains(lowerID, "bge") ||
+						strings.Contains(lowerID, "gte")
+				case media.KindWebSearch:
+					match = e.Provider == "antigravity" &&
+						isAntigravitySearchEngine(cm)
 				}
+				if !match {
+					continue
+				}
+				hasCandidate = true
+				if isModelDisabled(e.Provider+"/"+cm.ID, cm.ID) || seenModel[cm.ID] {
+					continue
+				}
+				seenModel[cm.ID] = true
+				displayName := cm.DisplayName
+				if displayName == "" {
+					displayName = cm.ID
+				}
+				matchedModels = append(matchedModels, media.ModelEntry{
+					ID:   cm.ID,
+					Name: displayName,
+					Kind: filterKind,
+				})
 			}
 			// 仅当该能力的候选模型全被禁用时才隐藏已连接的提供商；
 			// 无模型概念或目录尚未同步的提供商保留卡片，交由运营者刷新目录。

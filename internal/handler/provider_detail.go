@@ -74,29 +74,33 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 	cachedPriceFactors := make(map[string]float64)
 	cachedFree := make(map[string]bool)
 	var unifiedModels []provider.ModelRef
-	if raw, err := s.DB.KVGet("providerModelCache", conn.Provider); err == nil && raw != "" {
-		var cached model.CachedModels
-		if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
-			for _, m := range cached.Models {
-				// 过滤生图专用模型（避免在文本会话中展示）
-				if strings.Contains(strings.ToLower(m.ID), "-image") {
-					continue
-				}
-				name := m.DisplayName
-				if name == "" || name == m.ID {
-					name = model.FormatFallbackDisplayName(m.ID)
-				}
-				seen[m.ID] = true
-				if m.PriceFactor > 0 {
-					cachedPriceFactors[m.ID] = m.PriceFactor
-				}
-				cachedFree[m.ID] = m.IsFree
-				unifiedModels = append(unifiedModels, provider.ModelRef{
-					ID:   m.ID,
-					Name: name,
-				})
-			}
+	cachedModels, stale := s.cachedProviderModels(conn.Provider)
+	if stale {
+		// The 6h auto-sync normally keeps this fresh; reaching here means every
+		// attempt failed (dead credential, upstream outage). Re-fetch now rather
+		// than showing the operator a multiplier that has since changed upstream.
+		// Refresh on a copy: syncConnectionModels rotates the token in place.
+		fresh := *conn
+		s.goBackground(func() { s.syncConnectionModels(&fresh) })
+	}
+	for _, m := range cachedModels {
+		// 过滤生图专用模型（避免在文本会话中展示）
+		if strings.Contains(strings.ToLower(m.ID), "-image") {
+			continue
 		}
+		name := m.DisplayName
+		if name == "" || name == m.ID {
+			name = model.FormatFallbackDisplayName(m.ID)
+		}
+		seen[m.ID] = true
+		if m.PriceFactor > 0 {
+			cachedPriceFactors[m.ID] = m.PriceFactor
+		}
+		cachedFree[m.ID] = m.IsFree
+		unifiedModels = append(unifiedModels, provider.ModelRef{
+			ID:   m.ID,
+			Name: name,
+		})
 	}
 	// 如果缓存为空，但 ProviderInfo 中有预置静态模型，以此兜底
 	if len(unifiedModels) == 0 {

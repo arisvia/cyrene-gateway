@@ -82,17 +82,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		seenModel := make(map[string]bool)
 
 		// 1. Live cached models
-		if raw, err := s.DB.KVGet("providerModelCache", providerID); err == nil && raw != "" {
-			var cached model.CachedModels
-			if err := json.Unmarshal([]byte(raw), &cached); err == nil && len(cached.Models) > 0 {
-				for _, m := range cached.Models {
-					seenModel[m.ID] = true
-					name := m.DisplayName
-					if name == "" {
-						name = m.ID
-					}
-					unifiedModels = append(unifiedModels, provider.ModelRef{ID: m.ID, Name: name})
+		if cached, _ := s.cachedProviderModels(providerID); len(cached) > 0 {
+			for _, m := range cached {
+				seenModel[m.ID] = true
+				name := m.DisplayName
+				if name == "" {
+					name = m.ID
 				}
+				unifiedModels = append(unifiedModels, provider.ModelRef{ID: m.ID, Name: name})
 			}
 		}
 
@@ -242,7 +239,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 // map keyed by "providerID/modelID".
 func (s *Server) loadModelCacheIndex() map[string]*model.ModelMetadata {
 	index := make(map[string]*model.ModelMetadata)
-	caches, err := s.DB.KVList("providerModelCache")
+	caches, err := s.DB.KVList(model.KVScopeProviderModelCache)
 	if err != nil {
 		return index
 	}
@@ -320,73 +317,15 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	providerID := providerInfo.ID
-	baseURL := providerInfo.BaseURL
-	if conn.Data.BaseURL != "" {
-		baseURL = conn.Data.BaseURL
-	}
 	client := s.getHTTPClient(30 * time.Second)
-	s.tryRefreshToken(&conn)
-	// Qoder: COSY-signed catalog (resolve PATs first) — its inference
-	// protocol has no standard /models endpoint.
-	var models []model.ModelMetadata
-	if strings.HasPrefix(providerID, "qoder") {
-		models = s.fetchQoderCatalog(&conn, client)
-		if models == nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "qoder model catalog fetch failed"})
-			return
-		}
-	} else if providerID == "antigravity" {
-		token := conn.Data.AccessToken
-		projectID, discErr := s.EnsureAntigravityProject(r.Context(), &conn, client)
-		models = s.fetchAntigravityCatalog(r.Context(), client, token, projectID)
-		if models == nil {
-			errMsg := "antigravity model catalog fetch failed"
-			if discErr != nil {
-				errMsg += fmt.Sprintf(" (project discovery failed: %v)", discErr)
-			}
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": errMsg})
-			return
-		}
-
-	} else {
-		// Phase 36 T6: registry ModelsURL + format-derived auth scheme.
-		cfg := provider.ModelsFetchFor(providerInfo)
-		if conn.Data.BaseURL != "" {
-			cfg.URL = "" // user base URL override → derive from it
-		}
-		fetched, fetchErr := model.FetchModels(client, providerID, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
-		if fetchErr != nil || len(fetched) == 0 {
-			if static := populateStaticModels(providerInfo); len(static) > 0 {
-				slog.Info("Live model fetch failed or empty, falling back to static registry models", slog.String("provider", providerID), "error", fetchErr)
-				models = static
-			} else {
-				errMsg := "provider returned no models"
-				if fetchErr != nil {
-					errMsg = fetchErr.Error()
-				}
-				slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", errMsg)
-				writeJSON(w, http.StatusBadGateway, map[string]string{"error": errMsg})
-				return
-			}
-		} else {
-			models = fetched
-		}
+	// Operator-initiated: bypass provider-side catalog caches entirely.
+	models, fetchErr := s.fetchProviderModels(r.Context(), &conn, client, true)
+	if fetchErr != nil {
+		slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
+		return
 	}
-
-	// Single cache-layer enrichment for every provider (qoder / antigravity /
-	// standard): fill anything the upstream catalog omitted from models.dev (by id
-	// or display name); live values are never overwritten. Consumers — the model
-	// detail page and /v1/models downstream — read this enriched cache verbatim.
-	s.loadModelsDevCatalog(client)
-	model.EnrichModelsFromCatalog(models)
-
-	// Store in KV cache
-	cached := model.CachedModels{
-		FetchedAt: time.Now().UTC(),
-		Models:    models,
-	}
-	data, _ := json.Marshal(cached)
-	if err := s.DB.KVSet("providerModelCache", providerID, string(data)); err != nil {
+	if err := s.cacheProviderModels(providerID, models, client); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to cache models"})
 		return
 	}
@@ -401,8 +340,10 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchQoderCatalog resolves the connection credential (PAT → job token) and
-// fetches Qoder's live model catalog via COSY signing.
-func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.Client) []model.ModelMetadata {
+// fetches Qoder's live model catalog via COSY signing. force bypasses the 1h
+// in-memory catalog cache: an operator pressing refresh must get today's
+// multipliers, while the background poll may reuse them.
+func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.Client, force bool) []model.ModelMetadata {
 	psd := conn.Data.ProviderSpecificData
 	userID := ""
 	machineID := ""
@@ -438,8 +379,8 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 		Email:      conn.Email,
 		MachineID:  machineID,
 	}
-	models := provider.QoderCatalogModels(creds, client, false)
-	if models == nil {
+	models := provider.QoderCatalogModels(creds, client, force)
+	if models == nil && !force {
 		// Force one refresh — the cache may not be populated yet.
 		models = provider.QoderCatalogModels(creds, client, true)
 	}
@@ -496,6 +437,11 @@ func (s *Server) StartBackgroundModelSync(ctx context.Context, interval time.Dur
 	}()
 }
 
+// syncAllActiveConnections refreshes the catalog of every provider that has an
+// active connection. One provider is one catalog: the fetch walks its
+// connections and stops at the first that answers, so an expired or
+// credential-less account no longer freezes the cached multipliers for the
+// whole provider.
 func (s *Server) syncAllActiveConnections() {
 	conns, err := s.DB.ListConnections()
 	if err != nil {
@@ -503,127 +449,167 @@ func (s *Server) syncAllActiveConnections() {
 	}
 
 	client := s.getHTTPClient(30 * time.Second)
-	seen := make(map[string]bool)
-	type syncTarget struct {
-		providerID  string
-		baseURL     string
-		apiKey      string
-		accessToken string
-		conn        *model.ProviderConnection
-	}
-	var targets []syncTarget
-
+	byProvider := make(map[string][]*model.ProviderConnection)
+	var order []string
 	for i := range conns {
 		conn := &conns[i]
-		if !conn.IsActive || seen[conn.Provider] {
+		if !conn.IsActive {
 			continue
 		}
-		seen[conn.Provider] = true
-		pInfo, ok := provider.GetProvider(conn.Provider)
-		if !ok {
+		if _, ok := provider.GetProvider(conn.Provider); !ok {
 			continue
 		}
+		if _, seen := byProvider[conn.Provider]; !seen {
+			order = append(order, conn.Provider)
+		}
+		byProvider[conn.Provider] = append(byProvider[conn.Provider], conn)
+	}
+
+	for _, providerID := range order {
+		for _, conn := range byProvider[providerID] {
+			// Background poll: reuse short-lived provider catalog caches.
+			models, fetchErr := s.fetchProviderModels(context.Background(), conn, client, false)
+			if fetchErr != nil {
+				slog.Warn("Auto-sync found no usable catalog from this connection",
+					slog.String("provider", providerID),
+					slog.String("connection", conn.ID), "error", fetchErr)
+				continue
+			}
+			if len(models) == 0 {
+				continue
+			}
+			if err := s.cacheProviderModels(providerID, models, client); err != nil {
+				slog.Warn("Failed to cache auto-synced models", slog.String("provider", providerID), "error", err)
+			}
+			break
+		}
+	}
+}
+
+// fetchProviderModels is the single upstream model-catalog read for a
+// connection's provider. qoder and antigravity have no standard /models
+// endpoint — qoder's catalog is COSY-signed per user, antigravity's is
+// project-scoped — so they branch ahead of the registry-driven generic fetch.
+// A provider whose live fetch fails keeps its static registry seed, when it has
+// one; otherwise the error surfaces so callers can say why.
+func (s *Server) fetchProviderModels(ctx context.Context, conn *model.ProviderConnection, client *http.Client, force bool) ([]model.ModelMetadata, error) {
+	pInfo, ok := provider.GetProvider(conn.Provider)
+	if !ok {
+		return nil, fmt.Errorf("unknown provider: %s", conn.Provider)
+	}
+	s.tryRefreshToken(conn)
+
+	switch {
+	case strings.HasPrefix(conn.Provider, "qoder"):
+		if models := s.fetchQoderCatalog(conn, client, force); models != nil {
+			return models, nil
+		}
+		return nil, fmt.Errorf("qoder model catalog fetch failed")
+
+	case conn.Provider == "antigravity":
+		projectID, discErr := s.EnsureAntigravityProject(ctx, conn, client)
+		models := s.fetchAntigravityCatalog(ctx, client, conn.Data.AccessToken, projectID)
+		if models != nil {
+			return models, nil
+		}
+		if discErr != nil {
+			return nil, fmt.Errorf("antigravity model catalog fetch failed (project discovery failed: %v)", discErr)
+		}
+		return nil, fmt.Errorf("antigravity model catalog fetch failed")
+
+	default:
+		// Phase 36 T6: registry ModelsURL + format-derived auth scheme.
+		cfg := provider.ModelsFetchFor(pInfo)
 		baseURL := pInfo.BaseURL
 		if conn.Data.BaseURL != "" {
+			cfg.URL = "" // user base URL override → derive from it
 			baseURL = conn.Data.BaseURL
 		}
-		targets = append(targets, syncTarget{
-			providerID:  conn.Provider,
-			baseURL:     baseURL,
-			apiKey:      conn.Data.APIKey,
-			accessToken: conn.Data.AccessToken,
-			conn:        conn,
-		})
+		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
+		if err == nil && len(fetched) > 0 {
+			return fetched, nil
+		}
+		if static := populateStaticModels(pInfo); len(static) > 0 {
+			slog.Info("Live model fetch failed or empty, falling back to static registry models", slog.String("provider", conn.Provider), "error", err)
+			return static, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("provider returned no models")
 	}
+}
 
-	for _, target := range targets {
-		if target.conn != nil {
-			s.tryRefreshToken(target.conn)
-			target.accessToken = target.conn.Data.AccessToken
-		}
-		pInfo, _ := provider.GetProvider(target.providerID)
-		var models []model.ModelMetadata
-		if strings.HasPrefix(target.providerID, "qoder") && target.conn != nil {
-			models = s.fetchQoderCatalog(target.conn, client)
-		} else if target.providerID == "antigravity" && target.conn != nil {
+// cacheProviderModels applies the single models.dev enrichment pass and stores
+// the catalog under the provider's cache key. The cache is provider-scoped, not
+// per-connection: entitlement and credit multipliers follow the provider's
+// published catalog, so any healthy account is authoritative for all of them.
+func (s *Server) cacheProviderModels(providerID string, models []model.ModelMetadata, client *http.Client) error {
+	s.loadModelsDevCatalog(client)
+	model.EnrichModelsFromCatalog(models)
+	data, err := json.Marshal(model.CachedModels{
+		FetchedAt: time.Now().UTC(),
+		Models:    models,
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.DB.KVSet(model.KVScopeProviderModelCache, providerID, string(data)); err != nil {
+		return err
+	}
+	slog.Info("Live models synced for provider", slog.String("provider", providerID), slog.Int("count", len(models)))
+	return nil
+}
 
-			projectID, _ := s.EnsureAntigravityProject(context.Background(), target.conn, client)
-			models = s.fetchAntigravityCatalog(context.Background(), client, target.conn.Data.AccessToken, projectID)
-		} else {
-			cfg := provider.ModelsFetchFor(pInfo)
-			if target.conn != nil && target.conn.Data.BaseURL != "" {
-				cfg.URL = ""
+// cachedProviderModels reads a stored catalog back. Stale entries are returned
+// as-is — billing lookups and the model panel must not blank out because an
+// upstream is slow — and the bool reports staleness so a caller that holds a
+// connection can kick off a refresh instead of serving it indefinitely.
+func (s *Server) cachedProviderModels(providerID string) ([]model.ModelMetadata, bool) {
+	if s.DB == nil {
+		return nil, false
+	}
+	raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, providerID)
+	if err != nil || raw == "" {
+		return nil, false
+	}
+	var cached model.CachedModels
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil || len(cached.Models) == 0 {
+		return nil, false
+	}
+	return cached.Models, cached.IsExpired()
+}
+
+// cachedModelEntry finds one model in a provider's cached catalog, matching any
+// of the supplied ids (upstream ids and the client-facing short name differ for
+// several providers). Returns nil when the catalog has no such entry.
+func (s *Server) cachedModelEntry(providerID string, ids ...string) *model.ModelMetadata {
+	cached, _ := s.cachedProviderModels(providerID)
+	for i := range cached {
+		for _, id := range ids {
+			if id != "" && cached[i].ID == id {
+				return &cached[i]
 			}
-			fetched, err := model.FetchModels(client, target.providerID, target.baseURL, target.apiKey, target.accessToken, cfg)
-			if err == nil && len(fetched) > 0 {
-				models = fetched
-			} else if static := populateStaticModels(pInfo); len(static) > 0 {
-				models = static
-			}
-		}
-		if len(models) == 0 {
-			continue
-		}
-
-		// Cache-layer enrichment (single pass, see handleRefreshModels).
-		s.loadModelsDevCatalog(client)
-		model.EnrichModelsFromCatalog(models)
-
-		cached := model.CachedModels{
-			FetchedAt: time.Now().UTC(),
-			Models:    models,
-		}
-		if data, err := json.Marshal(cached); err == nil {
-			s.DB.KVSet("providerModelCache", target.providerID, string(data))
-			slog.Info("Auto-synced live models for provider", slog.String("provider", target.providerID), slog.Int("count", len(models)))
 		}
 	}
+	return nil
 }
 
 func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 	if conn == nil {
 		return
 	}
-	pInfo, ok := provider.GetProvider(conn.Provider)
-	if !ok {
+	client := s.getHTTPClient(30 * time.Second)
+	// Event-driven (login / credential edit / stale cache read): fetch authoritatively.
+	models, err := s.fetchProviderModels(context.Background(), conn, client, true)
+	if err != nil {
+		slog.Warn("Model sync failed", slog.String("provider", conn.Provider), "error", err)
 		return
 	}
-	baseURL := pInfo.BaseURL
-	if conn.Data.BaseURL != "" {
-		baseURL = conn.Data.BaseURL
+	if len(models) == 0 {
+		return
 	}
-	client := s.getHTTPClient(30 * time.Second)
-	s.tryRefreshToken(conn)
-	var models []model.ModelMetadata
-	if strings.HasPrefix(conn.Provider, "qoder") {
-		models = s.fetchQoderCatalog(conn, client)
-	} else if conn.Provider == "antigravity" {
-
-		projectID, _ := s.EnsureAntigravityProject(context.Background(), conn, client)
-		models = s.fetchAntigravityCatalog(context.Background(), client, conn.Data.AccessToken, projectID)
-	} else {
-		cfg := provider.ModelsFetchFor(pInfo)
-		if conn.Data.BaseURL != "" {
-			cfg.URL = ""
-		}
-		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
-		if err == nil && len(fetched) > 0 {
-			models = fetched
-		} else if static := populateStaticModels(pInfo); len(static) > 0 {
-			models = static
-		}
-	}
-	if len(models) > 0 {
-		// Cache-layer enrichment (single pass, see handleRefreshModels).
-		s.loadModelsDevCatalog(client)
-		model.EnrichModelsFromCatalog(models)
-		cached := model.CachedModels{
-			FetchedAt: time.Now().UTC(),
-			Models:    models,
-		}
-		if data, err := json.Marshal(cached); err == nil {
-			s.DB.KVSet("providerModelCache", conn.Provider, string(data))
-			slog.Info("Live models synced for connection", slog.String("provider", conn.Provider), slog.Int("count", len(models)))
-		}
+	if err := s.cacheProviderModels(conn.Provider, models, client); err != nil {
+		slog.Warn("Failed to cache synced models", slog.String("provider", conn.Provider), "error", err)
 	}
 }
