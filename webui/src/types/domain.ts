@@ -95,7 +95,6 @@ export interface ProviderModel {
   maxOutputTokens?: number
   capabilities?: string[]
   modalities?: string[]
-  displayName?: string
   source?: string
   canEdit?: boolean
   hasOverride?: boolean

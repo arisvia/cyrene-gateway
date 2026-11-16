@@ -379,7 +379,7 @@ export function useProviderModels(deps: ProviderModelsDeps) {
   function handleSaveModelMeta() {
     return submitModelMeta((connectionId, modelId) => store.saveProviderModelMeta(connectionId, {
       id: modelId,
-      displayName: editDisplayName().trim(),
+      name: editDisplayName().trim(),
       contextLength: Number(editContextLength()) || 0,
       maxOutputTokens: Number(editMaxOutput()) || 0,
     }))

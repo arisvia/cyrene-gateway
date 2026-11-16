@@ -226,7 +226,7 @@ func TestModelMetadataOverride(t *testing.T) {
 	cachedRaw := `{"provider":"openai","models":[{"id":"gpt-4o","displayName":"GPT-4o"}]}`
 	database.KVSet("providerModelCache", "openai", cachedRaw)
 	// Save custom metadata for gpt-4o
-	metaBody := `{"id":"gpt-4o","displayName":"GPT-4o Custom","contextLength":128000,"maxOutputTokens":16384}`
+	metaBody := `{"id":"gpt-4o","name":"GPT-4o Custom","contextLength":128000,"maxOutputTokens":16384}`
 	req := newLocalRequest("POST", "/api/providers/meta-conn/models/meta", strings.NewReader(metaBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -286,6 +286,8 @@ func TestModelMetadataOverride(t *testing.T) {
 	var v1Resp struct {
 		Data []struct {
 			ID            string `json:"id"`
+			Object        string `json:"object"`
+			Name          string `json:"name"`
 			DisplayName   string `json:"display_name"`
 			ContextLength int    `json:"context_length"`
 			MaxOutput     int    `json:"max_output_tokens"`
@@ -298,6 +300,14 @@ func TestModelMetadataOverride(t *testing.T) {
 			v1Found = true
 			if m.DisplayName != "GPT-4o Custom" {
 				t.Errorf("v1/models expected display_name 'GPT-4o Custom', got %q", m.DisplayName)
+			}
+			// OpenAI-compatible discoverers read `name`; without it they fall back
+			// to the raw "provider/model" id as the display label.
+			if m.Name != "GPT-4o Custom" {
+				t.Errorf("v1/models expected name 'GPT-4o Custom', got %q", m.Name)
+			}
+			if m.Object != "model" {
+				t.Errorf("v1/models expected object 'model', got %q", m.Object)
 			}
 			if m.ContextLength != 128000 {
 				t.Errorf("v1/models expected context_length 128000, got %d", m.ContextLength)

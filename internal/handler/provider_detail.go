@@ -314,7 +314,7 @@ func (s *Server) handleSaveProviderModelMeta(w http.ResponseWriter, r *http.Requ
 
 	var req struct {
 		ID            string `json:"id"`
-		DisplayName   string `json:"displayName"`
+		Name          string `json:"name"`
 		ContextLength int    `json:"contextLength"`
 		MaxOutput     int    `json:"maxOutputTokens"`
 	}
@@ -326,7 +326,7 @@ func (s *Server) handleSaveProviderModelMeta(w http.ResponseWriter, r *http.Requ
 	modelID := strings.TrimPrefix(req.ID, conn.Provider+"/")
 	fullID := conn.Provider + "/" + modelID
 	ov := ModelMetaOverride{
-		DisplayName:   req.DisplayName,
+		DisplayName:   req.Name,
 		ContextLength: req.ContextLength,
 		MaxOutput:     req.MaxOutput,
 	}

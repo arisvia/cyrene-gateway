@@ -25,9 +25,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type ModelEntry struct {
-		ID            string   `json:"id"`
-		Object        string   `json:"object"`
-		OwnedBy       string   `json:"owned_by"`
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		OwnedBy string `json:"owned_by"`
+		// Name is the spelling OpenAI-compatible discoverers read; DisplayName is
+		// what Anthropic's own /v1/models uses. One value, both spellings, so
+		// neither client family falls back to the raw "provider/model" id.
+		Name          string   `json:"name,omitempty"`
 		DisplayName   string   `json:"display_name,omitempty"`
 		Capabilities  []string `json:"capabilities,omitempty"`
 		Modalities    []string `json:"modalities,omitempty"`
@@ -56,6 +60,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			ID:          c.Name,
 			Object:      "model",
 			OwnedBy:     "cyrene-gateway",
+			Name:        displayName,
 			DisplayName: displayName,
 		})
 	}
@@ -142,7 +147,9 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 			}
 			models = append(models, ModelEntry{
 				ID:            fullID,
+				Object:        "model",
 				OwnedBy:       providerID,
+				Name:          displayName,
 				DisplayName:   displayName,
 				ContextLength: meta.ContextLength,
 				MaxOutput:     meta.MaxOutput,

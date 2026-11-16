@@ -450,7 +450,7 @@ function createGatewayStore() {
     return apiDelete(`/api/providers/${id}/models`, { id: modelId })
   }
 
-  async function saveProviderModelMeta(id: string, meta: { id: string; displayName?: string; contextLength?: number; maxOutputTokens?: number }) {
+  async function saveProviderModelMeta(id: string, meta: { id: string; name?: string; contextLength?: number; maxOutputTokens?: number }) {
     return apiPost(`/api/providers/${id}/models/meta`, meta)
   }
 
