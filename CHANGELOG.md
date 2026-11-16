@@ -2,6 +2,15 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.11.2] - 2026-11-16
+
+### Fixed
+- **上游模型目录不再永久陈旧**：24 小时缓存过期判断此前全仓无调用点，且后台同步只取每个提供商的首个连接，凭据一失效目录就冻结；现在读到过期缓存会后台重取，同步也会遍历该提供商的全部活跃连接。
+- **`/v1/models` 补齐客户端可读的名称字段**：OpenAI 兼容的发现器只读 `id`/`name`/`object`，此前仅下发 `display_name`，下游一律回落到裸 `provider/model` 当显示名；同时非组合条目的 `object` 恒为空串。
+
+### Changed
+- **管理面模型元数据读写对齐**：`POST /api/providers/{id}/models/meta` 请求体改用 `name`，与 GET 响应同名；存储格式不变。
+
 ## [1.11.1] - 2026-11-14
 
 ### Fixed
