@@ -125,7 +125,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			// Qoder and Antigravity use specialized protocols and executors. They
 			// report retryable when the account (not the request) is at fault, so
 			// the next account gets a chance before the combo moves on.
-			if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
+			if provider.IsQoder(modelInfo.Provider) {
 				slog.Info("Combo delegating to Qoder executor", slog.String("model", modelInfo.Model))
 				if retryable := s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo); !retryable {
 					return

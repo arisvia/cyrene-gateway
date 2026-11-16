@@ -145,7 +145,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// delegate directly to handleMessagesViaChat BEFORE selecting a connection.
 	// Calling selectAvailableConnection here and then again in handleSingleModelChat advances
 	// the round-robin counter twice per request, collapsing equal-priority load balancing.
-	if providerInfo.APIType != "anthropic" || modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" || modelInfo.Provider == "antigravity" {
+	if providerInfo.APIType != "anthropic" || provider.IsQoder(modelInfo.Provider) || modelInfo.Provider == "antigravity" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
 		return
 	}

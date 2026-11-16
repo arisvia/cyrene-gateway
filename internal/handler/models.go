@@ -39,20 +39,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	// Load cached model metadata for all providers
 	cacheIndex := s.loadModelCacheIndex()
-	overrides, _ := s.DB.KVList("modelMetaOverrides")
-	// Load disabled models mapping to gate out models marked not public / disabled
-	disabledMap, _ := s.DB.KVList("disabledModels")
-	isModelDisabled := func(fullID, bareID string) bool {
-		if disabledMap == nil {
-			return false
-		}
-		return disabledMap[fullID] != "" || disabledMap[bareID] != ""
-	}
+	overrides, _ := s.DB.KVList(model.KVScopeModelMetaOverrides)
+	isModelDisabled := s.loadDisabledModels()
 
 	// Add combo names as models (filtering out disabled ones)
 	combos, _ := s.DB.ListCombos()
 	for _, c := range combos {
-		if isModelDisabled(c.Name, c.Name) {
+		if isModelDisabled.has(c.Name, c.Name) {
 			continue
 		}
 		displayName := c.Name
@@ -115,7 +108,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		// Append to models list with metadata and disable-check
 		for _, m := range unifiedModels {
 			fullID := providerID + "/" + m.ID
-			if seenFullIDs[fullID] || isModelDisabled(fullID, m.ID) {
+			if seenFullIDs[fullID] || isModelDisabled.has(fullID, m.ID) {
 				continue
 			}
 			seenFullIDs[fullID] = true
@@ -500,7 +493,7 @@ func (s *Server) fetchProviderModels(ctx context.Context, conn *model.ProviderCo
 	s.tryRefreshToken(conn)
 
 	switch {
-	case strings.HasPrefix(conn.Provider, "qoder"):
+	case provider.IsQoder(conn.Provider):
 		if models := s.fetchQoderCatalog(conn, client, force); models != nil {
 			return models, nil
 		}
@@ -559,6 +552,29 @@ func (s *Server) cacheProviderModels(providerID string, models []model.ModelMeta
 	}
 	slog.Info("Live models synced for provider", slog.String("provider", providerID), slog.Int("count", len(models)))
 	return nil
+}
+
+// disabledModelSet snapshots the disabledModels scope once per request. List
+// endpoints gate hundreds of rows, so calling provider.IsModelDisabled per row
+// would turn one KV read into one per model.
+type disabledModelSet map[string]string
+
+func (s *Server) loadDisabledModels() disabledModelSet {
+	if s.DB == nil {
+		return nil
+	}
+	m, _ := s.DB.KVList(model.KVScopeDisabledModels)
+	return m
+}
+
+// has reports a model disabled by either spelling: the qualified
+// "provider/model" id and the bare id, which is how the operator toggle writes
+// it and how a client may type it.
+func (d disabledModelSet) has(fullID, bareID string) bool {
+	if d == nil {
+		return false
+	}
+	return d[fullID] != "" || d[bareID] != ""
 }
 
 // cachedProviderModels reads a stored catalog back. Stale entries are returned

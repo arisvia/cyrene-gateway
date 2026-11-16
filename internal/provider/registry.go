@@ -113,6 +113,13 @@ func GetProvider(id string) (ProviderInfo, bool) {
 	return p, ok
 }
 
+// IsQoder reports whether a provider id is one of the two Qoder (COSY-signed)
+// surfaces. Both share the catalog, PAT exchange, Anthropic-Messages delegation
+// and quota shape, so every check on them is a pair, never a single id.
+func IsQoder(id string) bool {
+	return id == "qoder" || id == "qoder-cn"
+}
+
 // RegistryByCategory groups providers by category with counts
 type RegistryByCategory struct {
 	Category  string         `json:"category"`

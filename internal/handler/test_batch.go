@@ -210,10 +210,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 			}
 			return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: err.Error()}
 		}
-		if conn.Data.ProviderSpecificData == nil {
-			conn.Data.ProviderSpecificData = make(map[string]any)
-		}
-		conn.Data.ProviderSpecificData["projectId"] = projID
+		conn.Data.SetStr("projectId", projID)
 		if conn.ID != "" {
 			if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": projID}); err != nil {
 				return testResult{OK: false, Latency: latency.String(), LatencyMS: latency.Milliseconds(), Error: "failed to persist project discovery"}
@@ -339,7 +336,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 			"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "Hi"}}}},
 		})
 	default:
-		if conn.Provider == "qoder" || conn.Provider == "qoder-cn" {
+		if provider.IsQoder(conn.Provider) {
 			// Both credential shapes probe the COSY-signed model list, mirroring
 			// the chat path: the OAuth device token (dt-...) passes through with
 			// the stored userId; a PAT (pt-...) is exchanged for a job token and

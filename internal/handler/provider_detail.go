@@ -10,9 +10,6 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
-// customModelsScope is the KV scope storing per-connection custom model lists.
-const customModelsScope = "providerModels"
-
 // customModel is a user-defined model attached to a specific connection.
 type customModel struct {
 	ID   string `json:"id"`
@@ -21,7 +18,7 @@ type customModel struct {
 
 // loadCustomModels reads the custom model list for a connection from the KV store.
 func (s *Server) loadCustomModels(connID string) []customModel {
-	raw, err := s.DB.KVGet(customModelsScope, connID)
+	raw, err := s.DB.KVGet(model.KVScopeCustomModels, connID)
 	if err != nil || raw == "" {
 		return nil
 	}
@@ -38,7 +35,7 @@ func (s *Server) saveCustomModels(connID string, models []customModel) error {
 	if err != nil {
 		return err
 	}
-	return s.DB.KVSet(customModelsScope, connID, string(data))
+	return s.DB.KVSet(model.KVScopeCustomModels, connID, string(data))
 }
 
 // ModelMetaOverride stores user-customized metadata for a model.
@@ -120,16 +117,12 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 	})
 
 	// 获取全局禁用模型映射
-	disabledMap, _ := s.DB.KVList("disabledModels")
+	disabled := s.loadDisabledModels()
 	isModelDisabled := func(modelID string) bool {
-		if disabledMap == nil {
-			return false
-		}
-		fullID := conn.Provider + "/" + modelID
-		return disabledMap[fullID] != "" || disabledMap[modelID] != ""
+		return disabled.has(conn.Provider+"/"+modelID, modelID)
 	}
 	cacheIndex := s.loadModelCacheIndex()
-	overrides, _ := s.DB.KVList("modelMetaOverrides")
+	overrides, _ := s.DB.KVList(model.KVScopeModelMetaOverrides)
 
 	buildModelItem := func(id, name string) ProviderModelItem {
 		fullID := conn.Provider + "/" + id
@@ -338,7 +331,7 @@ func (s *Server) handleSaveProviderModelMeta(w http.ResponseWriter, r *http.Requ
 		MaxOutput:     req.MaxOutput,
 	}
 	data, _ := json.Marshal(ov)
-	if err := s.DB.KVSet("modelMetaOverrides", fullID, string(data)); err != nil {
+	if err := s.DB.KVSet(model.KVScopeModelMetaOverrides, fullID, string(data)); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save model metadata"})
 		return
 	}
@@ -366,7 +359,7 @@ func (s *Server) handleResetProviderModelMeta(w http.ResponseWriter, r *http.Req
 
 	modelID := strings.TrimPrefix(req.ID, conn.Provider+"/")
 	fullID := conn.Provider + "/" + modelID
-	s.DB.KVDelete("modelMetaOverrides", fullID)
+	s.DB.KVDelete(model.KVScopeModelMetaOverrides, fullID)
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

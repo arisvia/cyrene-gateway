@@ -51,12 +51,7 @@ func (s *Server) handleAntigravityChat(
 		clientTimeout = 0
 	}
 	client := s.getHTTPClient(clientTimeout)
-	projectID := ""
-	if conn.Data.ProviderSpecificData != nil {
-		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && pid != "" {
-			projectID = pid
-		}
-	}
+	projectID := conn.Data.Str("projectId")
 	if projectID == "" {
 		pid, err := s.EnsureAntigravityProject(r.Context(), conn, client)
 		if err != nil {

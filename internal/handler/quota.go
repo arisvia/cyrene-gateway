@@ -106,19 +106,15 @@ func (s *Server) handleConnectionUsage(w http.ResponseWriter, r *http.Request) {
 	orgName := ""
 	if conn.Provider == "antigravity" {
 		projectID, _ = s.EnsureAntigravityProject(r.Context(), conn, s.getHTTPClient(15*time.Second))
-	} else if conn.Data.ProviderSpecificData != nil {
-		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
-			projectID = pid
-		}
-		if org, ok := conn.Data.ProviderSpecificData["organizationName"].(string); ok && org != "" {
-			orgName = org
-		}
+	} else {
+		projectID = conn.Data.Str("projectId")
+		orgName = conn.Data.Str("organizationName")
 	}
 
 	// Keep the pre-fetch identity and profile intact for the compare-and-swap.
 	name, email, discoveredOrg := conn.Name, conn.Email, ""
 	missingName := conn.Name == "" || conn.Name == conn.Email
-	if (conn.Provider == "qoder" || conn.Provider == "qoder-cn") && conn.Data.AccessToken != "" {
+	if provider.IsQoder(conn.Provider) && conn.Data.AccessToken != "" {
 		if conn.Email == "" || orgName == "" || missingName {
 			profile := provider.FetchQoderUserProfileFor(conn.Provider, conn.Data.AccessToken, s.getHTTPClient(15*time.Second))
 			if profile != nil {

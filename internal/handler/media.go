@@ -684,13 +684,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 
 	enrichList := func(entries []*media.MediaProviderInfo, filterKind media.Kind) []EnrichedProvider {
 		var out []EnrichedProvider
-		disabledMap, _ := s.DB.KVList(model.KVScopeDisabledModels)
-		isModelDisabled := func(fullID, bareID string) bool {
-			if disabledMap == nil {
-				return false
-			}
-			return disabledMap[fullID] != "" || disabledMap[bareID] != ""
-		}
+		isModelDisabled := s.loadDisabledModels()
 		for _, e := range entries {
 			count := connCountByProvider[e.Provider]
 			has := count > 0
@@ -708,7 +702,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				hasCandidate = true
-				if isModelDisabled(e.Provider+"/"+m.ID, m.ID) {
+				if isModelDisabled.has(e.Provider+"/"+m.ID, m.ID) {
 					continue
 				}
 				seenModel[m.ID] = true
@@ -739,7 +733,7 @@ func (s *Server) handleMediaProviders(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				hasCandidate = true
-				if isModelDisabled(e.Provider+"/"+cm.ID, cm.ID) || seenModel[cm.ID] {
+				if isModelDisabled.has(e.Provider+"/"+cm.ID, cm.ID) || seenModel[cm.ID] {
 					continue
 				}
 				seenModel[cm.ID] = true

@@ -16,12 +16,7 @@ import (
 // mediaCreds builds upstream credentials for one connection. Media accounts
 // rotate exactly like chat accounts, so credentials resolve per attempt.
 func mediaCreds(conn *model.ProviderConnection) media.Credentials {
-	projectID := ""
-	if conn.Data.ProviderSpecificData != nil {
-		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok {
-			projectID = pid
-		}
-	}
+	projectID := conn.Data.Str("projectId")
 	return media.Credentials{
 		APIKey:      conn.Data.APIKey,
 		AccessToken: conn.Data.AccessToken,

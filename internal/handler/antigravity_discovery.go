@@ -86,10 +86,8 @@ func (s *Server) EnsureAntigravityProject(ctx context.Context, conn *model.Provi
 	if conn == nil {
 		return "", fmt.Errorf("nil connection")
 	}
-	if conn.Data.ProviderSpecificData != nil {
-		if pid, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && pid != "" {
-			return pid, nil
-		}
+	if pid := conn.Data.Str("projectId"); pid != "" {
+		return pid, nil
 	}
 	if conn.Data.AccessToken == "" {
 		return "", fmt.Errorf("missing access token")
@@ -101,10 +99,7 @@ func (s *Server) EnsureAntigravityProject(ctx context.Context, conn *model.Provi
 	if err != nil {
 		return "", err
 	}
-	if conn.Data.ProviderSpecificData == nil {
-		conn.Data.ProviderSpecificData = make(map[string]any)
-	}
-	conn.Data.ProviderSpecificData["projectId"] = discovered
+	conn.Data.SetStr("projectId", discovered)
 	if s.DB != nil {
 		if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": discovered}); err != nil {
 			return "", fmt.Errorf("persist antigravity project: %w", err)

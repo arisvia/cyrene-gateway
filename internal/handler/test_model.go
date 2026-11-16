@@ -64,12 +64,7 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 	if conn.Provider == "antigravity" {
 		start := time.Now()
 		client := s.getHTTPClient(15 * time.Second)
-		projID := ""
-		if conn.Data.ProviderSpecificData != nil {
-			if p, ok := conn.Data.ProviderSpecificData["projectId"].(string); ok && p != "" {
-				projID = p
-			}
-		}
+		projID := conn.Data.Str("projectId")
 		if projID == "" && conn.Data.BaseURL == "" {
 			var err error
 			projID, err = DiscoverAntigravityProject(r.Context(), client, conn.Data.AccessToken)
@@ -77,10 +72,7 @@ func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "latency": time.Since(start).String()})
 				return
 			}
-			if conn.Data.ProviderSpecificData == nil {
-				conn.Data.ProviderSpecificData = make(map[string]any)
-			}
-			conn.Data.ProviderSpecificData["projectId"] = projID
+			conn.Data.SetStr("projectId", projID)
 			if err := s.DB.UpdateConnectionProviderData(conn.ID, map[string]any{"projectId": projID}); err != nil {
 				writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "failed to persist project discovery"})
 				return

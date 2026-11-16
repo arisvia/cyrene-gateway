@@ -76,7 +76,7 @@ func TestProbeModelSelectsFromCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.KVSet(customModelsScope, conn.ID, string(custom)); err != nil {
+	if err := database.KVSet(model.KVScopeCustomModels, conn.ID, string(custom)); err != nil {
 		t.Fatalf("seed custom models: %v", err)
 	}
 	if got := srv.probeModel(conn); got != "private-llm-7b" {

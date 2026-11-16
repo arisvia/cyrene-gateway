@@ -66,12 +66,8 @@ func (s *Server) syncAllQuotaDeadlines(ctx context.Context) {
 		// value instead of reporting a fresh one.
 		s.tryRefreshToken(conn)
 
-		orgName := ""
-		projectID := ""
-		if conn.Data.ProviderSpecificData != nil {
-			projectID, _ = conn.Data.ProviderSpecificData["projectId"].(string)
-			orgName, _ = conn.Data.ProviderSpecificData["organizationName"].(string)
-		}
+		orgName := conn.Data.Str("organizationName")
+		projectID := conn.Data.Str("projectId")
 		// Antigravity scopes its quota call to a project; without one the fetch
 		// returns no buckets, which under the rule above leaves the deadline
 		// untouched forever.

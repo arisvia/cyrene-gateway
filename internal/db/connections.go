@@ -171,7 +171,7 @@ func (d *DB) UpdateConnectionProfile(original *model.ProviderConnection, name, e
 	if err != nil {
 		return err
 	}
-	oldOrg, _ := original.Data.ProviderSpecificData["organizationName"].(string)
+	oldOrg := original.Data.Str("organizationName")
 	err = connectionUpdateResult(d.conn.Exec(
 		`UPDATE providerConnections SET name=?, email=?, data=json_patch(data, ?), updatedAt=?
 			WHERE id=? AND provider=? AND authType=?

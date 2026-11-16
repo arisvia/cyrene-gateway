@@ -456,7 +456,7 @@ func (s *Server) attemptSingleModelChat(
 	conn *model.ProviderConnection,
 ) (retryable bool, status int, errBody []byte) {
 	// --- Special protocol paths: Qoder (COSY) & Antigravity (Cloud Code) ---
-	if modelInfo.Provider == "qoder" || modelInfo.Provider == "qoder-cn" {
+	if provider.IsQoder(modelInfo.Provider) {
 		return s.handleQoderChat(w, r, req, rawBody, modelInfo, conn, providerInfo), 0, nil
 	}
 	if modelInfo.Provider == "antigravity" {

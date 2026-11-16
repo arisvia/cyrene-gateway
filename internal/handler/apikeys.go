@@ -105,7 +105,7 @@ func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListDisabledModels(w http.ResponseWriter, r *http.Request) {
-	disabled, err := s.DB.KVList("disabledModels")
+	disabled, err := s.DB.KVList(model.KVScopeDisabledModels)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 		return
@@ -135,9 +135,9 @@ func (s *Server) handleSetDisabledModels(w http.ResponseWriter, r *http.Request)
 
 	var err error
 	if req.Disabled {
-		err = s.DB.KVBatchSet("disabledModels", targets, "true")
+		err = s.DB.KVBatchSet(model.KVScopeDisabledModels, targets, "true")
 	} else {
-		err = s.DB.KVBatchDelete("disabledModels", targets)
+		err = s.DB.KVBatchDelete(model.KVScopeDisabledModels, targets)
 	}
 
 	if err != nil {

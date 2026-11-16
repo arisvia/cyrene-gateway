@@ -34,6 +34,38 @@ type ConnectionData struct {
 	ProviderSpecificData map[string]any `json:"providerSpecificData,omitempty"`
 }
 
+// ProviderString reads a string entry from a providerSpecificData map, tolerating
+// a nil map and a wrong-typed value — the two checks every hand-written
+// assertion had to repeat.
+func ProviderString(psd map[string]any, key string) string {
+	s, _ := psd[key].(string)
+	return s
+}
+
+// PutProviderString writes a string entry, creating the map on first use, and
+// returns it so callers holding the map by value can reassign.
+func PutProviderString(psd map[string]any, key, value string) map[string]any {
+	if psd == nil {
+		psd = make(map[string]any)
+	}
+	psd[key] = value
+	return psd
+}
+
+// Str reads a string entry from ProviderSpecificData, tolerating the nil map and
+// the absent/wrong-typed cases that every hand-written assertion had to repeat.
+func (d *ConnectionData) Str(key string) string {
+	if d == nil {
+		return ""
+	}
+	return ProviderString(d.ProviderSpecificData, key)
+}
+
+// SetStr writes a string entry, creating the map on first use.
+func (d *ConnectionData) SetStr(key, value string) {
+	d.ProviderSpecificData = PutProviderString(d.ProviderSpecificData, key, value)
+}
+
 // ProviderNode represents a custom compatible endpoint
 type ProviderNode struct {
 	ID        string    `json:"id"`

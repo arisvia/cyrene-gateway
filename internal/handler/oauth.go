@@ -142,10 +142,7 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		if tokens.ProviderSpecificData == nil {
-			tokens.ProviderSpecificData = make(map[string]any)
-		}
-		tokens.ProviderSpecificData["projectId"] = projID
+		tokens.ProviderSpecificData = model.PutProviderString(tokens.ProviderSpecificData, "projectId", projID)
 	}
 
 	// Create connection
@@ -272,10 +269,7 @@ func (s *Server) handleOAuthExchange(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		if tokens.ProviderSpecificData == nil {
-			tokens.ProviderSpecificData = make(map[string]any)
-		}
-		tokens.ProviderSpecificData["projectId"] = projID
+		tokens.ProviderSpecificData = model.PutProviderString(tokens.ProviderSpecificData, "projectId", projID)
 	}
 
 	conn := s.createOAuthConnection(providerID, tokens, req.Priority, req.Name)
@@ -305,7 +299,7 @@ func (s *Server) handleOAuthDeviceCode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Qoder uses a custom device-token flow (local PKCE + browser login + GET poll)
-	if providerID == "qoder" || providerID == "qoder-cn" {
+	if provider.IsQoder(providerID) {
 		flow := provider.InitiateQoderDeviceFlowFor(providerID)
 		if flow == nil {
 			slog.Warn("Failed to initiate Qoder device flow")
@@ -373,7 +367,7 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 		req.DeviceCode = req.DeviceCodeSnake
 	}
 	// Qoder custom poll: GET with nonce + verifier
-	if providerID == "qoder" || providerID == "qoder-cn" {
+	if provider.IsQoder(providerID) {
 		result, err := provider.PollQoderDeviceTokenFor(providerID, req.Nonce, req.CodeVerifier, s.getHTTPClient(15*time.Second))
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
