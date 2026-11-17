@@ -33,6 +33,21 @@ func TestRegistryOrderPrefersPriorityThenID(t *testing.T) {
 	}
 }
 
+// TestQoderCNRanksAboveIntlForBareNames: both Qoder deployments publish the same
+// qmodel_* catalogue, and bare model names resolve in registry order. The Intl
+// account spends minutes per request in the upstream queue (10605) while the CN
+// pool answers in seconds, so qoder-cn ranks ahead — an operator or client typing
+// `qmodel_latest_preview` reaches the pool that actually replies. Naming
+// `qoder/...` explicitly still selects Intl, and the client list order matches.
+func TestQoderCNRanksAboveIntlForBareNames(t *testing.T) {
+	if registryPriority("qoder-cn") >= registryPriority("qoder") {
+		t.Fatalf("qoder-cn must outrank qoder: got cn=%d intl=%d", registryPriority("qoder-cn"), registryPriority("qoder"))
+	}
+	if got := RegistryOrder("qoder", "qoder-cn"); got <= 0 {
+		t.Errorf("order(qoder, qoder-cn)=%d, want positive so bare qmodel_* names resolve to the CN pool", got)
+	}
+}
+
 // TestResolveModelBareNameIsDeterministic: one bare model id cached by two
 // providers used to resolve through Go's randomized map iteration, so the same
 // request string landed on a different upstream from call to call — different

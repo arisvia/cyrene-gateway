@@ -650,7 +650,12 @@ func init() {
 
 		BaseURL: "https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation",
 		APIType: "openai", AuthType: "oauth",
-		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 30,
+		// Priority 20, one tier above qoder (30): both serve the same qmodel_*
+		// catalogue, and the CN deployment has spare capacity while the Intl
+		// account spends minutes per request in upstream queue (10605). Bare model
+		// names resolve in registry order (provider.RegistryOrder), so this tier is
+		// what answers them; naming qoder/... explicitly still goes to Intl.
+		Category: "oauth", AuthModes: []string{"oauth", "api-key"}, Priority: 20,
 		Brand: "Qoder", Region: "cn",
 		Color:         "#EC4899",
 		Website:       "https://qoder.com.cn",
