@@ -30,6 +30,73 @@ type qoderPeekedBody struct {
 	io.Closer
 }
 
+// qoderQueueWaitBudget caps how long one request will sit inside Qoder's upstream
+// queue before the gateway gives up on it. It also bounds how long a queued account
+// stays parked for that model, so a parked account can never outlive the patience of
+// the request that parked it.
+const qoderQueueWaitBudget = 10 * time.Minute
+
+// qoderQueueYieldAfterSec is the suggested upstream wait from which a queued Qoder
+// account stops being worth sleeping on. The observed waits split cleanly: 1 s is
+// admission control on a busy-but-moving pool, while 28–300 s is a real queue
+// (measured over one 54-minute window: 453 queue events, p50 wait 43.5 s, max
+// 301.9 s, zero completions on the Intl account).
+const qoderQueueYieldAfterSec = 15
+
+// qoderQueueYield parks a queued account on exactly the model it is queued for and
+// hands the request to another connection, returning true when the caller should
+// fall over. Qoder's 10605 is a *pre-execution* queue — the completion has not
+// started — so trying a sibling cannot double-bill, and the queue is per-account
+// capacity: sleeping out the budget on one account while another idles is how a
+// client's own retry budget runs out first.
+//
+// It deliberately declines, leaving the in-place wait as the answer, when nothing
+// new would be gained: the response is already committed to the client, the
+// suggested wait is a blip below qoderQueueYieldAfterSec, or no *other* connection
+// of this provider can take the model right now. A single account has nowhere to
+// hand off to, and a client that named this provider explicitly is never rerouted to
+// a different provider on its behalf.
+func (s *Server) qoderQueueYield(conn *model.ProviderConnection, modelInfo model.ModelInfo, retrySec int, headersCommitted bool) bool {
+	if s.DB == nil || headersCommitted || retrySec < qoderQueueYieldAfterSec {
+		return false
+	}
+	siblings, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
+	if err != nil {
+		return false
+	}
+	alternatives := 0
+	for _, c := range siblings {
+		if c.ID == conn.ID || provider.IsAccountUnavailable(c.Data.RateLimitedUntil) ||
+			provider.IsModelLockActive(&c, modelInfo.Model) {
+			continue
+		}
+		alternatives++
+	}
+	if alternatives == 0 {
+		return false
+	}
+
+	park := time.Duration(retrySec) * time.Second
+	if park > qoderQueueWaitBudget {
+		park = qoderQueueWaitBudget
+	}
+	until := time.Now().Add(park)
+	patch := map[string]any{"modelLock_" + modelInfo.Model: until.UTC().Format(time.RFC3339)}
+	if err := s.DB.UpdateConnectionProviderData(conn.ID, patch); err != nil {
+		return false
+	}
+	// Keep the in-memory copy honest: this request's own bookkeeping must not treat
+	// the account as free again.
+	provider.SetModelLock(conn, modelInfo.Model, park)
+	slog.Info("Qoder account queued; parking it for this model and failing over",
+		slog.String("provider", modelInfo.Provider),
+		slog.String("model", modelInfo.Model),
+		slog.String("connection", conn.ID),
+		slog.Int("suggestedWaitSec", retrySec),
+		slog.Int("alternatives", alternatives))
+	return true
+}
+
 // handleQoderChat executes a chat request against Qoder's COSY-signed endpoint.
 // It returns retryable=true when this account failed in a way another account
 // could survive and nothing has been written to w yet, so the caller may retry
@@ -104,7 +171,6 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
 	maxQueueAttempts := 40
-	maxQueueWaitBudget := 10 * time.Minute
 	queueWaited := time.Duration(0)
 
 	var (
@@ -265,7 +331,13 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			res.Body.Close()
 
 			// Check if this error status represents queue waiting (10605 / isQueued)
-			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(string(errBody)); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
+			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(string(errBody)); isQueued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
+				// A sibling account can answer now: park this one for the model it is
+				// queued on and hand the request over, instead of spending the client's
+				// patience on a queue that may not drain for minutes.
+				if s.qoderQueueYield(conn, modelInfo, retrySec, false) {
+					return true
+				}
 				if !waitQueue(retrySec, attempt) {
 					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, non-streaming client cannot be held",
 						queueLabel(), retrySec, queueWaited.Round(time.Second))
@@ -363,10 +435,20 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 
 		if hasLine {
-			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(rawLine); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
+			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(rawLine); isQueued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
 				res.Body.Close()
+				// Same hand-off as the non-streaming path, but only while nothing has
+				// been written to the client yet: after the 200 event-stream headers the
+				// request belongs to this account.
+				if s.qoderQueueYield(conn, modelInfo, retrySec, headersCommitted) {
+					return true
+				}
 				if !waitQueue(retrySec, attempt) {
-					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, non-streaming client cannot be held",
+					// On a streaming request waitQueue only returns false when the client
+					// hung up during the sleep — a non-streaming client is answered with
+					// 503 + Retry-After before it ever sleeps. Keep the fallback wording
+					// free of that claim so the audit row does not misdescribe the client.
+					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, queue hand-off unavailable",
 						queueLabel(), retrySec, queueWaited.Round(time.Second))
 					if r.Context().Err() != nil {
 						abortStatus, abortReason = 499, "client canceled after "+queueWaited.Round(time.Second).String()+" of qoder queue waiting"

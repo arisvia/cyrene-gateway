@@ -553,3 +553,149 @@ func TestQoderChatSendsCLIUserAgent(t *testing.T) {
 		t.Fatal("upstream never received the request")
 	}
 }
+
+// qoderQueueMessage renders the 10605 pre-execution queue payload Qoder returns with
+// an HTTP 403, asking for waitSec before the model will be admitted.
+func qoderQueueMessage(t *testing.T, waitSec int) string {
+	t.Helper()
+	inner, err := json.Marshal(map[string]any{
+		"isQueued": true, "modelKey": "dfmodel", "queueCount": 0, "retryAfterSeconds": waitSec,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, err := json.Marshal(map[string]any{"code": "10605", "message": string(inner)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := json.Marshal(map[string]any{"code": "403", "message": string(mid)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(outer)
+}
+
+// TestQoderQueueFailsOverToIdleAccount: Qoder's 10605 is a *pre-execution* queue, so
+// a queued account has not begun to bill anything and an idle sibling can take the
+// request at no risk. Measured on production, one account spent 453 queue events in a
+// 54-minute window (p50 43.5 s, max 301.9 s, zero completions) while the provider's
+// other accounts answered in seconds — and clients ran out of their own retry budget
+// first, which is how a whole agent fleet appears to stall.
+func TestQoderQueueFailsOverToIdleAccount(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	var busyHits, idleHits atomic.Int32
+	busy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		busyHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, qoderQueueMessage(t, 30))
+	}))
+	defer busy.Close()
+
+	frame := qoderTestFrame(`{"id":"chatcmpl-failover","choices":[{"index":0,"delta":{"role":"assistant","content":"Served by the idle account"}}],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}`) + "data: [DONE]\n\n"
+	idle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idleHits.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, frame)
+	}))
+	defer idle.Close()
+
+	provider.SeedQoderCatalogForTest("user-busy", map[string]map[string]any{"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096}})
+	provider.SeedQoderCatalogForTest("user-idle", map[string]map[string]any{"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096}})
+
+	// Priority decides the first pick, so the queued account is genuinely tried first.
+	for _, c := range []*model.ProviderConnection{
+		{ID: "qoder-busy", Provider: "qoder", AuthType: "oauth", IsActive: true, Priority: 1,
+			Data: model.ConnectionData{AccessToken: "dt-busy", BaseURL: busy.URL, ProviderSpecificData: map[string]any{"userId": "user-busy"}}},
+		{ID: "qoder-idle", Provider: "qoder", AuthType: "oauth", IsActive: true, Priority: 5,
+			Data: model.ConnectionData{AccessToken: "dt-idle", BaseURL: idle.URL, ProviderSpecificData: map[string]any{"userId": "user-idle"}}},
+	} {
+		if err := database.CreateConnection(c); err != nil {
+			t.Fatalf("create %s: %v", c.ID, err)
+		}
+	}
+
+	body := []byte(`{"model":"qoder/dfmodel","stream":false,"max_tokens":8,"messages":[{"role":"user","content":"ping"}]}`)
+	started := time.Now()
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, newLocalRequest("POST", "/v1/chat/completions", bytes.NewReader(body)))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected the idle account to serve the request, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Served by the idle account") {
+		t.Fatalf("unexpected body: %s", w.Body.String())
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Errorf("took %s; a 30 s suggested wait must be handed off, not slept through", elapsed)
+	}
+	if hits := busyHits.Load(); hits != 1 {
+		t.Errorf("queued account was contacted %d times, want 1 before it gets parked", hits)
+	}
+	if idleHits.Load() == 0 {
+		t.Error("the idle sibling never received the hand-off")
+	}
+
+	// The park must be durable and model-scoped: the next request for this model skips
+	// the queued account, while the sibling stays untouched.
+	stored, err := database.GetConnection("qoder-busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !provider.IsModelLockActive(stored, "dfmodel") {
+		t.Errorf("queued account holds no model lock: %+v", stored.Data.ProviderSpecificData)
+	}
+	sibling, err := database.GetConnection("qoder-idle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.IsModelLockActive(sibling, "dfmodel") {
+		t.Error("the account that answered got locked")
+	}
+}
+
+// TestQoderQueueWaitsWhenNoSiblingExists: with a single account there is nowhere to
+// hand off, so the gateway must keep the honest 503 + Retry-After answer instead of
+// failing the request outright or parking the only credential it has.
+func TestQoderQueueWaitsWhenNoSiblingExists(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	var hits atomic.Int32
+	busy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, qoderQueueMessage(t, 30))
+	}))
+	defer busy.Close()
+
+	provider.SeedQoderCatalogForTest("user-solo", map[string]map[string]any{"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096}})
+	conn := &model.ProviderConnection{ID: "qoder-solo", Provider: "qoder", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "dt-solo", BaseURL: busy.URL, ProviderSpecificData: map[string]any{"userId": "user-solo"}}}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	body := []byte(`{"model":"qoder/dfmodel","stream":false,"max_tokens":8,"messages":[{"role":"user","content":"ping"}]}`)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, newLocalRequest("POST", "/v1/chat/completions", bytes.NewReader(body)))
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 from the queue, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Retry-After"); got != "30" {
+		t.Errorf("Retry-After=%q, want the upstream's suggested wait", got)
+	}
+	if hits.Load() != 1 {
+		t.Errorf("solo account contacted %d times, want one queue report then the 503", hits.Load())
+	}
+	stored, err := database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.IsModelLockActive(stored, "dfmodel") {
+		t.Error("parking the only account would leave the model unroutable")
+	}
+}
