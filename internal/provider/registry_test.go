@@ -321,7 +321,7 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 	// user content for a long, non-agent system prompt.
 	probe := func(id string) (int, any, any) {
 		body := map[string]any{"messages": []any{
-			map[string]any{"role": "system", "content": strings.Repeat("y", codebuddyCNMaxSystemLen+1)},
+			map[string]any{"role": "system", "content": strings.Repeat("y", codebuddyCNMaxSystemLen()+1)},
 			map[string]any{"role": "user", "content": "Hi"},
 		}}
 		sanitizeCodebuddyRequest(id, body)
@@ -330,7 +330,7 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 	}
 
 	n, sys, user := probe("codebuddy")
-	if n != 2 || sys != strings.Repeat("y", codebuddyCNMaxSystemLen+1) {
+	if n != 2 || sys != strings.Repeat("y", codebuddyCNMaxSystemLen()+1) {
 		t.Errorf("codebuddy: Intl must preserve a long caller prompt, got %d %v", n, sys)
 	}
 	if _, blocks := user.([]any); !blocks {
@@ -346,7 +346,7 @@ func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
 	}
 
 	n, sys, user = probe("codebuddy-enterprise")
-	if n != 2 || sys != strings.Repeat("y", codebuddyCNMaxSystemLen+1) {
+	if n != 2 || sys != strings.Repeat("y", codebuddyCNMaxSystemLen()+1) {
 		t.Errorf("sibling: must not inherit the CN length gate, got %d %v", n, sys)
 	}
 	if _, str := user.(string); !str {

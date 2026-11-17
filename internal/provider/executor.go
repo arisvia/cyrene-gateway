@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
@@ -271,12 +273,34 @@ const (
 	// the caller's own prompt.
 	codebuddyIdentityPrompt = "You are CodeBuddy Code."
 
-	// codebuddyCNMaxSystemLen is the CN-only length catch-all: the marker regex
-	// enumerates known agents and cannot know the next one, so an over-long system
-	// prompt is treated as some agent's instruction file. Upstream applies no such
-	// gate to the Intl endpoint, so a long project prompt survives there.
-	codebuddyCNMaxSystemLen = 2000
+	// Rule labels name which guard fired. They reach the panel's live log view, so
+	// a user asking "why did my prompt get eaten" is answerable from the UI alone.
+	codebuddyRuleIdentityMarker = "coding-agent identity marker"
+	codebuddyRuleTooLongFormat  = "%d chars > %d limit (raise CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN)"
+
+	// codebuddyCNDefaultMaxSystemLen is the CN-only length catch-all: the marker
+	// regex enumerates known agents and cannot know the next one, so an over-long
+	// system prompt is treated as some agent's instruction file. Upstream applies
+	// no such gate to the Intl endpoint, so a long project prompt survives there.
+	codebuddyCNDefaultMaxSystemLen = 2000
 )
+
+// codebuddyCNMaxSystemLen is the live catch-all threshold, overridable because the
+// length rule is a heuristic that will occasionally eat a legitimate project
+// prompt. Resolved per request — one Atoi beside an outbound HTTP call is free,
+// and it keeps the knob observable to tests and to a restart-free override.
+// internal/provider must not depend on internal/config, and CYRENE_* is already
+// read in-package elsewhere (auth, system).
+func codebuddyCNMaxSystemLen() int {
+	return envPositiveInt("CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN", codebuddyCNDefaultMaxSystemLen)
+}
+
+func envPositiveInt(key string, fallback int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+		return v
+	}
+	return fallback
+}
 
 // neutralizeCodebuddySystem rewrites one system message's content when it reads
 // as a third-party coding-agent identity. Tencent's WAF rejects those outright —
@@ -285,21 +309,26 @@ const (
 // bisecting it upstream of this repo, not by our own guess. Content arrives either
 // as a string or as typed text blocks depending on the inbound client shape, so
 // the match runs on flattened text while the replacement keeps the original shape.
-// maxLen <= 0 disables the length catch-all.
-func neutralizeCodebuddySystem(content any, maxLen int) (any, bool) {
+// maxLen <= 0 disables the length catch-all. The second return value names the
+// rule that fired, or "" when the content was left alone.
+func neutralizeCodebuddySystem(content any, maxLen int) (any, string) {
 	switch content.(type) {
 	case string, []any:
 	default:
-		return content, false
+		return content, ""
 	}
 	text := messageContentText(content)
 	if text == "" {
-		return content, false
+		return content, ""
 	}
-	if !(maxLen > 0 && len(text) > maxLen) && !agentSystemPromptRegex.MatchString(text) {
-		return content, false
+	if maxLen > 0 && len(text) > maxLen {
+		return reshapeCodebuddySystem(content, neutralCodebuddyPrompt),
+			fmt.Sprintf(codebuddyRuleTooLongFormat, len(text), maxLen)
 	}
-	return reshapeCodebuddySystem(content, neutralCodebuddyPrompt), true
+	if agentSystemPromptRegex.MatchString(text) {
+		return reshapeCodebuddySystem(content, neutralCodebuddyPrompt), codebuddyRuleIdentityMarker
+	}
+	return content, ""
 }
 
 func reshapeCodebuddySystem(content any, text string) any {
@@ -309,6 +338,23 @@ func reshapeCodebuddySystem(content any, text string) any {
 	return []any{map[string]any{"type": "text", "text": text}}
 }
 
+// sanitizeCodebuddyRequest adapts an OpenAI-shape body to what the CodeBuddy
+// gateways accept. Two separate constraints, both verified upstream rather than
+// assumed from our own comments:
+//
+//   - Shape: the Intl endpoint answers 11101 to a body without a leading system
+//     message, and the CN endpoint answers 11101 to a non-stream request. Neither
+//     demands any particular system text.
+//   - Content: Tencent's WAF rejects a system prompt carrying a third-party
+//     coding-agent identity — 400 code 11128 "Illegal API invocation from an
+//     unapproved channel", or the sensitive-content refusal. The trigger is the
+//     literal wording (bisected in the independent buddy-proxy project, issue
+//     #14: removing one apostrophe from "Anthropic's official CLI for Claude"
+//     flips 11128 to 200), so only that text is replaced and the caller keeps the
+//     rest of its prompt.
+//
+// Behaviour aligned to upstream 9router commit 3ca04639 (2026-11-08), which
+// replaced the earlier discard-everything version this repo was ported from.
 func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 	bodyMap["stream"] = true
 
@@ -331,16 +377,24 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 
 	switch providerID {
 	case "codebuddy":
-		bodyMap["messages"] = codebuddyIntlMessages(rawMsgs)
+		bodyMap["messages"] = codebuddyIntlMessages(providerID, rawMsgs)
 	case "codebuddy-cn":
-		bodyMap["messages"] = codebuddyCNMessages(rawMsgs)
+		bodyMap["messages"] = codebuddyCNMessages(providerID, rawMsgs)
 	default:
 		// An unlisted codebuddy-* sibling keeps the plain OpenAI shape: neither the
 		// Intl leading-system rewrite nor the CN length gate is guessed for it. It
 		// still gets marker neutralization, because that is the half that costs an
 		// account. TestRegistryCoversEveryCodebuddyShape pins all three paths.
-		bodyMap["messages"] = neutralizeCodebuddySystems(rawMsgs, 0)
+		bodyMap["messages"] = neutralizeCodebuddySystems(providerID, rawMsgs, 0)
 	}
+}
+
+// logCodebuddyPromptRewrite names the guard that fired. Replacing client text is
+// the one thing in this path that can silently change an answer, so it must never
+// happen without a trace the operator can see in the panel's live log view.
+func logCodebuddyPromptRewrite(providerID, rule string) {
+	slog.Warn("codebuddy system prompt neutralized before upstream",
+		"provider", providerID, "rule", rule)
 }
 
 // codebuddyIntlMessages folds the caller's own system/developer text into the
@@ -348,7 +402,7 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 // identity markers inside it. The previous behaviour discarded that text
 // unconditionally — no upstream basis, and it silently dropped the per-key
 // systemPrompt an admin configures on an API key.
-func codebuddyIntlMessages(rawMsgs []any) []any {
+func codebuddyIntlMessages(providerID string, rawMsgs []any) []any {
 	var prompts []string
 	out := make([]any, 0, len(rawMsgs)+1)
 	for _, m := range rawMsgs {
@@ -364,6 +418,7 @@ func codebuddyIntlMessages(rawMsgs []any) []any {
 			}
 			if agentSystemPromptRegex.MatchString(text) {
 				text = neutralCodebuddyPrompt
+				logCodebuddyPromptRewrite(providerID, codebuddyRuleIdentityMarker)
 			}
 			prompts = append(prompts, text)
 			continue
@@ -390,7 +445,7 @@ func codebuddyIntlMessages(rawMsgs []any) []any {
 // codebuddyCNMessages leaves the message array in place — the CN endpoint takes
 // the plain OpenAI shape — only guarantees a leading system message, then
 // neutralizes agent-shaped system text with the CN length catch-all enabled.
-func codebuddyCNMessages(rawMsgs []any) []any {
+func codebuddyCNMessages(providerID string, rawMsgs []any) []any {
 	hasSystem := false
 	for _, m := range rawMsgs {
 		if msgMap, ok := m.(map[string]any); ok {
@@ -404,12 +459,12 @@ func codebuddyCNMessages(rawMsgs []any) []any {
 	if !hasSystem {
 		messages = append([]any{map[string]any{"role": "system", "content": codebuddyIdentityPrompt}}, rawMsgs...)
 	}
-	return neutralizeCodebuddySystems(messages, codebuddyCNMaxSystemLen)
+	return neutralizeCodebuddySystems(providerID, messages, codebuddyCNMaxSystemLen())
 }
 
 // neutralizeCodebuddySystems rewrites agent-shaped system messages and leaves
 // everything else, including user and assistant text, untouched.
-func neutralizeCodebuddySystems(rawMsgs []any, maxLen int) []any {
+func neutralizeCodebuddySystems(providerID string, rawMsgs []any, maxLen int) []any {
 	out := make([]any, 0, len(rawMsgs))
 	for _, m := range rawMsgs {
 		msgMap, ok := m.(map[string]any)
@@ -421,11 +476,12 @@ func neutralizeCodebuddySystems(rawMsgs []any, maxLen int) []any {
 			out = append(out, msgMap)
 			continue
 		}
-		content, replaced := neutralizeCodebuddySystem(msgMap["content"], maxLen)
-		if !replaced {
+		content, rule := neutralizeCodebuddySystem(msgMap["content"], maxLen)
+		if rule == "" {
 			out = append(out, msgMap)
 			continue
 		}
+		logCodebuddyPromptRewrite(providerID, rule)
 		clone := make(map[string]any, len(msgMap))
 		maps.Copy(clone, msgMap)
 		clone["content"] = content

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -149,7 +150,7 @@ func TestSanitizeCodebuddyRequest_CNTypedBlocks(t *testing.T) {
 	}
 
 	// The CN length catch-all stays on: an unrecognised agent CLI must not slip by.
-	long := strings.Repeat("x", codebuddyCNMaxSystemLen+1)
+	long := strings.Repeat("x", codebuddyCNMaxSystemLen()+1)
 	longBody := map[string]any{
 		"messages": []any{
 			map[string]any{"role": "system", "content": long},
@@ -196,6 +197,54 @@ func TestSanitizeCodebuddyRequest_SiblingKeepsShape(t *testing.T) {
 	}
 	if got := msgs[1].(map[string]any)["content"]; got != "Hi" {
 		t.Errorf("expected the plain OpenAI shape to survive, got %#v", got)
+	}
+}
+
+// TestCodebuddyPromptRewriteRules pins the operator-facing half of the guard: the
+// rule label is the only thing that explains a changed answer in the panel's live
+// log, so it must name which guard fired and how to loosen it.
+func TestCodebuddyPromptRewriteRules(t *testing.T) {
+	content, rule := neutralizeCodebuddySystem("You are Cline, an AI coding agent.", codebuddyCNMaxSystemLen())
+	if content != neutralCodebuddyPrompt || rule != codebuddyRuleIdentityMarker {
+		t.Fatalf("marker rule = %#v / %q", content, rule)
+	}
+
+	content, rule = neutralizeCodebuddySystem(strings.Repeat("z", codebuddyCNDefaultMaxSystemLen+1), codebuddyCNMaxSystemLen())
+	if content != neutralCodebuddyPrompt {
+		t.Fatalf("length rule left the prompt intact: %#v", content)
+	}
+	if !strings.Contains(rule, "CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN") {
+		t.Errorf("length rule must name the override knob, got %q", rule)
+	}
+
+	content, rule = neutralizeCodebuddySystem("Answer concisely.", codebuddyCNMaxSystemLen())
+	if content != "Answer concisely." || rule != "" {
+		t.Errorf("benign prompt rewritten: %#v / %q", content, rule)
+	}
+
+	// Raising the knob is the documented escape hatch, and it takes effect without
+	// a rebuild: a long legitimate prompt survives once the limit clears it.
+	long := strings.Repeat("w", codebuddyCNDefaultMaxSystemLen+1)
+	probe := func() any {
+		body := map[string]any{"messages": []any{
+			map[string]any{"role": "system", "content": long},
+			map[string]any{"role": "user", "content": "Hi"},
+		}}
+		sanitizeCodebuddyRequest("codebuddy-cn", body)
+		return body["messages"].([]any)[0].(map[string]any)["content"]
+	}
+	if got := probe(); got != neutralCodebuddyPrompt {
+		t.Fatalf("default limit should replace the long prompt, got %v", got)
+	}
+	t.Setenv("CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN", strconv.Itoa(codebuddyCNDefaultMaxSystemLen*4))
+	if got := probe(); got != long {
+		t.Errorf("raised limit should preserve the long prompt, got %v", got)
+	}
+
+	// A malformed override falls back instead of disabling the guard.
+	t.Setenv("CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN", "0")
+	if codebuddyCNMaxSystemLen() != codebuddyCNDefaultMaxSystemLen {
+		t.Errorf("zero/nonsense override must fall back, got %d", codebuddyCNMaxSystemLen())
 	}
 }
 
