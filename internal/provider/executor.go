@@ -159,6 +159,10 @@ func PrepareUpstreamRequest(
 	if applyTokenSaverFn != nil {
 		applyTokenSaverFn(bodyMap, "openai")
 	}
+	// Both steps above append to the instruction slot the sanitizer just
+	// measured, so CodeBuddy CN's length catch-all is re-asserted here or the
+	// gate is only ever applied to the pre-injection text.
+	enforceCodebuddyCNLength(modelInfo.Provider, bodyMap)
 	translated, err := translator.TranslateRequest(targetFormat, modelInfo.Model, bodyMap, upstreamStream)
 	if err != nil {
 		return nil, "", fmt.Errorf("translation failed: %w", err)
@@ -264,7 +268,38 @@ func ExecuteAttempt(
 	}
 }
 
-var agentSystemPromptRegex = regexp.MustCompile(`(?i)you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>`)
+// agentSystemPromptRegex enumerates the third-party coding-agent identities Tencent's
+// WAF rejects with 400 code 11128. The alternatives are deliberately NOT ours to
+// narrow: this pattern mirrors upstream 9router's AGENT_PATTERN
+// (open-sse/executors/codebuddy-intl.js) byte-for-byte, and that project tunes it
+// against live rejections we cannot see. Dropping a broad alternative such as
+// `orchestration capabilities` or `<Role>` would forward text upstream still
+// refuses and cost accounts.
+//
+// The only deviation is whitespace tolerance: upstream writes single spaces as
+// literals, so "You are\nClaude Code" and "You are  Claude Code" slip past it —
+// and `messageContentText` joins typed blocks with "\n", which manufactures
+// exactly that form from a two-block identity header. Every `\s` here is one
+// space widened to whitespace; nothing else was added or removed. The `.+` spans
+// stay line-bound on purpose (no (?s)): a greedy cross-line span would delete
+// whole paragraphs of the caller's prompt.
+var agentSystemPromptRegex = regexp.MustCompile(`(?i)you are\s+claude\s+code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are\s+(?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are\s+an?\s+(?:ai\s+)?(?:coding\s+|code\s+)?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are\s+.{0,30}(?:powerful\s+)?ai\s+agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>`)
+
+// codebuddyNeutralSpan replaces one matched identity span. It is a noun phrase,
+// not a sentence, because it is spliced into the middle of the caller's own
+// clause: "You are Claude Code, Anthropic's official CLI for Claude." becomes
+// "You are a helpful coding assistant, a helpful coding assistant for Claude."
+// which collapses to one readable sentence below.
+const codebuddyNeutralSpan = "a helpful coding assistant"
+
+// codebuddyNeutralTag replaces a matched scaffolding tag so the caller's XML
+// structure survives with its closing pair intact.
+const codebuddyNeutralTag = "<instructions>"
+
+// codebuddyNeutralCollapse folds two neutral spans that only punctuation separates,
+// so an identity claim written across several alternatives does not repeat the
+// phrase. Anything else between two occurrences is caller text and is preserved.
+var codebuddyNeutralCollapse = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(codebuddyNeutralSpan) + `(?:[\s,;:.()\[\]<>/-]*` + regexp.QuoteMeta(codebuddyNeutralSpan) + `)+`)
 
 const (
 	neutralCodebuddyPrompt = "You are a helpful AI assistant that helps with software engineering tasks."
@@ -278,7 +313,13 @@ const (
 	// Rule labels name which guard fired. They reach the panel's live log view, so
 	// a user asking "why did my prompt get eaten" is answerable from the UI alone.
 	codebuddyRuleIdentityMarker = "coding-agent identity marker"
-	codebuddyRuleTooLongFormat  = "%d chars > %d limit (raise CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN)"
+	codebuddyRuleTooLongFormat  = "%d chars > %d limit (raise CYRENE_CODEBUDDY_CN_MAX_SYSTEM_LEN)"
+	// codebuddyRuleStrayField and codebuddyRuleShapeDrop cover the two ways text
+	// can leave the instruction slot without passing through the message array:
+	// a mixed-shape body carrying top-level `system`/`instructions`, and a system
+	// message whose content has no text at all (image-only or scalar).
+	codebuddyRuleStrayField = "top-level instruction field carried an identity marker"
+	codebuddyRuleShapeDrop  = "system content had no text to preserve"
 
 	// codebuddyCNDefaultMaxSystemLen is the CN-only length catch-all: the marker
 	// regex enumerates known agents and cannot know the next one, so an over-long
@@ -293,12 +334,16 @@ const (
 // and it keeps the knob observable to tests and to a restart-free override.
 // internal/provider must not depend on internal/config, and CYRENE_* is already
 // read in-package elsewhere (auth, system).
+//
+// An explicit 0 disables the catch-all entirely (the escape hatch for a caller
+// whose legitimate project prompt is long); anything unparseable or negative
+// falls back to the default.
 func codebuddyCNMaxSystemLen() int {
-	return envPositiveInt("CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN", codebuddyCNDefaultMaxSystemLen)
+	return envNonNegativeInt("CYRENE_CODEBUDDY_CN_MAX_SYSTEM_LEN", codebuddyCNDefaultMaxSystemLen)
 }
 
-func envPositiveInt(key string, fallback int) int {
-	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+func envNonNegativeInt(key string, fallback int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v >= 0 {
 		return v
 	}
 	return fallback
@@ -327,16 +372,53 @@ func neutralizeCodebuddySystem(content any, maxLen int) (any, string) {
 	// roughly three times too long and a legitimate project prompt would be eaten.
 	// Astral characters (emoji) count one here versus two upstream — the looser
 	// direction, and never the trigger for the agent-file heuristic.
+	//
+	// The length catch-all runs first and is the ONLY branch that replaces the
+	// whole slot: a >2000-char agent instruction file has no safe span to cut,
+	// while a marker inside a normal prompt does.
 	if maxLen > 0 {
 		if n := utf8.RuneCountInString(text); n > maxLen {
 			return reshapeCodebuddySystem(content, neutralCodebuddyPrompt),
 				fmt.Sprintf(codebuddyRuleTooLongFormat, n, maxLen)
 		}
 	}
-	if agentSystemPromptRegex.MatchString(text) {
-		return reshapeCodebuddySystem(content, neutralCodebuddyPrompt), codebuddyRuleIdentityMarker
+	if !agentSystemPromptRegex.MatchString(text) {
+		return content, ""
 	}
-	return content, ""
+	return reshapeCodebuddySystem(content, neutralizeCodebuddyText(text)), codebuddyRuleIdentityMarker
+}
+
+// neutralizeCodebuddyText rewrites just the matched identity spans and returns
+// the caller's remaining wording byte-for-byte. Discarding the whole message on
+// a match — upstream 9router's behaviour — also throws away the project
+// instructions around the marker and any per-key systemPrompt an admin appended
+// into the same slot, which is the exact loss this gateway exists to avoid.
+// Removing the literal is enough for the WAF: the buddy-proxy #14 bisect flipped
+// 11128 to 200 by changing one character inside the phrase.
+func neutralizeCodebuddyText(text string) string {
+	// How much of the message the markers cover decides the strategy. Deleting the
+	// spans is right for a marker inside real instructions ("You are Claude Code.
+	// Be terse." keeps "Be terse."), but an identity claim written as one long
+	// sentence leaves a residue ("...for Claude.") that would then stand as the
+	// whole system prompt. Past two-thirds coverage the message *is* the claim, so
+	// it becomes the neutral sentence instead of a fragment.
+	matched := 0
+	for _, span := range agentSystemPromptRegex.FindAllStringIndex(text, -1) {
+		matched += span[1] - span[0]
+	}
+	if matched*3 >= len(text)*2 {
+		return neutralCodebuddyPrompt
+	}
+	out := agentSystemPromptRegex.ReplaceAllStringFunc(text, func(hit string) string {
+		// A tag-shaped match ("<Role>", "<agent-identity>") must be replaced by a
+		// tag: splicing prose in place of an opening tag strands its closing tag
+		// and corrupts the caller's XML scaffolding.
+		if strings.HasPrefix(hit, "<") {
+			return codebuddyNeutralTag
+		}
+		return codebuddyNeutralSpan
+	})
+	return codebuddyNeutralCollapse.ReplaceAllString(out, codebuddyNeutralSpan)
 }
 
 func reshapeCodebuddySystem(content any, text string) any {
@@ -358,11 +440,17 @@ func reshapeCodebuddySystem(content any, text string) any {
 //     unapproved channel", or the sensitive-content refusal. The trigger is the
 //     literal wording (bisected in the independent buddy-proxy project, issue
 //     #14: removing one apostrophe from "Anthropic's official CLI for Claude"
-//     flips 11128 to 200), so only that text is replaced and the caller keeps the
-//     rest of its prompt.
+//     flips 11128 to 200), so only the matched spans are rewritten and the caller
+//     keeps the rest of its prompt.
 //
-// Behaviour aligned to upstream 9router commit 3ca04639 (2026-11-08), which
-// replaced the earlier discard-everything version this repo was ported from.
+// The pattern itself is upstream 9router's AGENT_PATTERN (open-sse/executors/
+// codebuddy-intl.js) and stays byte-identical, widened only for whitespace.
+// Upstream's handling (commit 3ca04639, 2026-11-08, which replaced the
+// discard-everything version this repo was ported from) tests that pattern and
+// then replaces the whole message; we deliberately keep the caller's surrounding
+// text, because whole-message discard also eats the per-key systemPrompt an admin
+// appends into the same slot. The exception is the CN length catch-all, where an
+// over-long agent instruction file has no safe span to cut.
 func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 	bodyMap["stream"] = true
 
@@ -376,6 +464,7 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 	}
 
 	rewrites := codebuddyRewrites{}
+	neutralizeCodebuddyStrayFields(bodyMap, rewrites)
 	rawMsgs, ok := bodyMap["messages"].([]any)
 	if !ok || len(rawMsgs) == 0 {
 		bodyMap["messages"] = []any{
@@ -395,6 +484,64 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 		// still gets marker neutralization, because that is the half that costs an
 		// account. TestRegistryCoversEveryCodebuddyShape pins all three paths.
 		bodyMap["messages"] = neutralizeCodebuddySystems(rawMsgs, 0, rewrites)
+	}
+	rewrites.log(providerID)
+}
+
+// neutralizeCodebuddyStrayFields guards the instruction slots that only exist on
+// mixed-shape bodies. A client posting to /v1/chat/completions can carry a
+// top-level `system` (Anthropic shape) or `instructions` (Responses shape), and
+// the OpenAI->OpenAI passthrough keeps unknown keys verbatim, so an agent
+// identity would reach the WAF without ever passing through the message array.
+// The legitimate /v1/messages and /v1/responses adapters convert those fields
+// into messages before this point, which makes this the malformed-client and
+// deliberate-evasion surface only. The keys stay in place — deleting them would
+// change the body shape upstream sees — only the matched spans are rewritten.
+func neutralizeCodebuddyStrayFields(bodyMap map[string]any, rewrites codebuddyRewrites) {
+	for _, key := range []string{"system", "instructions"} {
+		text, ok := bodyMap[key].(string)
+		if !ok || text == "" || !agentSystemPromptRegex.MatchString(text) {
+			continue
+		}
+		bodyMap[key] = neutralizeCodebuddyText(text)
+		rewrites.add(codebuddyRuleStrayField)
+	}
+}
+
+// enforceCodebuddyCNLength re-measures the CN instruction slot after the
+// guard/token-saver injections have grown it. The length catch-all in
+// neutralizeCodebuddySystem runs inside the sanitizer, which must come first for
+// shape reasons, but ApplyLoopGuard appends loopguard.TerminationPrompt (499
+// chars) into the very message that was just measured — so a 1500-2000 char
+// caller prompt would pass the gate and reach upstream over it, which is the
+// rejection the gate exists to prevent. Marker neutralization is NOT re-run
+// here: the injected text is ours and is already clean.
+func enforceCodebuddyCNLength(providerID string, bodyMap map[string]any) {
+	if providerID != "codebuddy-cn" {
+		return
+	}
+	maxLen := codebuddyCNMaxSystemLen()
+	if maxLen <= 0 {
+		return
+	}
+	messages, _ := bodyMap["messages"].([]any)
+	rewrites := codebuddyRewrites{}
+	for _, m := range messages {
+		msgMap, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		if role != "system" && role != "developer" {
+			continue
+		}
+		text := messageContentText(msgMap["content"])
+		n := utf8.RuneCountInString(text)
+		if n <= maxLen {
+			continue
+		}
+		msgMap["content"] = reshapeCodebuddySystem(msgMap["content"], neutralCodebuddyPrompt)
+		rewrites.add(fmt.Sprintf(codebuddyRuleTooLongFormat, n, maxLen))
 	}
 	rewrites.log(providerID)
 }
@@ -443,12 +590,19 @@ func codebuddyIntlMessages(rawMsgs []any, rewrites codebuddyRewrites) []any {
 		}
 		role, _ := msgMap["role"].(string)
 		if role == "system" || role == "developer" {
-			text := messageContentText(msgMap["content"])
+			content := msgMap["content"]
+			text := messageContentText(content)
 			if text == "" {
+				// Content that exists but carries no text (image-only blocks, a
+				// scalar) is about to vanish from the instruction slot. That is a
+				// rewrite as much as a marker substitution is, so it gets a rule.
+				if content != nil && content != "" {
+					rewrites.add(codebuddyRuleShapeDrop)
+				}
 				continue
 			}
 			if agentSystemPromptRegex.MatchString(text) {
-				text = neutralCodebuddyPrompt
+				text = neutralizeCodebuddyText(text)
 				rewrites.add(codebuddyRuleIdentityMarker)
 			}
 			prompts = append(prompts, text)
@@ -477,13 +631,23 @@ func codebuddyIntlMessages(rawMsgs []any, rewrites codebuddyRewrites) []any {
 // the plain OpenAI shape — only guarantees a leading system message, then
 // neutralizes agent-shaped system text with the CN length catch-all enabled.
 func codebuddyCNMessages(rawMsgs []any, rewrites codebuddyRewrites) []any {
+	// Presence means "the caller already filled the instruction slot". Both roles
+	// count — Intl folds developer into system, so a developer-only body must not
+	// be handed a second leading slot — and the slot must carry text, because an
+	// empty or null system message satisfies neither upstream nor us.
 	hasSystem := false
 	for _, m := range rawMsgs {
-		if msgMap, ok := m.(map[string]any); ok {
-			if role, _ := msgMap["role"].(string); role == "system" {
-				hasSystem = true
-				break
-			}
+		msgMap, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		if role != "system" && role != "developer" {
+			continue
+		}
+		if strings.TrimSpace(messageContentText(msgMap["content"])) != "" {
+			hasSystem = true
+			break
 		}
 	}
 	messages := rawMsgs

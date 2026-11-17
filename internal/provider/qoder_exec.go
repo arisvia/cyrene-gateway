@@ -317,9 +317,14 @@ func messageContentText(content any) string {
 			return t
 		}
 		return ""
+	case float64, bool:
+		// Malformed input, but it used to be forwarded in string form; flattening
+		// a scalar to "" turns a weird-but-working request into an empty-content
+		// message that upstream may reject outright.
+		return fmt.Sprint(v)
 	default:
 		// JSON-decoded content is only ever string, array, object, number, bool or
-		// null; anything left here is a scalar with no text to extract.
+		// null; anything left here has no text to extract.
 		return ""
 	}
 }

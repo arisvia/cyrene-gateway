@@ -96,8 +96,10 @@ func TestSanitizeCodebuddyRequest_IntlIdentityAndFallback(t *testing.T) {
 	}
 	sanitizeCodebuddyRequest("codebuddy", agent)
 	agentMsgs := agent["messages"].([]any)
-	if got := agentMsgs[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
-		t.Errorf("agent fingerprint not neutralized: %v", got)
+	// The marker goes, the caller's own instruction does not: whole-message
+	// discard would have eaten "Be terse." as collateral.
+	if got := agentMsgs[0].(map[string]any)["content"]; got != "a helpful coding assistant for Claude. Be terse." {
+		t.Errorf("agent fingerprint not neutralized in place: %v", got)
 	}
 
 	// No caller prompt at all: the shape requirement still needs a leading system.
@@ -195,8 +197,8 @@ func TestSanitizeCodebuddyRequest_SiblingKeepsShape(t *testing.T) {
 	if len(msgs) != 2 {
 		t.Fatalf("expected no message to be injected, got %v", msgs)
 	}
-	if got := msgs[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
-		t.Errorf("expected agent fingerprint neutralized, got %v", got)
+	if got := msgs[0].(map[string]any)["content"]; got != "a helpful coding assistant, an AI coding agent." {
+		t.Errorf("expected only the identity span neutralized, got %v", got)
 	}
 	if got := msgs[1].(map[string]any)["content"]; got != "Hi" {
 		t.Errorf("expected the plain OpenAI shape to survive, got %#v", got)
@@ -208,7 +210,7 @@ func TestSanitizeCodebuddyRequest_SiblingKeepsShape(t *testing.T) {
 // log, so it must name which guard fired and how to loosen it.
 func TestCodebuddyPromptRewriteRules(t *testing.T) {
 	content, rule := neutralizeCodebuddySystem("You are Cline, an AI coding agent.", codebuddyCNMaxSystemLen())
-	if content != neutralCodebuddyPrompt || rule != codebuddyRuleIdentityMarker {
+	if content != "a helpful coding assistant, an AI coding agent." || rule != codebuddyRuleIdentityMarker {
 		t.Fatalf("marker rule = %#v / %q", content, rule)
 	}
 
@@ -216,7 +218,7 @@ func TestCodebuddyPromptRewriteRules(t *testing.T) {
 	if content != neutralCodebuddyPrompt {
 		t.Fatalf("length rule left the prompt intact: %#v", content)
 	}
-	if !strings.Contains(rule, "CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN") {
+	if !strings.Contains(rule, "CYRENE_CODEBUDDY_CN_MAX_SYSTEM_LEN") {
 		t.Errorf("length rule must name the override knob, got %q", rule)
 	}
 
@@ -239,15 +241,28 @@ func TestCodebuddyPromptRewriteRules(t *testing.T) {
 	if got := probe(); got != neutralCodebuddyPrompt {
 		t.Fatalf("default limit should replace the long prompt, got %v", got)
 	}
-	t.Setenv("CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN", strconv.Itoa(codebuddyCNDefaultMaxSystemLen*4))
+	t.Setenv("CYRENE_CODEBUDDY_CN_MAX_SYSTEM_LEN", strconv.Itoa(codebuddyCNDefaultMaxSystemLen*4))
 	if got := probe(); got != long {
 		t.Errorf("raised limit should preserve the long prompt, got %v", got)
 	}
 
-	// A malformed override falls back instead of disabling the guard.
-	t.Setenv("CYRENE_CODEBUDY_CN_MAX_SYSTEM_LEN", "0")
-	if codebuddyCNMaxSystemLen() != codebuddyCNDefaultMaxSystemLen {
-		t.Errorf("zero/nonsense override must fall back, got %d", codebuddyCNMaxSystemLen())
+	// An explicit 0 disables the catch-all: a caller whose legitimate project
+	// prompt is simply long needs an off switch, not a bigger number.
+	t.Setenv("CYRENE_CODEBUDDY_CN_MAX_SYSTEM_LEN", "0")
+	if codebuddyCNMaxSystemLen() != 0 {
+		t.Fatalf("0 must disable the catch-all, got %d", codebuddyCNMaxSystemLen())
+	}
+	if got := probe(); got != long {
+		t.Errorf("disabled catch-all must forward the long prompt, got %v", got)
+	}
+
+	// Garbage and negative values fall back to the default rather than silently
+	// disabling the guard.
+	for _, bad := range []string{"abc", "-5", ""} {
+		t.Setenv("CYRENE_CODEBUDDY_CN_MAX_SYSTEM_LEN", bad)
+		if codebuddyCNMaxSystemLen() != codebuddyCNDefaultMaxSystemLen {
+			t.Errorf("override %q must fall back, got %d", bad, codebuddyCNMaxSystemLen())
+		}
 	}
 }
 
