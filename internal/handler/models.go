@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"sort"
@@ -79,7 +80,9 @@ func (s *Server) handleModelRetrieve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, found := lookupClientModel(models, wanted)
+	entry, found := lookupClientModel(models, wanted, func(m clientModelEntry) bool {
+		return modelAllowedForRequest(r, m.ID)
+	})
 	// A key scoped to specific models must not learn about the ones it cannot
 	// call, so a scoped-out model reports the same 404 as an unknown one.
 	if found && !modelAllowedForRequest(r, entry.ID) {
@@ -94,9 +97,16 @@ func (s *Server) handleModelRetrieve(w http.ResponseWriter, r *http.Request) {
 
 // lookupClientModel resolves a retrieve id against the published list: the exact
 // "provider/model" id first, then a bare model id. Bare names take the first
-// match in list order, which is registry-priority order — the same connection the
-// router would pick for that name.
-func lookupClientModel(models []clientModelEntry, wanted string) (clientModelEntry, bool) {
+// match in list order, which is registry-priority order — the same order
+// provider.RegistryOrder gives the router, so retrieving a bare name describes the
+// connection that will actually answer the next completion.
+//
+// `allowed` (nil for everything) only filters the bare pass. A qualified id is
+// answered verbatim because its owner is explicit: skipping to another provider's
+// same-named model would answer a question nobody asked. In the bare pass,
+// however, stopping at the first candidate made a scoped key 404 on a model its
+// own list showed — the deny must move on to the next sibling, not end the walk.
+func lookupClientModel(models []clientModelEntry, wanted string, allowed func(clientModelEntry) bool) (clientModelEntry, bool) {
 	if wanted == "" {
 		return clientModelEntry{}, false
 	}
@@ -106,9 +116,13 @@ func lookupClientModel(models []clientModelEntry, wanted string) (clientModelEnt
 		}
 	}
 	for _, m := range models {
-		if _, bare, ok := strings.Cut(m.ID, "/"); ok && bare == wanted {
-			return m, true
+		if _, bare, ok := strings.Cut(m.ID, "/"); !ok || bare != wanted {
+			continue
 		}
+		if allowed != nil && !allowed(m) {
+			continue
+		}
+		return m, true
 	}
 	return clientModelEntry{}, false
 }
@@ -167,7 +181,7 @@ func (s *Server) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
 	models, err := s.buildClientModels()
 	if err != nil {
 		slog.Error("Failed to list connections for gemini models", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeGeminiError(w, http.StatusInternalServerError, "Internal error.", "INTERNAL")
 		return
 	}
 	// Google's own listing includes image models, so no kind filtering here.
@@ -189,10 +203,12 @@ func (s *Server) handleGeminiModelRetrieve(w http.ResponseWriter, r *http.Reques
 	models, err := s.buildClientModels()
 	if err != nil {
 		slog.Error("Failed to list connections for gemini model retrieve", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		writeGeminiError(w, http.StatusInternalServerError, "Internal error.", "INTERNAL")
 		return
 	}
-	entry, found := lookupClientModel(models, wanted)
+	entry, found := lookupClientModel(models, wanted, func(m clientModelEntry) bool {
+		return modelAllowedForRequest(r, m.ID)
+	})
 	if !found || !modelAllowedForRequest(r, entry.ID) {
 		writeGeminiModelNotFound(w, wanted)
 		return
@@ -200,14 +216,23 @@ func (s *Server) handleGeminiModelRetrieve(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toGeminiModel(entry))
 }
 
-func writeGeminiModelNotFound(w http.ResponseWriter, name string) {
-	writeJSON(w, http.StatusNotFound, map[string]any{
+// writeGeminiError emits Google's own error envelope. The Gemini SDKs read
+// error.code / error.message / error.status; handing them OpenAI's
+// {"error": "internal error"} string means a failure arrives unreadable — and on
+// this surface it is reachable (buildClientModels fails when the connection
+// query fails), so it is not a theoretical shape problem.
+func writeGeminiError(w http.ResponseWriter, httpStatus int, message, status string) {
+	writeJSON(w, httpStatus, map[string]any{
 		"error": map[string]any{
-			"code":    http.StatusNotFound,
-			"message": fmt.Sprintf("Model %q not found.", name),
-			"status":  "NOT_FOUND",
+			"code":    httpStatus,
+			"message": message,
+			"status":  status,
 		},
 	})
+}
+
+func writeGeminiModelNotFound(w http.ResponseWriter, name string) {
+	writeGeminiError(w, http.StatusNotFound, fmt.Sprintf("Model %q not found.", name), "NOT_FOUND")
 }
 
 // modelAllowedForRequest reports whether the API key serving this request may see
@@ -350,28 +375,11 @@ func (s *Server) buildClientModels() ([]clientModelEntry, error) {
 		}
 	}
 
-	// Deterministic sorting of providers by registry priority, then by provider ID
-	sortedProviders := make([]string, 0, len(activeConnsByProvider))
-	for pid := range activeConnsByProvider {
-		sortedProviders = append(sortedProviders, pid)
-	}
-	sort.Slice(sortedProviders, func(i, j int) bool {
-		p1, p2 := sortedProviders[i], sortedProviders[j]
-		info1, ok1 := provider.GetProvider(p1)
-		info2, ok2 := provider.GetProvider(p2)
-		prio1 := 1000
-		if ok1 && info1.Priority > 0 {
-			prio1 = info1.Priority
-		}
-		prio2 := 1000
-		if ok2 && info2.Priority > 0 {
-			prio2 = info2.Priority
-		}
-		if prio1 != prio2 {
-			return prio1 < prio2
-		}
-		return p1 < p2
-	})
+	// Deterministic sorting of providers by registry priority, then by provider ID.
+	// One comparator for both surfaces: routing resolves a bare name in this order
+	// (provider.RegistryOrder), so the list must be built in it too or the two
+	// disagree about which provider owns a shared id.
+	sortedProviders := slices.SortedFunc(maps.Keys(activeConnsByProvider), provider.RegistryOrder)
 
 	// Add models for all providers in stable priority order
 	for _, providerID := range sortedProviders {
@@ -484,13 +492,13 @@ func (s *Server) handleRefreshModels(w http.ResponseWriter, r *http.Request) {
 	providerID := providerInfo.ID
 	client := s.getHTTPClient(30 * time.Second)
 	// Operator-initiated: bypass provider-side catalog caches entirely.
-	models, fetchErr := s.fetchProviderModels(r.Context(), &conn, client, true)
+	models, fromUpstream, fetchErr := s.fetchProviderModels(r.Context(), &conn, client, true)
 	if fetchErr != nil {
 		slog.Warn("Model refresh failed", slog.String("provider", providerID), "error", fetchErr)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": fetchErr.Error()})
 		return
 	}
-	if err := s.cacheProviderModels(providerID, models, client); err != nil {
+	if err := s.cacheProviderModels(providerID, models, client, fromUpstream); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to cache models"})
 		return
 	}
@@ -598,11 +606,13 @@ func (s *Server) loadModelsDevCatalog(client *http.Client) map[string]model.Mode
 	// 1. Prime in-memory cache from DB if memory is currently empty.
 	hydrateModelsDevCatalog(s.DB)
 
-	// 2. Fetch fresh from network (LoadModelsDevCatalog respects 24h TTL internally)
-	catalog, err := model.LoadModelsDevCatalog(client)
+	// 2. Fetch fresh from network (LoadModelsDevCatalog respects 24h TTL internally
+	// and downloads at most once even when several callers arrive together).
+	catalog, fetchedAt, err := model.LoadModelsDevCatalog(client)
 	if err == nil && len(catalog) > 0 {
-		// Persist to DB for offline/cold-start resilience
-		if data, err := model.EncodeModelsDevCache(catalog, model.ModelsDevFetchedAt()); err == nil {
+		// Persist to DB for offline/cold-start resilience, pairing this exact
+		// catalog with the stamp it was cached under.
+		if data, err := model.EncodeModelsDevCache(catalog, fetchedAt); err == nil {
 			s.DB.KVSet("modelsDevCatalog", "cache", string(data))
 		}
 		return catalog
@@ -668,7 +678,7 @@ func (s *Server) syncAllActiveConnections() {
 	for _, providerID := range order {
 		for _, conn := range byProvider[providerID] {
 			// Background poll: reuse short-lived provider catalog caches.
-			models, fetchErr := s.fetchProviderModels(context.Background(), conn, client, false)
+			models, fromUpstream, fetchErr := s.fetchProviderModels(context.Background(), conn, client, false)
 			if fetchErr != nil {
 				slog.Warn("Auto-sync found no usable catalog from this connection",
 					slog.String("provider", providerID),
@@ -678,10 +688,15 @@ func (s *Server) syncAllActiveConnections() {
 			if len(models) == 0 {
 				continue
 			}
-			if err := s.cacheProviderModels(providerID, models, client); err != nil {
+			if err := s.cacheProviderModels(providerID, models, client, fromUpstream); err != nil {
 				slog.Warn("Failed to cache auto-synced models", slog.String("provider", providerID), "error", err)
 			}
-			break
+			// Only a real upstream answer ends the attempt: a registry-seed fallback
+			// written under the old stamp still counts as stale, so keep trying the
+			// provider's other connections for an actual catalog.
+			if fromUpstream {
+				break
+			}
 		}
 	}
 }
@@ -692,30 +707,30 @@ func (s *Server) syncAllActiveConnections() {
 // project-scoped — so they branch ahead of the registry-driven generic fetch.
 // A provider whose live fetch fails keeps its static registry seed, when it has
 // one; otherwise the error surfaces so callers can say why.
-func (s *Server) fetchProviderModels(ctx context.Context, conn *model.ProviderConnection, client *http.Client, force bool) ([]model.ModelMetadata, error) {
+func (s *Server) fetchProviderModels(ctx context.Context, conn *model.ProviderConnection, client *http.Client, force bool) ([]model.ModelMetadata, bool, error) {
 	pInfo, ok := provider.GetProvider(conn.Provider)
 	if !ok {
-		return nil, fmt.Errorf("unknown provider: %s", conn.Provider)
+		return nil, false, fmt.Errorf("unknown provider: %s", conn.Provider)
 	}
 	s.tryRefreshToken(conn)
 
 	switch {
 	case provider.IsQoder(conn.Provider):
 		if models := s.fetchQoderCatalog(conn, client, force); models != nil {
-			return models, nil
+			return models, true, nil
 		}
-		return nil, fmt.Errorf("qoder model catalog fetch failed")
+		return nil, false, fmt.Errorf("qoder model catalog fetch failed")
 
 	case conn.Provider == "antigravity":
 		projectID, discErr := s.EnsureAntigravityProject(ctx, conn, client)
 		models := s.fetchAntigravityCatalog(ctx, client, conn.Data.AccessToken, projectID)
 		if models != nil {
-			return models, nil
+			return models, true, nil
 		}
 		if discErr != nil {
-			return nil, fmt.Errorf("antigravity model catalog fetch failed (project discovery failed: %v)", discErr)
+			return nil, false, fmt.Errorf("antigravity model catalog fetch failed (project discovery failed: %v)", discErr)
 		}
-		return nil, fmt.Errorf("antigravity model catalog fetch failed")
+		return nil, false, fmt.Errorf("antigravity model catalog fetch failed")
 
 	default:
 		// Phase 36 T6: registry ModelsURL + format-derived auth scheme.
@@ -727,16 +742,20 @@ func (s *Server) fetchProviderModels(ctx context.Context, conn *model.ProviderCo
 		}
 		fetched, err := model.FetchModels(client, conn.Provider, baseURL, conn.Data.APIKey, conn.Data.AccessToken, cfg)
 		if err == nil && len(fetched) > 0 {
-			return fetched, nil
+			return fetched, true, nil
 		}
 		if static := populateStaticModels(pInfo); len(static) > 0 {
 			slog.Info("Live model fetch failed or empty, falling back to static registry models", slog.String("provider", conn.Provider), "error", err)
-			return static, nil
+			// Reported as NOT from upstream: seeding a cache row and calling that a
+			// successful sync made the 24h TTL renew itself every 6h, so a provider
+			// with no working /models endpoint (perplexity, vertex) served registry
+			// seeds forever and never looked stale enough to retry.
+			return static, false, nil
 		}
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return nil, fmt.Errorf("provider returned no models")
+		return nil, false, fmt.Errorf("provider returned no models")
 	}
 }
 
@@ -744,11 +763,20 @@ func (s *Server) fetchProviderModels(ctx context.Context, conn *model.ProviderCo
 // the catalog under the provider's cache key. The cache is provider-scoped, not
 // per-connection: entitlement and credit multipliers follow the provider's
 // published catalog, so any healthy account is authoritative for all of them.
-func (s *Server) cacheProviderModels(providerID string, models []model.ModelMetadata, client *http.Client) error {
+//
+// fromUpstream says whether the rows came from the provider's own endpoint. A
+// registry-seed fallback keeps the previous fetch stamp, so staleness stays
+// visible and the next sync attempt is not postponed by a write that fetched
+// nothing.
+func (s *Server) cacheProviderModels(providerID string, models []model.ModelMetadata, client *http.Client, fromUpstream bool) error {
 	s.loadModelsDevCatalog(client)
 	model.EnrichModelsFromCatalog(models)
+	fetchedAt := time.Now().UTC()
+	if !fromUpstream {
+		fetchedAt = s.previousModelCacheStamp(providerID)
+	}
 	data, err := json.Marshal(model.CachedModels{
-		FetchedAt: time.Now().UTC(),
+		FetchedAt: fetchedAt,
 		Models:    models,
 	})
 	if err != nil {
@@ -757,8 +785,30 @@ func (s *Server) cacheProviderModels(providerID string, models []model.ModelMeta
 	if err := s.DB.KVSet(model.KVScopeProviderModelCache, providerID, string(data)); err != nil {
 		return err
 	}
-	slog.Info("Live models synced for provider", slog.String("provider", providerID), slog.Int("count", len(models)))
+	if fromUpstream {
+		slog.Info("Live models synced for provider", slog.String("provider", providerID), slog.Int("count", len(models)))
+	} else {
+		slog.Info("Static registry models cached for provider", slog.String("provider", providerID), slog.Int("count", len(models)))
+	}
 	return nil
+}
+
+// previousModelCacheStamp returns the stored fetch time so a seed write cannot
+// extend the TTL; an absent or unreadable row falls back to the epoch, which
+// reads as expired and forces the next sync to try the network again.
+func (s *Server) previousModelCacheStamp(providerID string) time.Time {
+	if s.DB == nil {
+		return time.Unix(0, 0).UTC()
+	}
+	raw, err := s.DB.KVGet(model.KVScopeProviderModelCache, providerID)
+	if err != nil || raw == "" {
+		return time.Unix(0, 0).UTC()
+	}
+	var cached model.CachedModels
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+		return time.Unix(0, 0).UTC()
+	}
+	return cached.FetchedAt
 }
 
 // disabledModelSet snapshots the disabledModels scope once per request. List
@@ -818,13 +868,27 @@ func (s *Server) cachedModelEntry(providerID string, ids ...string) *model.Model
 	return nil
 }
 
+// claimModelSync takes the right to kick a background catalog refresh for one
+// connection, and releases it when the work returns. Without it a dashboard
+// polling a stale panel hit the refresh branch on every request — 30-second
+// upstream calls stacking up per connection while the upstream is down.
+func (s *Server) claimModelSync(connID string, work func()) {
+	if _, loaded := s.modelSyncInFlight.LoadOrStore(connID, struct{}{}); loaded {
+		return
+	}
+	s.goBackground(func() {
+		defer s.modelSyncInFlight.Delete(connID)
+		work()
+	})
+}
+
 func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 	if conn == nil {
 		return
 	}
 	client := s.getHTTPClient(30 * time.Second)
 	// Event-driven (login / credential edit / stale cache read): fetch authoritatively.
-	models, err := s.fetchProviderModels(context.Background(), conn, client, true)
+	models, fromUpstream, err := s.fetchProviderModels(context.Background(), conn, client, true)
 	if err != nil {
 		slog.Warn("Model sync failed", slog.String("provider", conn.Provider), "error", err)
 		return
@@ -832,7 +896,7 @@ func (s *Server) syncConnectionModels(conn *model.ProviderConnection) {
 	if len(models) == 0 {
 		return
 	}
-	if err := s.cacheProviderModels(conn.Provider, models, client); err != nil {
+	if err := s.cacheProviderModels(conn.Provider, models, client, fromUpstream); err != nil {
 		slog.Warn("Failed to cache synced models", slog.String("provider", conn.Provider), "error", err)
 	}
 }

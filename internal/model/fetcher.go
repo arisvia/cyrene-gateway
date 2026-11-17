@@ -592,6 +592,13 @@ func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMet
 		if cached.Family != "" {
 			result.Family = cached.Family
 		}
+		if cached.Created != 0 && result.Created == 0 {
+			// The cache row's stamp was written by EnrichModelsFromCatalog from the
+			// models.dev catalog, so reusing it after a catalog failure keeps the
+			// provenance honest instead of dropping a date already verified once.
+			// The guard is one-way: a live catalog hit always wins.
+			result.Created = cached.Created
+		}
 	}
 	// Layer 2.5: If context length or max output is still missing, try matching catalog by display name
 	if (result.ContextLength == 0 || result.MaxOutput == 0) && result.DisplayName != "" && result.DisplayName != modelID {

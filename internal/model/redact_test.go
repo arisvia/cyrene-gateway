@@ -30,7 +30,7 @@ func TestRedactURLErrorStripsCredentials(t *testing.T) {
 // A nil client must fail closed rather than silently constructing a client
 // without SSRF protection.
 func TestLoadModelsDevCatalogRejectsNilClient(t *testing.T) {
-	if _, err := LoadModelsDevCatalog(nil); err == nil {
+	if _, _, err := LoadModelsDevCatalog(nil); err == nil {
 		t.Fatal("nil client must be rejected, not replaced with an unguarded one")
 	}
 }

@@ -48,6 +48,10 @@ type Server struct {
 	// background tracks fire-and-forget work (catalog sync after a provider
 	// write) so tests can wait for it instead of racing a live goroutine.
 	background sync.WaitGroup
+
+	// modelSyncInFlight holds the connection ids with a background catalog
+	// refresh running, keyed by connection id.
+	modelSyncInFlight sync.Map
 }
 
 // goBackground runs fn asynchronously while keeping it observable to tests.

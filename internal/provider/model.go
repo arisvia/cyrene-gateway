@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/arisvia/cyrene-gateway/internal/db"
@@ -53,6 +55,31 @@ func ParseModel(modelStr string) model.ModelInfo {
 	return model.ModelInfo{Provider: "", Model: cleanModel}
 }
 
+// registryPriorityUnset matches the client list's treatment of providers with no
+// declared priority: they sort after every prioritized one.
+const registryPriorityUnset = 1000
+
+// RegistryOrder compares provider ids exactly the way the client-facing model
+// list orders them — registry priority first, then id, so the tie-break is a
+// total order. Routing has to use the same order: a bare model name cached by two
+// providers must resolve to the same upstream that /v1/models advertises for it,
+// not to a winner picked by Go's randomized map iteration (probed on production:
+// 31 bare ids are cached by more than one provider, and `glm-5.3` by three).
+func RegistryOrder(a, b string) int {
+	pa, pb := registryPriority(a), registryPriority(b)
+	if pa != pb {
+		return pa - pb
+	}
+	return strings.Compare(a, b)
+}
+
+func registryPriority(id string) int {
+	if info, ok := GetProvider(id); ok && info.Priority > 0 {
+		return info.Priority
+	}
+	return registryPriorityUnset
+}
+
 // ResolveModel resolves a model string to full ModelInfo using:
 //  1. Explicit provider prefix (e.g. "openai/gpt-4o")
 //  2. Dynamic search in cached models of active connections
@@ -94,7 +121,13 @@ func ResolveModel(modelStr string, database *db.DB) (model.ModelInfo, error) {
 			}
 
 			var fallbackMatch *model.ModelInfo
-			for providerID, raw := range caches {
+			// Deterministic provider order (see RegistryOrder): ranging the KV map
+			// directly let Go's randomized iteration decide which provider answers a
+			// bare name, so one model string could land on a different upstream on
+			// every request — different billing, different prompt handling,
+			// different metadata than /v1/models advertises.
+			for _, providerID := range slices.SortedFunc(maps.Keys(caches), RegistryOrder) {
+				raw := caches[providerID]
 				var cached model.CachedModels
 				if err := json.Unmarshal([]byte(raw), &cached); err != nil {
 					continue

@@ -82,7 +82,7 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 		// than showing the operator a multiplier that has since changed upstream.
 		// Refresh on a copy: syncConnectionModels rotates the token in place.
 		fresh := *conn
-		s.goBackground(func() { s.syncConnectionModels(&fresh) })
+		s.claimModelSync(conn.ID, func() { s.syncConnectionModels(&fresh) })
 	}
 	for _, m := range cachedModels {
 		// 过滤生图专用模型（避免在文本会话中展示）

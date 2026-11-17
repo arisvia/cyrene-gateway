@@ -220,7 +220,7 @@ func TestLoadModelsDevCatalog_Mock(t *testing.T) {
 	modelsDevCache = nil
 	modelsDevMu.Unlock()
 
-	catalog, err := LoadModelsDevCatalog(srv.Client())
+	catalog, _, err := LoadModelsDevCatalog(srv.Client())
 	if err != nil {
 		t.Fatalf("LoadModelsDevCatalog failed: %v", err)
 	}

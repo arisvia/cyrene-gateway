@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,9 @@ var (
 	modelsDevMu      sync.RWMutex
 	modelsDevCache   map[string]ModelsDevEntry // key: lowercase model id
 	modelsDevFetched time.Time
+	// modelsDevFetchMu serializes catalog downloads (single-flight); it is never
+	// held while modelsDevMu is read for anything but a snapshot.
+	modelsDevFetchMu sync.Mutex
 )
 
 // modelsDevProvider mirrors the per-provider shape of api.json.
@@ -59,49 +63,65 @@ type modelsDevProvider struct {
 // LoadModelsDevCatalog fetches (or reuses) the models.dev catalog as a
 // lowercase-id-keyed map. On fetch failure it returns the stale cache (if
 // any) or an error.
-func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error) {
+func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, time.Time, error) {
 	if client == nil {
 		// Fail closed. model cannot import provider.SafeHTTPClient (provider
 		// imports model), so the only safe choices are "a caller-supplied
 		// SSRF-pinned client" or "no request at all" — never a bare
 		// http.Client, which would silently bypass AGENTS.md rule 3 for any
 		// future caller that forgets to inject one.
-		return nil, fmt.Errorf("models.dev catalog requires an SSRF-pinned HTTP client")
+		return nil, time.Time{}, fmt.Errorf("models.dev catalog requires an SSRF-pinned HTTP client")
 	}
 
-	modelsDevMu.RLock()
-	if modelsDevCache != nil && time.Since(modelsDevFetched) < modelsDevCacheTTL {
-		c := modelsDevCache
+	// One download at a time. The TTL test below is otherwise a TOCTOU: N callers
+	// that all observe an expired catalog — a boot with several providers syncing,
+	// or a dashboard polling stale rows — each pull the whole 20 MB file. Queuing
+	// here lets the followers find the leader's result already installed instead.
+	modelsDevFetchMu.Lock()
+	defer modelsDevFetchMu.Unlock()
+
+	if !ModelsDevCatalogExpired() {
+		modelsDevMu.RLock()
+		c, at := modelsDevCache, modelsDevFetched
 		modelsDevMu.RUnlock()
-		return c, nil
+		return c, at, nil
 	}
-	modelsDevMu.RUnlock()
 
 	req, err := http.NewRequest("GET", ModelsDevURL, nil)
 	if err != nil {
-		return modelsDevStale(), err
+		return modelsDevStale(), ModelsDevFetchedAt(), err
 	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
-		return modelsDevStale(), fmt.Errorf("models.dev fetch failed: %w", err)
+		return modelsDevStale(), ModelsDevFetchedAt(), fmt.Errorf("models.dev fetch failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return modelsDevStale(), fmt.Errorf("models.dev returned status %d", resp.StatusCode)
+		return modelsDevStale(), ModelsDevFetchedAt(), fmt.Errorf("models.dev returned status %d", resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
 	if err != nil {
-		return modelsDevStale(), err
+		return modelsDevStale(), ModelsDevFetchedAt(), err
 	}
 
 	var providers map[string]modelsDevProvider
 	if err := json.Unmarshal(raw, &providers); err != nil {
-		return modelsDevStale(), fmt.Errorf("models.dev parse failed: %w", err)
+		return modelsDevStale(), ModelsDevFetchedAt(), fmt.Errorf("models.dev parse failed: %w", err)
 	}
 
 	catalog := make(map[string]modelsDevEntry, 4096)
-	for _, p := range providers {
+	// Provider order must not decide which duplicate wins: models.dev publishes the
+	// same id under several providers (e.g. gpt-4o under openai and azure-openai)
+	// with different release dates, and ranging the map directly kept a random one
+	// per fetch — so the published `created` changed every refresh.
+	providerIDs := make([]string, 0, len(providers))
+	for id := range providers {
+		providerIDs = append(providerIDs, id)
+	}
+	slices.Sort(providerIDs)
+	for _, pid := range providerIDs {
+		p := providers[pid]
 		for id, m := range p.Models {
 			key := strings.ToLower(id)
 			if _, dup := catalog[key]; dup {
@@ -117,12 +137,16 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error
 		}
 	}
 
+	fetched := time.Now()
 	modelsDevMu.Lock()
 	modelsDevCache = catalog
-	modelsDevFetched = time.Now()
+	modelsDevFetched = fetched
 	modelsDevMu.Unlock()
 
-	return catalog, nil
+	// The stamp is returned with the catalog it belongs to: a caller persisting the
+	// pair used to re-read ModelsDevFetchedAt() afterwards and could store this
+	// catalog under a concurrent fetch's time.
+	return catalog, fetched, nil
 }
 
 func modelsDevStale() map[string]modelsDevEntry {
@@ -131,65 +155,97 @@ func modelsDevStale() map[string]modelsDevEntry {
 	return modelsDevCache
 }
 
+// modelsDevMatch records HOW a catalog hit was obtained, because some consumers
+// may only accept certainty. Containment matching resolves opaque provider ids
+// and human-readable names, but "grok-4" contained in the catalog key
+// "grok-4-fast-reasoning" is a *different model* — its release date would be a
+// fabrication, and its tie against another same-length key used to be decided by
+// Go's randomized map order (probed: 261 vs 39 across 300 lookups).
+type modelsDevMatch int
+
+const (
+	matchNone modelsDevMatch = iota
+	// matchExact: the identifier equals a catalog key, after stripping a provider
+	// prefix or normalising spaces to dashes.
+	matchExact
+	// matchNameExact: the identifier equals one catalog entry's display name.
+	matchNameExact
+	// matchContains: one string contains the other. Names and limits only.
+	matchContains
+)
+
 // LookupModelsDev resolves a model id against the catalog: exact lowercase
 // match first, then stripped provider prefix (e.g. "openai/gpt-4o" -> "gpt-4o"),
 // then safe fuzzy containment (e.g. modelID contains catalog key).
 func LookupModelsDev(catalog map[string]ModelsDevEntry, modelID string) (ModelsDevEntry, bool) {
+	entry, match := lookupModelsDev(catalog, modelID)
+	return entry, match != matchNone
+}
+
+func lookupModelsDev(catalog map[string]ModelsDevEntry, modelID string) (ModelsDevEntry, modelsDevMatch) {
 	if len(catalog) == 0 || modelID == "" {
-		return ModelsDevEntry{}, false
+		return ModelsDevEntry{}, matchNone
 	}
 	lower := strings.ToLower(modelID)
 	if e, ok := catalog[lower]; ok {
-		return e, true
+		return e, matchExact
 	}
 	// Strip provider prefix (e.g. "openai/gpt-4o" -> "gpt-4o").
 	if idx := strings.Index(lower, "/"); idx > 0 {
 		if e, ok := catalog[lower[idx+1:]]; ok {
-			return e, true
+			return e, matchExact
 		}
 	}
 	// Exact stripped dash/space match
 	lowerDashed := strings.ReplaceAll(lower, " ", "-")
 	if e, ok := catalog[lowerDashed]; ok {
-		return e, true
+		return e, matchExact
 	}
-	// Fuzzy: model id contains a catalog id, best = longest match (min length 4 to avoid greedy collisions).
-	best, bestLen := ModelsDevEntry{}, 0
+	// Fuzzy: model id contains a catalog id, best = longest match (min length 4 to
+	// avoid greedy collisions). Length alone is not a total order, so equal-length
+	// candidates break lexically; iterating a map must never decide the winner.
+	best, bestKey := ModelsDevEntry{}, ""
 	for key, e := range catalog {
-		if len(key) <= bestLen || len(key) < 4 {
+		if len(key) < 4 {
 			continue
 		}
-		if strings.Contains(lower, key) || strings.Contains(lowerDashed, key) || (len(lower) >= 6 && strings.Contains(key, lower)) {
-			best, bestLen = e, len(key)
+		if !strings.Contains(lower, key) && !strings.Contains(lowerDashed, key) &&
+			!(len(lower) >= 6 && strings.Contains(key, lower)) {
+			continue
+		}
+		if len(key) > len(bestKey) || (len(key) == len(bestKey) && key < bestKey) {
+			best, bestKey = e, key
 		}
 	}
-	if bestLen > 0 {
-		return best, true
+	if bestKey != "" {
+		return best, matchContains
 	}
 	// Display-name resolution: opaque provider ids (e.g. Qoder's "kmodel_latest")
 	// never match a models.dev key, but the provider's human-readable display name
 	// ("Kimi-K3") is a real model name. When the query itself is a name, match it
 	// against each entry's Name field. Exact normalized-name hits win outright;
-	// otherwise the longest containment (min 4 chars) wins.
+	// otherwise the longest containment (min 4 chars) wins, ties broken by the
+	// catalog key so the result does not depend on map order.
 	nameNorm := lowerDashed
-	bestName, bestNameLen := ModelsDevEntry{}, 0
-	for _, e := range catalog {
+	bestName, bestNameKey, bestNameLen := ModelsDevEntry{}, "", 0
+	for key, e := range catalog {
 		if e.Name == "" {
 			continue
 		}
 		en := strings.ReplaceAll(strings.ToLower(e.Name), " ", "-")
 		if en == nameNorm {
-			return e, true
+			return e, matchNameExact
 		}
-		if len(en) >= 4 && len(en) > bestNameLen &&
-			(strings.Contains(nameNorm, en) || (len(nameNorm) >= 6 && strings.Contains(en, nameNorm))) {
-			bestName, bestNameLen = e, len(en)
+		if len(en) >= 4 &&
+			(strings.Contains(nameNorm, en) || (len(nameNorm) >= 6 && strings.Contains(en, nameNorm))) &&
+			(len(en) > bestNameLen || (len(en) == bestNameLen && key < bestNameKey)) {
+			bestName, bestNameKey, bestNameLen = e, key, len(en)
 		}
 	}
 	if bestNameLen > 0 {
-		return bestName, true
+		return bestName, matchContains
 	}
-	return ModelsDevEntry{}, false
+	return ModelsDevEntry{}, matchNone
 }
 
 // ModelsDevOutputLimit returns the maximum output length models.dev advertises for
@@ -235,20 +291,31 @@ func LookupModelsDevGlobal(identifiers ...string) *ModelMetadata {
 		if raw == "" {
 			continue
 		}
-		if e, ok := LookupModelsDev(cat, raw); ok {
-			primaryID := raw
-			if len(identifiers) > 0 && identifiers[0] != "" {
-				primaryID = identifiers[0]
-			}
-			return &ModelMetadata{
-				ID:            primaryID,
-				DisplayName:   e.Name,
-				ContextLength: e.Context,
-				MaxOutput:     e.Output,
-				Family:        e.Family,
-				Created:       releaseDateToEpoch(e.ReleaseDate),
-				FromUpstream:  false,
-			}
+		e, match := lookupModelsDev(cat, raw)
+		if match == matchNone {
+			continue
+		}
+		primaryID := raw
+		if len(identifiers) > 0 && identifiers[0] != "" {
+			primaryID = identifiers[0]
+		}
+		// `created` is the one field a containment match must not supply: the
+		// catalog key that merely contains the query can belong to a different
+		// model ("grok-4" inside "grok-4-fast-reasoning"), and a plausible-looking
+		// release date for the wrong model is indistinguishable downstream. Omit it
+		// and the field disappears; publish it wrongly and it silently lies.
+		var created int64
+		if match != matchContains {
+			created = releaseDateToEpoch(e.ReleaseDate)
+		}
+		return &ModelMetadata{
+			ID:            primaryID,
+			DisplayName:   e.Name,
+			ContextLength: e.Context,
+			MaxOutput:     e.Output,
+			Family:        e.Family,
+			Created:       created,
+			FromUpstream:  false,
 		}
 	}
 	return nil
@@ -355,7 +422,11 @@ func ModelsDevCatalogExpired() bool {
 	return modelsDevCache == nil || time.Since(modelsDevFetched) >= modelsDevCacheTTL
 }
 
-// GetModelsDevCatalog returns the current in-memory models.dev catalog copy.
+// GetModelsDevCatalog returns the live in-memory models.dev catalog. The map is
+// shared, not copied — a 20 MB catalog copied on every admin panel read would be
+// absurd — so callers must treat it as read-only. That holds today because
+// writers replace the whole map under modelsDevMu (SetModelsDevCatalog) rather
+// than mutating entries in place; any future in-place edit must copy first.
 func GetModelsDevCatalog() map[string]ModelsDevEntry {
 	modelsDevMu.RLock()
 	defer modelsDevMu.RUnlock()
