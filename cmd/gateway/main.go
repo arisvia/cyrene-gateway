@@ -69,6 +69,10 @@ func main() {
 	// Start background model discovery & health probing ticker (every 6 hours)
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	defer bgCancel()
+	// A fresh install has no models.dev copy in the database, which leaves every
+	// published model without context window, output cap or release date until a
+	// provider catalog sync happens to succeed. Fetch it off the startup path.
+	srv.StartModelsDevPrefetch()
 	srv.StartBackgroundModelSync(bgCtx, 6*time.Hour)
 	// Credit deadlines move on a much shorter clock than model catalogs: the
 	// selection layer drains soonest-expiring accounts first, and a stale

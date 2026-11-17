@@ -551,6 +551,22 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 	return models
 }
 
+// StartModelsDevPrefetch loads the models.dev catalog once at boot while memory
+// is still empty. A fresh install has no copy in SQLite, and without a catalog the
+// client surfaces publish models with no context window, output cap or release
+// date until some provider's catalog sync happens to succeed. Deliberately async:
+// startup must never wait on an outbound request.
+func (s *Server) StartModelsDevPrefetch() {
+	if s.DB == nil || len(model.GetModelsDevCatalog()) > 0 {
+		return
+	}
+	s.goBackground(func() {
+		if cat := s.loadModelsDevCatalog(s.getHTTPClient(30 * time.Second)); len(cat) == 0 {
+			slog.Warn("models.dev catalog prefetch at startup returned nothing")
+		}
+	})
+}
+
 func (s *Server) loadModelsDevCatalog(client *http.Client) map[string]model.ModelsDevEntry {
 	// 1. Prime in-memory cache from DB if memory is currently empty
 	if len(model.GetModelsDevCatalog()) == 0 {
