@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
 )
@@ -346,6 +347,36 @@ func TestSanitizeCodebuddyRequest_RewriteLogIsAggregated(t *testing.T) {
 	}
 	if !strings.Contains(out, "count=500") {
 		t.Fatalf("aggregated count missing from the log line: %s", out)
+	}
+}
+
+// TestCodebuddyCNLengthGateCountsCharacters pins that the CN catch-all measures
+// characters, matching upstream's JavaScript string length. Counting UTF-8 bytes
+// made a 1500-character Chinese project prompt (4500 bytes) look over-long and
+// silently replaced it.
+func TestCodebuddyCNLengthGateCountsCharacters(t *testing.T) {
+	cjk := strings.Repeat("中", 1500)
+	if utf8.RuneCountInString(cjk) != 1500 || len(cjk) <= codebuddyCNDefaultMaxSystemLen {
+		t.Fatalf("fixture must be 1500 characters and longer than the limit in bytes: %d runes, %d bytes",
+			utf8.RuneCountInString(cjk), len(cjk))
+	}
+	body := map[string]any{"messages": []any{
+		map[string]any{"role": "system", "content": cjk},
+		map[string]any{"role": "user", "content": "你好"},
+	}}
+	sanitizeCodebuddyRequest("codebuddy-cn", body)
+	if got := body["messages"].([]any)[0].(map[string]any)["content"]; got != cjk {
+		t.Fatalf("Chinese project prompt eaten: %d bytes survived as %v", len(cjk), got)
+	}
+
+	// Past the character limit the guard still fires.
+	over := strings.Repeat("中", codebuddyCNDefaultMaxSystemLen+1)
+	overBody := map[string]any{"messages": []any{
+		map[string]any{"role": "system", "content": over},
+	}}
+	sanitizeCodebuddyRequest("codebuddy-cn", overBody)
+	if got := overBody["messages"].([]any)[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
+		t.Fatalf("oversized prompt must still be neutralized, got %d runes", utf8.RuneCountInString(got.(string)))
 	}
 }
 

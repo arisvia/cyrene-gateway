@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/arisvia/cyrene-gateway/internal/loopguard"
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -321,9 +322,16 @@ func neutralizeCodebuddySystem(content any, maxLen int) (any, string) {
 	if text == "" {
 		return content, ""
 	}
-	if maxLen > 0 && len(text) > maxLen {
-		return reshapeCodebuddySystem(content, neutralCodebuddyPrompt),
-			fmt.Sprintf(codebuddyRuleTooLongFormat, len(text), maxLen)
+	// Count characters, not bytes: upstream's gate is JavaScript's string length
+	// (UTF-16 units), so a Chinese prompt measured in UTF-8 bytes would be judged
+	// roughly three times too long and a legitimate project prompt would be eaten.
+	// Astral characters (emoji) count one here versus two upstream — the looser
+	// direction, and never the trigger for the agent-file heuristic.
+	if maxLen > 0 {
+		if n := utf8.RuneCountInString(text); n > maxLen {
+			return reshapeCodebuddySystem(content, neutralCodebuddyPrompt),
+				fmt.Sprintf(codebuddyRuleTooLongFormat, n, maxLen)
+		}
 	}
 	if agentSystemPromptRegex.MatchString(text) {
 		return reshapeCodebuddySystem(content, neutralCodebuddyPrompt), codebuddyRuleIdentityMarker
