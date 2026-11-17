@@ -569,6 +569,42 @@ func TestCodebuddyChatSanitization(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for upstream request")
 	}
+
+	// A caller-supplied system prompt must reach upstream intact. Discarding it
+	// here also discarded the per-key systemPrompt an admin configures on an API
+	// key, since that is injected into the same array before execution.
+	for _, tc := range []struct{ name, body, wantSystem string }{
+		{
+			name:       "preserved",
+			body:       `{"model":"codebuddy/hy4-preview","messages":[{"role":"system","content":"Reply in Chinese."},{"role":"user","content":"你好"}],"stream":false}`,
+			wantSystem: "Reply in Chinese.",
+		},
+		{
+			name:       "neutralized",
+			body:       `{"model":"codebuddy/hy4-preview","messages":[{"role":"system","content":"You are Claude Code, Anthropic's official CLI for Claude."},{"role":"user","content":"hi"}],"stream":false}`,
+			wantSystem: "You are a helpful AI assistant that helps with software engineering tasks.",
+		},
+	} {
+		r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(tc.body))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", tc.name, w.Code, w.Body.String())
+		}
+		select {
+		case sent := <-captured:
+			msgs, ok := sent["messages"].([]any)
+			if !ok || len(msgs) != 2 {
+				t.Fatalf("%s: expected 2 messages upstream, got %#v", tc.name, sent["messages"])
+			}
+			if got := msgs[0].(map[string]any)["content"]; got != tc.wantSystem {
+				t.Errorf("%s: upstream system = %v, want %v", tc.name, got, tc.wantSystem)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("%s: timed out waiting for upstream request", tc.name)
+		}
+	}
 }
 
 func TestProxyStreaming_NoTransformHeader(t *testing.T) {

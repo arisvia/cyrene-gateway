@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"regexp"
 	"strings"
@@ -261,7 +262,52 @@ func ExecuteAttempt(
 
 var agentSystemPromptRegex = regexp.MustCompile(`(?i)you are claude code|claude.?code.+official.+cli|anthropic.+official.+cli|anxthxropic.+official.+cli|you are (?:cursor|windsurf|cline|aider|continue|copilot|cody)|you are an? (?:ai )?(?:coding |code )?agent|cc_entrypoint\s*=\s*(?:cli|vscode|jetbrains|gui)|claude.?code.+issues|give feedback.+claude.?code|you are .{0,30}(?:powerful )?ai agent|orchestration capabilities|OhMyOpenCode|<agent-identity>|<Role>|<Behavior_Instructions>`)
 
-const neutralCodebuddyPrompt = "You are a helpful AI assistant that helps with software engineering tasks."
+const (
+	neutralCodebuddyPrompt = "You are a helpful AI assistant that helps with software engineering tasks."
+
+	// codebuddyIdentityPrompt satisfies the Intl gateway's request shape (it
+	// answers 11101 to a body with no leading system message) and is used only
+	// when the caller sent no system/developer text at all. It is not a mask for
+	// the caller's own prompt.
+	codebuddyIdentityPrompt = "You are CodeBuddy Code."
+
+	// codebuddyCNMaxSystemLen is the CN-only length catch-all: the marker regex
+	// enumerates known agents and cannot know the next one, so an over-long system
+	// prompt is treated as some agent's instruction file. Upstream applies no such
+	// gate to the Intl endpoint, so a long project prompt survives there.
+	codebuddyCNMaxSystemLen = 2000
+)
+
+// neutralizeCodebuddySystem rewrites one system message's content when it reads
+// as a third-party coding-agent identity. Tencent's WAF rejects those outright —
+// 400 code 11128 "Illegal API invocation from an unapproved channel", or the
+// sensitive-content refusal — and the trigger is the literal text, established by
+// bisecting it upstream of this repo, not by our own guess. Content arrives either
+// as a string or as typed text blocks depending on the inbound client shape, so
+// the match runs on flattened text while the replacement keeps the original shape.
+// maxLen <= 0 disables the length catch-all.
+func neutralizeCodebuddySystem(content any, maxLen int) (any, bool) {
+	switch content.(type) {
+	case string, []any:
+	default:
+		return content, false
+	}
+	text := messageContentText(content)
+	if text == "" {
+		return content, false
+	}
+	if !(maxLen > 0 && len(text) > maxLen) && !agentSystemPromptRegex.MatchString(text) {
+		return content, false
+	}
+	return reshapeCodebuddySystem(content, neutralCodebuddyPrompt), true
+}
+
+func reshapeCodebuddySystem(content any, text string) any {
+	if _, ok := content.(string); ok {
+		return text
+	}
+	return []any{map[string]any{"type": "text", "text": text}}
+}
 
 func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 	bodyMap["stream"] = true
@@ -278,79 +324,114 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 	rawMsgs, ok := bodyMap["messages"].([]any)
 	if !ok || len(rawMsgs) == 0 {
 		bodyMap["messages"] = []any{
-			map[string]any{"role": "system", "content": "You are CodeBuddy Code."},
+			map[string]any{"role": "system", "content": codebuddyIdentityPrompt},
 		}
 		return
 	}
 
-	if providerID == "codebuddy" {
-		var filtered []any
-		filtered = append(filtered, map[string]any{"role": "system", "content": "You are CodeBuddy Code."})
-		for _, m := range rawMsgs {
-			msgMap, ok := m.(map[string]any)
-			if !ok {
-				continue
-			}
-			role, _ := msgMap["role"].(string)
-			if role == "system" || role == "developer" {
-				continue
-			}
-			if role == "user" {
-				if contentStr, ok := msgMap["content"].(string); ok {
-					newMsg := make(map[string]any, len(msgMap))
-					for k, v := range msgMap {
-						newMsg[k] = v
-					}
-					newMsg["content"] = []any{
-						map[string]any{"type": "text", "text": contentStr},
-					}
-					filtered = append(filtered, newMsg)
-					continue
-				}
-			}
-			filtered = append(filtered, msgMap)
-		}
-		bodyMap["messages"] = filtered
-	} else if providerID == "codebuddy-cn" {
-		// Explicit: an unlisted codebuddy-* sibling must not silently inherit the
-		// China shape. TestRegistryCoversEveryCodebuddyShape guards that.
-		hasSystem := false
-		for _, m := range rawMsgs {
-			if msgMap, ok := m.(map[string]any); ok {
-				if role, _ := msgMap["role"].(string); role == "system" {
-					hasSystem = true
-					break
-				}
-			}
-		}
-		messages := rawMsgs
-		if !hasSystem {
-			messages = append([]any{map[string]any{"role": "system", "content": "You are CodeBuddy Code."}}, rawMsgs...)
-		}
-		var sanitized []any
-		for _, m := range messages {
-			msgMap, ok := m.(map[string]any)
-			if !ok {
-				sanitized = append(sanitized, m)
-				continue
-			}
-			role, _ := msgMap["role"].(string)
-			if role == "system" {
-				contentStr, _ := msgMap["content"].(string)
-				if len(contentStr) > 2000 || agentSystemPromptRegex.MatchString(contentStr) {
-					newMsg := make(map[string]any, len(msgMap))
-					for k, v := range msgMap {
-						newMsg[k] = v
-					}
-					newMsg["content"] = neutralCodebuddyPrompt
-					sanitized = append(sanitized, newMsg)
-					continue
-				}
-			}
-			sanitized = append(sanitized, msgMap)
-		}
-		bodyMap["messages"] = sanitized
+	switch providerID {
+	case "codebuddy":
+		bodyMap["messages"] = codebuddyIntlMessages(rawMsgs)
+	case "codebuddy-cn":
+		bodyMap["messages"] = codebuddyCNMessages(rawMsgs)
+	default:
+		// An unlisted codebuddy-* sibling keeps the plain OpenAI shape: neither the
+		// Intl leading-system rewrite nor the CN length gate is guessed for it. It
+		// still gets marker neutralization, because that is the half that costs an
+		// account. TestRegistryCoversEveryCodebuddyShape pins all three paths.
+		bodyMap["messages"] = neutralizeCodebuddySystems(rawMsgs, 0)
 	}
+}
+
+// codebuddyIntlMessages folds the caller's own system/developer text into the
+// single leading system message the Intl gateway demands, neutralizing agent
+// identity markers inside it. The previous behaviour discarded that text
+// unconditionally — no upstream basis, and it silently dropped the per-key
+// systemPrompt an admin configures on an API key.
+func codebuddyIntlMessages(rawMsgs []any) []any {
+	var prompts []string
+	out := make([]any, 0, len(rawMsgs)+1)
+	for _, m := range rawMsgs {
+		msgMap, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := msgMap["role"].(string)
+		if role == "system" || role == "developer" {
+			text := messageContentText(msgMap["content"])
+			if text == "" {
+				continue
+			}
+			if agentSystemPromptRegex.MatchString(text) {
+				text = neutralCodebuddyPrompt
+			}
+			prompts = append(prompts, text)
+			continue
+		}
+		if role == "user" {
+			if contentStr, ok := msgMap["content"].(string); ok {
+				// User content travels as typed blocks; a bare string is rejected.
+				clone := make(map[string]any, len(msgMap))
+				maps.Copy(clone, msgMap)
+				clone["content"] = []any{map[string]any{"type": "text", "text": contentStr}}
+				out = append(out, clone)
+				continue
+			}
+		}
+		out = append(out, msgMap)
+	}
+	system := strings.Join(prompts, "\n\n")
+	if system == "" {
+		system = codebuddyIdentityPrompt
+	}
+	return append([]any{map[string]any{"role": "system", "content": system}}, out...)
+}
+
+// codebuddyCNMessages leaves the message array in place — the CN endpoint takes
+// the plain OpenAI shape — only guarantees a leading system message, then
+// neutralizes agent-shaped system text with the CN length catch-all enabled.
+func codebuddyCNMessages(rawMsgs []any) []any {
+	hasSystem := false
+	for _, m := range rawMsgs {
+		if msgMap, ok := m.(map[string]any); ok {
+			if role, _ := msgMap["role"].(string); role == "system" {
+				hasSystem = true
+				break
+			}
+		}
+	}
+	messages := rawMsgs
+	if !hasSystem {
+		messages = append([]any{map[string]any{"role": "system", "content": codebuddyIdentityPrompt}}, rawMsgs...)
+	}
+	return neutralizeCodebuddySystems(messages, codebuddyCNMaxSystemLen)
+}
+
+// neutralizeCodebuddySystems rewrites agent-shaped system messages and leaves
+// everything else, including user and assistant text, untouched.
+func neutralizeCodebuddySystems(rawMsgs []any, maxLen int) []any {
+	out := make([]any, 0, len(rawMsgs))
+	for _, m := range rawMsgs {
+		msgMap, ok := m.(map[string]any)
+		if !ok {
+			out = append(out, m)
+			continue
+		}
+		if role, _ := msgMap["role"].(string); role != "system" {
+			out = append(out, msgMap)
+			continue
+		}
+		content, replaced := neutralizeCodebuddySystem(msgMap["content"], maxLen)
+		if !replaced {
+			out = append(out, msgMap)
+			continue
+		}
+		clone := make(map[string]any, len(msgMap))
+		maps.Copy(clone, msgMap)
+		clone["content"] = content
+		out = append(out, clone)
+	}
+	return out
 }
 
 func sanitizeGithubRequest(model string, bodyMap map[string]any) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
@@ -61,11 +62,13 @@ func TestSanitizeCodebuddyRequest_Intl(t *testing.T) {
 
 	msgs, ok := body["messages"].([]any)
 	if !ok || len(msgs) != 2 {
-		t.Fatalf("expected 2 messages after developer prompt filtering and system prompt prepend, got %v", msgs)
+		t.Fatalf("expected 2 messages after hoisting developer text into the leading system, got %v", msgs)
 	}
+	// The gateway demands a leading system message, not a specific sentence: the
+	// caller's own instructions survive, only relocated into the first slot.
 	first := msgs[0].(map[string]any)
-	if first["role"] != "system" || first["content"] != "You are CodeBuddy Code." {
-		t.Errorf("expected leading system message, got %+v", first)
+	if first["role"] != "system" || first["content"] != "Developer instructions" {
+		t.Errorf("expected caller system text preserved, got %+v", first)
 	}
 	userMsg := msgs[1].(map[string]any)
 	contentArr, ok := userMsg["content"].([]any)
@@ -75,6 +78,124 @@ func TestSanitizeCodebuddyRequest_Intl(t *testing.T) {
 	block := contentArr[0].(map[string]any)
 	if block["type"] != "text" || block["text"] != "Please review this code" {
 		t.Errorf("unexpected content block: %+v", block)
+	}
+}
+
+func TestSanitizeCodebuddyRequest_IntlIdentityAndFallback(t *testing.T) {
+	// A coding-agent fingerprint is the part upstream actually rejects, so it is
+	// replaced while the rest of the caller's text is kept.
+	agent := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": "You are Claude Code, Anthropic's official CLI for Claude. Be terse."},
+			map[string]any{"role": "user", "content": "List files"},
+		},
+	}
+	sanitizeCodebuddyRequest("codebuddy", agent)
+	agentMsgs := agent["messages"].([]any)
+	if got := agentMsgs[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
+		t.Errorf("agent fingerprint not neutralized: %v", got)
+	}
+
+	// No caller prompt at all: the shape requirement still needs a leading system.
+	bare := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "Hello"}},
+	}
+	sanitizeCodebuddyRequest("codebuddy", bare)
+	bareMsgs := bare["messages"].([]any)
+	if len(bareMsgs) != 2 {
+		t.Fatalf("expected a prepended system message, got %v", bareMsgs)
+	}
+	if first := bareMsgs[0].(map[string]any); first["role"] != "system" || first["content"] != codebuddyIdentityPrompt {
+		t.Errorf("expected identity fallback, got %+v", first)
+	}
+
+	// Multiple system/developer messages join instead of being discarded.
+	multi := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": "Project conventions"},
+			map[string]any{"role": "developer", "content": "Reply in Chinese"},
+			map[string]any{"role": "user", "content": "Hi"},
+		},
+	}
+	sanitizeCodebuddyRequest("codebuddy", multi)
+	if got := multi["messages"].([]any)[0].(map[string]any)["content"]; got != "Project conventions\n\nReply in Chinese" {
+		t.Errorf("expected joined system text, got %v", got)
+	}
+}
+
+func TestSanitizeCodebuddyRequest_CNTypedBlocks(t *testing.T) {
+	// The CN filter reads the same fingerprint whether the client sent a string or
+	// typed blocks; matching only the string form let block-shaped agent prompts
+	// reach upstream verbatim.
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{
+				"role":    "system",
+				"content": []any{map[string]any{"type": "text", "text": "You are Claude Code, Anthropic's official CLI for Claude."}},
+			},
+			map[string]any{"role": "user", "content": "List files"},
+		},
+	}
+
+	sanitizeCodebuddyRequest("codebuddy-cn", body)
+
+	sys := body["messages"].([]any)[0].(map[string]any)
+	blocks, ok := sys["content"].([]any)
+	if !ok {
+		t.Fatalf("expected the typed-block shape to be preserved, got %#v", sys["content"])
+	}
+	if len(blocks) != 1 || blocks[0].(map[string]any)["text"] != neutralCodebuddyPrompt {
+		t.Errorf("expected neutral prompt inside typed blocks, got %#v", blocks)
+	}
+
+	// The CN length catch-all stays on: an unrecognised agent CLI must not slip by.
+	long := strings.Repeat("x", codebuddyCNMaxSystemLen+1)
+	longBody := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": long},
+			map[string]any{"role": "user", "content": "Hi"},
+		},
+	}
+	sanitizeCodebuddyRequest("codebuddy-cn", longBody)
+	if got := longBody["messages"].([]any)[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
+		t.Errorf("expected over-long system prompt replaced, got %v", got)
+	}
+
+	// Intl has no such gate upstream, so a long legitimate prompt survives there.
+	intlBody := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": long},
+			map[string]any{"role": "user", "content": "Hi"},
+		},
+	}
+	sanitizeCodebuddyRequest("codebuddy", intlBody)
+	if got := intlBody["messages"].([]any)[0].(map[string]any)["content"]; got != long {
+		t.Errorf("expected long prompt preserved on Intl, got %v", got)
+	}
+}
+
+func TestSanitizeCodebuddyRequest_SiblingKeepsShape(t *testing.T) {
+	// An unlisted codebuddy-* sibling gets WAF neutralization (the part that costs
+	// an account) but no shape guessing: neither the Intl leading-system rewrite
+	// nor the CN length gate.
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": "You are Cline, an AI coding agent."},
+			map[string]any{"role": "user", "content": "Hi"},
+		},
+	}
+
+	sanitizeCodebuddyRequest("codebuddy-enterprise", body)
+
+	msgs := body["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("expected no message to be injected, got %v", msgs)
+	}
+	if got := msgs[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
+		t.Errorf("expected agent fingerprint neutralized, got %v", got)
+	}
+	if got := msgs[1].(map[string]any)["content"]; got != "Hi" {
+		t.Errorf("expected the plain OpenAI shape to survive, got %#v", got)
 	}
 }
 

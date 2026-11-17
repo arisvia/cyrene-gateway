@@ -275,7 +275,7 @@ func qoderNormalizeMessages(body map[string]any) (messages []map[string]any, sys
 		if !ok {
 			continue
 		}
-		text := qoderExtractText(msg["content"])
+		text := messageContentText(msg["content"])
 		role, _ := msg["role"].(string)
 		if role == "system" {
 			if text != "" {
@@ -291,7 +291,10 @@ func qoderNormalizeMessages(body map[string]any) (messages []map[string]any, sys
 	return messages, strings.Join(systemParts, "\n\n")
 }
 
-func qoderExtractText(content any) string {
+// messageContentText flattens a message's content — a bare string or typed text
+// blocks — into plain text. Package-wide: Qoder's request builder and the
+// CodeBuddy WAF neutralizer both match on text, not on the inbound shape.
+func messageContentText(content any) string {
 	switch v := content.(type) {
 	case string:
 		return v

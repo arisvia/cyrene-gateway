@@ -294,18 +294,62 @@ func TestGetProviderIsCanonicalOnly(t *testing.T) {
 	}
 }
 
-// sanitizeCodebuddyRequest handles the two regional shapes explicitly, so a new
-// codebuddy-* sibling would silently lose system-prompt handling. This keeps that
-// drift in the registry where the provider is added instead of deep in the executor.
+// Every codebuddy-* provider sits behind the same Tencent WAF, so identity
+// neutralization must never be skippable by adding a provider. The *shape*
+// rewrites are the opposite: they are endpoint-specific and must not leak to a
+// sibling that was never verified against them.
 func TestRegistryCoversEveryCodebuddyShape(t *testing.T) {
+	agent := "You are Claude Code, Anthropic's official CLI for Claude."
 	for id := range Registry {
 		if !strings.HasPrefix(id, "codebuddy") {
 			continue
 		}
-		switch id {
-		case "codebuddy", "codebuddy-cn":
-		default:
-			t.Errorf("provider %q needs an explicit branch in sanitizeCodebuddyRequest", id)
+		body := map[string]any{"messages": []any{
+			map[string]any{"role": "system", "content": agent},
+			map[string]any{"role": "user", "content": "Hi"},
+		}}
+		sanitizeCodebuddyRequest(id, body)
+		if got := body["messages"].([]any)[0].(map[string]any)["content"]; got != neutralCodebuddyPrompt {
+			t.Errorf("%s: agent identity reached upstream as %v", id, got)
 		}
+		if body["stream"] != true {
+			t.Errorf("%s: expected stream=true (the endpoint rejects non-stream)", id)
+		}
+	}
+
+	// probe returns the message count, the leading system content and the final
+	// user content for a long, non-agent system prompt.
+	probe := func(id string) (int, any, any) {
+		body := map[string]any{"messages": []any{
+			map[string]any{"role": "system", "content": strings.Repeat("y", codebuddyCNMaxSystemLen+1)},
+			map[string]any{"role": "user", "content": "Hi"},
+		}}
+		sanitizeCodebuddyRequest(id, body)
+		msgs := body["messages"].([]any)
+		return len(msgs), msgs[0].(map[string]any)["content"], msgs[len(msgs)-1].(map[string]any)["content"]
+	}
+
+	n, sys, user := probe("codebuddy")
+	if n != 2 || sys != strings.Repeat("y", codebuddyCNMaxSystemLen+1) {
+		t.Errorf("codebuddy: Intl must preserve a long caller prompt, got %d %v", n, sys)
+	}
+	if _, blocks := user.([]any); !blocks {
+		t.Errorf("codebuddy: Intl user content must be typed blocks, got %#v", user)
+	}
+
+	n, sys, user = probe("codebuddy-cn")
+	if n != 2 || sys != neutralCodebuddyPrompt {
+		t.Errorf("codebuddy-cn: length catch-all lost, got %d %v", n, sys)
+	}
+	if _, str := user.(string); !str {
+		t.Errorf("codebuddy-cn: user content must stay a plain string, got %#v", user)
+	}
+
+	n, sys, user = probe("codebuddy-enterprise")
+	if n != 2 || sys != strings.Repeat("y", codebuddyCNMaxSystemLen+1) {
+		t.Errorf("sibling: must not inherit the CN length gate, got %d %v", n, sys)
+	}
+	if _, str := user.(string); !str {
+		t.Errorf("sibling: must not inherit the Intl block rewrite, got %#v", user)
 	}
 }
