@@ -90,6 +90,93 @@ func idsOf(list []model.ProviderConnection) []string {
 	return ids
 }
 
+// TestConnectionFullRowWritePreservesQuotaDeadline: the quota sweep owns
+// providerSpecificData.quotaDeadline and persists it as a JSON patch, while OAuth
+// completion and the admin PUT rewrite the whole row from a copy read *before* that
+// patch landed. Losing the deadline there silently degrades quota-urgency scheduling
+// until the next hourly sweep, so the stored value must survive a stale full-row
+// write — without freezing it: an incoming value and an explicit clear still win.
+func TestConnectionFullRowWritePreservesQuotaDeadline(t *testing.T) {
+	database, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	conn := &model.ProviderConnection{
+		ID: "quota", Provider: "codebuddy", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "old-access", ProviderSpecificData: map[string]any{"projectId": "p-1"}},
+	}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read first, then let the sweep land its patch: this is the interleaving the
+	// refresh path actually produces.
+	stale, err := database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().UTC().Add(6 * time.Hour).Format(time.RFC3339)
+	if err := database.UpdateConnectionProviderData(conn.ID, map[string]any{"quotaDeadline": deadline}); err != nil {
+		t.Fatal(err)
+	}
+
+	stale.Data.AccessToken = "new-access"
+	stale.Data.ProviderSpecificData["projectId"] = "p-2"
+	if err := database.UpdateConnection(stale); err != nil {
+		t.Fatal(err)
+	}
+	got, err := database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Data.AccessToken != "new-access" {
+		t.Errorf("full-row write stopped applying its own changes: %+v", got.Data)
+	}
+	if got.Data.ProviderSpecificData["projectId"] != "p-2" {
+		t.Errorf("incoming provider data was not written: %+v", got.Data.ProviderSpecificData)
+	}
+	if got.Data.ProviderSpecificData["quotaDeadline"] != deadline {
+		t.Errorf("quotaDeadline=%v, want the stored %v to survive a stale row write",
+			got.Data.ProviderSpecificData["quotaDeadline"], deadline)
+	}
+
+	// The key stays writable: a row that carries its own deadline wins.
+	mine := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	got.Data.ProviderSpecificData["quotaDeadline"] = mine
+	if err := database.UpdateConnection(got); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = database.GetConnection(conn.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got.Data.ProviderSpecificData["quotaDeadline"] != mine {
+		t.Errorf("incoming deadline ignored: %v", got.Data.ProviderSpecificData["quotaDeadline"])
+	}
+
+	// Clearing through the patch path must not be undone by the next row write.
+	// The copy below is the ordinary admin-PUT shape: it carries no deadline.
+	if err := database.UpdateConnectionProviderData(conn.ID, map[string]any{"quotaDeadline": nil}); err != nil {
+		t.Fatal(err)
+	}
+	delete(got.Data.ProviderSpecificData, "quotaDeadline")
+	got.Data.AccessToken = "third-access"
+	if err := database.UpdateConnection(got); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Data.AccessToken != "third-access" {
+		t.Errorf("row write after clear stopped applying: %+v", cleared.Data)
+	}
+	if v, ok := cleared.Data.ProviderSpecificData["quotaDeadline"]; ok && v != nil && v != "" {
+		t.Errorf("cleared deadline resurrected by a full-row write: %v", v)
+	}
+}
+
 func TestConnectionProfileCompareAndSwap(t *testing.T) {
 	for _, field := range []string{"none", "name-only", "name-only-no-provider-data", "name", "email", "organizationName", "provider", "authType", "apiKey", "accessToken", "refreshToken", "deleted"} {
 		t.Run(field, func(t *testing.T) {

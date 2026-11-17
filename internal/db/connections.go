@@ -97,6 +97,18 @@ func (d *DB) CreateConnection(c *model.ProviderConnection) error {
 	return err
 }
 
+// UpdateConnection rewrites the whole connection row. The quota-reset snapshot
+// (`providerSpecificData.quotaDeadline`) is owned by the quota sweep and persisted
+// only through UpdateConnectionProviderData, so a full-row write must not drop it:
+// OAuth completion and the admin PUT both hand back a copy read before the sweep
+// ran, and losing the deadline silently degrades quota-urgency scheduling until the
+// next hourly pass. The stored value is therefore re-applied to the row being
+// written; "incoming carries none" means "keep the stored one", never "clear it" —
+// clearing stays exclusive to the patch path, which can send an explicit null.
+// A deadline present in the incoming row still wins, so the key stays writable.
+// The CASE keeps the patch an empty object whenever there is nothing to carry over:
+// an unconditional json_object would materialize an empty providerSpecificData
+// subtree and turn a nil map into an empty one on the next read.
 func (d *DB) UpdateConnection(c *model.ProviderConnection) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	data, err := json.Marshal(c.Data)
@@ -105,8 +117,18 @@ func (d *DB) UpdateConnection(c *model.ProviderConnection) error {
 	}
 
 	_, err = d.conn.Exec(
-		`UPDATE providerConnections SET provider=?, authType=?, name=?, email=?, priority=?, isActive=?, data=?, updatedAt=? WHERE id=?`,
-		c.Provider, c.AuthType, c.Name, c.Email, c.Priority, boolToInt(c.IsActive), string(data), now, c.ID,
+		`UPDATE providerConnections
+		 SET provider=?, authType=?, name=?, email=?, priority=?, isActive=?,
+		     data=json_patch(?, CASE
+		         WHEN json_valid(data) = 0 THEN '{}'
+		         WHEN json_extract(?, '$.providerSpecificData.quotaDeadline') IS NOT NULL THEN '{}'
+		         WHEN json_extract(data, '$.providerSpecificData.quotaDeadline') IS NULL THEN '{}'
+		         ELSE json_object('providerSpecificData',
+		              json_object('quotaDeadline', json_extract(data, '$.providerSpecificData.quotaDeadline')))
+		     END),
+		     updatedAt=? WHERE id=?`,
+		c.Provider, c.AuthType, c.Name, c.Email, c.Priority, boolToInt(c.IsActive),
+		string(data), string(data), now, c.ID,
 	)
 	return err
 }
