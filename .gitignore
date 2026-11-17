@@ -29,6 +29,11 @@ yarn-error.log*
 .codegraph/
 *.log
 
+# Scratch: throwaway probe scripts, temp gateways and test-build binaries.
+# Keeping it out of the index also stops cross-compiled test builds from
+# stamping the VCS revision as "+dirty".
+.cache/
+
 # IDE & OS
 .DS_Store
 Thumbs.db
