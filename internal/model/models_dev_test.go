@@ -1,6 +1,53 @@
 package model
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+// TestModelsDevCacheCodecKeepsFetchStamp: the persisted catalog must remember when
+// it was fetched. Loading it stamped "now" reset the 24h TTL on every boot, so an
+// installed gateway never fetched models.dev again and left `created` empty forever.
+func TestModelsDevCacheCodecKeepsFetchStamp(t *testing.T) {
+	stamp := time.Date(2026, time.November, 1, 8, 0, 0, 0, time.UTC)
+	raw, err := EncodeModelsDevCache(map[string]ModelsDevEntry{
+		"gpt-4o": {Name: "GPT-4o", Context: 128000, Output: 16384, ReleaseDate: "2024-05-13"},
+	}, stamp)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	entries, got, err := DecodeModelsDevCache(raw)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !got.Equal(stamp) {
+		t.Fatalf("fetch stamp = %v, want %v", got, stamp)
+	}
+	if entries["gpt-4o"].ReleaseDate != "2024-05-13" {
+		t.Fatalf("entry lost its release date: %+v", entries["gpt-4o"])
+	}
+
+	// The pre-stamp layout is a bare entry map: it must still load, and it must
+	// report no fetch time so the next call goes back to upstream exactly once.
+	legacy := `{"gpt-4o":{"name":"OpenAI GPT-4o","family":"gpt","context":128000,"output":16384,"release_date":""}}`
+	entries, got, err = DecodeModelsDevCache(legacy)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("legacy payload: %v, %d entries", err, len(entries))
+	}
+	if !got.IsZero() {
+		t.Fatalf("legacy payload must look expired, got stamp %v", got)
+	}
+	if entries["gpt-4o"].Context != 128000 {
+		t.Fatalf("legacy entry not parsed: %+v", entries["gpt-4o"])
+	}
+
+	if _, _, err := DecodeModelsDevCache(`{"entries":{"gpt-4o":{}}}`); err == nil {
+		t.Errorf("envelope without fetched_at must be rejected, not treated as a model named fetched_at")
+	}
+	if _, _, err := DecodeModelsDevCache(`[1,2,3]`); err == nil {
+		t.Errorf("garbage payload must be an error")
+	}
+}
 
 // The cap is only trusted from an exact identifier match: a fuzzy hit would quietly
 // shorten answers for a sibling model that really allows a longer output, and unlike a

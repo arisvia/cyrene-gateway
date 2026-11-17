@@ -147,3 +147,71 @@ func TestProviderModelsCreatedFromCatalog(t *testing.T) {
 		t.Fatalf("registry rows = %d, want the seeded catalog to be listed", seen)
 	}
 }
+
+// TestModelsDevCatalogRefetchedAfterRestart reproduces the installed-gateway path:
+// memory starts empty, the stored catalog is hydrated on startup, and the prefetch
+// runs. Hydration used to stamp the restored catalog as just-fetched, so the 24h
+// TTL restarted on every boot, models.dev was never fetched again by a regularly
+// restarting gateway, and the stored catalog kept the content written by the older
+// build — which had no release dates, so every client-facing `created` was absent.
+func TestModelsDevCatalogRefetchedAfterRestart(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	// The pre-stamp layout written by an older build: entries only, no dates.
+	storedLegacy := `{"gpt-4o":{"name":"OpenAI GPT-4o","family":"gpt","context":128000,"output":16384,"release_date":""}}`
+	if err := database.KVSet("modelsDevCatalog", "cache", storedLegacy); err != nil {
+		t.Fatalf("seed stored catalog: %v", err)
+	}
+
+	fetches := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"openai":{"models":{"gpt-4o":{"name":"GPT-4o","release_date":"2024-05-13","limit":{"context":128000,"output":16384}}}}}`))
+	}))
+	defer ts.Close()
+	origURL := model.ModelsDevURL
+	model.ModelsDevURL = ts.URL
+	t.Cleanup(func() { model.ModelsDevURL = origURL })
+
+	prev := model.GetModelsDevCatalog()
+	prevStamp := model.ModelsDevFetchedAt()
+	t.Cleanup(func() { model.SetModelsDevCatalogAt(prev, prevStamp) })
+	model.SetModelsDevCatalogAt(nil, time.Time{})
+
+	// Startup hydration, exactly as server.go performs it: a stored catalog whose
+	// payload carries no fetch time must come back hydrated *and* expired.
+	hydrateModelsDevCatalog(database)
+	if len(model.GetModelsDevCatalog()) == 0 {
+		t.Fatalf("stored catalog was not hydrated")
+	}
+	if !model.ModelsDevCatalogExpired() {
+		t.Fatalf("stamp-less stored catalog must hydrate as expired, not as just fetched")
+	}
+
+	got := srv.loadModelsDevCatalog(ts.Client())
+	if fetches != 1 {
+		t.Fatalf("an expired stored catalog must trigger exactly one upstream fetch, got %d", fetches)
+	}
+	if got["gpt-4o"].ReleaseDate != "2024-05-13" {
+		t.Fatalf("catalog after restart = %+v, want the dated upstream entry", got["gpt-4o"])
+	}
+	if md := model.LookupModelsDevGlobal("gpt-4o"); md == nil || md.Created == 0 {
+		t.Fatalf("created must resolve after the refetch, got %+v", md)
+	}
+
+	// Within the TTL the refreshed catalog is reused, and re-persisting it must keep
+	// the real fetch time instead of rewriting history on every call.
+	if again := srv.loadModelsDevCatalog(ts.Client()); len(again) == 0 || fetches != 1 {
+		t.Fatalf("fresh catalog must not refetch (fetches=%d)", fetches)
+	}
+	persisted, err := database.KVGet("modelsDevCatalog", "cache")
+	if err != nil {
+		t.Fatalf("read persisted catalog: %v", err)
+	}
+	if _, stamp, err := model.DecodeModelsDevCache(persisted); err != nil || stamp.IsZero() {
+		t.Fatalf("persisted payload lost its fetch stamp: %v %v", stamp, err)
+	} else if time.Since(stamp) > time.Minute {
+		t.Fatalf("persisted stamp is not the refresh time: %v", stamp)
+	}
+}

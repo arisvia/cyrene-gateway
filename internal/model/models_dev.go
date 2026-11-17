@@ -269,12 +269,90 @@ func releaseDateToEpoch(date string) int64 {
 	return t.Unix()
 }
 
-// SetModelsDevCatalog updates the in-memory models.dev catalog.
+// SetModelsDevCatalog updates the in-memory models.dev catalog, stamped as just
+// fetched. Restoring persisted entries must use SetModelsDevCatalogAt instead.
 func SetModelsDevCatalog(catalog map[string]ModelsDevEntry) {
+	SetModelsDevCatalogAt(catalog, time.Now())
+}
+
+// SetModelsDevCatalogAt installs a catalog together with the instant it was
+// fetched. The stamp has to survive the restart that reads it back:
+// LoadModelsDevCatalog skips the network while the cache is younger than
+// modelsDevCacheTTL, so priming memory from disk with "now" reset the clock on
+// every boot and the catalog was never refreshed from upstream again — an old,
+// dateless catalog (one written before release dates were parsed) reproduced
+// itself indefinitely, which emptied `created` on every installed gateway.
+func SetModelsDevCatalogAt(catalog map[string]ModelsDevEntry, fetchedAt time.Time) {
 	modelsDevMu.Lock()
 	modelsDevCache = catalog
-	modelsDevFetched = time.Now()
+	modelsDevFetched = fetchedAt
 	modelsDevMu.Unlock()
+}
+
+// modelsDevCachePayload is the persisted catalog layout: entries plus the fetch
+// stamp. The pre-stamp layout was the bare entry map; DecodeModelsDevCache still
+// reads it and reports it as expired so the next call goes to the network once.
+type modelsDevCachePayload struct {
+	FetchedAt time.Time                 `json:"fetched_at"`
+	Entries   map[string]ModelsDevEntry `json:"entries"`
+}
+
+// EncodeModelsDevCache serializes the catalog for KV storage.
+func EncodeModelsDevCache(entries map[string]ModelsDevEntry, fetchedAt time.Time) (string, error) {
+	data, err := json.Marshal(modelsDevCachePayload{FetchedAt: fetchedAt, Entries: entries})
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// DecodeModelsDevCache parses a persisted catalog. A zero fetchedAt means the
+// payload predates the stamp and must be treated as expired.
+func DecodeModelsDevCache(raw string) (map[string]ModelsDevEntry, time.Time, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+		return nil, time.Time{}, err
+	}
+	if entryBlob, hasEntries := fields["entries"]; hasEntries {
+		stampBlob, hasStamp := fields["fetched_at"]
+		if !hasStamp {
+			return nil, time.Time{}, fmt.Errorf("malformed models.dev cache payload: fetched_at missing")
+		}
+		var entries map[string]ModelsDevEntry
+		if err := json.Unmarshal(entryBlob, &entries); err != nil {
+			return nil, time.Time{}, err
+		}
+		var fetchedAt time.Time
+		if err := json.Unmarshal(stampBlob, &fetchedAt); err != nil {
+			return nil, time.Time{}, err
+		}
+		return entries, fetchedAt, nil
+	}
+	var legacy map[string]ModelsDevEntry
+	if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
+		return nil, time.Time{}, err
+	}
+	return legacy, time.Time{}, nil
+}
+
+// ModelsDevFetchedAt reports when the in-memory catalog was last fetched from
+// upstream. Persistence must store this instant rather than the wall clock, or
+// re-saving a cache that was merely reused would rewrite its age and make it
+// immortal again.
+func ModelsDevFetchedAt() time.Time {
+	modelsDevMu.RLock()
+	defer modelsDevMu.RUnlock()
+	return modelsDevFetched
+}
+
+// ModelsDevCatalogExpired reports the condition under which loading the catalog
+// would go to the network: nothing in memory, or a restored/loaded copy whose age
+// already passed the TTL. Callers use it to decide whether warming the catalog is
+// worth a request at all.
+func ModelsDevCatalogExpired() bool {
+	modelsDevMu.RLock()
+	defer modelsDevMu.RUnlock()
+	return modelsDevCache == nil || time.Since(modelsDevFetched) >= modelsDevCacheTTL
 }
 
 // GetModelsDevCatalog returns the current in-memory models.dev catalog copy.

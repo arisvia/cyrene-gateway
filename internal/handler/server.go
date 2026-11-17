@@ -18,7 +18,6 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/media"
 	"github.com/arisvia/cyrene-gateway/internal/metrics"
 	"github.com/arisvia/cyrene-gateway/internal/middleware"
-	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
@@ -98,13 +97,8 @@ func NewServer(database *db.DB, cfg *config.Config) *Server {
 		}
 		s.MediaClient.HTTPClient = provider.SafeHTTPClient(2*time.Minute, allowPrivate)
 	}
-	// Hydrate models.dev catalog from SQLite on startup
-	if raw, err := database.KVGet("modelsDevCatalog", "cache"); err == nil && raw != "" {
-		var dbCat map[string]model.ModelsDevEntry
-		if err := json.Unmarshal([]byte(raw), &dbCat); err == nil && len(dbCat) > 0 {
-			model.SetModelsDevCatalog(dbCat)
-		}
-	}
+	// Hydrate the models.dev catalog from SQLite on startup, keeping its age.
+	hydrateModelsDevCatalog(database)
 	s.registerRoutes()
 	s.registerMediaRoutes()
 	// Prometheus scrape endpoint (protected by MetricsAuth: local or authenticated WAN)

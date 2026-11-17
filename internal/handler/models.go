@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
@@ -556,8 +557,16 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 // client surfaces publish models with no context window, output cap or release
 // date until some provider's catalog sync happens to succeed. Deliberately async:
 // startup must never wait on an outbound request.
+//
+// The condition is expiry, not emptiness: startup has already hydrated the stored
+// copy, so "memory has entries" says nothing about their age. Skipping on emptiness
+// alone left restarted installs serving a catalog they never refreshed again.
 func (s *Server) StartModelsDevPrefetch() {
-	if s.DB == nil || len(model.GetModelsDevCatalog()) > 0 {
+	if s.DB == nil {
+		return
+	}
+	hydrateModelsDevCatalog(s.DB)
+	if !model.ModelsDevCatalogExpired() {
 		return
 	}
 	s.goBackground(func() {
@@ -567,22 +576,33 @@ func (s *Server) StartModelsDevPrefetch() {
 	})
 }
 
-func (s *Server) loadModelsDevCatalog(client *http.Client) map[string]model.ModelsDevEntry {
-	// 1. Prime in-memory cache from DB if memory is currently empty
-	if len(model.GetModelsDevCatalog()) == 0 {
-		if raw, err := s.DB.KVGet("modelsDevCatalog", "cache"); err == nil && raw != "" {
-			var dbCat map[string]model.ModelsDevEntry
-			if err := json.Unmarshal([]byte(raw), &dbCat); err == nil && len(dbCat) > 0 {
-				model.SetModelsDevCatalog(dbCat)
-			}
-		}
+// hydrateModelsDevCatalog restores the persisted catalog into the process cache,
+// carrying its fetch stamp. Startup and the on-demand loader both prime from here
+// so the stamp can never be rewritten to "now" on one path and not the other:
+// doing that reset the 24h TTL on every boot, and a gateway that restarts daily
+// then never fetched models.dev again.
+func hydrateModelsDevCatalog(database *db.DB) {
+	if database == nil || len(model.GetModelsDevCatalog()) > 0 {
+		return
 	}
+	raw, err := database.KVGet("modelsDevCatalog", "cache")
+	if err != nil || raw == "" {
+		return
+	}
+	if entries, fetchedAt, decErr := model.DecodeModelsDevCache(raw); decErr == nil && len(entries) > 0 {
+		model.SetModelsDevCatalogAt(entries, fetchedAt)
+	}
+}
+
+func (s *Server) loadModelsDevCatalog(client *http.Client) map[string]model.ModelsDevEntry {
+	// 1. Prime in-memory cache from DB if memory is currently empty.
+	hydrateModelsDevCatalog(s.DB)
 
 	// 2. Fetch fresh from network (LoadModelsDevCatalog respects 24h TTL internally)
 	catalog, err := model.LoadModelsDevCatalog(client)
 	if err == nil && len(catalog) > 0 {
 		// Persist to DB for offline/cold-start resilience
-		if data, err := json.Marshal(catalog); err == nil {
+		if data, err := model.EncodeModelsDevCache(catalog, model.ModelsDevFetchedAt()); err == nil {
 			s.DB.KVSet("modelsDevCatalog", "cache", string(data))
 		}
 		return catalog
