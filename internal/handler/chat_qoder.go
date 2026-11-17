@@ -112,6 +112,16 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		qoderKey string
 	)
 
+	// The upstream model key only exists once the first attempt has built the
+	// body, so audit text falls back to the requested model for a cancel before
+	// any attempt reported back.
+	queueLabel := func() string {
+		if qoderKey != "" {
+			return qoderKey
+		}
+		return modelInfo.Model
+	}
+
 	// Send helper that rebuilds and signs fresh request_id on each attempt
 	sendAttempt := func(isRetry bool) (*http.Response, string, error) {
 		encodedBody, key, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
@@ -224,11 +234,15 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 
 	for attempt := 0; attempt < maxQueueAttempts; attempt++ {
 		if r.Context().Err() != nil {
+			s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
+				fmt.Sprintf("client canceled after %s while qoder model %s was queued", queueWaited.Round(time.Second), queueLabel()))
 			return false
 		}
 		res, key, err := sendAttempt(attempt > 0)
 		if err != nil {
 			if r.Context().Err() != nil {
+				s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
+					"client canceled during qoder upstream request")
 				return false
 			}
 			slog.Error("Qoder upstream request failed", "error", err, "connection", conn.ID)
@@ -236,6 +250,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			if headersCommitted {
 				fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"upstream_error\",\"code\":502}}\n\n", msg)
 				flusher.Flush()
+				s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 502, msg)
 				return false
 			}
 			// Transport failure is per-account as often as per-network.
@@ -252,6 +267,12 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			// Check if this error status represents queue waiting (10605 / isQueued)
 			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(string(errBody)); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
 				if !waitQueue(retrySec, attempt) {
+					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, non-streaming client cannot be held",
+						queueLabel(), retrySec, queueWaited.Round(time.Second))
+					if r.Context().Err() != nil {
+						abortStatus, abortReason = 499, "client canceled after "+queueWaited.Round(time.Second).String()+" of qoder queue waiting"
+					}
+					s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, abortStatus, abortReason)
 					return false
 				}
 				continue
@@ -345,6 +366,12 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(rawLine); isQueued && attempt < maxQueueAttempts-1 && queueWaited < maxQueueWaitBudget {
 				res.Body.Close()
 				if !waitQueue(retrySec, attempt) {
+					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, non-streaming client cannot be held",
+						queueLabel(), retrySec, queueWaited.Round(time.Second))
+					if r.Context().Err() != nil {
+						abortStatus, abortReason = 499, "client canceled after "+queueWaited.Round(time.Second).String()+" of qoder queue waiting"
+					}
+					s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, abortStatus, abortReason)
 					return false
 				}
 				continue
@@ -364,12 +391,13 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	if resp == nil {
-		msg := fmt.Sprintf("qoder model %s still queued after %d attempts, giving up", qoderKey, maxQueueAttempts)
+		msg := fmt.Sprintf("qoder model %s still queued after %d attempts (%s of waiting), giving up", queueLabel(), maxQueueAttempts, queueWaited.Round(time.Second))
 		if headersCommitted {
 			// Headers are already 200 text/event-stream, so the client needs a
 			// terminal error event; closing silently would look like a hang.
 			fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"qoder_queue_timeout\",\"code\":503}}\n\n", msg)
 			flusher.Flush()
+			s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 503, msg)
 			return false
 		}
 		// Queued out on this account; another account may have capacity.

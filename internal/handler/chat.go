@@ -321,6 +321,7 @@ func (s *Server) getHTTPClient(timeout time.Duration) *http.Client {
 
 // handleSingleModelChat processes a single model request (non-combo).
 func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, req ChatCompletionRequest, rawBody []byte) {
+	startedAt := time.Now()
 	// Resolve model to provider + model name
 	modelInfo, err := provider.ResolveModel(req.Model, s.DB)
 	if err != nil || modelInfo.Provider == "" {
@@ -341,16 +342,16 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	// Get credentials for this provider
 	conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
 	if err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("failed to list credentials for provider: %s", modelInfo.Provider),
-		})
+		reason := fmt.Sprintf("failed to list credentials for provider: %s", modelInfo.Provider)
+		s.saveAbandonedRequestDetail(r, req, modelInfo, "", resolveRequestEndpoint(r, "/v1/chat/completions"), startedAt, http.StatusServiceUnavailable, reason+": "+err.Error())
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": reason})
 		return
 	}
 
 	if len(conns) == 0 {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider),
-		})
+		reason := fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider)
+		s.saveAbandonedRequestDetail(r, req, modelInfo, "", resolveRequestEndpoint(r, "/v1/chat/completions"), startedAt, http.StatusServiceUnavailable, reason)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": reason})
 		return
 	}
 
@@ -373,6 +374,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	var lastStatus int
 	var lastBody []byte
 	var lastProvider string
+	var lastConnID string
 
 	for {
 		var conn *model.ProviderConnection
@@ -390,6 +392,7 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 			break
 		}
 		tried[conn.ID] = true
+		lastConnID = conn.ID
 		s.tryRefreshToken(conn)
 
 		retryable, status, body := s.attemptSingleModelChat(w, r, req, rawBody, modelInfo, providerInfo, conn)
@@ -421,23 +424,83 @@ func (s *Server) handleSingleModelChat(w http.ResponseWriter, r *http.Request, r
 	}
 
 	if lastStatus == 0 {
+		endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 		if len(tried) == 0 {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-				"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
-			})
+			reason := fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider)
+			s.saveAbandonedRequestDetail(r, req, modelInfo, "", endpoint, startedAt, http.StatusServiceUnavailable, reason)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": reason})
 			return
 		}
 		// Every attempt failed without producing an HTTP status (specialized
 		// executors report their own terminal frames or a bare retryable flag).
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("all accounts unavailable for provider: %s", modelInfo.Provider),
-		})
+		reason := fmt.Sprintf("all accounts unavailable for provider: %s", modelInfo.Provider)
+		s.saveAbandonedRequestDetail(r, req, modelInfo, lastConnID, endpoint, startedAt, http.StatusServiceUnavailable, reason)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": reason})
 		return
 	}
 	// Every account failed the same way: surface the last upstream error.
+	s.saveAbandonedRequestDetail(r, req, modelInfo, lastConnID, resolveRequestEndpoint(r, "/v1/chat/completions"), startedAt, lastStatus, strings.TrimSpace(string(lastBody)))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(lastStatus)
 	w.Write(wrapErrorWithHint(lastStatus, lastBody, lastProvider))
+}
+
+// saveAbandonedRequestDetail writes the 请求明细 row for a request that ended
+// without ever being served: no credentials, every account cooling down, the
+// failover walk exhausted, or the client hanging up mid-wait.
+//
+// These paths replied with a JSON error and recorded nothing, so the loudest
+// failures were invisible in the panel — an empty request log looked like traffic
+// that never arrived instead of a provider that never answered, which is exactly
+// how a stuck upstream queue gets misread as a routing bug.
+//
+// Only the detail row is written, never the usage row: usage and cost are billing
+// surfaces, and a request the upstream never served consumed nothing.
+func (s *Server) saveAbandonedRequestDetail(r *http.Request, req ChatCompletionRequest, modelInfo model.ModelInfo, connID, endpoint string, startedAt time.Time, status int, reason string) {
+	if s.DB == nil || modelInfo.Provider == "" || modelInfo.Model == "" {
+		return
+	}
+	statusStr := fmt.Sprintf("%d", status)
+	if status == 499 {
+		statusStr = "canceled"
+	}
+	latencyMs := int(time.Since(startedAt).Milliseconds())
+	if latencyMs < 0 {
+		latencyMs = 0
+	}
+	rdID := fmt.Sprintf("%d-%s", nextRequestDetailStamp(), modelInfo.Model)
+	client := detectClientAgent(r)
+	rdData := map[string]any{
+		"id":           rdID,
+		"timestamp":    time.Now().UTC().Format(time.RFC3339),
+		"provider":     modelInfo.Provider,
+		"model":        modelInfo.Model,
+		"connectionId": connID,
+		"status":       statusStr,
+		"latencyMs":    latencyMs,
+		"endpoint":     endpoint,
+		"client":       client,
+		"error":        truncate(reason, 2000),
+		"turns":        countTurns(req.Messages),
+		"input":        extractPromptSummary(req.Messages),
+	}
+	if cv := detectClientVersion(r); cv != "" {
+		rdData["clientVersion"] = cv
+	}
+	rdBytes, _ := json.Marshal(rdData)
+	if err := s.DB.SaveRequestDetail(&db.RequestDetail{
+		ID:           rdID,
+		Timestamp:    rdData["timestamp"].(string),
+		Provider:     modelInfo.Provider,
+		Model:        modelInfo.Model,
+		ConnectionID: connID,
+		Status:       statusStr,
+		Data:         string(rdBytes),
+	}); err != nil {
+		slog.Warn("Failed to record abandoned request", "error", err, "model", modelInfo.Model)
+		return
+	}
+	s.publishRequestEvent(r, RequestEvent{Type: "failed", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: statusStr, Endpoint: endpoint, Client: client, LatencyMs: int64(latencyMs)})
 }
 
 // attemptSingleModelChat runs one request against one connection.
@@ -522,6 +585,11 @@ func (s *Server) attemptSingleModelChat(
 	}
 	if err != nil {
 		if r.Context().Err() != nil {
+			// The client hung up (closed tab, interrupted agent). Record it: a
+			// canceled turn is exactly what an operator needs to see when asking
+			// why a provider looks slow, and this path used to vanish silently.
+			s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
+				"client canceled while waiting for the upstream response: "+err.Error())
 			return false, 0, nil
 		}
 		slog.Error("Upstream request failed", "error", err, "provider", modelInfo.Provider, "connection", conn.ID)

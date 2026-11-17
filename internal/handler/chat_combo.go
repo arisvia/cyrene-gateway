@@ -169,6 +169,8 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
 					slog.Info("Client canceled combo request", slog.String("model", modelStr))
+					s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
+						"client canceled while the combo model was being reached")
 					return
 				}
 				lastError = fmt.Sprintf("upstream request failed: %v", err)
