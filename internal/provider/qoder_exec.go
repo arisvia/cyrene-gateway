@@ -310,8 +310,17 @@ func messageContentText(content any) string {
 			}
 		}
 		return strings.Join(parts, "\n")
+	case map[string]any:
+		// A single typed block sent bare (not wrapped in an array) is legal client
+		// input; take its text rather than forwarding a Go formatting dump.
+		if t, ok := v["text"].(string); ok {
+			return t
+		}
+		return ""
 	default:
-		return fmt.Sprintf("%v", v)
+		// JSON-decoded content is only ever string, array, object, number, bool or
+		// null; anything left here is a scalar with no text to extract.
+		return ""
 	}
 }
 

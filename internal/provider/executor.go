@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -312,11 +313,10 @@ func envPositiveInt(key string, fallback int) int {
 // maxLen <= 0 disables the length catch-all. The second return value names the
 // rule that fired, or "" when the content was left alone.
 func neutralizeCodebuddySystem(content any, maxLen int) (any, string) {
-	switch content.(type) {
-	case string, []any:
-	default:
-		return content, ""
-	}
+	// No shape whitelist: the guard keys on flattened text, so every content shape
+	// JSON can produce (string, typed blocks, a bare block object) is inspected.
+	// Whitelisting shapes left a bypass where an agent identity file was forwarded
+	// verbatim and unlogged.
 	text := messageContentText(content)
 	if text == "" {
 		return content, ""
@@ -367,6 +367,7 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 		}
 	}
 
+	rewrites := codebuddyRewrites{}
 	rawMsgs, ok := bodyMap["messages"].([]any)
 	if !ok || len(rawMsgs) == 0 {
 		bodyMap["messages"] = []any{
@@ -377,24 +378,46 @@ func sanitizeCodebuddyRequest(providerID string, bodyMap map[string]any) {
 
 	switch providerID {
 	case "codebuddy":
-		bodyMap["messages"] = codebuddyIntlMessages(providerID, rawMsgs)
+		bodyMap["messages"] = codebuddyIntlMessages(rawMsgs, rewrites)
 	case "codebuddy-cn":
-		bodyMap["messages"] = codebuddyCNMessages(providerID, rawMsgs)
+		bodyMap["messages"] = codebuddyCNMessages(rawMsgs, rewrites)
 	default:
 		// An unlisted codebuddy-* sibling keeps the plain OpenAI shape: neither the
 		// Intl leading-system rewrite nor the CN length gate is guessed for it. It
 		// still gets marker neutralization, because that is the half that costs an
 		// account. TestRegistryCoversEveryCodebuddyShape pins all three paths.
-		bodyMap["messages"] = neutralizeCodebuddySystems(providerID, rawMsgs, 0)
+		bodyMap["messages"] = neutralizeCodebuddySystems(rawMsgs, 0, rewrites)
+	}
+	rewrites.log(providerID)
+}
+
+// codebuddyRewrites counts how often each guard fired within one request.
+// Replacing client text is the one thing in this path that can silently change an
+// answer, so it must never happen without a trace the operator can see in the
+// panel's live log view — but the trace is aggregated, not per message: the
+// messages array is client-controlled (a 10 MiB body carries ~200k minimal
+// messages) and every credential retry re-runs the sanitizer, so one Warn per
+// rewrite would let a single request wipe the 1000-line log ring and serialize
+// that many ring memmoves against all logging in the process.
+type codebuddyRewrites map[string]int
+
+func (r codebuddyRewrites) add(rule string) {
+	if rule != "" {
+		r[rule]++
 	}
 }
 
-// logCodebuddyPromptRewrite names the guard that fired. Replacing client text is
-// the one thing in this path that can silently change an answer, so it must never
-// happen without a trace the operator can see in the panel's live log view.
-func logCodebuddyPromptRewrite(providerID, rule string) {
-	slog.Warn("codebuddy system prompt neutralized before upstream",
-		"provider", providerID, "rule", rule)
+// log emits one line per rule that fired, at most one per sanitize pass.
+func (r codebuddyRewrites) log(providerID string) {
+	rules := make([]string, 0, len(r))
+	for rule := range r {
+		rules = append(rules, rule)
+	}
+	sort.Strings(rules)
+	for _, rule := range rules {
+		slog.Warn("codebuddy system prompt neutralized before upstream",
+			"provider", providerID, "rule", rule, "count", r[rule])
+	}
 }
 
 // codebuddyIntlMessages folds the caller's own system/developer text into the
@@ -402,7 +425,7 @@ func logCodebuddyPromptRewrite(providerID, rule string) {
 // identity markers inside it. The previous behaviour discarded that text
 // unconditionally — no upstream basis, and it silently dropped the per-key
 // systemPrompt an admin configures on an API key.
-func codebuddyIntlMessages(providerID string, rawMsgs []any) []any {
+func codebuddyIntlMessages(rawMsgs []any, rewrites codebuddyRewrites) []any {
 	var prompts []string
 	out := make([]any, 0, len(rawMsgs)+1)
 	for _, m := range rawMsgs {
@@ -418,7 +441,7 @@ func codebuddyIntlMessages(providerID string, rawMsgs []any) []any {
 			}
 			if agentSystemPromptRegex.MatchString(text) {
 				text = neutralCodebuddyPrompt
-				logCodebuddyPromptRewrite(providerID, codebuddyRuleIdentityMarker)
+				rewrites.add(codebuddyRuleIdentityMarker)
 			}
 			prompts = append(prompts, text)
 			continue
@@ -445,7 +468,7 @@ func codebuddyIntlMessages(providerID string, rawMsgs []any) []any {
 // codebuddyCNMessages leaves the message array in place — the CN endpoint takes
 // the plain OpenAI shape — only guarantees a leading system message, then
 // neutralizes agent-shaped system text with the CN length catch-all enabled.
-func codebuddyCNMessages(providerID string, rawMsgs []any) []any {
+func codebuddyCNMessages(rawMsgs []any, rewrites codebuddyRewrites) []any {
 	hasSystem := false
 	for _, m := range rawMsgs {
 		if msgMap, ok := m.(map[string]any); ok {
@@ -459,12 +482,14 @@ func codebuddyCNMessages(providerID string, rawMsgs []any) []any {
 	if !hasSystem {
 		messages = append([]any{map[string]any{"role": "system", "content": codebuddyIdentityPrompt}}, rawMsgs...)
 	}
-	return neutralizeCodebuddySystems(providerID, messages, codebuddyCNMaxSystemLen())
+	return neutralizeCodebuddySystems(messages, codebuddyCNMaxSystemLen(), rewrites)
 }
 
-// neutralizeCodebuddySystems rewrites agent-shaped system messages and leaves
-// everything else, including user and assistant text, untouched.
-func neutralizeCodebuddySystems(providerID string, rawMsgs []any, maxLen int) []any {
+// neutralizeCodebuddySystems rewrites agent-shaped system/developer messages and
+// leaves everything else, including user and assistant text, untouched. Both
+// roles are guarded on every shape: the WAF reads the instruction slot, and an
+// OpenAI-shape body can carry it as either.
+func neutralizeCodebuddySystems(rawMsgs []any, maxLen int, rewrites codebuddyRewrites) []any {
 	out := make([]any, 0, len(rawMsgs))
 	for _, m := range rawMsgs {
 		msgMap, ok := m.(map[string]any)
@@ -472,7 +497,7 @@ func neutralizeCodebuddySystems(providerID string, rawMsgs []any, maxLen int) []
 			out = append(out, m)
 			continue
 		}
-		if role, _ := msgMap["role"].(string); role != "system" {
+		if role, _ := msgMap["role"].(string); role != "system" && role != "developer" {
 			out = append(out, msgMap)
 			continue
 		}
@@ -481,7 +506,7 @@ func neutralizeCodebuddySystems(providerID string, rawMsgs []any, maxLen int) []
 			out = append(out, msgMap)
 			continue
 		}
-		logCodebuddyPromptRewrite(providerID, rule)
+		rewrites.add(rule)
 		clone := make(map[string]any, len(msgMap))
 		maps.Copy(clone, msgMap)
 		clone["content"] = content
