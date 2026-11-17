@@ -5,15 +5,18 @@ import (
 )
 
 type ModelMetadata struct {
-	ID            string   `json:"id"`
-	DisplayName   string   `json:"display_name,omitempty"`
-	ContextLength int      `json:"context_length,omitempty"`
-	MaxOutput     int      `json:"max_output_tokens,omitempty"`
-	PriceFactor   float64  `json:"price_factor,omitempty"`
-	IsFree        bool     `json:"is_free,omitempty"`
-	Capabilities  []string `json:"capabilities,omitempty"`
-	Modalities    []string `json:"modalities,omitempty"`
-	Family        string   `json:"family,omitempty"`
+	ID            string  `json:"id"`
+	DisplayName   string  `json:"display_name,omitempty"`
+	ContextLength int     `json:"context_length,omitempty"`
+	MaxOutput     int     `json:"max_output_tokens,omitempty"`
+	PriceFactor   float64 `json:"price_factor,omitempty"`
+	IsFree        bool    `json:"is_free,omitempty"`
+	// Created is the Unix stamp of the model's public release, sourced only from
+	// the models.dev catalog. Zero means unknown and is never published.
+	Created      int64    `json:"created,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	Modalities   []string `json:"modalities,omitempty"`
+	Family       string   `json:"family,omitempty"`
 	// APIProvider is the upstream enum stating which API surface serves this model
 	// (Antigravity: API_PROVIDER_GOOGLE_GEMINI, API_PROVIDER_ANTHROPIC_VERTEX,
 	// API_PROVIDER_OPENAI_VERTEX). It is what decides request-shape compatibility —

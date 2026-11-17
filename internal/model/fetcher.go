@@ -611,6 +611,9 @@ func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMet
 			if result.Family == "" {
 				result.Family = cat.Family
 			}
+			if result.Created == 0 {
+				result.Created = cat.Created
+			}
 		}
 	}
 

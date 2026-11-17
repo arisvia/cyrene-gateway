@@ -27,6 +27,10 @@ type ModelsDevEntry struct {
 	Family  string `json:"family"`
 	Context int    `json:"context"`
 	Output  int    `json:"output"`
+	// ReleaseDate is models.dev's "release_date" (YYYY-MM-DD). It is the only
+	// trustworthy publication stamp we have, and it is what backs the OpenAI
+	// `created` field — never synthesized from the fetch time.
+	ReleaseDate string `json:"release_date"`
 }
 
 type modelsDevEntry = ModelsDevEntry
@@ -48,6 +52,7 @@ type modelsDevProvider struct {
 			Context int `json:"context"`
 			Output  int `json:"output"`
 		} `json:"limit"`
+		ReleaseDate string `json:"release_date"`
 	} `json:"models"`
 }
 
@@ -103,10 +108,11 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, error
 				continue
 			}
 			catalog[key] = modelsDevEntry{
-				Name:    m.Name,
-				Family:  m.Family,
-				Context: m.Limit.Context,
-				Output:  m.Limit.Output,
+				Name:        m.Name,
+				Family:      m.Family,
+				Context:     m.Limit.Context,
+				Output:      m.Limit.Output,
+				ReleaseDate: m.ReleaseDate,
 			}
 		}
 	}
@@ -240,11 +246,27 @@ func LookupModelsDevGlobal(identifiers ...string) *ModelMetadata {
 				ContextLength: e.Context,
 				MaxOutput:     e.Output,
 				Family:        e.Family,
+				Created:       releaseDateToEpoch(e.ReleaseDate),
 				FromUpstream:  false,
 			}
 		}
 	}
 	return nil
+}
+
+// releaseDateToEpoch converts a models.dev "release_date" into the Unix stamp the
+// OpenAI `created` field means. Unknown dates and the catalog's 1970-01-01
+// placeholder both yield 0, which every consumer omits — an absent stamp beats a
+// invented one.
+func releaseDateToEpoch(date string) int64 {
+	if date == "" {
+		return 0
+	}
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil || t.Year() <= 1970 {
+		return 0
+	}
+	return t.Unix()
 }
 
 // SetModelsDevCatalog updates the in-memory models.dev catalog.

@@ -157,6 +157,8 @@ func (s *Server) registerRoutes() {
 	s.Router.HandleFunc("POST /v1/messages/count_tokens", s.handleCountTokens)
 
 	// Google Gemini compatible API surface
+	s.Router.HandleFunc("GET /v1beta/models", s.handleGeminiModels)
+	s.Router.HandleFunc("GET /v1beta/models/{model...}", s.handleGeminiModelRetrieve)
 	s.Router.HandleFunc("POST /v1beta/models/{modelAction...}", s.handleGeminiGenerateContent)
 	s.Router.HandleFunc("POST /v1/models/{modelAction...}", s.handleGeminiGenerateContent)
 

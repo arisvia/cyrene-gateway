@@ -31,6 +31,9 @@ type clientModelEntry struct {
 	Modalities    []string `json:"modalities,omitempty"`
 	ContextLength int      `json:"context_length,omitempty"`
 	MaxOutput     int      `json:"max_output_tokens,omitempty"`
+	// Created is the model's public release stamp in Unix seconds, taken from the
+	// models.dev catalog. Omitted when the catalog has no date for that model.
+	Created int64 `json:"created,omitempty"`
 }
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -48,15 +51,13 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	}
 	models = filterModelsByKind(models, targetKind)
 
-	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil && len(keyObj.AllowedModels) > 0 {
-		allowed := make([]clientModelEntry, 0, len(models))
-		for _, m := range models {
-			if keyObj.IsModelAllowed(m.ID) {
-				allowed = append(allowed, m)
-			}
+	allowed := make([]clientModelEntry, 0, len(models))
+	for _, m := range models {
+		if modelAllowedForRequest(r, m.ID) {
+			allowed = append(allowed, m)
 		}
-		models = allowed
 	}
+	models = allowed
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"object": "list",
@@ -80,10 +81,8 @@ func (s *Server) handleModelRetrieve(w http.ResponseWriter, r *http.Request) {
 	entry, found := lookupClientModel(models, wanted)
 	// A key scoped to specific models must not learn about the ones it cannot
 	// call, so a scoped-out model reports the same 404 as an unknown one.
-	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil && len(keyObj.AllowedModels) > 0 {
-		if found && !keyObj.IsModelAllowed(entry.ID) {
-			found = false
-		}
+	if found && !modelAllowedForRequest(r, entry.ID) {
+		found = false
 	}
 	if !found {
 		writeModelNotFound(w, wanted)
@@ -121,6 +120,100 @@ func writeModelNotFound(w http.ResponseWriter, id string) {
 			"code":    "model_not_found",
 		},
 	})
+}
+
+// geminiModel is one entry of Google's model listing schema. It is a different
+// wire shape from clientModelEntry — resource names, camelCase limits and a
+// method list — so it is derived from the same published entry instead of the
+// /v1 handlers growing a second set of conditionals.
+type geminiModel struct {
+	Name                       string   `json:"name"`
+	DisplayName                string   `json:"displayName,omitempty"`
+	InputTokenLimit            int      `json:"inputTokenLimit,omitempty"`
+	OutputTokenLimit           int      `json:"outputTokenLimit,omitempty"`
+	SupportedGenerationMethods []string `json:"supportedGenerationMethods"`
+}
+
+// geminiMethodsFor maps our capability tags onto the operations Google
+// advertises. Image generators have no token counting in the Gemini API, and
+// embedding models answer only the embed RPCs.
+func geminiMethodsFor(capabilities []string) []string {
+	switch {
+	case slices.Contains(capabilities, "embeddings"):
+		return []string{"embedContent", "batchEmbedContents"}
+	case slices.Contains(capabilities, "image-generation"):
+		return []string{"generateContent", "streamGenerateContent"}
+	default:
+		return []string{"generateContent", "streamGenerateContent", "countTokens"}
+	}
+}
+
+func toGeminiModel(m clientModelEntry) geminiModel {
+	// The resource name carries the qualified id, because that is what our
+	// generation routes accept: handleGeminiGenerateContent strips the leading
+	// "models/" and then resolves "provider/model". A client that lists here and
+	// generates from the returned name therefore reaches the same connection.
+	return geminiModel{
+		Name:                       "models/" + m.ID,
+		DisplayName:                m.DisplayName,
+		InputTokenLimit:            m.ContextLength,
+		OutputTokenLimit:           m.MaxOutput,
+		SupportedGenerationMethods: geminiMethodsFor(m.Capabilities),
+	}
+}
+
+func (s *Server) handleGeminiModels(w http.ResponseWriter, r *http.Request) {
+	models, err := s.buildClientModels()
+	if err != nil {
+		slog.Error("Failed to list connections for gemini models", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	// Google's own listing includes image models, so no kind filtering here.
+	out := make([]geminiModel, 0, len(models))
+	for _, m := range models {
+		if !modelAllowedForRequest(r, m.ID) {
+			continue
+		}
+		out = append(out, toGeminiModel(m))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": out})
+}
+
+// handleGeminiModelRetrieve serves GET /v1beta/models/{model}. Clients pass back
+// the resource name they listed ("models/<provider>/<id>"), which is also valid
+// as a bare or qualified id.
+func (s *Server) handleGeminiModelRetrieve(w http.ResponseWriter, r *http.Request) {
+	wanted := strings.TrimPrefix(r.PathValue("model"), "models/")
+	models, err := s.buildClientModels()
+	if err != nil {
+		slog.Error("Failed to list connections for gemini model retrieve", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	entry, found := lookupClientModel(models, wanted)
+	if !found || !modelAllowedForRequest(r, entry.ID) {
+		writeGeminiModelNotFound(w, wanted)
+		return
+	}
+	writeJSON(w, http.StatusOK, toGeminiModel(entry))
+}
+
+func writeGeminiModelNotFound(w http.ResponseWriter, name string) {
+	writeJSON(w, http.StatusNotFound, map[string]any{
+		"error": map[string]any{
+			"code":    http.StatusNotFound,
+			"message": fmt.Sprintf("Model %q not found.", name),
+			"status":  "NOT_FOUND",
+		},
+	})
+}
+
+// modelAllowedForRequest reports whether the API key serving this request may see
+// the model. Keys without an allowlist see everything.
+func modelAllowedForRequest(r *http.Request, id string) bool {
+	keyObj := auth.APIKeyFromContext(r.Context())
+	return keyObj == nil || len(keyObj.AllowedModels) == 0 || keyObj.IsModelAllowed(id)
 }
 
 // buildClientModels assembles every model the gateway publishes to clients:
@@ -251,6 +344,7 @@ func (s *Server) buildClientModels() ([]clientModelEntry, error) {
 				MaxOutput:     meta.MaxOutput,
 				Capabilities:  meta.Capabilities,
 				Modalities:    meta.Modalities,
+				Created:       meta.Created,
 			})
 		}
 	}
