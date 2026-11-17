@@ -52,7 +52,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	keyObj := auth.APIKeyFromContext(r.Context())
-	if keyObj != nil && !keyObj.IsModelAllowed(modelStr) {
+	if !keyAllowsModel(keyObj, modelStr) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": fmt.Sprintf("model '%s' is not allowed for this API key", modelStr),
 		})

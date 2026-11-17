@@ -107,30 +107,45 @@ type APIKey struct {
 	IsActive      bool      `json:"isActive"`
 }
 
-// IsModelAllowed checks if the given model matches the key's allowed models list.
-// If AllowedModels is empty or contains "*", all models are allowed.
-// Supports wildcards like "deepseek/*" or "deepseek*".
+// IsModelAllowed matches a client's model string against the key's allowlist. The
+// comparisons are case-insensitive throughout, because routing resolves model ids
+// case-insensitively and a key must not be refused a model it can reach. A pattern
+// without a slash is provider-agnostic by operator intent: "gpt-4o" means that model
+// id under any connected provider — which is exactly what the key can already call by
+// sending the bare name, since the router attributes it in registry order. Matching
+// such a pattern only against a bare string used to hide every qualified entry the
+// same key could serve, so /v1/models and /v1/chat/completions disagreed.
 func (k *APIKey) IsModelAllowed(model string) bool {
 	if k == nil || len(k.AllowedModels) == 0 {
 		return true
 	}
+	lower := strings.ToLower(model)
 	for _, pattern := range k.AllowedModels {
 		pattern = strings.TrimSpace(pattern)
 		if pattern == "" || pattern == "*" {
 			return true
 		}
-		if strings.HasSuffix(pattern, "/*") {
-			prefix := strings.TrimSuffix(pattern, "/*")
-			if strings.HasPrefix(model, prefix+"/") {
+		lowerPattern := strings.ToLower(pattern)
+		if prefix, isProvider := strings.CutSuffix(lowerPattern, "/*"); isProvider {
+			if strings.HasPrefix(lower, prefix+"/") && len(lower) > len(prefix)+1 {
 				return true
 			}
-		} else if strings.HasSuffix(pattern, "*") {
-			prefix := strings.TrimSuffix(pattern, "*")
-			if strings.HasPrefix(model, prefix) {
+			continue
+		}
+		if prefix, isGlob := strings.CutSuffix(lowerPattern, "*"); isGlob {
+			if strings.HasPrefix(lower, prefix) {
 				return true
 			}
-		} else if strings.EqualFold(pattern, model) {
+			continue
+		}
+		if strings.EqualFold(pattern, model) {
 			return true
+		}
+		// Bare pattern: also match the model part of a qualified id.
+		if !strings.Contains(pattern, "/") {
+			if _, bare, ok := strings.Cut(model, "/"); ok && strings.EqualFold(pattern, bare) {
+				return true
+			}
 		}
 	}
 	return false

@@ -110,13 +110,20 @@ func lookupClientModel(models []clientModelEntry, wanted string, allowed func(cl
 	if wanted == "" {
 		return clientModelEntry{}, false
 	}
+	// Match the way the router matches: the reasoning-effort suffix and the
+	// context-window marker never name a different model, and ids compare
+	// case-insensitively. Without this, models.retrieve("GPT-4O") or
+	// "openai/gpt-4o(high)" 404s on an entry that /v1/models advertises and that a
+	// completion would serve from the very same connection.
+	wanted = stripModelSpelling(wanted)
 	for _, m := range models {
-		if m.ID == wanted {
+		if strings.EqualFold(m.ID, wanted) {
 			return m, true
 		}
 	}
 	for _, m := range models {
-		if _, bare, ok := strings.Cut(m.ID, "/"); !ok || bare != wanted {
+		_, bare, ok := strings.Cut(m.ID, "/")
+		if !ok || !strings.EqualFold(bare, wanted) {
 			continue
 		}
 		if allowed != nil && !allowed(m) {
@@ -125,6 +132,15 @@ func lookupClientModel(models []clientModelEntry, wanted string, allowed func(cl
 		return m, true
 	}
 	return clientModelEntry{}, false
+}
+
+// stripModelSpelling removes the decorations a client may hang on a model string
+// that do not identify a different model. It is the same reduction the routing
+// path applies (provider.ExtractModelReasoningEffort), so listing, retrieval and
+// dispatch agree on which model a string names.
+func stripModelSpelling(modelStr string) string {
+	clean, _ := provider.ExtractModelReasoningEffort(modelStr)
+	return clean
 }
 
 func writeModelNotFound(w http.ResponseWriter, id string) {
@@ -235,11 +251,29 @@ func writeGeminiModelNotFound(w http.ResponseWriter, name string) {
 	writeGeminiError(w, http.StatusNotFound, fmt.Sprintf("Model %q not found.", name), "NOT_FOUND")
 }
 
+// keyAllowsModel is the one allowlist gate for every surface that takes a client's
+// model string: chat, messages, count-tokens, embeddings, media, list and retrieve.
+// It tests the spelling the client sent *and* the canonical spelling the router
+// dispatches on, because the reasoning-effort suffix and context marker do not pick
+// a different model — a key scoped to "openai/gpt-4o" must not be refused
+// "openai/gpt-4o(high)" that it can see in /v1/models and successfully call.
+func keyAllowsModel(key *model.APIKey, modelStr string) bool {
+	if key == nil || len(key.AllowedModels) == 0 {
+		return true
+	}
+	if key.IsModelAllowed(modelStr) {
+		return true
+	}
+	if clean := stripModelSpelling(modelStr); clean != modelStr {
+		return key.IsModelAllowed(clean)
+	}
+	return false
+}
+
 // modelAllowedForRequest reports whether the API key serving this request may see
 // the model. Keys without an allowlist see everything.
 func modelAllowedForRequest(r *http.Request, id string) bool {
-	keyObj := auth.APIKeyFromContext(r.Context())
-	return keyObj == nil || len(keyObj.AllowedModels) == 0 || keyObj.IsModelAllowed(id)
+	return keyAllowsModel(auth.APIKeyFromContext(r.Context()), id)
 }
 
 // buildClientModels assembles every model the gateway publishes to clients:

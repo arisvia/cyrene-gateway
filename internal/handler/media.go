@@ -84,7 +84,7 @@ func extractRoutingFields(bodyBytes []byte) (cleanBody []byte, bodyMap map[strin
 // checkMediaModelAccess is applied to both the requested and resolved model.
 // An empty model is only allowed for keys without model restrictions.
 func (s *Server) checkMediaModelAccess(w http.ResponseWriter, r *http.Request, modelName string) bool {
-	if keyObj := auth.APIKeyFromContext(r.Context()); keyObj != nil && !keyObj.IsModelAllowed(modelName) {
+	if keyObj := auth.APIKeyFromContext(r.Context()); !keyAllowsModel(keyObj, modelName) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": fmt.Sprintf("model '%s' is not allowed for this API key", modelName),
 		})

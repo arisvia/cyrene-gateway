@@ -41,7 +41,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	keyObj := auth.APIKeyFromContext(r.Context())
-	if keyObj != nil && !keyObj.IsModelAllowed(req.Model) {
+	if !keyAllowsModel(keyObj, req.Model) {
 		writeJSON(w, http.StatusForbidden, map[string]string{
 			"error": fmt.Sprintf("model '%s' is not allowed for this API key", req.Model),
 		})

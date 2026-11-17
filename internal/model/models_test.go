@@ -52,6 +52,41 @@ func TestAPIKey_IsModelAllowed(t *testing.T) {
 			t.Errorf("IsModelAllowed(%q) = %v, want %v", tt.model, got, tt.want)
 		}
 	}
+
+	// Wildcards compare case-insensitively, the way routing compares ids, and a
+	// provider wildcard never matches the bare provider name.
+	for _, tt := range []struct {
+		model string
+		want  bool
+	}{
+		{"DEEPSEEK/deepseek-chat", true},
+		{"OpenAI/GPT-4O", true},
+		{"ANTHROPIC/CLAUDE-3-5-SONNET", true},
+		{"deepseek", false},
+		{"deepseek/", false},
+	} {
+		if got := key.IsModelAllowed(tt.model); got != tt.want {
+			t.Errorf("wildcard IsModelAllowed(%q) = %v, want %v", tt.model, got, tt.want)
+		}
+	}
+
+	// A pattern without a slash is provider-agnostic: the key can already reach the
+	// model by sending the bare name, so the same key must see and call it under the
+	// qualified id the gateway advertises.
+	bareKey := &APIKey{AllowedModels: []string{"gpt-4o"}}
+	for _, tt := range []struct {
+		model string
+		want  bool
+	}{
+		{"gpt-4o", true},
+		{"openai/gpt-4o", true},
+		{"anthropic/GPT-4O", true},
+		{"openai/gpt-4o-mini", false},
+	} {
+		if got := bareKey.IsModelAllowed(tt.model); got != tt.want {
+			t.Errorf("bare-pattern IsModelAllowed(%q) = %v, want %v", tt.model, got, tt.want)
+		}
+	}
 }
 
 func TestAPIKey_IsExpired(t *testing.T) {
