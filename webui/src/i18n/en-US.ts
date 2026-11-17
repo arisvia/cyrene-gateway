@@ -709,6 +709,7 @@ export const enUS: TranslationDict = {
     testSingleTitle: 'Test model connectivity with a brief greeting',
     contextLength: '{length} context',
     outputLength: '{length} max output',
+    releaseDateTitle: 'Model release date (from models.dev)',
     noContext: 'Undefined context length',
     chipDisabled: 'Hidden',
     chipCustom: 'Customized',

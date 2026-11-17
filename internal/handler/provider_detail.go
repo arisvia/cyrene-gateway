@@ -47,15 +47,19 @@ type ModelMetaOverride struct {
 
 // ProviderModelItem represents a model in the provider detail response with its enabled and free status.
 type ProviderModelItem struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	ContextLength int     `json:"contextLength,omitempty"`
-	MaxOutput     int     `json:"maxOutputTokens,omitempty"`
-	PriceFactor   float64 `json:"priceFactor,omitempty"`
-	Enabled       bool    `json:"enabled"`
-	IsFree        bool    `json:"isFree,omitempty"`
-	CanEdit       bool    `json:"canEdit"`
-	HasOverride   bool    `json:"hasOverride,omitempty"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	ContextLength int    `json:"contextLength,omitempty"`
+	MaxOutput     int    `json:"maxOutputTokens,omitempty"`
+	// Created is the model's public release stamp in Unix seconds, resolved from
+	// the models.dev catalog — the same match that feeds /v1/models. Zero means
+	// the catalog has no date for this model, and the panel shows nothing.
+	Created     int64   `json:"created,omitempty"`
+	PriceFactor float64 `json:"priceFactor,omitempty"`
+	Enabled     bool    `json:"enabled"`
+	IsFree      bool    `json:"isFree,omitempty"`
+	CanEdit     bool    `json:"canEdit"`
+	HasOverride bool    `json:"hasOverride,omitempty"`
 }
 
 // handleGetProviderModels returns registry models + live synced models + custom models for a connection.
@@ -132,6 +136,11 @@ func (s *Server) handleGetProviderModels(w http.ResponseWriter, r *http.Request)
 			PriceFactor: cachedPriceFactors[id],
 			Enabled:     !isModelDisabled(id),
 			IsFree:      cachedFree[id] || strings.HasSuffix(strings.ToLower(id), "-free") || strings.ToLower(id) == "big-pickle",
+		}
+		// 发布日期只有 models.dev 一个来源，且不受用户覆盖影响，所以在此一次性
+		// 按 id + 显示名匹配，与 /v1/models 的 MergeMetadata 同一口径。
+		if cat := model.LookupCatalog(id, name); cat != nil {
+			item.Created = cat.Created
 		}
 
 		// 优先使用用户自定义设置的元数据覆盖

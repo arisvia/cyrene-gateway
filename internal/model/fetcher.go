@@ -653,7 +653,7 @@ func MergeMetadata(modelID string, userOverride *ModelMetadata, cached *ModelMet
 func EnrichModelsFromCatalog(models []ModelMetadata) {
 	for i := range models {
 		m := &models[i]
-		if m.ContextLength > 0 && m.MaxOutput > 0 && len(m.Capabilities) > 0 && m.Family != "" {
+		if m.ContextLength > 0 && m.MaxOutput > 0 && len(m.Capabilities) > 0 && m.Family != "" && m.Created != 0 {
 			continue
 		}
 		cat := LookupCatalog(m.ID, m.DisplayName)
@@ -662,6 +662,12 @@ func EnrichModelsFromCatalog(models []ModelMetadata) {
 		}
 		if m.DisplayName == "" || m.DisplayName == m.ID {
 			m.DisplayName = cat.DisplayName
+		}
+		// Created only ever comes from models.dev — upstream catalogs do not
+		// publish a release stamp — so cached rows must carry it for the two read
+		// paths (cached vs live lookup) to agree.
+		if m.Created == 0 {
+			m.Created = cat.Created
 		}
 		if m.ContextLength == 0 {
 			m.ContextLength = cat.ContextLength

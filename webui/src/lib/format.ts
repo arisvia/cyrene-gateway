@@ -104,3 +104,14 @@ export function formatVersion(v: string | undefined | null): string {
   }
   return v
 }
+
+// formatReleaseDate renders a Unix stamp as a plain YYYY-MM-DD. Release dates are
+// absolute facts, not relative ones — "3 years ago" would be noise — and the ISO
+// form needs no locale table. Empty string means the catalog has no date, and the
+// caller renders nothing.
+export function formatReleaseDate(epochSeconds: number | undefined | null): string {
+  if (!epochSeconds || epochSeconds <= 0) return ''
+  const d = new Date(epochSeconds * 1000)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toISOString().slice(0, 10)
+}

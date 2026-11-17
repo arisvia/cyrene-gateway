@@ -93,6 +93,8 @@ export interface ProviderModel {
   priceFactor?: number
   contextLength?: number
   maxOutputTokens?: number
+  /** Unix seconds; models.dev release date. Absent when the catalog has none. */
+  created?: number
   capabilities?: string[]
   modalities?: string[]
   source?: string

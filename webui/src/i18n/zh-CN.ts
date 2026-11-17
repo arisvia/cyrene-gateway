@@ -707,6 +707,7 @@ export const zhCN = {
     testSingleTitle: '打招呼快速测试该模型连通性',
     contextLength: '{length} 上下文',
     outputLength: '{length} 输出',
+    releaseDateTitle: '模型发布日期（来自 models.dev）',
     noContext: '未定义上下文长度',
     chipDisabled: '不对外',
     chipCustom: '已改',

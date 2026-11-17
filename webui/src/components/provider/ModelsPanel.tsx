@@ -1,6 +1,7 @@
 import { type Component, For, Show } from 'solid-js'
 import { useI18n } from '@/i18n'
 import { modelKeyOf, type ProviderModelsApi } from '@/lib/providerModels'
+import { formatReleaseDate } from '@/lib/format'
 import { Badge, Button, Card, Empty, IconButton, IconCheck, IconClose, IconEdit, IconLock, IconZap, Input, Toggle } from '@/components/ui'
 
 const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
@@ -245,6 +246,13 @@ const ModelsPanel: Component<{ models: ProviderModelsApi }> = props => {
                     <span class="bg-hover px-1.5 py-0.5 rounded font-mono">
                       {t('providerDetail.outputLength', { length: m.maxOutputTokens! >= 1024 ? `${Math.round(m.maxOutputTokens! / 1024)}k` : m.maxOutputTokens! })}
                     </span>
+                  </Show>
+                  <Show when={formatReleaseDate(m.created)}>
+                    {(date) => (
+                      <span class="bg-hover px-1.5 py-0.5 rounded font-mono opacity-70" title={t('providerDetail.releaseDateTitle')}>
+                        {date()}
+                      </span>
+                    )}
                   </Show>
                   <Show when={!m.contextLength && !m.maxOutputTokens}>
                     <span class="italic text-[10px] opacity-60">{t('providerDetail.noContext')}</span>
