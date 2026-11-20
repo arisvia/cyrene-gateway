@@ -6,13 +6,10 @@ package provider
 // migration; display names are vendor-official). Media providers
 // (internal/media) are a separate registry and were out of scope.
 
-// ClaudeCodeVersion is the Claude Code CLI release this gateway impersonates.
-// The official client gates its own OAuth surfaces on a current version, so a
-// bump here moves every claude/claude-oauth request at once.
-const (
-	ClaudeCodeVersion   = "2.1.280"
-	ClaudeCodeUserAgent = "claude-cli/" + ClaudeCodeVersion + " (external, sdk-cli)"
-)
+// Claude Code CLI fingerprint: registry_data.go keeps the floor, the live
+// release resolution and the env pin live in claude_version.go. The
+// claudeCLIUA AuthHook stamps the current value on every OAuth chat request
+// so a model launch cannot outdate the hardcoded map below.
 
 // claudeCodeHeaders provides default headers for Anthropic-compatible providers supporting thinking beta
 var claudeCodeHeaders = map[string]string{
@@ -35,7 +32,7 @@ var claudeOAuthHeaders = map[string]string{
 	"Anthropic-Version":                         AnthropicAPIVersion,
 	"Anthropic-Beta":                            "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24,structured-outputs-2025-12-15,fast-mode-2026-02-01,redact-thinking-2026-02-12,token-efficient-tools-2026-03-28",
 	"Anthropic-Dangerous-Direct-Browser-Access": "true",
-	"User-Agent":                                ClaudeCodeUserAgent,
+	"User-Agent":                                "claude-cli/" + ClaudeCodeVersionFloor + " (external, sdk-cli)",
 	"X-App":                                     "cli",
 }
 
@@ -124,6 +121,7 @@ func init() {
 		ClientID:     "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 		URLSuffix:    "?beta=true",
 		Headers:      claudeOAuthHeaders,
+		AuthHooks:    []string{"claudeCLIUA"},
 	}
 	Registry["codebuddy-cn"] = ProviderInfo{
 		ID: "codebuddy-cn", Name: "CodeBuddy (CN)",

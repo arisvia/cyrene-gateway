@@ -258,6 +258,16 @@ func ApplyAuth(req *http.Request, t Transport, creds Credentials) {
 // 9router HEADER_HOOKS (open-sse/executors/default.js).
 var authHooks = map[string]func(http.Header, Credentials){
 	"kimiHeaders": kimiHeadersHook,
+	"claudeCLIUA": claudeCLIUAHook,
+}
+
+// claudeCLIUAHook stamps the live Claude Code CLI fingerprint on every
+// claude request. The registry header map carries only the bundled floor;
+// Anthropic gates newly released models on a minimum CLI version, so the
+// per-request value from claudeCLILive (npm, refreshed in the background)
+// must win over the package-init snapshot.
+func claudeCLIUAHook(h http.Header, _ Credentials) {
+	h.Set("User-Agent", ClaudeCodeUserAgent())
 }
 
 // kimiHeadersHook injects the X-Msh-* client fingerprint headers required by the
