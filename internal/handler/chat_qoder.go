@@ -298,6 +298,42 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 	}
 
+	// emitPlanRefusal answers a serviceAvailable=false handshake without
+	// sleeping: upstream phrases it as a queue, but the queue semantics are a
+	// lie — the account's plan is being refused (subCode RESOURCE_LIMIT on
+	// the observed envelopes). Consuming the wait budget here only burns the
+	// client's patience; the fix lives on the account, not in this request.
+	emitPlanRefusal := func(sig provider.QoderQueueSignal) {
+		retrySec := sig.RetryAfterSec
+		if retrySec <= 0 {
+			retrySec = provider.DefaultQoderQueueRetrySeconds
+		}
+		sub := sig.SubCode
+		if sub == "" {
+			sub = "unspecified"
+		}
+		msg := fmt.Sprintf("qoder model %s is plan-refused upstream (subCode %s, serviceAvailable=false): this is not congestion, waiting will not help; upgrade the plan or add a served connection. Advisory retry in %ds",
+			queueLabel(), sub, retrySec)
+		slog.Warn("Qoder account plan-refused; skipping queue wait",
+			slog.String("model", qoderKey),
+			slog.String("connection", conn.ID),
+			slog.String("subCode", sub),
+			slog.Int("advisoryRetrySec", retrySec),
+		)
+		if headersCommitted {
+			// The stream was already 200-committed; a second header block is
+			// impossible, so terminate with an SSE error event instead.
+			fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":%q,\"type\":\"qoder_resource_limit\",\"code\":503}}\n\n", msg)
+			flusher.Flush()
+		} else {
+			w.Header().Set("Retry-After", strconv.Itoa(retrySec))
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": map[string]any{"message": msg, "type": "qoder_resource_limit", "code": 503},
+			})
+		}
+		s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 503, msg)
+	}
+
 	for attempt := 0; attempt < maxQueueAttempts; attempt++ {
 		if r.Context().Err() != nil {
 			s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
@@ -331,16 +367,22 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			res.Body.Close()
 
 			// Check if this error status represents queue waiting (10605 / isQueued)
-			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(string(errBody)); isQueued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
+			if sig := provider.ExtractQoderQueueSignalFromLine(string(errBody)); sig.Queued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
 				// A sibling account can answer now: park this one for the model it is
 				// queued on and hand the request over, instead of spending the client's
 				// patience on a queue that may not drain for minutes.
-				if s.qoderQueueYield(conn, modelInfo, retrySec, false) {
+				if s.qoderQueueYield(conn, modelInfo, sig.RetryAfterSec, false) {
 					return true
 				}
-				if !waitQueue(retrySec, attempt) {
+				// A plan refusal on the only (or first-picked) account is not
+				// congestion: say so immediately instead of holding the budget.
+				if sig.PlanRefusal() {
+					emitPlanRefusal(sig)
+					return false
+				}
+				if !waitQueue(sig.RetryAfterSec, attempt) {
 					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, non-streaming client cannot be held",
-						queueLabel(), retrySec, queueWaited.Round(time.Second))
+						queueLabel(), sig.RetryAfterSec, queueWaited.Round(time.Second))
 					if r.Context().Err() != nil {
 						abortStatus, abortReason = 499, "client canceled after "+queueWaited.Round(time.Second).String()+" of qoder queue waiting"
 					}
@@ -435,21 +477,28 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 
 		if hasLine {
-			if retrySec, isQueued := provider.ExtractQoderQueueRetryFromLine(rawLine); isQueued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
+			if sig := provider.ExtractQoderQueueSignalFromLine(rawLine); sig.Queued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
 				res.Body.Close()
 				// Same hand-off as the non-streaming path, but only while nothing has
 				// been written to the client yet: after the 200 event-stream headers the
 				// request belongs to this account.
-				if s.qoderQueueYield(conn, modelInfo, retrySec, headersCommitted) {
+				if s.qoderQueueYield(conn, modelInfo, sig.RetryAfterSec, headersCommitted) {
 					return true
 				}
-				if !waitQueue(retrySec, attempt) {
+				// No sibling, or the stream is already committed: a plan refusal still
+				// must not consume the wait budget. With committed headers the only
+				// honest answer left is the terminal SSE error event.
+				if sig.PlanRefusal() {
+					emitPlanRefusal(sig)
+					return false
+				}
+				if !waitQueue(sig.RetryAfterSec, attempt) {
 					// On a streaming request waitQueue only returns false when the client
 					// hung up during the sleep — a non-streaming client is answered with
 					// 503 + Retry-After before it ever sleeps. Keep the fallback wording
 					// free of that claim so the audit row does not misdescribe the client.
 					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, queue hand-off unavailable",
-						queueLabel(), retrySec, queueWaited.Round(time.Second))
+						queueLabel(), sig.RetryAfterSec, queueWaited.Round(time.Second))
 					if r.Context().Err() != nil {
 						abortStatus, abortReason = 499, "client canceled after "+queueWaited.Round(time.Second).String()+" of qoder queue waiting"
 					}

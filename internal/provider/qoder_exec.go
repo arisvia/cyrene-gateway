@@ -453,7 +453,7 @@ func UnwrapQoderSSELine(line, _ string) (data string, done bool) {
 	// Qoder upstream queueing handshake frame: {"isQueued":true,...} or code 10605.
 	// Upstream returns status 403 or 200 with an isQueued payload and then closes
 	// the socket; the handler re-issues the request after the hinted backoff.
-	if _, queued := ExtractQoderQueueRetrySeconds(inner); queued {
+	if ExtractQoderQueueSignal(inner).Queued {
 		return "", false
 	}
 	if statusVal != http.StatusOK {
@@ -508,38 +508,68 @@ func isQoderBillingBlock(chunk map[string]json.RawMessage) bool {
 // envelope omits retryAfterSeconds.
 const DefaultQoderQueueRetrySeconds = 3
 
-// ExtractQoderQueueRetrySeconds reports whether inner is a Qoder queue
-// handshake (code 10605 / isQueued: true) and, if so, how long the upstream
-// asked us to wait before retrying. Completion chunks carrying "choices" are
-// never treated as queue frames, so answers that merely mention isQueued pass
+// QoderQueueSignal is the decoded 10605 pre-execution queue handshake.
+type QoderQueueSignal struct {
+	// Queued marks the frame as a queue handshake at all.
+	Queued bool
+	// RetryAfterSec is the upstream-suggested wait before re-admission.
+	RetryAfterSec int
+	// ServiceUnavailable is set only by an explicit "serviceAvailable": false.
+	// Measured on production (2026-11): a plan-tier refusal on a hot model
+	// reports isQueued=true with serviceAvailable=false and queueCount=0 in
+	// the same envelope shape as real congestion — it reads as a queue but
+	// is not one, and no amount of in-request waiting dequeues it. Malformed
+	// or older envelopes that omit the key are NOT refusals: they keep the
+	// honest wait semantics.
+	ServiceUnavailable bool
+	// SubCode carries the upstream reason tag when present (observed:
+	// "RESOURCE_LIMIT" for plan-tier refusal). Advisory; the boolean above
+	// is what gates behavior.
+	SubCode string
+}
+
+// PlanRefusal reports the handshake as a plan-tier refusal dressed as a
+// queue: queued, and the upstream explicitly says it will not serve this
+// account. Sleeping or re-polling on this account cannot change the answer.
+func (s QoderQueueSignal) PlanRefusal() bool { return s.Queued && s.ServiceUnavailable }
+
+// ExtractQoderQueueSignal reports whether inner is a Qoder queue handshake
+// (code 10605 / isQueued: true) and decodes the fields that decide what a
+// wait could accomplish. Completion chunks carrying "choices" are never
+// treated as queue frames, so answers that merely mention isQueued pass
 // through untouched.
-func ExtractQoderQueueRetrySeconds(inner string) (int, bool) {
+func ExtractQoderQueueSignal(inner string) QoderQueueSignal {
 	if strings.Contains(inner, `"choices"`) {
-		return 0, false
+		return QoderQueueSignal{}
 	}
 	if !strings.Contains(inner, "isQueued") && !strings.Contains(inner, "10605") {
-		return 0, false
+		return QoderQueueSignal{}
 	}
 
-	retry := DefaultQoderQueueRetrySeconds
-	queued := false
+	sig := QoderQueueSignal{RetryAfterSec: DefaultQoderQueueRetrySeconds}
 
 	// The queue payload may be nested through stringified `message` fields
 	// (upstream double-encodes: {"code":"403","message":"{\"code\":\"10605\"…}"}).
 	var walk func(m map[string]any)
 	walk = func(m map[string]any) {
 		if q, ok := m["isQueued"].(bool); ok && q {
-			queued = true
+			sig.Queued = true
 		}
 		if code, ok := m["code"].(string); ok && code == "10605" {
-			queued = true
+			sig.Queued = true
 		} else if code, ok := m["code"].(float64); ok && code == 10605 {
-			queued = true
+			sig.Queued = true
 		}
 		for _, key := range []string{"retryAfterSeconds", "retry_after_seconds"} {
 			if v, ok := m[key].(float64); ok && v > 0 {
-				retry = int(v)
+				sig.RetryAfterSec = int(v)
 			}
+		}
+		if v, ok := m["serviceAvailable"].(bool); ok && !v {
+			sig.ServiceUnavailable = true
+		}
+		if sc, ok := m["subCode"].(string); ok && sc != "" {
+			sig.SubCode = sc
 		}
 		if msg, ok := m["message"].(string); ok && msg != "" {
 			var nested map[string]any
@@ -553,29 +583,29 @@ func ExtractQoderQueueRetrySeconds(inner string) (int, bool) {
 	if json.Unmarshal([]byte(inner), &obj) == nil && obj != nil {
 		walk(obj)
 	}
-	if !queued {
+	if !sig.Queued {
 		// Malformed or partially escaped envelope: the marker itself is the signal.
-		queued = true
+		sig.Queued = true
 	}
-	return retry, queued
+	return sig
 }
 
-// ExtractQoderQueueRetryFromLine accepts either a raw SSE `data:` line or a
+// ExtractQoderQueueSignalFromLine accepts either a raw SSE `data:` line or a
 // bare error body and unwraps the {statusCodeValue, body} envelope when present.
-func ExtractQoderQueueRetryFromLine(line string) (int, bool) {
+func ExtractQoderQueueSignalFromLine(line string) QoderQueueSignal {
 	trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 	if !strings.HasPrefix(trimmed, "data:") {
-		return ExtractQoderQueueRetrySeconds(trimmed)
+		return ExtractQoderQueueSignal(trimmed)
 	}
 	payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 	if payload == "" || payload == "[DONE]" {
-		return 0, false
+		return QoderQueueSignal{}
 	}
 	var envelope struct {
 		Body string `json:"body"`
 	}
 	if err := json.Unmarshal([]byte(payload), &envelope); err == nil {
-		return ExtractQoderQueueRetrySeconds(strings.TrimSpace(envelope.Body))
+		return ExtractQoderQueueSignal(strings.TrimSpace(envelope.Body))
 	}
-	return ExtractQoderQueueRetrySeconds(payload)
+	return ExtractQoderQueueSignal(payload)
 }

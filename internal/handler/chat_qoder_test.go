@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -697,5 +698,143 @@ func TestQoderQueueWaitsWhenNoSiblingExists(t *testing.T) {
 	}
 	if provider.IsModelLockActive(stored, "dfmodel") {
 		t.Error("parking the only account would leave the model unroutable")
+	}
+}
+
+// qoderPlanRefusalMessage renders the production-measured plan-refusal
+// envelope (2026-11-20): isQueued=true phrased like congestion, but
+// serviceAvailable=false with subCode RESOURCE_LIMIT and an empty lane —
+// waiting on this account cannot succeed, so the gateway must not spend the
+// queue budget on it.
+func qoderPlanRefusalMessage(t *testing.T, waitSec int) string {
+	t.Helper()
+	inner, err := json.Marshal(map[string]any{
+		"isQueued": true, "modelKey": "dfmodel", "queueCount": 0, "queueType": "p2",
+		"retryAfterSeconds": waitSec, "serviceAvailable": false,
+		"subCode": "RESOURCE_LIMIT", "waitTime": waitSec,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, err := json.Marshal(map[string]any{"code": "10605", "message": string(inner), "subCode": "RESOURCE_LIMIT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := json.Marshal(map[string]any{"code": "403", "message": string(mid)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(outer)
+}
+
+// TestQoderPlanRefusalFailsFastWithoutSibling: the plan refusal arrives on the
+// only account — the honest answer is an immediate, distinguishable 503. The
+// old behavior slept through 40 attempts of "queue" that was never a queue.
+func TestQoderPlanRefusalFailsFastWithoutSibling(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	var hits atomic.Int32
+	refuser := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, qoderPlanRefusalMessage(t, 26))
+	}))
+	defer refuser.Close()
+
+	provider.SeedQoderCatalogForTest("user-solo-refuse", map[string]map[string]any{"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096}})
+	conn := &model.ProviderConnection{ID: "qoder-solo-refuse", Provider: "qoder", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{AccessToken: "dt-solo", BaseURL: refuser.URL, ProviderSpecificData: map[string]any{"userId": "user-solo-refuse"}}}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, stream := range []bool{false, true} {
+		name := "non-streaming"
+		if stream {
+			name = "streaming"
+		}
+		t.Run(name, func(t *testing.T) {
+			body := []byte(`{"model":"qoder/dfmodel","stream":` + strconv.FormatBool(stream) + `,"max_tokens":8,"messages":[{"role":"user","content":"ping"}]}`)
+			started := time.Now()
+			w := httptest.NewRecorder()
+			srv.Handler.ServeHTTP(w, newLocalRequest("POST", "/v1/chat/completions", bytes.NewReader(body)))
+
+			if w.Code != http.StatusServiceUnavailable {
+				t.Fatalf("want 503, got %d: %s", w.Code, w.Body.String())
+			}
+			if !strings.Contains(w.Body.String(), "qoder_resource_limit") {
+				t.Errorf("client must see a type distinct from qoder_queue_wait: %s", w.Body.String())
+			}
+			if got := w.Header().Get("Retry-After"); got != "26" {
+				t.Errorf("Retry-After=%q, want the advisory upstream wait", got)
+			}
+			if elapsed := time.Since(started); elapsed > 3*time.Second {
+				t.Errorf("took %s; a plan refusal must fail fast, not sleep through the queue budget", elapsed)
+			}
+		})
+	}
+	if hits.Load() != 2 {
+		t.Errorf("refusing account contacted %d times, want exactly one attempt per client request", hits.Load())
+	}
+}
+
+// TestQoderPlanRefusalYieldsToIdleSibling: refusal parking is the same
+// mechanism as congestion yielding — a healthy sibling answers immediately,
+// and the plan-refused account is not retried per-request by other clients.
+func TestQoderPlanRefusalYieldsToIdleSibling(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	var busyHits, idleHits atomic.Int32
+	busy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		busyHits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		io.WriteString(w, qoderPlanRefusalMessage(t, 26))
+	}))
+	defer busy.Close()
+
+	frame := qoderTestFrame(`{"id":"chatcmpl-refusal-handoff","choices":[{"index":0,"delta":{"role":"assistant","content":"served by sibling"}}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`) + "data: [DONE]\n\n"
+	idle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idleHits.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, frame)
+	}))
+	defer idle.Close()
+
+	provider.SeedQoderCatalogForTest("user-refuse", map[string]map[string]any{"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096}})
+	provider.SeedQoderCatalogForTest("user-serve", map[string]map[string]any{"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096}})
+	for _, c := range []*model.ProviderConnection{
+		{ID: "qoder-refuse", Provider: "qoder", AuthType: "oauth", IsActive: true, Priority: 1,
+			Data: model.ConnectionData{AccessToken: "dt-refuse", BaseURL: busy.URL, ProviderSpecificData: map[string]any{"userId": "user-refuse"}}},
+		{ID: "qoder-serve", Provider: "qoder", AuthType: "oauth", IsActive: true, Priority: 5,
+			Data: model.ConnectionData{AccessToken: "dt-serve", BaseURL: idle.URL, ProviderSpecificData: map[string]any{"userId": "user-serve"}}},
+	} {
+		if err := database.CreateConnection(c); err != nil {
+			t.Fatalf("create %s: %v", c.ID, err)
+		}
+	}
+
+	body := []byte(`{"model":"qoder/dfmodel","stream":false,"max_tokens":8,"messages":[{"role":"user","content":"ping"}]}`)
+	started := time.Now()
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, newLocalRequest("POST", "/v1/chat/completions", bytes.NewReader(body)))
+
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "served by sibling") {
+		t.Fatalf("expected the healthy sibling to answer, got %d: %s", w.Code, w.Body.String())
+	}
+	if time.Since(started) > 3*time.Second {
+		t.Error("hand-off must be immediate; a refusal wait cannot be slept through")
+	}
+	if busyHits.Load() != 1 {
+		t.Errorf("refused account contacted %d times, want 1 before parking", busyHits.Load())
+	}
+	stored, err := database.GetConnection("qoder-refuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !provider.IsModelLockActive(stored, "dfmodel") {
+		t.Error("plan-refused account holds no model lock; every client would re-probe it")
 	}
 }

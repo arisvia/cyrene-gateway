@@ -77,12 +77,15 @@ func TestQoderSSEQueueingFramesAreSkipped(t *testing.T) {
 				}
 
 				// The retry hint drives the transparent polling backoff.
-				retry, queued := ExtractQoderQueueRetryFromLine(line)
-				if !queued {
+				sig := ExtractQoderQueueSignalFromLine(line)
+				if !sig.Queued {
 					t.Fatalf("expected queue detection for status=%d", status)
 				}
-				if retry != tc.wantRetry {
-					t.Errorf("retryAfterSeconds = %d, want %d", retry, tc.wantRetry)
+				if sig.RetryAfterSec != tc.wantRetry {
+					t.Errorf("retryAfterSeconds = %d, want %d", sig.RetryAfterSec, tc.wantRetry)
+				}
+				if sig.PlanRefusal() {
+					t.Errorf("envelope without serviceAvailable=false must not read as a plan refusal: %s", tc.body)
 				}
 			}
 		})
@@ -109,5 +112,60 @@ func TestQoderSSEErrorIsProtocolErrorNotCompletion(t *testing.T) {
 		if !done || data != "" {
 			t.Errorf("normal DONE must not carry error data: done=%t data=%q", done, data)
 		}
+	}
+}
+
+// qoderNestedEnvelope reproduces the upstream triple nesting measured on
+// production 2026-11-20: the queue object sits inside a stringified
+// {"code":"10605",…,"subCode":…}, itself inside {"code":"403","message":…}.
+func qoderNestedEnvelope(t *testing.T, inner map[string]any) string {
+	t.Helper()
+	innerJSON, err := json.Marshal(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, err := json.Marshal(map[string]any{"code": "10605", "message": string(innerJSON), "subCode": "RESOURCE_LIMIT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := json.Marshal(map[string]any{"code": "403", "message": string(mid)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(outer)
+}
+
+func TestQoderQueueSignalSeparatesPlanRefusalFromCongestion(t *testing.T) {
+	refusal := qoderNestedEnvelope(t, map[string]any{
+		"isQueued": true, "modelKey": "qmodel_latest", "queueCount": 0, "queueType": "p2",
+		"retryAfterSeconds": 26, "serviceAvailable": false, "subCode": "RESOURCE_LIMIT", "waitTime": 26,
+	})
+	congestion := qoderNestedEnvelope(t, map[string]any{
+		"isQueued": true, "modelKey": "auto", "queueCount": 1, "queueType": "p4",
+		"retryAfterSeconds": 60, "serviceAvailable": true, "subCode": "RESOURCE_LIMIT", "waitTime": 60,
+	})
+
+	sig := ExtractQoderQueueSignal(refusal)
+	if !sig.Queued || !sig.PlanRefusal() {
+		t.Fatalf("serviceAvailable=false must decode as queued plan refusal: %+v", sig)
+	}
+	if sig.RetryAfterSec != 26 || sig.SubCode != "RESOURCE_LIMIT" {
+		t.Errorf("decoded fields = %d/%q, want 26/RESOURCE_LIMIT", sig.RetryAfterSec, sig.SubCode)
+	}
+
+	sig = ExtractQoderQueueSignal(congestion)
+	if !sig.Queued {
+		t.Fatal("congestion frame must stay queued")
+	}
+	if sig.PlanRefusal() {
+		t.Fatal("a moving lane (serviceAvailable=true) keeps wait semantics even under subCode RESOURCE_LIMIT")
+	}
+
+	envelope, err := json.Marshal(map[string]any{"statusCodeValue": 403, "body": refusal})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sig := ExtractQoderQueueSignalFromLine("data: " + string(envelope)); !sig.PlanRefusal() {
+		t.Fatalf("SSE line form must decode identically: %+v", sig)
 	}
 }
