@@ -748,13 +748,19 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 		b, _ := json.Marshal(chunk)
 		return b, false, nil
 
-	case "response.completed", "response.failed", "response.incomplete":
+	case "response.completed", "response.done", "response.failed", "response.incomplete":
 		t.done = true
 		respObj, _ := event["response"].(map[string]any)
 		if respObj == nil {
 			respObj = map[string]any{}
 		}
-		respObj["status"] = strings.TrimPrefix(eType, "response.")
+		if eType == "response.done" {
+			if st, _ := respObj["status"].(string); st == "" {
+				respObj["status"] = "completed"
+			}
+		} else {
+			respObj["status"] = strings.TrimPrefix(eType, "response.")
+		}
 		if upstreamError := responsesError(respObj); upstreamError != nil {
 			b, err := json.Marshal(map[string]any{"error": upstreamError})
 			return b, true, err

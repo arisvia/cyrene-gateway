@@ -614,6 +614,18 @@ func TestResponsesSSEToOpenAITranslator(t *testing.T) {
 	if !strings.Contains(string(finalChunk2), `"finish_reason":"tool_calls"`) {
 		t.Errorf("expected finish_reason tool_calls, got: %s", string(finalChunk2))
 	}
+
+	// response.done (Codex variant) must terminate identically to response.completed.
+	tr3 := NewResponsesSSEToOpenAITranslator("gpt-5.4")
+	_, _, _ = tr3.TranslateChunk([]byte(`{"type":"response.output_text.delta","delta":"codex ok"}`))
+	doneCodex := []byte(`{"type":"response.done","response":{"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}}}`)
+	finalCodex, isDone3, err := tr3.TranslateChunk(doneCodex)
+	if err != nil || !isDone3 {
+		t.Fatalf("expected response.done to finish stream: done=%v err=%v", isDone3, err)
+	}
+	if !strings.Contains(string(finalCodex), `"finish_reason":"stop"`) || !strings.Contains(string(finalCodex), `"total_tokens":6`) {
+		t.Errorf("unexpected response.done chunk: %s", string(finalCodex))
+	}
 }
 
 func TestResponsesSSEToOpenAIParallelToolCalls(t *testing.T) {
