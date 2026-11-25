@@ -419,10 +419,19 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 		req.Header.Set(k, v)
 	}
 	if qoderCredential != nil {
+		var machineID, organizationID string
+		if conn.Data.ProviderSpecificData != nil {
+			machineID, _ = conn.Data.ProviderSpecificData["machineId"].(string)
+			organizationID, _ = conn.Data.ProviderSpecificData["organizationId"].(string)
+		}
 		headers, err := provider.BuildQoderCosyHeaders(nil, targetURL, provider.QoderCosyCreds{
-			ProviderID: conn.Provider,
-			UserID:     qoderCredential.UserID,
-			AuthToken:  qoderCredential.AccessToken,
+			ProviderID:     conn.Provider,
+			UserID:         qoderCredential.UserID,
+			AuthToken:      qoderCredential.AccessToken,
+			Name:           conn.Name,
+			Email:          conn.Email,
+			MachineID:      machineID,
+			OrganizationID: organizationID,
 		})
 		if err != nil {
 			return testResult{OK: false, Error: "Qoder COSY signing failed: " + err.Error()}
@@ -430,6 +439,7 @@ func (s *Server) testConnection(r *http.Request, conn *model.ProviderConnection,
 		for k, v := range headers {
 			req.Header.Set(k, v)
 		}
+		req.Header.Set("User-Agent", provider.QoderCLIUserAgent())
 	} else {
 		provider.ApplyAuth(req, transport, creds)
 	}

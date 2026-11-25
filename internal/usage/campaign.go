@@ -143,7 +143,7 @@ func qoderCampaignURL(c QuotaCredentials, campaignID string) string {
 // for the account either way, so the honest anonymous form wins.
 func qoderCampaignHeaders(token string) map[string]string {
 	h := bearer(token)
-	h["User-Agent"] = provider.QoderCLIUserAgent
+	h["User-Agent"] = provider.QoderCLIUserAgent()
 	h[provider.QoderCosyVersionHeader] = provider.QoderIDEVersion
 	h["Cosy-ClientType"] = "10"
 	return h

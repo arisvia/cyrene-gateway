@@ -105,11 +105,12 @@ func TestQoderComputeSigPath(t *testing.T) {
 
 func TestBuildQoderCosyHeaders(t *testing.T) {
 	creds := QoderCosyCreds{
-		UserID:    "test-user-123",
-		AuthToken: "dt-testtoken",
-		Name:      "Test",
-		Email:     "test@example.com",
-		MachineID: "machine-abc",
+		UserID:         "test-user-123",
+		AuthToken:      "dt-testtoken",
+		Name:           "Test",
+		Email:          "test@example.com",
+		MachineID:      "machine-abc",
+		OrganizationID: "org-xyz",
 	}
 
 	headers, err := BuildQoderCosyHeaders([]byte("test body"), QoderChatURL, creds)
@@ -121,7 +122,7 @@ func TestBuildQoderCosyHeaders(t *testing.T) {
 		"Authorization", "Cosy-Key", "Cosy-User", "Cosy-Date", "Cosy-Version",
 		"Cosy-Machineid", "Cosy-Machinetoken", "Cosy-Machinetype", "Cosy-Machineos",
 		"Cosy-Clienttype", "Cosy-Clientip", "Cosy-Bodyhash", "Cosy-Bodylength",
-		"Cosy-Sigpath", "Cosy-Data-Policy", "Login-Version", "X-Request-Id",
+		"Cosy-Sigpath", "Cosy-Data-Policy", "Cosy-Organization-Id", "Login-Version", "X-Request-Id",
 	}
 	for _, key := range required {
 		if _, ok := headers[key]; !ok {
@@ -143,6 +144,9 @@ func TestBuildQoderCosyHeaders(t *testing.T) {
 	}
 	if headers["Cosy-Machineid"] != "machine-abc" {
 		t.Errorf("Cosy-Machineid = %q, want machine-abc", headers["Cosy-Machineid"])
+	}
+	if headers["Cosy-Organization-Id"] != "org-xyz" {
+		t.Errorf("Cosy-Organization-Id = %q, want org-xyz", headers["Cosy-Organization-Id"])
 	}
 	if headers["Cosy-Sigpath"] != "/api/v2/service/pro/sse/agent_chat_generation" {
 		t.Errorf("Cosy-Sigpath = %q", headers["Cosy-Sigpath"])

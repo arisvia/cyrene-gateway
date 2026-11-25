@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 )
@@ -152,6 +153,9 @@ func TestQoderQueueSignalSeparatesPlanRefusalFromCongestion(t *testing.T) {
 	if sig.RetryAfterSec != 26 || sig.SubCode != "RESOURCE_LIMIT" {
 		t.Errorf("decoded fields = %d/%q, want 26/RESOURCE_LIMIT", sig.RetryAfterSec, sig.SubCode)
 	}
+	if sig.QueueType != "p2" || sig.QueueCount != 0 {
+		t.Errorf("decoded queue metadata = %q/%d, want p2/0", sig.QueueType, sig.QueueCount)
+	}
 
 	sig = ExtractQoderQueueSignal(congestion)
 	if !sig.Queued {
@@ -160,6 +164,9 @@ func TestQoderQueueSignalSeparatesPlanRefusalFromCongestion(t *testing.T) {
 	if sig.PlanRefusal() {
 		t.Fatal("a moving lane (serviceAvailable=true) keeps wait semantics even under subCode RESOURCE_LIMIT")
 	}
+	if sig.QueueType != "p4" || sig.QueueCount != 1 {
+		t.Errorf("decoded queue metadata = %q/%d, want p4/1", sig.QueueType, sig.QueueCount)
+	}
 
 	envelope, err := json.Marshal(map[string]any{"statusCodeValue": 403, "body": refusal})
 	if err != nil {
@@ -167,5 +174,76 @@ func TestQoderQueueSignalSeparatesPlanRefusalFromCongestion(t *testing.T) {
 	}
 	if sig := ExtractQoderQueueSignalFromLine("data: " + string(envelope)); !sig.PlanRefusal() {
 		t.Fatalf("SSE line form must decode identically: %+v", sig)
+	}
+}
+
+func decodeQoderTestBody(t *testing.T, encoded []byte) map[string]any {
+	t.Helper()
+	rev := make(map[byte]byte, len(qoderCustomAlphabet)+1)
+	for i := range len(qoderCustomAlphabet) {
+		rev[qoderCustomAlphabet[i]] = qoderStdAlphabet[i]
+	}
+	rev['$'] = '='
+	buf := make([]byte, len(encoded))
+	for i, c := range encoded {
+		if b, ok := rev[c]; ok {
+			buf[i] = b
+		} else {
+			buf[i] = c
+		}
+	}
+	s := string(buf)
+	n := len(s)
+	a := n / 3
+	std := s[n-a:] + s[a:n-a] + s[:a]
+	plain, err := base64.StdEncoding.DecodeString(std)
+	if err != nil {
+		t.Fatalf("base64 decode failed: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(plain, &out); err != nil {
+		t.Fatalf("json unmarshal failed: %v", err)
+	}
+	return out
+}
+
+func TestBuildQoderRequestBodyStripsSourceAndTracksRetry(t *testing.T) {
+	SeedQoderCatalogForTest("user-strip-source", map[string]map[string]any{
+		"gmodel_latest": {
+			"name":              "GLM-5.4",
+			"source":            "system",
+			"max_output_tokens": 16384,
+			"is_reasoning":      true,
+		},
+	})
+	creds := QoderCosyCreds{ProviderID: "qoder", UserID: "user-strip-source", AuthToken: "dt-test"}
+	reqBody := map[string]any{
+		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+
+	encoded, key, modelSource, err := BuildQoderRequestBody("qoder/gmodel_latest", reqBody, creds, nil, "req-fixed-123", true)
+	if err != nil {
+		t.Fatalf("BuildQoderRequestBody failed: %v", err)
+	}
+	if key != "gmodel_latest" || modelSource != "system" {
+		t.Fatalf("got key=%q modelSource=%q, want gmodel_latest/system", key, modelSource)
+	}
+
+	payload := decodeQoderTestBody(t, encoded)
+	if payload["request_id"] != "req-fixed-123" {
+		t.Errorf("request_id = %v, want req-fixed-123", payload["request_id"])
+	}
+	if payload["is_retry"] != true {
+		t.Errorf("is_retry = %v, want true", payload["is_retry"])
+	}
+	mc, ok := payload["model_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing model_config in payload: %+v", payload)
+	}
+	if _, hasSource := mc["source"]; hasSource {
+		t.Errorf("model_config.source must be stripped from request body, got %+v", mc)
+	}
+	if mc["key"] != "gmodel_latest" {
+		t.Errorf("model_config.key = %v, want gmodel_latest", mc["key"])
 	}
 }

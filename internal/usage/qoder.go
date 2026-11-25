@@ -37,9 +37,9 @@ func qoderQuotaURL(providerID, baseURL string) string {
 // getQoderJSON adds the COSY client identification Qoder's quota endpoint expects.
 func getQoderJSON(ctx context.Context, client *http.Client, url, token string) (int, map[string]any, string, error) {
 	headers := bearer(token)
-	headers["User-Agent"] = provider.QoderCLIUserAgent
+	headers["User-Agent"] = provider.QoderCLIUserAgent()
 	headers[provider.QoderCosyVersionHeader] = provider.QoderIDEVersion
-	headers["Cosy-ClientType"] = "5"
+	headers["Cosy-ClientType"] = provider.QoderClientType
 	return getJSON(ctx, client, url, headers)
 }
 

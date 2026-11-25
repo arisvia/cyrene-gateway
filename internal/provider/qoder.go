@@ -46,9 +46,9 @@ const (
 	QoderIDEVersion = "1.26.0"
 	// QoderCosyVersionHeader carries QoderIDEVersion on every signed call.
 	QoderCosyVersionHeader = "Cosy-Version"
-	QoderCLIUserAgent      = "qodercli/1.1.80"
 
-	qoderClientType   = "5"
+	// QoderClientType identifies the CLI client type in COSY requests.
+	QoderClientType   = "5"
 	qoderDataPolicy   = "disagree"
 	qoderLoginVersion = "v2"
 	qoderMachineOS    = "x86_64_windows"
@@ -182,14 +182,15 @@ func qoderComputeSigPath(requestURL string) string {
 
 // QoderCosyCreds holds the credentials needed for COSY signing.
 type QoderCosyCreds struct {
-	ProviderID   string
-	UserID       string
-	AuthToken    string
-	Name         string
-	Email        string
-	MachineID    string
-	IDEVersion   string
-	PublicKeyPEM string
+	ProviderID     string
+	UserID         string
+	AuthToken      string
+	Name           string
+	Email          string
+	MachineID      string
+	OrganizationID string
+	IDEVersion     string
+	PublicKeyPEM   string
 }
 
 // BuildQoderCosyHeaders builds the full Cosy-* header set for a Qoder request.
@@ -254,13 +255,13 @@ func BuildQoderCosyHeaders(body []byte, requestURL string, creds QoderCosyCreds)
 		"Cosy-Machinetoken":      machineID,
 		"Cosy-Machinetype":       qoderMachineType,
 		"Cosy-Machineos":         qoderMachineOS,
-		"Cosy-Clienttype":        qoderClientType,
+		"Cosy-Clienttype":        QoderClientType,
 		"Cosy-Clientip":          "127.0.0.1",
 		"Cosy-Bodyhash":          bodyHash,
 		"Cosy-Bodylength":        bodyLength,
 		"Cosy-Sigpath":           sigPath,
 		"Cosy-Data-Policy":       qoderDataPolicy,
-		"Cosy-Organization-Id":   "",
+		"Cosy-Organization-Id":   creds.OrganizationID,
 		"Cosy-Organization-Tags": "",
 		"Login-Version":          qoderLoginVersion,
 		"X-Request-Id":           uuid.New().String(),
@@ -392,7 +393,7 @@ func PollQoderDeviceTokenFor(providerID, nonce, codeVerifier string, client *htt
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", QoderCLIUserAgent)
+	req.Header.Set("User-Agent", QoderCLIUserAgent())
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -497,7 +498,7 @@ func FetchQoderUserProfileFor(providerID, accessToken string, client *http.Clien
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", QoderCLIUserAgent)
+	req.Header.Set("User-Agent", QoderCLIUserAgent())
 
 	resp, err := client.Do(req)
 	if err != nil {

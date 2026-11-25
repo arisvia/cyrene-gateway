@@ -147,6 +147,11 @@ func TestCLIVersionPinsAndUserAgents(t *testing.T) {
 			wantUA: "CLI/9.9.4 CodeBuddy/9.9.4", hookName: "codebuddyCLIUA",
 		},
 		{
+			name: "qoder", envKey: qoderCLIVersionPinEnv, pin: "9.9.5",
+			getVer: QoderCLIVersion, getUA: QoderCLIUserAgent,
+			wantUA: "qodercli/9.9.5",
+		},
+		{
 			name: "opencode", envKey: opencodeVersionPinEnv, pin: "9.9.6",
 			getVer: OpenCodeVersion, getUA: OpenCodeUserAgent,
 			wantUA: "opencode/9.9.6", hookName: "opencodeHeaders",

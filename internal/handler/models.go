@@ -554,9 +554,11 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 	psd := conn.Data.ProviderSpecificData
 	userID := ""
 	machineID := ""
+	organizationID := ""
 	if psd != nil {
 		userID, _ = psd["userId"].(string)
 		machineID, _ = psd["machineId"].(string)
+		organizationID, _ = psd["organizationId"].(string)
 	}
 	token := conn.Data.AccessToken
 	if token == "" {
@@ -579,12 +581,13 @@ func (s *Server) fetchQoderCatalog(conn *model.ProviderConnection, client *http.
 	}
 
 	creds := provider.QoderCosyCreds{
-		ProviderID: conn.Provider,
-		UserID:     resolved.UserID,
-		AuthToken:  resolved.AccessToken,
-		Name:       conn.Name,
-		Email:      conn.Email,
-		MachineID:  machineID,
+		ProviderID:     conn.Provider,
+		UserID:         resolved.UserID,
+		AuthToken:      resolved.AccessToken,
+		Name:           conn.Name,
+		Email:          conn.Email,
+		MachineID:      machineID,
+		OrganizationID: organizationID,
 	}
 	models := provider.QoderCatalogModels(creds, client, force)
 	if models == nil && !force {

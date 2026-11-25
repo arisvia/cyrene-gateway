@@ -39,6 +39,7 @@ const (
 	GrokCLIVersionFloor    = "1.0.77"
 	KimiCLIVersionFloor    = "2.6.2"
 	CodebuddyVersionFloor  = "2.186.0"
+	QoderCLIVersionFloor   = "1.1.94"
 	OpenCodeVersionFloor   = "1.19.6"
 
 	CopilotChatVersionDefault   = "0.38.0"
@@ -51,6 +52,7 @@ const (
 	grokCLIVersionPinEnv     = "CYRENE_GROK_CLI_VERSION"
 	kimiCLIVersionPinEnv     = "CYRENE_KIMI_CLI_VERSION"
 	codebuddyVersionPinEnv   = "CYRENE_CODEBUDDY_VERSION"
+	qoderCLIVersionPinEnv    = "CYRENE_QODER_CLI_VERSION"
 	opencodeVersionPinEnv    = "CYRENE_OPENCODE_VERSION"
 	copilotChatVersionPinEnv = "CYRENE_COPILOT_CHAT_VERSION"
 	copilotVSCodePinEnv      = "CYRENE_COPILOT_VSCODE_VERSION"
@@ -78,6 +80,9 @@ var (
 	}
 	codebuddyCLITracker = npmReleaseTracker{
 		name: "codebuddy", pkg: "@tencent-ai/codebuddy-code", floor: CodebuddyVersionFloor, envPin: codebuddyVersionPinEnv,
+	}
+	qoderCLITracker = npmReleaseTracker{
+		name: "qoder", pkg: "@qoder-ai/qodercli", floor: QoderCLIVersionFloor, envPin: qoderCLIVersionPinEnv,
 	}
 	opencodeCLITracker = npmReleaseTracker{
 		name: "opencode", pkg: "opencode-ai", floor: OpenCodeVersionFloor, envPin: opencodeVersionPinEnv,
@@ -230,6 +235,12 @@ func CodebuddyUserAgent(providerID string) string {
 	}
 	return CodebuddyCLIUA()
 }
+
+// QoderCLIVersion reports the active qodercli version.
+func QoderCLIVersion() string { return qoderCLITracker.Version() }
+
+// QoderCLIUserAgent renders the qodercli User-Agent.
+func QoderCLIUserAgent() string { return "qodercli/" + QoderCLIVersion() }
 
 // OpenCodeVersion reports the active OpenCode CLI version.
 func OpenCodeVersion() string { return opencodeCLITracker.Version() }

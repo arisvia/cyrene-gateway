@@ -8,10 +8,13 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 // Device/job tokens hit the quota endpoint directly (no PAT exchange).
 func TestFetchQoder(t *testing.T) {
+	t.Setenv("CYRENE_QODER_CLI_VERSION", provider.QoderCLIVersionFloor)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v2/quota/usage" {
 			t.Errorf("unexpected path %q", r.URL.Path)
@@ -20,7 +23,7 @@ func TestFetchQoder(t *testing.T) {
 			t.Errorf("expected Bearer jt-test-token, got %q", got)
 		}
 		for header, want := range map[string]string{
-			"User-Agent": "qodercli/1.1.80", "Cosy-Version": "1.26.0", "Cosy-ClientType": "5", "Accept": "application/json",
+			"User-Agent": provider.QoderCLIUserAgent(), "Cosy-Version": provider.QoderIDEVersion, "Cosy-ClientType": provider.QoderClientType, "Accept": "application/json",
 		} {
 			if got := r.Header.Get(header); got != want {
 				t.Errorf("expected %s: %q, got %q", header, want, got)

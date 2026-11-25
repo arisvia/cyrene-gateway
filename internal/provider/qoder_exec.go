@@ -53,15 +53,8 @@ func SeedQoderCatalogForTest(userID string, configs map[string]map[string]any) {
 	}
 }
 
-// QoderModelConfig returns the server-published model_config for a model key,
-// fetching the live catalog if needed. Returns nil when unavailable.
-// Supports direct key match as well as display name / alias fuzzy matching.
-func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client) map[string]any {
-	entry := qoderResolveCatalog(creds, client, false)
-	if entry == nil {
-		return nil
-	}
-	if config, ok := entry.rawConfigs[modelKey]; ok {
+func qoderLookupModelConfig(rawConfigs map[string]map[string]any, modelKey string) map[string]any {
+	if config, ok := rawConfigs[modelKey]; ok {
 		out := make(map[string]any, len(config)+1)
 		maps.Copy(out, config)
 		out["key"] = modelKey
@@ -70,7 +63,7 @@ func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client
 
 	// Fuzzy match by model name / display name (e.g. Qwen3.7-Max -> qmodel_latest)
 	lowerTarget := strings.ToLower(modelKey)
-	for k, cfg := range entry.rawConfigs {
+	for k, cfg := range rawConfigs {
 		if name, ok := cfg["name"].(string); ok && strings.EqualFold(name, lowerTarget) {
 			out := make(map[string]any, len(cfg)+1)
 			maps.Copy(out, cfg)
@@ -80,6 +73,17 @@ func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client
 	}
 
 	return nil
+}
+
+// QoderModelConfig returns the server-published model_config for a model key,
+// fetching the live catalog if needed. Returns nil when unavailable.
+// Supports direct key match as well as display name / alias fuzzy matching.
+func QoderModelConfig(creds QoderCosyCreds, modelKey string, client *http.Client) map[string]any {
+	entry := qoderResolveCatalog(creds, client, false)
+	if entry == nil {
+		return nil
+	}
+	return qoderLookupModelConfig(entry.rawConfigs, modelKey)
 }
 
 func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) *qoderCatalogEntry {
@@ -107,6 +111,7 @@ func qoderResolveCatalog(creds QoderCosyCreds, client *http.Client, force bool) 
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("User-Agent", QoderCLIUserAgent())
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -165,7 +170,7 @@ func InvalidateQoderCatalog(userID string) {
 
 // BuildQoderRequestBody maps an OpenAI-style request into the shape Qoder
 // expects. Returns the encoded body bytes (latin1) and the model key.
-func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCreds, client *http.Client) (encodedBody []byte, qoderKey string, modelSource string, err error) {
+func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCreds, client *http.Client, requestID string, isRetry bool) (encodedBody []byte, qoderKey string, modelSource string, err error) {
 	qoderKey = strings.TrimPrefix(model, "qoder/")
 
 	// Fetch live model config
@@ -174,11 +179,7 @@ func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCre
 		// Force refresh once — cache may not be populated yet
 		entry := qoderResolveCatalog(creds, client, true)
 		if entry != nil {
-			if cfg, ok := entry.rawConfigs[qoderKey]; ok {
-				modelConfig = make(map[string]any, len(cfg)+1)
-				maps.Copy(modelConfig, cfg)
-				modelConfig["key"] = qoderKey
-			}
+			modelConfig = qoderLookupModelConfig(entry.rawConfigs, qoderKey)
 		}
 	}
 	if modelConfig == nil {
@@ -203,22 +204,30 @@ func BuildQoderRequestBody(model string, body map[string]any, creds QoderCosyCre
 	}
 
 	lastUser := qoderLastUserText(messages)
-	sessionID := qoderStableHash("qoder-session", creds.UserID, qoderKey)
+	sessionID := stableShortHash("qoder-session", creds.UserID, qoderKey)
 	recordID := qoderStableChatRecordID(qoderKey, messages, maxTokens)
 
 	modelSource = "system"
 	if s, ok := modelConfig["source"].(string); ok && s != "" {
 		modelSource = s
 	}
+	// Strip model_config.source from the request body (X-Model-Source carries it
+	// in headers): echoing source verbatim in model_config diverts requests into
+	// Qoder's managed queue lane (9router #5469).
+	delete(modelConfig, "source")
+
+	if requestID == "" {
+		requestID = uuid.New().String()
+	}
 	payload := map[string]any{
-		"request_id":       uuid.New().String(),
+		"request_id":       requestID,
 		"request_set_id":   recordID,
 		"chat_record_id":   recordID,
 		"session_id":       sessionID,
 		"stream":           true,
 		"chat_task":        "FREE_INPUT",
 		"is_reply":         true,
-		"is_retry":         false,
+		"is_retry":         isRetry,
 		"source":           1,
 		"version":          "3",
 		"session_type":     "qodercli",
@@ -338,16 +347,6 @@ func qoderLastUserText(messages []map[string]any) string {
 		}
 	}
 	return ""
-}
-
-func qoderStableHash(prefix string, parts ...string) string {
-	h := sha256.New()
-	h.Write([]byte(prefix))
-	for _, p := range parts {
-		h.Write([]byte{0})
-		h.Write([]byte(p))
-	}
-	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func qoderStableChatRecordID(model string, messages []map[string]any, maxTokens int) string {
@@ -526,6 +525,10 @@ type QoderQueueSignal struct {
 	// "RESOURCE_LIMIT" for plan-tier refusal). Advisory; the boolean above
 	// is what gates behavior.
 	SubCode string
+	// QueueType carries the upstream lane tag when present (e.g. "p2", "p4").
+	QueueType string
+	// QueueCount carries the upstream reported queue depth.
+	QueueCount int
 }
 
 // PlanRefusal reports the handshake as a plan-tier refusal dressed as a
@@ -570,6 +573,12 @@ func ExtractQoderQueueSignal(inner string) QoderQueueSignal {
 		}
 		if sc, ok := m["subCode"].(string); ok && sc != "" {
 			sig.SubCode = sc
+		}
+		if qt, ok := m["queueType"].(string); ok && qt != "" {
+			sig.QueueType = qt
+		}
+		if qc, ok := m["queueCount"].(float64); ok && qc >= 0 {
+			sig.QueueCount = int(qc)
 		}
 		if msg, ok := m["message"].(string); ok && msg != "" {
 			var nested map[string]any

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
@@ -34,7 +36,28 @@ type qoderPeekedBody struct {
 // queue before the gateway gives up on it. It also bounds how long a queued account
 // stays parked for that model, so a parked account can never outlive the patience of
 // the request that parked it.
-const qoderQueueWaitBudget = 10 * time.Minute
+var (
+	qoderQueueWaitBudget  = 10 * time.Minute
+	qoderMaxQueueAttempts = 40
+)
+
+// qoderCOSYBodySoftLimitBytes warns when encoded COSY payloads grow large enough
+// to trigger upstream HTTP 500 body-size rejections.
+const qoderCOSYBodySoftLimitBytes = 240 * 1024
+
+func formatQoderQueueMeta(sig provider.QoderQueueSignal) string {
+	var parts []string
+	if sig.QueueType != "" {
+		parts = append(parts, "queueType="+sig.QueueType)
+	}
+	if sig.QueueCount > 0 || sig.QueueType != "" {
+		parts = append(parts, "queueCount="+strconv.Itoa(sig.QueueCount))
+	}
+	if sig.SubCode != "" {
+		parts = append(parts, "subCode="+sig.SubCode)
+	}
+	return strings.Join(parts, ", ")
+}
 
 // qoderQueueYieldAfterSec is the suggested upstream wait from which a queued Qoder
 // account stops being worth sleeping on. The observed waits split cleanly: 1 s is
@@ -105,9 +128,11 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	psd := conn.Data.ProviderSpecificData
 	userID := ""
 	machineID := ""
+	organizationID := ""
 	if psd != nil {
 		userID, _ = psd["userId"].(string)
 		machineID, _ = psd["machineId"].(string)
+		organizationID, _ = psd["organizationId"].(string)
 	}
 
 	rawToken := conn.Data.AccessToken
@@ -150,14 +175,15 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	creds := provider.QoderCosyCreds{
-		ProviderID:   conn.Provider,
-		UserID:       resolved.UserID,
-		AuthToken:    resolved.AccessToken,
-		Name:         conn.Name,
-		Email:        conn.Email,
-		MachineID:    machineID,
-		IDEVersion:   ideVersion,
-		PublicKeyPEM: publicKeyPEM,
+		ProviderID:     conn.Provider,
+		UserID:         resolved.UserID,
+		AuthToken:      resolved.AccessToken,
+		Name:           conn.Name,
+		Email:          conn.Email,
+		MachineID:      machineID,
+		OrganizationID: organizationID,
+		IDEVersion:     ideVersion,
+		PublicKeyPEM:   publicKeyPEM,
 	}
 
 	// Build the request body map from the raw body to preserve unknown fields
@@ -170,12 +196,15 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	endpoint := resolveRequestEndpoint(r, "/v1/chat/completions")
 	s.publishRequestEvent(r, RequestEvent{Type: "routing", Provider: modelInfo.Provider, Model: modelInfo.Model, Endpoint: endpoint, Status: "routing"})
 
-	maxQueueAttempts := 40
 	queueWaited := time.Duration(0)
+	attemptRequestID := uuid.New().String()
+	attemptsUsed := 0
 
 	var (
-		resp     *http.Response
-		qoderKey string
+		resp             *http.Response
+		qoderKey         string
+		lastQueueSig     provider.QoderQueueSignal
+		lastEncodedBytes int
 	)
 
 	// The upstream model key only exists once the first attempt has built the
@@ -188,11 +217,20 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		return modelInfo.Model
 	}
 
-	// Send helper that rebuilds and signs fresh request_id on each attempt
+	// Send helper that preserves the logical request_id across queue retries
+	// while updating is_retry and re-signing fresh COSY headers on each attempt.
 	sendAttempt := func(isRetry bool) (*http.Response, string, error) {
-		encodedBody, key, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client)
+		encodedBody, key, modelSource, err := provider.BuildQoderRequestBody(modelInfo.Model, bodyMap, creds, client, attemptRequestID, isRetry)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to build request body: %w", err)
+		}
+		lastEncodedBytes = len(encodedBody)
+		if lastEncodedBytes > qoderCOSYBodySoftLimitBytes {
+			slog.Warn("Qoder encoded request body approaches/exceeds HTTP COSY ~256 KiB limit",
+				slog.String("model", key),
+				slog.String("connection", conn.ID),
+				slog.Int("encodedBytes", lastEncodedBytes),
+			)
 		}
 		chatURL := provider.QoderChatURLForConnection(conn, resolved.AccessToken)
 		cosyHeaders, err := provider.BuildQoderCosyHeaders(encodedBody, chatURL, creds)
@@ -208,7 +246,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		upstreamReq.Header.Set("Cache-Control", "no-cache")
 		// Without this Go sends "Go-http-client/2.0", which names the relay to
 		// Qoder's channel check; the COSY headers alone do not cover the UA.
-		upstreamReq.Header.Set("User-Agent", provider.QoderCLIUserAgent)
+		upstreamReq.Header.Set("User-Agent", provider.QoderCLIUserAgent())
 		upstreamReq.Header.Set("X-Model-Key", key)
 		upstreamReq.Header.Set("X-Model-Source", modelSource)
 		upstreamReq.Header.Set("Accept-Encoding", "identity")
@@ -256,15 +294,23 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	// waiting on a single JSON body), so a queue wait would leave the connection
 	// silent until the edge gives up with a 524. They get an immediate 503 with
 	// Retry-After instead.
-	waitQueue := func(retrySec, attempt int) bool {
+	waitQueue := func(sig provider.QoderQueueSignal, attempt int) bool {
+		retrySec := sig.RetryAfterSec
 		if retrySec <= 0 {
 			retrySec = provider.DefaultQoderQueueRetrySeconds
+		}
+		meta := formatQoderQueueMeta(sig)
+		metaBracket := ""
+		metaComma := ""
+		if meta != "" {
+			metaBracket = " (" + meta + ")"
+			metaComma = ", " + meta
 		}
 		if !isStreaming {
 			w.Header().Set("Retry-After", strconv.Itoa(retrySec))
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 				"error": map[string]any{
-					"message": fmt.Sprintf("qoder model %s is queued upstream; retry in %ds", qoderKey, retrySec),
+					"message": fmt.Sprintf("qoder model %s is queued upstream%s; retry in %ds", qoderKey, metaBracket, retrySec),
 					"type":    "qoder_queue_wait",
 					"code":    503,
 				},
@@ -274,11 +320,16 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		commitStreamingHeaders()
 		slog.Info("Qoder model queued, waiting before transparent retry",
 			slog.String("model", qoderKey),
+			slog.String("connection", conn.ID),
 			slog.Int("attempt", attempt+1),
 			slog.Int("waitSec", retrySec),
+			slog.String("queueType", sig.QueueType),
+			slog.Int("queueCount", sig.QueueCount),
+			slog.String("subCode", sig.SubCode),
+			slog.Bool("serviceAvailable", !sig.ServiceUnavailable),
 		)
-		emitKeepalive(fmt.Sprintf("qoder model %s queued (code 10605), waiting %ds then retry (%d/%d)",
-			qoderKey, retrySec, attempt+1, maxQueueAttempts))
+		emitKeepalive(fmt.Sprintf("qoder model %s queued (code 10605%s), waiting %ds then retry (%d/%d)",
+			qoderKey, metaComma, retrySec, attempt+1, qoderMaxQueueAttempts))
 
 		waitDur := time.Duration(retrySec) * time.Second
 		deadline := time.NewTimer(waitDur)
@@ -318,6 +369,8 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			slog.String("model", qoderKey),
 			slog.String("connection", conn.ID),
 			slog.String("subCode", sub),
+			slog.String("queueType", sig.QueueType),
+			slog.Int("queueCount", sig.QueueCount),
 			slog.Int("advisoryRetrySec", retrySec),
 		)
 		if headersCommitted {
@@ -334,12 +387,13 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 503, msg)
 	}
 
-	for attempt := 0; attempt < maxQueueAttempts; attempt++ {
+	for attempt := 0; attempt < qoderMaxQueueAttempts; attempt++ {
 		if r.Context().Err() != nil {
 			s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
 				fmt.Sprintf("client canceled after %s while qoder model %s was queued", queueWaited.Round(time.Second), queueLabel()))
 			return false
 		}
+		attemptsUsed = attempt + 1
 		res, key, err := sendAttempt(attempt > 0)
 		if err != nil {
 			if r.Context().Err() != nil {
@@ -366,8 +420,11 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			errBody, _ := io.ReadAll(res.Body)
 			res.Body.Close()
 
-			// Check if this error status represents queue waiting (10605 / isQueued)
-			if sig := provider.ExtractQoderQueueSignalFromLine(string(errBody)); sig.Queued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
+			// Check if this error status represents queue waiting (10605 / isQueued).
+			// Detect unconditionally so exhausting the wait budget exits cleanly to
+			// resp == nil instead of falling through to ApplyErrorState(403).
+			if sig := provider.ExtractQoderQueueSignalFromLine(string(errBody)); sig.Queued {
+				lastQueueSig = sig
 				// A sibling account can answer now: park this one for the model it is
 				// queued on and hand the request over, instead of spending the client's
 				// patience on a queue that may not drain for minutes.
@@ -380,7 +437,10 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 					emitPlanRefusal(sig)
 					return false
 				}
-				if !waitQueue(sig.RetryAfterSec, attempt) {
+				if attempt >= qoderMaxQueueAttempts-1 || queueWaited >= qoderQueueWaitBudget {
+					break
+				}
+				if !waitQueue(sig, attempt) {
 					abortStatus, abortReason := 503, fmt.Sprintf("qoder model %s queued upstream: %ds suggested wait, %s waited, non-streaming client cannot be held",
 						queueLabel(), sig.RetryAfterSec, queueWaited.Round(time.Second))
 					if r.Context().Err() != nil {
@@ -393,6 +453,15 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 			}
 
 			// Genuine non-queue error
+			errDetail := string(errBody)
+			if res.StatusCode == http.StatusInternalServerError && lastEncodedBytes > qoderCOSYBodySoftLimitBytes {
+				slog.Warn("Qoder HTTP 500 on oversized COSY payload",
+					slog.String("model", qoderKey),
+					slog.String("connection", conn.ID),
+					slog.Int("encodedBytes", lastEncodedBytes),
+				)
+				errDetail += fmt.Sprintf(" (encoded body %d bytes exceeds ~256 KiB Qoder HTTP COSY limit)", lastEncodedBytes)
+			}
 			provider.ApplyErrorState(conn, res.StatusCode, string(errBody))
 			if s.DB != nil {
 				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
@@ -413,7 +482,7 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 				"latencyMs":    latencyMs,
 				"endpoint":     endpoint,
 				"client":       detectClientAgent(r),
-				"error":        string(errBody),
+				"error":        errDetail,
 				"turns":        countTurns(req.Messages),
 				"input":        extractPromptSummary(req.Messages),
 			}
@@ -477,8 +546,13 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 		}
 
 		if hasLine {
-			if sig := provider.ExtractQoderQueueSignalFromLine(rawLine); sig.Queued && attempt < maxQueueAttempts-1 && queueWaited < qoderQueueWaitBudget {
+			// Detect 10605 unconditionally so exhausting the wait budget exits the
+			// retry loop with resp == nil instead of falling through to
+			// proxyQoderStreaming (which treats a swallowed 10605 frame + EOF as
+			// 502 "upstream closed without response" and poisons testStatus).
+			if sig := provider.ExtractQoderQueueSignalFromLine(rawLine); sig.Queued {
 				res.Body.Close()
+				lastQueueSig = sig
 				// Same hand-off as the non-streaming path, but only while nothing has
 				// been written to the client yet: after the 200 event-stream headers the
 				// request belongs to this account.
@@ -492,7 +566,10 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 					emitPlanRefusal(sig)
 					return false
 				}
-				if !waitQueue(sig.RetryAfterSec, attempt) {
+				if attempt >= qoderMaxQueueAttempts-1 || queueWaited >= qoderQueueWaitBudget {
+					break
+				}
+				if !waitQueue(sig, attempt) {
 					// On a streaming request waitQueue only returns false when the client
 					// hung up during the sleep — a non-streaming client is answered with
 					// 503 + Retry-After before it ever sleeps. Keep the fallback wording
@@ -522,7 +599,12 @@ func (s *Server) handleQoderChat(w http.ResponseWriter, r *http.Request, req Cha
 	}
 
 	if resp == nil {
-		msg := fmt.Sprintf("qoder model %s still queued after %d attempts (%s of waiting), giving up", queueLabel(), maxQueueAttempts, queueWaited.Round(time.Second))
+		meta := formatQoderQueueMeta(lastQueueSig)
+		metaSuffix := ""
+		if meta != "" {
+			metaSuffix = ", " + meta
+		}
+		msg := fmt.Sprintf("qoder model %s still queued after %d attempts (%s of waiting%s), giving up", queueLabel(), attemptsUsed, queueWaited.Round(time.Second), metaSuffix)
 		if headersCommitted {
 			// Headers are already 200 text/event-stream, so the client needs a
 			// terminal error event; closing silently would look like a hang.

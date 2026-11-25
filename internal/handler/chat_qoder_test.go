@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -91,10 +93,47 @@ func TestQoderStreamingQueueingFrameSkipped(t *testing.T) {
 		t.Errorf("expected uc.Response 'Answer after queue', got %q", uc.Response)
 	}
 }
+
+func decodeQoderHandlerTestBody(t *testing.T, encoded []byte) map[string]any {
+	t.Helper()
+	const stdAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	const customAlphabet = "_doRTgHZBKcGVjlvpC,@aFSx#DPuNJme&i*MzLOEn)sUrthbf%Y^w.(kIQyXqWA!"
+	rev := make(map[byte]byte, len(customAlphabet)+1)
+	for i := range len(customAlphabet) {
+		rev[customAlphabet[i]] = stdAlphabet[i]
+	}
+	rev['$'] = '='
+	buf := make([]byte, len(encoded))
+	for i, c := range encoded {
+		if b, ok := rev[c]; ok {
+			buf[i] = b
+		} else {
+			buf[i] = c
+		}
+	}
+	s := string(buf)
+	n := len(s)
+	a := n / 3
+	std := s[n-a:] + s[a:n-a] + s[:a]
+	plain, err := base64.StdEncoding.DecodeString(std)
+	if err != nil {
+		t.Fatalf("base64 decode failed: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(plain, &out); err != nil {
+		t.Fatalf("json unmarshal failed: %v", err)
+	}
+	return out
+}
+
 func TestQoderQueueAutoRetrySuccess(t *testing.T) {
 	srv, _ := setupTestServer(t)
 
 	var attempts atomic.Int32
+	var mu sync.Mutex
+	var reqIDs []string
+	var retryFlags []bool
+
 	queueMsg := `{"code":"403","message":"{\"code\":\"10605\",\"message\":\"{\\\"isQueued\\\":true,\\\"modelKey\\\":\\\"dfmodel\\\",\\\"queueCount\\\":0,\\\"retryAfterSeconds\\\":1}\"}"}`
 	bQueue, _ := json.Marshal(queueMsg)
 	envelopeQueue := `data: {"statusCodeValue":403,"body":` + string(bQueue) + `}` + "\n\n"
@@ -104,6 +143,15 @@ func TestQoderQueueAutoRetrySuccess(t *testing.T) {
 	envelopeSuccess := `data: {"statusCodeValue":200,"body":` + string(bData) + `}` + "\n\ndata: [DONE]\n\n"
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		decoded := decodeQoderHandlerTestBody(t, raw)
+		mu.Lock()
+		rid, _ := decoded["request_id"].(string)
+		isRetry, _ := decoded["is_retry"].(bool)
+		reqIDs = append(reqIDs, rid)
+		retryFlags = append(retryFlags, isRetry)
+		mu.Unlock()
+
 		att := attempts.Add(1)
 		w.Header().Set("Content-Type", "text/event-stream")
 		if att == 1 {
@@ -151,6 +199,12 @@ func TestQoderQueueAutoRetrySuccess(t *testing.T) {
 
 	if attempts.Load() < 2 {
 		t.Fatalf("expected at least 2 attempts (retry after 10605), got %d", attempts.Load())
+	}
+	if len(reqIDs) < 2 || reqIDs[0] == "" || reqIDs[0] != reqIDs[1] {
+		t.Errorf("request_id must stay stable across queue retries, got %v", reqIDs)
+	}
+	if len(retryFlags) < 2 || retryFlags[0] != false || retryFlags[1] != true {
+		t.Errorf("is_retry flags = %v, want [false, true]", retryFlags)
 	}
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected HTTP 200, got %d: %s", w.Code, w.Body.String())
@@ -508,6 +562,7 @@ func TestQoderNonStreamingAggregatesInterleavedToolsByChoice(t *testing.T) {
 // CLI User-Agent: Go would otherwise send "Go-http-client/2.0", naming the
 // relay to Qoder's channel check.
 func TestQoderChatSendsCLIUserAgent(t *testing.T) {
+	t.Setenv("CYRENE_QODER_CLI_VERSION", provider.QoderCLIVersionFloor)
 	srv, _ := setupTestServer(t)
 
 	uaCh := make(chan string, 1)
@@ -547,8 +602,8 @@ func TestQoderChatSendsCLIUserAgent(t *testing.T) {
 
 	select {
 	case got := <-uaCh:
-		if got != provider.QoderCLIUserAgent {
-			t.Errorf("User-Agent = %q, want %q", got, provider.QoderCLIUserAgent)
+		if got != provider.QoderCLIUserAgent() {
+			t.Errorf("User-Agent = %q, want %q", got, provider.QoderCLIUserAgent())
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("upstream never received the request")
@@ -836,5 +891,86 @@ func TestQoderPlanRefusalYieldsToIdleSibling(t *testing.T) {
 	}
 	if !provider.IsModelLockActive(stored, "dfmodel") {
 		t.Error("plan-refused account holds no model lock; every client would re-probe it")
+	}
+}
+
+// TestQoderQueueBudgetExhaustedReturns503Not502: when upstream stays queued with
+// serviceAvailable=true past qoderQueueWaitBudget, the final HTTP 200 SSE 10605
+// response must break cleanly to qoder_queue_timeout (503) rather than falling
+// through to proxyQoderStreaming (which turned EOF after swallowed 10605 into
+// 502 "upstream closed without response" and poisoned connection health).
+func TestQoderQueueBudgetExhaustedReturns503Not502(t *testing.T) {
+	origBudget := qoderQueueWaitBudget
+	qoderQueueWaitBudget = 1 * time.Second
+	t.Cleanup(func() { qoderQueueWaitBudget = origBudget })
+
+	srv, database := setupTestServer(t)
+
+	inner, err := json.Marshal(map[string]any{
+		"isQueued": true, "modelKey": "dfmodel", "queueCount": 1, "queueType": "p4",
+		"retryAfterSeconds": 1, "serviceAvailable": true,
+		"subCode": "RESOURCE_LIMIT", "waitTime": 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, err := json.Marshal(map[string]any{"code": "10605", "message": string(inner), "subCode": "RESOURCE_LIMIT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, err := json.Marshal(map[string]any{"code": "403", "message": string(mid)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelopeBytes, err := json.Marshal(map[string]any{"statusCodeValue": 403, "body": string(outer)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sseFrame := "data: " + string(envelopeBytes) + "\n\n"
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, sseFrame)
+	}))
+	defer upstream.Close()
+
+	provider.SeedQoderCatalogForTest("user-budget-exhaust", map[string]map[string]any{
+		"dfmodel": {"name": "dfmodel", "max_output_tokens": 4096},
+	})
+	conn := &model.ProviderConnection{
+		ID: "qoder-budget-exhaust", Provider: "qoder", AuthType: "oauth", IsActive: true,
+		Data: model.ConnectionData{
+			AccessToken:          "dt-budget-exhaust",
+			BaseURL:              upstream.URL,
+			TestStatus:           "active",
+			ProviderSpecificData: map[string]any{"userId": "user-budget-exhaust"},
+		},
+	}
+	if err := database.CreateConnection(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	body := []byte(`{"model":"qoder/dfmodel","stream":true,"max_tokens":8,"messages":[{"role":"user","content":"ping"}]}`)
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, newLocalRequest("POST", "/v1/chat/completions", bytes.NewReader(body)))
+
+	out := w.Body.String()
+	if !strings.Contains(out, `"type":"qoder_queue_timeout"`) || !strings.Contains(out, `"code":503`) {
+		t.Fatalf("expected 503 qoder_queue_timeout SSE error event, got: %s", out)
+	}
+	if !strings.Contains(out, "queueType=p4") || !strings.Contains(out, "RESOURCE_LIMIT") {
+		t.Errorf("expected queue metadata in timeout error, got: %s", out)
+	}
+	if strings.Contains(out, "upstream closed without response") || strings.Contains(out, `"code":502`) {
+		t.Errorf("must not fall through to 502 stream EOF error: %s", out)
+	}
+
+	stored, err := database.GetConnection(conn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Data.TestStatus == "error" {
+		t.Errorf("queue timeout must not poison connection testStatus to error: %+v", stored.Data)
 	}
 }

@@ -100,8 +100,9 @@ func TestClientFingerprintsMatchOfficialCLIs(t *testing.T) {
 // poll and userinfo endpoints are no exception — they answer identically to
 // either UA, so there is no contract reason to split the identity.
 func TestQoderIdentityConstantsAreClientShaped(t *testing.T) {
-	if QoderCLIUserAgent == "" || !strings.HasPrefix(QoderCLIUserAgent, "qodercli/") {
-		t.Errorf("Qoder User-Agent must look like the CLI, got %q", QoderCLIUserAgent)
+	t.Setenv(qoderCLIVersionPinEnv, QoderCLIVersionFloor)
+	if QoderCLIUserAgent() == "" || !strings.HasPrefix(QoderCLIUserAgent(), "qodercli/") {
+		t.Errorf("Qoder User-Agent must look like the CLI, got %q", QoderCLIUserAgent())
 	}
 	if QoderIDEVersion == "" {
 		t.Error("QoderIDEVersion must be set")
