@@ -456,6 +456,7 @@ func TestClaudeOAuthHeaders(t *testing.T) {
 }
 
 func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
+	t.Setenv(codebuddyVersionPinEnv, CodebuddyVersionFloor)
 	cand := ExecutionCandidate{
 		Connection: &model.ProviderConnection{
 			ID:       "test-cb",
@@ -485,7 +486,7 @@ func TestPrepareUpstreamRequest_Codebuddy(t *testing.T) {
 	if format != "openai" {
 		t.Errorf("expected openai format, got %s", format)
 	}
-	if req.Header.Get("User-Agent") != CodebuddyIDEUA {
+	if req.Header.Get("User-Agent") != CodebuddyIDEUA() {
 		t.Errorf("unexpected User-Agent: %s", req.Header.Get("User-Agent"))
 	}
 	if req.Header.Get("X-IDE-Type") != "IDE" {

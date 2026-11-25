@@ -8,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestTestModelOpenCodeFreeModel(t *testing.T) {
+	t.Setenv("CYRENE_OPENCODE_VERSION", provider.OpenCodeVersionFloor)
 	var capturedAuth string
 	var capturedUA string
 	var capturedClient string
@@ -63,8 +65,8 @@ func TestTestModelOpenCodeFreeModel(t *testing.T) {
 	if capturedAuth != "Bearer public" {
 		t.Errorf("expected Bearer public for free model test, got %q", capturedAuth)
 	}
-	if capturedUA != "opencode/1.18.31" {
-		t.Errorf("expected User-Agent opencode/1.18.31, got %q", capturedUA)
+	if capturedUA != provider.OpenCodeUserAgent() {
+		t.Errorf("expected User-Agent %s, got %q", provider.OpenCodeUserAgent(), capturedUA)
 	}
 	if capturedClient != "desktop" {
 		t.Errorf("expected x-opencode-client desktop, got %q", capturedClient)

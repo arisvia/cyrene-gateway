@@ -456,6 +456,7 @@ func TestRefreshModels_CodeBuddy_LiveConfig(t *testing.T) {
 }
 
 func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
+	t.Setenv("CYRENE_CODEBUDDY_VERSION", provider.CodebuddyVersionFloor)
 	srv, database := setupTestServer(t)
 	defer database.Close()
 
@@ -520,8 +521,8 @@ func TestRefreshModels_CodeBuddyIntl_LiveConfig(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 OK on live config fetch, got %d: %s", w.Code, w.Body.String())
 	}
-	if receivedUA != provider.CodebuddyCLIUA {
-		t.Errorf("expected catalog User-Agent %s (CLI identity), got %q", provider.CodebuddyCLIUA, receivedUA)
+	if receivedUA != provider.CodebuddyCLIUA() {
+		t.Errorf("expected catalog User-Agent %s (CLI identity), got %q", provider.CodebuddyCLIUA(), receivedUA)
 	}
 	if receivedDomain != "www.codebuddy.ai" {
 		t.Errorf("expected X-Domain www.codebuddy.ai, got %q", receivedDomain)

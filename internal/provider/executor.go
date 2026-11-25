@@ -189,6 +189,9 @@ func PrepareUpstreamRequest(
 	for k, v := range transport.Headers {
 		upstreamReq.Header.Set(k, v)
 	}
+	if modelInfo.Provider == "grok-cli" {
+		applyGrokConversationHeaders(upstreamReq, bodyMap, conn)
+	}
 	ApplyAuth(upstreamReq, transport, ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	if upstreamStream {
@@ -687,7 +690,10 @@ func neutralizeCodebuddySystems(rawMsgs []any, maxLen int, rewrites codebuddyRew
 	return out
 }
 
-func sanitizeGithubRequest(model string, bodyMap map[string]any) {
+// normalizeReasoningMaxTokens rewrites legacy max_tokens to
+// max_completion_tokens for OpenAI reasoning models (gpt-5.x, gpt-6.x, o-series),
+// which reject max_tokens with HTTP 400 (9router#7c42d8f8 parity).
+func normalizeReasoningMaxTokens(model string, bodyMap map[string]any) {
 	m := strings.ToLower(model)
 	if strings.Contains(m, "gpt-5") || strings.Contains(m, "gpt-6") || strings.Contains(m, "o1") || strings.Contains(m, "o3") || strings.Contains(m, "o4") {
 		if maxTokens, ok := bodyMap["max_tokens"]; ok {
@@ -697,26 +703,20 @@ func sanitizeGithubRequest(model string, bodyMap map[string]any) {
 			delete(bodyMap, "max_tokens")
 		}
 	}
+}
+
+func sanitizeGithubRequest(model string, bodyMap map[string]any) {
+	normalizeReasoningMaxTokens(model, bodyMap)
 	if eff, ok := bodyMap["reasoning_effort"].(string); ok && strings.ToLower(eff) == "none" {
 		delete(bodyMap, "reasoning_effort")
 	}
 }
 
-// sanitizeOpenAIRequest normalizes parameters for modern OpenAI models (9router#7c42d8f8 parity).
-// Current OpenAI models (gpt-5.x, gpt-6.x, o-series) reject max_tokens with HTTP 400.
 func sanitizeOpenAIRequest(model string, bodyMap map[string]any) {
-	m := strings.ToLower(model)
-	if strings.Contains(m, "gpt-5") || strings.Contains(m, "gpt-6") || strings.Contains(m, "o1") || strings.Contains(m, "o3") || strings.Contains(m, "o4") {
-		if maxTokens, ok := bodyMap["max_tokens"]; ok {
-			if _, hasComp := bodyMap["max_completion_tokens"]; !hasComp {
-				bodyMap["max_completion_tokens"] = maxTokens
-			}
-			delete(bodyMap, "max_tokens")
-		}
-	}
+	normalizeReasoningMaxTokens(model, bodyMap)
 }
 
-func stableCodebuddyUUID(key string) string {
+func stableNamespaceUUID(key string) string {
 	h := sha1.Sum([]byte(key))
 	h[6] = (h[6] & 0x0f) | 0x50
 	h[8] = (h[8] & 0x3f) | 0x80
@@ -738,7 +738,7 @@ func applyCodebuddyConversationHeaders(req *http.Request, bodyMap map[string]any
 	if req.Header.Get("X-Conversation-ID") == "" {
 		convID := uuid.New().String()
 		if conversationKey != "" {
-			convID = stableCodebuddyUUID(conversationKey)
+			convID = stableNamespaceUUID(conversationKey)
 		}
 		req.Header.Set("X-Conversation-ID", convID)
 	}

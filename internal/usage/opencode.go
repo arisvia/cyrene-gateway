@@ -51,7 +51,7 @@ func fetchOpenCode(ctx context.Context, client *http.Client, creds QuotaCredenti
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", provider.DefaultOpenCodeUA)
+	req.Header.Set("User-Agent", provider.OpenCodeUserAgent())
 	req.Header.Set("x-opencode-client", "desktop")
 
 	resp, err := quotaHTTPClient(client).Do(req)

@@ -1,13 +1,15 @@
 package provider
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"os"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/google/uuid"
 )
 
 // Auth scheme constants for upstream credential injection. These mirror the
@@ -257,35 +259,70 @@ func ApplyAuth(req *http.Request, t Transport, creds Credentials) {
 // authHooks is the registry of provider-specific header overlays. Ported from
 // 9router HEADER_HOOKS (open-sse/executors/default.js).
 var authHooks = map[string]func(http.Header, Credentials){
-	"kimiHeaders": kimiHeadersHook,
-	"claudeCLIUA": claudeCLIUAHook,
+	"kimiHeaders":    kimiHeadersHook,
+	"claudeCLIUA":    claudeCLIUAHook,
+	"codebuddyCLIUA": codebuddyCLIUAHook,
+	"codebuddyIDEUA": codebuddyIDEUAHook,
+	"copilotHeaders": copilotHeadersHook,
 }
 
 // claudeCLIUAHook stamps the live Claude Code CLI fingerprint on every
 // claude request. The registry header map carries only the bundled floor;
 // Anthropic gates newly released models on a minimum CLI version, so the
-// per-request value from claudeCLILive (npm, refreshed in the background)
+// per-request value from claudeCLITracker (npm, refreshed in the background)
 // must win over the package-init snapshot.
 func claudeCLIUAHook(h http.Header, _ Credentials) {
 	h.Set("User-Agent", ClaudeCodeUserAgent())
 }
 
-// kimiHeadersHook injects the X-Msh-* client fingerprint headers required by the
-// Kimi coding endpoint (CLIProxyAPI KimiTokenStorage parity). The device ID is
-// stable per connection when stored in providerSpecificData.deviceId.
-func kimiHeadersHook(h http.Header, c Credentials) {
-	deviceID := ""
-	if c.ProviderSpecificData != nil {
-		if id, ok := c.ProviderSpecificData["deviceId"].(string); ok {
-			deviceID = strings.TrimSpace(id)
+func codebuddyCLIUAHook(h http.Header, _ Credentials) {
+	h.Set("User-Agent", CodebuddyCLIUA())
+}
+
+func codebuddyIDEUAHook(h http.Header, _ Credentials) {
+	h.Set("User-Agent", CodebuddyIDEUA())
+}
+
+func copilotHeadersHook(h http.Header, _ Credentials) {
+	h.Set("User-Agent", CopilotUserAgent())
+	h.Set("Editor-Version", CopilotEditorVersion())
+	h.Set("Editor-Plugin-Version", CopilotEditorPluginVersion())
+	h.Set("x-github-api-version", CopilotAPIVersion())
+}
+
+func stableShortHash(prefix string, parts ...string) string {
+	h := sha256.New()
+	h.Write([]byte(prefix))
+	for _, p := range parts {
+		h.Write([]byte{0})
+		h.Write([]byte(p))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// kimiDeviceID returns the stored deviceId when present, else derives a stable
+// device ID from the credential token so requests/refreshes for one account do
+// not look like a new device on every call.
+func kimiDeviceID(psd map[string]any, seed string) string {
+	if psd != nil {
+		if id, ok := psd["deviceId"].(string); ok && strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
 		}
 	}
-	if deviceID == "" {
-		deviceID = "kimi-" + time.Now().Format("20060102150405.000")
+	if strings.TrimSpace(seed) != "" {
+		return "kimi-" + stableShortHash("kimi-device", seed)
 	}
+	return "kimi-" + uuid.New().String()[:16]
+}
+
+// kimiHeadersHook injects the X-Msh-* client fingerprint headers required by the
+// Kimi coding endpoint (CLIProxyAPI KimiTokenStorage parity). The device ID is
+// stable per connection when stored in providerSpecificData.deviceId, or derived
+// deterministically from the credential token.
+func kimiHeadersHook(h http.Header, c Credentials) {
 	// The coding backend gates on the UA prefix and reads the X-Msh-* block, so
 	// both name the official CLI rather than this gateway.
-	applyKimiHeaders(h, deviceID)
+	applyKimiHeaders(h, kimiDeviceID(c.ProviderSpecificData, c.Token()))
 	h.Set("X-Msh-Device-Name", deviceName())
 	h.Set("X-Msh-Device-Model", deviceModel())
 }

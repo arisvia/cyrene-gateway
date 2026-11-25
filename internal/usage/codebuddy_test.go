@@ -10,6 +10,7 @@ import (
 )
 
 func TestFetchCodebuddy(t *testing.T) {
+	t.Setenv("CYRENE_CODEBUDDY_VERSION", provider.CodebuddyVersionFloor)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -17,7 +18,7 @@ func TestFetchCodebuddy(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer cb-test-token" {
 			t.Errorf("expected Bearer cb-test-token, got %q", got)
 		}
-		if got := r.Header.Get("User-Agent"); got != provider.CodebuddyCLIUA {
+		if got := r.Header.Get("User-Agent"); got != provider.CodebuddyCLIUA() {
 			t.Errorf("unexpected User-Agent: %q", got)
 		}
 		if got := r.Header.Get("x-codebuddy-request"); got != "1" {

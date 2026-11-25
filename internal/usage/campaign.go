@@ -353,14 +353,12 @@ func codebuddyCheckinURL(c QuotaCredentials, path string) string {
 // namespace rejects requests without the CodeBuddy plugin markers.
 func codebuddyCheckinHeaders(token, providerID string) map[string]string {
 	h := bearer(token)
-	userAgent := provider.CodebuddyCLIUA
 	ideType := "CLI"
 	if providerID == "codebuddy" {
-		userAgent = provider.CodebuddyIDEUA
 		ideType = "IDE"
 	}
 	h["Content-Type"] = "application/json"
-	h["User-Agent"] = userAgent
+	h["User-Agent"] = provider.CodebuddyUserAgent(providerID)
 	h["X-Product"] = "SaaS"
 	h["X-IDE-Type"] = ideType
 	h["X-IDE-Name"] = ideType

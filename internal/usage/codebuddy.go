@@ -105,11 +105,10 @@ func fetchCodebuddy(ctx context.Context, client *http.Client, c QuotaCredentials
 	}
 
 	targetURL := sameOriginURL(c, codebuddyBillingResourcePath)
-	userAgent := provider.CodebuddyCLIUA
+	userAgent := provider.CodebuddyUserAgent(c.Provider)
 	ideType := "CLI"
 
 	if c.Provider == "codebuddy" {
-		userAgent = provider.CodebuddyIDEUA
 		ideType = "IDE"
 	}
 	if c.BaseURL != "" {

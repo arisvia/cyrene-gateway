@@ -10,6 +10,7 @@ import (
 )
 
 func TestFetchOpenCode(t *testing.T) {
+	t.Setenv("CYRENE_OPENCODE_VERSION", provider.OpenCodeVersionFloor)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/usage" {
 			t.Errorf("expected path /usage, got %s", r.URL.Path)
@@ -22,8 +23,8 @@ func TestFetchOpenCode(t *testing.T) {
 		}
 		// The quota call must carry the same client identity as chat: a bare
 		// "opencode" or Go's default UA names the relay.
-		if ua := r.Header.Get("User-Agent"); ua != provider.DefaultOpenCodeUA {
-			t.Errorf("expected User-Agent %s, got %s", provider.DefaultOpenCodeUA, ua)
+		if ua := r.Header.Get("User-Agent"); ua != provider.OpenCodeUserAgent() {
+			t.Errorf("expected User-Agent %s, got %s", provider.OpenCodeUserAgent(), ua)
 		}
 
 		w.Header().Set("Content-Type", "application/json")

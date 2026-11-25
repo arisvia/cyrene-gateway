@@ -141,11 +141,11 @@ func TestExchangeCopilotToken(t *testing.T) {
 		if r.Header.Get("Authorization") != "token gh_oauth_token" {
 			t.Errorf("expected Authorization=token gh_oauth_token, got %s", r.Header.Get("Authorization"))
 		}
-		if r.Header.Get("User-Agent") != copilotUserAgent {
-			t.Errorf("expected User-Agent=%s, got %s", copilotUserAgent, r.Header.Get("User-Agent"))
+		if r.Header.Get("User-Agent") != CopilotUserAgent() {
+			t.Errorf("expected User-Agent=%s, got %s", CopilotUserAgent(), r.Header.Get("User-Agent"))
 		}
-		if r.Header.Get("Editor-Version") != copilotVSCodeVersion {
-			t.Errorf("expected Editor-Version=%s, got %s", copilotVSCodeVersion, r.Header.Get("Editor-Version"))
+		if r.Header.Get("Editor-Version") != CopilotEditorVersion() {
+			t.Errorf("expected Editor-Version=%s, got %s", CopilotEditorVersion(), r.Header.Get("Editor-Version"))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -172,11 +172,11 @@ func exchangeCopilotTokenWithServer(githubToken string, srv *httptest.Server) (*
 	client := srv.Client()
 	req, _ := http.NewRequest("GET", srv.URL, nil)
 	req.Header.Set("Authorization", "token "+githubToken)
-	req.Header.Set("User-Agent", copilotUserAgent)
-	req.Header.Set("Editor-Version", copilotVSCodeVersion)
-	req.Header.Set("Editor-Plugin-Version", copilotChatVersion)
+	req.Header.Set("User-Agent", CopilotUserAgent())
+	req.Header.Set("Editor-Version", CopilotEditorVersion())
+	req.Header.Set("Editor-Plugin-Version", CopilotEditorPluginVersion())
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-github-api-version", copilotAPIVersion)
+	req.Header.Set("x-github-api-version", CopilotAPIVersion())
 
 	resp, err := client.Do(req)
 	if err != nil {

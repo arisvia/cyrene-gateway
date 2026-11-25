@@ -33,26 +33,36 @@ func TestClientFingerprintsMatchOfficialCLIs(t *testing.T) {
 	}
 
 	t.Run("kimi", func(t *testing.T) {
+		t.Setenv(kimiCLIVersionPinEnv, KimiCLIVersionFloor)
 		req := prepare("kimi", "kimi-for-coding")
 		// The coding backend 403s unless the UA is KimiCLI/<version>.
-		if got := req.Header.Get("User-Agent"); got != KimiCLIUA {
-			t.Errorf("User-Agent = %q, want %q", got, KimiCLIUA)
+		if got := req.Header.Get("User-Agent"); got != KimiCLIUserAgent() {
+			t.Errorf("User-Agent = %q, want %q", got, KimiCLIUserAgent())
 		}
 		if got := req.Header.Get("X-Msh-Platform"); got != "kimi_cli" {
 			t.Errorf("X-Msh-Platform = %q, want kimi_cli", got)
 		}
-		if got := req.Header.Get("X-Msh-Version"); got != KimiCLIVersion {
-			t.Errorf("X-Msh-Version = %q, want %q", got, KimiCLIVersion)
+		if got := req.Header.Get("X-Msh-Version"); got != KimiCLIVersion() {
+			t.Errorf("X-Msh-Version = %q, want %q", got, KimiCLIVersion())
+		}
+		// Fallback device ID must be deterministic per credential token.
+		req2 := prepare("kimi", "kimi-for-coding")
+		if req.Header.Get("X-Msh-Device-Id") == "" || req.Header.Get("X-Msh-Device-Id") != req2.Header.Get("X-Msh-Device-Id") {
+			t.Errorf("X-Msh-Device-Id must be non-empty and stable for same token: %q vs %q", req.Header.Get("X-Msh-Device-Id"), req2.Header.Get("X-Msh-Device-Id"))
 		}
 	})
 
 	t.Run("grok-cli", func(t *testing.T) {
+		t.Setenv(grokCLIVersionPinEnv, GrokCLIVersionFloor)
 		req := prepare("grok-cli", GrokCLIModel)
 		if got := req.URL.String(); got != GrokCLIBaseURL+"/responses" {
 			t.Errorf("upstream URL = %q, want %q", got, GrokCLIBaseURL+"/responses")
 		}
-		if got := req.Header.Get("x-grok-client-version"); got != GrokCLIVersion {
-			t.Errorf("x-grok-client-version = %q, want %q", got, GrokCLIVersion)
+		if got := req.Header.Get("User-Agent"); got != GrokCLIUserAgent() {
+			t.Errorf("User-Agent = %q, want %q", got, GrokCLIUserAgent())
+		}
+		if got := req.Header.Get("x-grok-client-version"); got != GrokCLIVersion() {
+			t.Errorf("x-grok-client-version = %q, want %q", got, GrokCLIVersion())
 		}
 		if got := req.Header.Get("x-grok-client-identifier"); got != GrokCLIClientIdentifier {
 			t.Errorf("x-grok-client-identifier = %q, want %q", got, GrokCLIClientIdentifier)
@@ -65,6 +75,21 @@ func TestClientFingerprintsMatchOfficialCLIs(t *testing.T) {
 		}
 		if got := req.Header.Get("x-grok-conv-id"); got != req.Header.Get("x-grok-session-id") {
 			t.Errorf("conv-id %q must mirror session-id %q", got, req.Header.Get("x-grok-session-id"))
+		}
+
+		// Multi-turn request must advance x-grok-turn-idx and keep x-grok-session-id stable.
+		conn := &model.ProviderConnection{ID: "c", Provider: "grok-cli", AuthType: "oauth", Data: model.ConnectionData{AccessToken: "tok"}}
+		multiReq, _, err := PrepareUpstreamRequest(context.Background(),
+			ExecutionRequest{RawBody: []byte(`{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"},{"role":"user","content":"next"}]}`)},
+			ExecutionCandidate{Connection: conn, ModelInfo: model.ModelInfo{Provider: "grok-cli", Model: GrokCLIModel}, ProviderInfo: Registry["grok-cli"]}, nil)
+		if err != nil {
+			t.Fatalf("grok-cli multi-turn: %v", err)
+		}
+		if got := multiReq.Header.Get("x-grok-turn-idx"); got != "2" {
+			t.Errorf("x-grok-turn-idx = %q, want 2", got)
+		}
+		if got := multiReq.Header.Get("x-grok-session-id"); got != req.Header.Get("x-grok-session-id") {
+			t.Errorf("x-grok-session-id drifted across turns: %q vs %q", got, req.Header.Get("x-grok-session-id"))
 		}
 	})
 }

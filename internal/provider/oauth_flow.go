@@ -491,11 +491,9 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 	case "codebuddy", "codebuddy-cn":
 		platform := "CLI"
 		domain := "copilot.tencent.com"
-		userAgent := CodebuddyCLIUA
 		if providerID == "codebuddy" {
 			platform = "ide"
 			domain = "www.codebuddy.ai"
-			userAgent = CodebuddyIDEUA
 		}
 		targetURL := info.DeviceCodeURL + "?platform=" + platform
 		req, reqErr := http.NewRequest("POST", targetURL, strings.NewReader("{}"))
@@ -504,7 +502,7 @@ func RequestDeviceCode(providerID string, client *http.Client) (*DeviceCodeRespo
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("User-Agent", CodebuddyUserAgent(providerID))
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		req.Header.Set("X-Domain", domain)
 		req.Header.Set("X-No-Authorization", "true")
@@ -716,10 +714,8 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 
 	case "codebuddy", "codebuddy-cn":
 		domain := "copilot.tencent.com"
-		userAgent := CodebuddyCLIUA
 		if providerID == "codebuddy" {
 			domain = "www.codebuddy.ai"
-			userAgent = CodebuddyIDEUA
 		}
 		pollURL := info.TokenURL + "?state=" + url.QueryEscape(deviceCode)
 		req, reqErr := http.NewRequest("GET", pollURL, nil)
@@ -727,7 +723,7 @@ func PollDeviceCode(providerID, deviceCode, codeVerifier string, extraData map[s
 			return nil, reqErr
 		}
 		req.Header.Set("Accept", "application/json")
-		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("User-Agent", CodebuddyUserAgent(providerID))
 		req.Header.Set("X-Requested-With", "XMLHttpRequest")
 		req.Header.Set("X-Domain", domain)
 		req.Header.Set("X-No-Authorization", "true")

@@ -736,6 +736,7 @@ func TestDeleteLastConnectionPurgesDisabledModels(t *testing.T) {
 }
 
 func TestOpenCodeHeadersInjection(t *testing.T) {
+	t.Setenv("CYRENE_OPENCODE_VERSION", provider.OpenCodeVersionFloor)
 	var capturedHeaders http.Header
 	mockUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedHeaders = r.Header.Clone()
@@ -773,8 +774,8 @@ func TestOpenCodeHeadersInjection(t *testing.T) {
 	if got := capturedHeaders.Get("Authorization"); got != "Bearer public" {
 		t.Errorf("expected Bearer public for free model, got %q", got)
 	}
-	if got := capturedHeaders.Get("User-Agent"); got != "opencode/1.18.31" {
-		t.Errorf("expected User-Agent opencode/1.18.31, got %q", got)
+	if got := capturedHeaders.Get("User-Agent"); got != provider.OpenCodeUserAgent() {
+		t.Errorf("expected User-Agent %s, got %q", provider.OpenCodeUserAgent(), got)
 	}
 	if got := capturedHeaders.Get("x-opencode-client"); got != "desktop" {
 		t.Errorf("expected x-opencode-client desktop, got %q", got)

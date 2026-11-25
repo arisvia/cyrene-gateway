@@ -8,8 +8,6 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
-	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -172,39 +170,20 @@ var refreshProfiles = map[string]refreshProfile{
 
 // kimiRefreshHeaders builds X-Msh-* headers for kimi token refresh.
 func kimiRefreshHeaders(conn *model.ProviderConnection) map[string]string {
-	deviceID := ""
-	if conn.Data.ProviderSpecificData != nil {
-		deviceID, _ = conn.Data.ProviderSpecificData["deviceId"].(string)
+	seed := conn.Data.AccessToken
+	if seed == "" {
+		seed = conn.Data.RefreshToken
 	}
-	if deviceID == "" {
-		deviceID = "kimi-" + fmt.Sprintf("%d", time.Now().UnixMilli())
+	deviceID := kimiDeviceID(conn.Data.ProviderSpecificData, seed)
+	h := make(http.Header, 6)
+	applyKimiHeaders(h, deviceID)
+	h.Set("X-Msh-Device-Name", deviceName())
+	h.Set("X-Msh-Device-Model", deviceModel())
+	out := make(map[string]string, len(h))
+	for k := range h {
+		out[k] = h.Get(k)
 	}
-
-	osName := runtime.GOOS
-	archName := runtime.GOARCH
-	var deviceModel string
-	switch osName {
-	case "darwin":
-		deviceModel = "macOS " + archName
-	case "windows":
-		deviceModel = "Windows " + archName
-	default:
-		deviceModel = "Linux " + archName
-	}
-
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "unknown"
-	}
-
-	return map[string]string{
-		"User-Agent":         KimiCLIUA,
-		"X-Msh-Platform":     kimiCLIPlatform,
-		"X-Msh-Version":      KimiCLIVersion,
-		"X-Msh-Device-Name":  hostname,
-		"X-Msh-Device-Model": deviceModel,
-		"X-Msh-Device-Id":    deviceID,
-	}
+	return out
 }
 
 // --- xAI OIDC Discovery ---
@@ -394,16 +373,14 @@ func RefreshCredentials(providerID string, conn *model.ProviderConnection, clien
 // refreshCodebuddy handles CodeBuddy CN/intl token refresh via X-Refresh-Token
 // header (not standard OAuth2 body). Response: { code: 0, data: { accessToken, refreshToken, expiresIn } }.
 func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client *http.Client) (*RefreshResult, error) {
-	var refreshURL, domain, userAgent string
+	var refreshURL, domain string
 	switch providerID {
 	case "codebuddy-cn":
 		refreshURL = "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
 		domain = "copilot.tencent.com"
-		userAgent = CodebuddyCLIUA
 	default: // codebuddy (intl) — refresh must carry the same IDE identity it enrolled with
 		refreshURL = "https://www.codebuddy.ai/v2/plugin/auth/token/refresh"
 		domain = "www.codebuddy.ai"
-		userAgent = CodebuddyIDEUA
 	}
 
 	req, err := http.NewRequest("POST", refreshURL, strings.NewReader("{}"))
@@ -412,7 +389,7 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", CodebuddyUserAgent(providerID))
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("X-Domain", domain)
 	req.Header.Set("X-Refresh-Token", conn.Data.RefreshToken)
@@ -466,14 +443,6 @@ func refreshCodebuddy(providerID string, conn *model.ProviderConnection, client 
 // short-lived Copilot API token (9router PROVIDER_OAUTH.github.copilotTokenUrl).
 const CopilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
 
-// Copilot constants matching 9router GITHUB_COPILOT.
-const (
-	copilotUserAgent     = "GitHubCopilotChat/0.38.0"
-	copilotVSCodeVersion = "vscode/1.110.0"
-	copilotChatVersion   = "copilot-chat/0.38.0"
-	copilotAPIVersion    = "2025-04-01"
-)
-
 // ExchangeCopilotToken exchanges a GitHub OAuth access token for a short-lived
 // Copilot API token. This is the multi-step exchange: GitHub device code →
 // GitHub OAuth token → Copilot token.
@@ -490,11 +459,11 @@ func ExchangeCopilotToken(githubAccessToken string, client *http.Client) (*Refre
 		return nil, err
 	}
 	req.Header.Set("Authorization", "token "+githubAccessToken)
-	req.Header.Set("User-Agent", copilotUserAgent)
-	req.Header.Set("Editor-Version", copilotVSCodeVersion)
-	req.Header.Set("Editor-Plugin-Version", copilotChatVersion)
+	req.Header.Set("User-Agent", CopilotUserAgent())
+	req.Header.Set("Editor-Version", CopilotEditorVersion())
+	req.Header.Set("Editor-Plugin-Version", CopilotEditorPluginVersion())
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-github-api-version", copilotAPIVersion)
+	req.Header.Set("x-github-api-version", CopilotAPIVersion())
 
 	resp, err := client.Do(req)
 	if err != nil {

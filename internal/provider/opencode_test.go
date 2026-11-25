@@ -95,12 +95,13 @@ func TestIsOpenCodeFreeModel(t *testing.T) {
 }
 
 func TestOpenCodeHeadersHook(t *testing.T) {
+	t.Setenv(opencodeVersionPinEnv, OpenCodeVersionFloor)
 	req, _ := http.NewRequest("POST", "https://opencode.ai/zen/v1/chat/completions", nil)
 	creds := Credentials{}
 	opencodeHeadersHook(req.Header, creds)
 
-	if got := req.Header.Get("User-Agent"); got != DefaultOpenCodeUA {
-		t.Errorf("expected User-Agent %q, got %q", DefaultOpenCodeUA, got)
+	if got := req.Header.Get("User-Agent"); got != OpenCodeUserAgent() {
+		t.Errorf("expected User-Agent %q, got %q", OpenCodeUserAgent(), got)
 	}
 	if got := req.Header.Get("x-opencode-client"); got != "desktop" {
 		t.Errorf("expected x-opencode-client desktop, got %q", got)

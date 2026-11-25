@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"maps"
 	"net/http"
 	"strings"
 
@@ -21,6 +22,12 @@ func ModelsFetchFor(p ProviderInfo) model.ModelsFetchConfig {
 	// provider's dedicated catalog headers when declared.
 	if len(p.ModelsHeaders) > 0 {
 		cfg.Headers = p.ModelsHeaders
+	}
+	if p.ID == "codebuddy" || p.ID == "codebuddy-cn" {
+		cloned := make(map[string]string, len(cfg.Headers)+1)
+		maps.Copy(cloned, cfg.Headers)
+		cloned["User-Agent"] = CodebuddyCLIUA()
+		cfg.Headers = cloned
 	}
 	if cfg.Auth == "" {
 		switch p.APIType {

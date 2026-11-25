@@ -120,6 +120,7 @@ func TestRefreshCredentials_JSONProvider(t *testing.T) {
 }
 
 func TestRefreshCredentials_KimiHeaders(t *testing.T) {
+	t.Setenv(kimiCLIVersionPinEnv, KimiCLIVersionFloor)
 	// Verify kimi sends X-Msh-* headers.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Msh-Device-Id") == "" {
@@ -131,11 +132,11 @@ func TestRefreshCredentials_KimiHeaders(t *testing.T) {
 		if got := r.Header.Get("X-Msh-Platform"); got != kimiCLIPlatform {
 			t.Errorf("expected X-Msh-Platform=%s, got %s", kimiCLIPlatform, got)
 		}
-		if got := r.Header.Get("X-Msh-Version"); got != KimiCLIVersion {
-			t.Errorf("expected X-Msh-Version=%s, got %s", KimiCLIVersion, got)
+		if got := r.Header.Get("X-Msh-Version"); got != KimiCLIVersion() {
+			t.Errorf("expected X-Msh-Version=%s, got %s", KimiCLIVersion(), got)
 		}
-		if got := r.Header.Get("User-Agent"); got != KimiCLIUA {
-			t.Errorf("expected User-Agent=%s, got %s", KimiCLIUA, got)
+		if got := r.Header.Get("User-Agent"); got != KimiCLIUserAgent() {
+			t.Errorf("expected User-Agent=%s, got %s", KimiCLIUserAgent(), got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{

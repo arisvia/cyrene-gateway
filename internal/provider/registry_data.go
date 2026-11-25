@@ -6,26 +6,16 @@ package provider
 // migration; display names are vendor-official). Media providers
 // (internal/media) are a separate registry and were out of scope.
 
-// Claude Code CLI fingerprint: registry_data.go keeps the floor, the live
-// release resolution and the env pin live in claude_version.go. The
-// claudeCLIUA AuthHook stamps the current value on every OAuth chat request
-// so a model launch cannot outdate the hardcoded map below.
+// CLI / IDE client fingerprints: registry_data.go keeps static *Floor / *Default
+// values inside init() so package initialization never spawns goroutines; the
+// live release resolution and env pins live in cli_version.go, and each
+// provider's AuthHook stamps the current value on every outbound request.
 
 // claudeCodeHeaders provides default headers for Anthropic-compatible providers supporting thinking beta
 var claudeCodeHeaders = map[string]string{
 	"anthropic-version": AnthropicAPIVersion,
 	"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31",
 }
-
-// CodeBuddy client identity. An intl account is enrolled, refreshed and
-// quota-checked as the IDE product, so the chat gateway must present the same
-// identity: one token driven by both a CLI and an IDE fingerprint is exactly
-// what the channel check treats as a relayed client. CN is CLI end to end.
-const (
-	CodebuddyVersion = "2.179.2"
-	CodebuddyIDEUA   = "IDE/" + CodebuddyVersion + " CodeBuddy/" + CodebuddyVersion
-	CodebuddyCLIUA   = "CLI/" + CodebuddyVersion + " CodeBuddy/" + CodebuddyVersion
-)
 
 // claudeOAuthHeaders provides headers required by Anthropic OAuth (/v1/messages with Bearer user tokens)
 var claudeOAuthHeaders = map[string]string{
@@ -135,8 +125,9 @@ func init() {
 		Icon:          "smart_toy",
 		DeviceCodeURL: "https://copilot.tencent.com/v2/plugin/auth/state",
 		TokenURL:      "https://copilot.tencent.com/v2/plugin/auth/token",
+		AuthHooks:     []string{"codebuddyCLIUA"},
 		Headers: map[string]string{
-			"User-Agent":          CodebuddyCLIUA,
+			"User-Agent":          "CLI/" + CodebuddyVersionFloor + " CodeBuddy/" + CodebuddyVersionFloor,
 			"X-Product":           "SaaS",
 			"X-IDE-Type":          "CLI",
 			"X-IDE-Name":          "CLI",
@@ -161,8 +152,9 @@ func init() {
 		TextIcon:      "CB",
 		DeviceCodeURL: "https://www.codebuddy.ai/v2/plugin/auth/state",
 		TokenURL:      "https://www.codebuddy.ai/v2/plugin/auth/token",
+		AuthHooks:     []string{"codebuddyIDEUA"},
 		Headers: map[string]string{
-			"User-Agent":          CodebuddyIDEUA,
+			"User-Agent":          "IDE/" + CodebuddyVersionFloor + " CodeBuddy/" + CodebuddyVersionFloor,
 			"X-Product":           "SaaS",
 			"X-IDE-Type":          "IDE",
 			"X-IDE-Name":          "IDE",
@@ -176,7 +168,7 @@ func init() {
 		// the same way — CLI for the catalog, IDE for chat — so this is not
 		// the relayed-client signal (that is a chat-fingerprint mismatch).
 		ModelsHeaders: map[string]string{
-			"User-Agent":          CodebuddyCLIUA,
+			"User-Agent":          "CLI/" + CodebuddyVersionFloor + " CodeBuddy/" + CodebuddyVersionFloor,
 			"X-Product":           "SaaS",
 			"X-IDE-Type":          "CLI",
 			"X-IDE-Name":          "CLI",
@@ -286,13 +278,14 @@ func init() {
 		TokenURL:      "https://github.com/login/oauth/access_token",
 		AuthorizeURL:  "https://github.com/login/oauth/authorize",
 		ClientID:      "Iv1.b507a08c87ecfe98",
+		AuthHooks:     []string{"copilotHeaders"},
 		Headers: map[string]string{
 			"copilot-integration-id":              "vscode-chat",
-			"editor-version":                      copilotVSCodeVersion,
-			"editor-plugin-version":               copilotChatVersion,
-			"user-agent":                          copilotUserAgent,
+			"editor-version":                      "vscode/" + CopilotVSCodeVersionDefault,
+			"editor-plugin-version":               "copilot-chat/" + CopilotChatVersionDefault,
+			"user-agent":                          "GitHubCopilotChat/" + CopilotChatVersionDefault,
 			"openai-intent":                       "conversation-panel",
-			"x-github-api-version":                copilotAPIVersion,
+			"x-github-api-version":                CopilotAPIVersionDefault,
 			"x-vscode-user-agent-library-version": "electron-fetch",
 			"X-Initiator":                         "user",
 		},
@@ -347,7 +340,7 @@ func init() {
 		ForceStream:   true,
 		AuthHooks:     []string{"grokCliHeaders"},
 		Headers: map[string]string{
-			"User-Agent": GrokCLIUserAgent,
+			"User-Agent": GrokCLIClientIdentifier + "/" + GrokCLIVersionFloor + " (linux; x86_64)",
 		},
 	}
 	Registry["groq"] = ProviderInfo{

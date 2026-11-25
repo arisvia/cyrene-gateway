@@ -394,6 +394,7 @@ func TestPollDeviceCode_CodeBuddy_PreferredUsernameFallback(t *testing.T) {
 }
 
 func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
+	t.Setenv(codebuddyVersionPinEnv, CodebuddyVersionFloor)
 	orig := Registry["codebuddy"]
 	defer func() { Registry["codebuddy"] = orig }()
 
@@ -404,7 +405,7 @@ func TestRequestDeviceCode_CodeBuddyIntl(t *testing.T) {
 		if r.Header.Get("X-Domain") != "www.codebuddy.ai" {
 			t.Errorf("expected X-Domain www.codebuddy.ai, got %s", r.Header.Get("X-Domain"))
 		}
-		if r.Header.Get("User-Agent") != "IDE/"+CodebuddyVersion+" CodeBuddy/"+CodebuddyVersion {
+		if r.Header.Get("User-Agent") != CodebuddyIDEUA() {
 			t.Errorf("expected IDE User-Agent, got %s", r.Header.Get("User-Agent"))
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	DefaultOpenCodeUA = "opencode/1.18.31"
-	base62Chars       = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	base62Chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
 
 var (
@@ -107,7 +106,7 @@ func IsOpenCodeFreeModel(modelName string) bool {
 // Upstream enforces versioned User-Agent (>= 1.17.0) and canonical ses_ / msg_ format on free tiers.
 func opencodeHeadersHook(h http.Header, c Credentials) {
 	if !hasValidOpenCodeVersion(h.Get("User-Agent")) {
-		h.Set("User-Agent", DefaultOpenCodeUA)
+		h.Set("User-Agent", OpenCodeUserAgent())
 	}
 	if h.Get("x-opencode-client") == "" {
 		h.Set("x-opencode-client", "desktop")
