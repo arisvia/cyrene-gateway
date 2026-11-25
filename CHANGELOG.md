@@ -2,6 +2,19 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.13.0] - 2026-11-25
+
+### Added
+- **主流 CLI 客户端版本自动跟随 npm**：Claude Code、Grok Build、Kimi Code、CodeBuddy、Qoder CLI 与 OpenCode 共享一套 npm 版本追踪器（配离线基线与环境变量固定），Copilot 版本头同样支持环境变量覆写，避免上游版本淘汰导致 426 或新模型不可见。
+
+### Changed
+- **Grok 与 Kimi 协议指纹对齐真实客户端**：Grok 请求改为按用户消息轮次动态递进 `x-grok-turn-idx` 并为同会话固定 `x-grok-session-id`；Kimi 对话与令牌刷新统一基于凭据生成确定性设备 ID，不再每次请求随机漂移。
+
+### Fixed
+- **Qoder 排队调度与 COSY 协议修复**：上游排队时优先切走空闲账号并区分真实排队与套餐拒服，修复排队预算耗尽落空误报 502 的漏洞，同时透传 `Cosy-Organization-Id`、保留重试 `request_id`/`is_retry` 并补齐超长上下文报错提示。
+- **Codex Responses 流式终止事件补全**：流式解析新增识别 `response.done` 终止事件，避免只发 `response.done` 的上游响应被误判截断。
+- **模型三面口径与连接配额快照一致**：统一 `/v1/models` 列表、按名检索与调用解析的模型名拼写，并修复更新连接记录时覆盖擦除配额到期时间戳的问题。
+
 ## [1.12.0] - 2026-11-17
 
 ### Added
