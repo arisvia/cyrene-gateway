@@ -222,58 +222,6 @@ func TestRotateFromIndex(t *testing.T) {
 	}
 }
 
-func TestHandleComboFallback_FirstSucceeds(t *testing.T) {
-	models := []string{"a", "b", "c"}
-	callCount := 0
-
-	result := HandleComboFallback(models, func(modelStr string) ComboResult {
-		callCount++
-		return ComboResult{Success: true, Status: 200}
-	}, nil)
-
-	if !result.Success {
-		t.Error("Expected success")
-	}
-	if callCount != 1 {
-		t.Errorf("Expected 1 call, got %d", callCount)
-	}
-}
-
-func TestHandleComboFallback_SecondSucceeds(t *testing.T) {
-	models := []string{"a", "b", "c"}
-	callCount := 0
-
-	result := HandleComboFallback(models, func(modelStr string) ComboResult {
-		callCount++
-		if callCount == 1 {
-			return ComboResult{Success: false, Status: 503, ErrorText: "overloaded"}
-		}
-		return ComboResult{Success: true, Status: 200}
-	}, nil)
-
-	if !result.Success {
-		t.Error("Expected success on second model")
-	}
-	if callCount != 2 {
-		t.Errorf("Expected 2 calls, got %d", callCount)
-	}
-}
-
-func TestHandleComboFallback_AllFail(t *testing.T) {
-	models := []string{"a", "b"}
-
-	result := HandleComboFallback(models, func(modelStr string) ComboResult {
-		return ComboResult{Success: false, Status: 429, ErrorText: "rate limit exceeded"}
-	}, nil)
-
-	if result.Success {
-		t.Error("Expected failure")
-	}
-	if result.Status != 429 {
-		t.Errorf("Expected status 429, got %d", result.Status)
-	}
-}
-
 func TestComboRotationResizeAndResetAll(t *testing.T) {
 	cm := NewComboManager()
 	models := []string{"a", "b", "c"}

@@ -44,7 +44,7 @@ type ProviderConfig struct {
 	Provider   string `json:"provider"`
 	Kind       Kind   `json:"kind"`
 	BaseURL    string `json:"baseUrl"`
-	AuthType   string `json:"authType"`   // "apikey", "oauth", "none"
+	AuthType   string `json:"authType"`   // "api-key", "oauth", "none"
 	AuthHeader string `json:"authHeader"` // "bearer", "x-api-key", "key", "token"
 	Format     string `json:"format"`     // provider-specific format identifier
 }

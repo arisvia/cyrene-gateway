@@ -149,9 +149,9 @@ func TestSaveUsageEntrySameSecondDistinctDimensions(t *testing.T) {
 	if err != nil || lifetime != 4 {
 		t.Fatalf("lifetime = %d, want 4: %v", lifetime, err)
 	}
-	keys, endpoints, err := d.GetUsageDimensions("")
-	if err != nil || keys["key-a"].Requests != 3 || keys["key-b"].Requests != 1 || endpoints["/v1/chat/completions"].Requests != 3 || endpoints["/v1/messages"].Requests != 1 {
-		t.Fatalf("dimensions = %+v / %+v: %v", keys, endpoints, err)
+	summary, err := d.GetUsageSummary(time.Time{}, time.Time{})
+	if err != nil || summary.ByKey["key-a"].Requests != 3 || summary.ByKey["key-b"].Requests != 1 || summary.ByEndpoint["/v1/chat/completions"].Requests != 3 || summary.ByEndpoint["/v1/messages"].Requests != 1 {
+		t.Fatalf("dimensions = %+v / %+v: %v", summary.ByKey, summary.ByEndpoint, err)
 	}
 }
 
@@ -168,12 +168,12 @@ func TestSaveUsageEntryDailyUsesUTC(t *testing.T) {
 	}
 }
 
-func TestGetUsageDimensionsPropagatesQueryErrors(t *testing.T) {
+func TestGetUsageSummaryPropagatesQueryErrors(t *testing.T) {
 	d := setupTestDB(t)
 	if _, err := d.conn.Exec(`DROP TABLE usageHistory`); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := d.GetUsageDimensions(""); err == nil {
+	if _, err := d.GetUsageSummary(time.Time{}, time.Time{}); err == nil {
 		t.Fatal("query failure was reported as empty usage")
 	}
 }
@@ -266,7 +266,7 @@ func TestGetUsageDailyRange(t *testing.T) {
 	}
 }
 
-func TestGetUsageDimensions(t *testing.T) {
+func TestGetUsageSummaryDimensions(t *testing.T) {
 	d := setupTestDB(t)
 
 	d.SaveUsageEntry(&UsageEntry{
@@ -285,10 +285,15 @@ func TestGetUsageDimensions(t *testing.T) {
 		PromptTokens: 20, CompletionTokens: 10, Cost: 0.0,
 	})
 
-	byKey, byEndpoint, err := d.GetUsageDimensions("2026-07-21T00:00:00Z")
+	start, err := time.Parse(time.RFC3339, "2026-07-21T00:00:00Z")
 	if err != nil {
-		t.Fatalf("GetUsageDimensions: %v", err)
+		t.Fatal(err)
 	}
+	summary, err := d.GetUsageSummary(start, time.Time{})
+	if err != nil {
+		t.Fatalf("GetUsageSummary: %v", err)
+	}
+	byKey, byEndpoint := summary.ByKey, summary.ByEndpoint
 
 	if len(byKey) != 2 {
 		t.Fatalf("expected 2 keys (sk-client-b and default), got %d", len(byKey))

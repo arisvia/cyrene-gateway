@@ -197,24 +197,3 @@ export interface LiveUsageEvent {
   completionTokens?: number
 }
 export type BadgeTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'purple' | 'cyan' | 'pink' | 'violet' | 'teal' | 'rose' | 'orange' | 'indigo'
-export type ComboKind = 'fallback' | 'loadbalance' | 'roundrobin' | 'parallel'
-export type AuthType = 'api-key' | 'oauth' | 'none' | 'cookie'
-
-export interface GatewaySettings {
-  hasPassword?: boolean
-  requireLogin?: boolean
-  requireApiKey?: boolean
-  apiKeyRpm?: number
-  comboStrategy?: string
-  rtkEnabled?: boolean
-  cavemanEnabled?: boolean
-  cavemanLevel?: string
-  ponytailEnabled?: boolean
-  ponytailLevel?: string
-  loopGuardEnabled?: boolean
-  tokenSaverExclude?: string[]
-  responseCacheEnabled?: boolean
-  responseCacheTTL?: number
-  responseCacheAll?: boolean
-  autoPromptCache?: boolean
-}

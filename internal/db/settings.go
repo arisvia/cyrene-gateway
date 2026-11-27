@@ -238,22 +238,3 @@ func (d *DB) KVList(scope string) (map[string]string, error) {
 	d.cacheMu.Unlock()
 	return result, nil
 }
-
-// Meta store
-
-func (d *DB) MetaGet(key string) (string, error) {
-	var value string
-	err := d.conn.QueryRow(`SELECT value FROM _meta WHERE key = ?`, key).Scan(&value)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	return value, err
-}
-
-func (d *DB) MetaSet(key, value string) error {
-	_, err := d.conn.Exec(
-		`INSERT INTO _meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		key, value,
-	)
-	return err
-}

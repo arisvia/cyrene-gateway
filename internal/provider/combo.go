@@ -3,7 +3,6 @@ package provider
 import (
 	"sort"
 	"sync"
-	"time"
 )
 
 // ComboStrategy defines the rotation strategy for combo models.
@@ -179,95 +178,4 @@ func rotateFromIndex(models []string, index int) []string {
 	copy(rotated, models[index:])
 	copy(rotated[len(models)-index:], models[:index])
 	return rotated
-}
-
-// ComboResult represents the outcome of a combo attempt.
-type ComboResult struct {
-	ErrorText  string
-	RetryAfter string
-	Status     int
-	Success    bool
-}
-
-// HandleComboFallback iterates through models, calling tryFunc for each.
-// Returns on first success. On failure, applies cooldown logic and tries next.
-func HandleComboFallback(models []string, tryFunc func(modelStr string) ComboResult, logFunc func(format string, args ...any)) ComboResult {
-	var lastError string
-	var lastStatus int
-	var earliestRetryAfter string
-
-	for i, modelStr := range models {
-		if logFunc != nil {
-			logFunc("combo: trying model %d/%d: %s", i+1, len(models), modelStr)
-		}
-
-		result := tryFunc(modelStr)
-
-		if result.Success {
-			if logFunc != nil {
-				logFunc("combo: model %s succeeded", modelStr)
-			}
-			return result
-		}
-
-		// Check if we should fallback
-		fallbackResult := CheckFallbackError(result.Status, result.ErrorText, 0)
-		if !fallbackResult.ShouldFallback {
-			if logFunc != nil {
-				logFunc("combo: model %s failed (no fallback), status=%d", modelStr, result.Status)
-			}
-			return result
-		}
-
-		// Track earliest retryAfter
-		if result.RetryAfter != "" {
-			if earliestRetryAfter == "" || isEarlierRetryAfter(result.RetryAfter, earliestRetryAfter) {
-				earliestRetryAfter = result.RetryAfter
-			}
-		}
-
-		// For transient errors with short cooldown, wait before trying next
-		if fallbackResult.Cooldown > 0 && fallbackResult.Cooldown <= 5*time.Second &&
-			(result.Status == 502 || result.Status == 503 || result.Status == 504) {
-			if logFunc != nil {
-				logFunc("combo: model %s transient %d, waiting %v before next", modelStr, result.Status, fallbackResult.Cooldown)
-			}
-			time.Sleep(fallbackResult.Cooldown)
-		}
-
-		lastError = result.ErrorText
-		if lastStatus == 0 {
-			lastStatus = result.Status
-		}
-
-		if logFunc != nil {
-			logFunc("combo: model %s failed, trying next (status=%d)", modelStr, result.Status)
-		}
-	}
-
-	// All models failed
-	status := lastStatus
-	if status == 0 {
-		status = 503
-	}
-	msg := lastError
-	if msg == "" {
-		msg = "all combo models unavailable"
-	}
-
-	return ComboResult{
-		Success:    false,
-		Status:     status,
-		ErrorText:  msg,
-		RetryAfter: earliestRetryAfter,
-	}
-}
-
-func isEarlierRetryAfter(a, b string) bool {
-	ta, errA := time.Parse(time.RFC3339, a)
-	tb, errB := time.Parse(time.RFC3339, b)
-	if errA != nil || errB != nil {
-		return false
-	}
-	return ta.Before(tb)
 }

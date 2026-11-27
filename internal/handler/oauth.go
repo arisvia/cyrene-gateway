@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -14,15 +15,6 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/model"
 	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
-
-func htmlEscape(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, `"`, "&quot;")
-	s = strings.ReplaceAll(s, `'`, "&#39;")
-	return s
-}
 
 // handleOAuthAuthorize generates an authorization URL for a provider.
 // GET /api/oauth/{provider}/authorize?redirect_uri=...
@@ -170,7 +162,7 @@ func (s *Server) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
     setTimeout(() => { window.close(); }, 1500);
   </script>
 </body>
-</html>`, htmlEscape(conn.Name), conn.Provider)
+</html>`, html.EscapeString(conn.Name), conn.Provider)
 		return
 	}
 
@@ -350,21 +342,17 @@ func (s *Server) handleOAuthDeviceCodePoll(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req struct {
-		ExtraData       map[string]any `json:"extraData"`
-		DeviceCode      string         `json:"deviceCode"`
-		DeviceCodeSnake string         `json:"device_code"`
-		CodeVerifier    string         `json:"codeVerifier"`
-		Nonce           string         `json:"nonce"`
-		MachineID       string         `json:"machineId"`
-		Name            string         `json:"name"`
-		Priority        *int           `json:"priority"`
+		ExtraData    map[string]any `json:"extraData"`
+		DeviceCode   string         `json:"deviceCode"`
+		CodeVerifier string         `json:"codeVerifier"`
+		Nonce        string         `json:"nonce"`
+		MachineID    string         `json:"machineId"`
+		Name         string         `json:"name"`
+		Priority     *int           `json:"priority"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
-	}
-	if req.DeviceCode == "" && req.DeviceCodeSnake != "" {
-		req.DeviceCode = req.DeviceCodeSnake
 	}
 	// Qoder custom poll: GET with nonce + verifier
 	if provider.IsQoder(providerID) {

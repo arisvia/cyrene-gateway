@@ -119,11 +119,6 @@ func (t *SSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
 	return out, done, err
 }
 
-// TranslateSSEChunk converts an isolated payload; use NewSSETranslator for cross-chunk state.
-func TranslateSSEChunk(sourceFormat Format, data []byte, model string) ([]byte, bool, error) {
-	return NewSSETranslator(sourceFormat, model).TranslateChunk(data)
-}
-
 func openAISSEError(event map[string]any) []byte {
 	raw := event["error"]
 	if event["type"] == "response.failed" {
@@ -1463,10 +1458,6 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 
 // --- Claude SSE → OpenAI SSE ---
 
-func claudeSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
-	return NewSSETranslator(FormatAnthropic, model).TranslateChunk(data)
-}
-
 func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, error) {
 	model := t.model
 	eventType, _ := event["type"].(string)
@@ -1604,10 +1595,6 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 }
 
 // --- Gemini SSE → OpenAI SSE ---
-
-func geminiSSEToOpenAI(data []byte, model string) ([]byte, bool, error) {
-	return NewSSETranslator(FormatGemini, model).TranslateChunk(data)
-}
 
 func (t *SSETranslator) translateGemini(event map[string]any) ([]byte, bool, error) {
 	delta := map[string]any{}

@@ -78,20 +78,6 @@ func TestOAuthDeviceCode_WireFormat(t *testing.T) {
 	if !strings.Contains(pollBodyStr, `"pending":true`) {
 		t.Errorf("expected pending:true in poll response, got: %s", pollBodyStr)
 	}
-
-	// 3. Test POST /api/oauth/codebuddy-cn/device-code/poll with snake_case device_code fallback
-	pollSnakeBody := `{"device_code":"mock-state-abc"}`
-	pollSnakeReq := newLocalRequest("POST", "/api/oauth/codebuddy-cn/device-code/poll", strings.NewReader(pollSnakeBody))
-	pollSnakeReq.Header.Set("Content-Type", "application/json")
-	pollSnakeW := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(pollSnakeW, pollSnakeReq)
-
-	if pollSnakeW.Code != http.StatusOK {
-		t.Fatalf("device-code/poll with snake_code returned status %d, body: %s", pollSnakeW.Code, pollSnakeW.Body.String())
-	}
-	if !strings.Contains(pollSnakeW.Body.String(), `"pending":true`) {
-		t.Errorf("expected pending:true in snake fallback poll response, got: %s", pollSnakeW.Body.String())
-	}
 }
 func TestOAuthImportDoesNotReplaceSoleAccountWithoutEmail(t *testing.T) {
 	srv, database := setupTestServer(t)

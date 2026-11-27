@@ -107,7 +107,6 @@ function createPlaygroundStore() {
   const setTurnsAll = (updater: Turn[] | ((prev: Turn[]) => Turn[])) => {
     setTurnsState(typeof updater === 'function' ? updater(turnsState) : updater)
   }
-  const setTurns = setTurnsAll
   const turns = () => turnsState.filter(turn => turn.mode === mode())
   const appendTurn = (turn: Turn) => setTurnsState(turnsState.length, turn)
   const updateTurnSlot = (turnId: string, slot: 'a' | 'b', patch: Partial<AssistantResponse>) => {
@@ -148,7 +147,7 @@ function createPlaygroundStore() {
     mode, setMode, protocol, setProtocol, modelA, setModelA, modelB, setModelB,
     systemPrompt, setSystemPrompt, temperature, setTemperature, topP, setTopP,
     maxTokens, setMaxTokens, reasoningEffort, setReasoningEffort, stream, setStream,
-    turnsAll, setTurnsAll, turns, setTurns, appendTurn, updateTurnSlot, stopBusyTurns, clearTurns,
+    turnsAll, setTurnsAll, turns, appendTurn, updateTurnSlot, stopBusyTurns, clearTurns,
   }
 }
 

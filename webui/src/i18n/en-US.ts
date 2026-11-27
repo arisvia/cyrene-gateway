@@ -32,7 +32,6 @@ export const enUS: TranslationDict = {
     add: "Add",
     collapse: "Collapse",
     expand: "Expand",
-    ok: "OK",
     paused: "Paused",
     save: 'Save Changes',
     saved: 'All Saved',

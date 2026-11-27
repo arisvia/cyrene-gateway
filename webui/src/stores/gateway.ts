@@ -5,7 +5,7 @@ import { useToast } from '@/lib/toast'
 import { t } from '@/i18n'
 import type {
   Provider, RegistryCategory, Combo, ApiKey, ApiKeyInput, ProxyPool, Endpoint,
-  UsageStats, RequestDetail, Pagination, ProviderUsage,
+  UsageStats, RequestDetail, Pagination,
 } from '@/types/domain'
 const REGISTRY_CACHE_KEY = 'cyrene_registry_cache_v1'
 const REGISTRY_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -119,9 +119,6 @@ function createGatewayStore() {
   const [requestDetailsPagination, setRequestDetailsPagination] = createSignal<Pagination>(
     { page: 1, pageSize: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false },
   )
-  const [providerUsage, setProviderUsage] = createSignal<ProviderUsage[]>([])
-  const [usageLogs, setUsageLogs] = createSignal<unknown[]>([])
-  const [quotaEntries, setQuotaEntries] = createSignal<unknown[]>([])
 
   const [loaded, setLoaded] = createStore({ combos: false, endpoints: false, keys: false, pools: false, settings: false })
   const [loadErrors, setLoadErrors] = createStore({ combos: false, endpoints: false, keys: false, pools: false, settings: false, usage: false })
@@ -210,30 +207,26 @@ function createGatewayStore() {
 
   interface RawProxyPoolItem {
     id: string
-    isActive?: boolean
-    data?: {
-      name?: string
-      proxyUrl?: string
-      type?: string
+    isActive: boolean
+    data: {
+      name: string
+      proxyUrl: string
+      type: string
       strictProxy?: boolean
     }
-    name?: string
-    proxyUrl?: string
-    type?: string
-    strictProxy?: boolean
   }
 
   function loadProxyPools() {
     return loadData('pools', async () => {
-      const r = await api<{ proxyPools?: RawProxyPoolItem[] } | RawProxyPoolItem[]>('/api/proxy-pools')
-      const rawList = r && 'proxyPools' in r && Array.isArray(r.proxyPools) ? r.proxyPools : (Array.isArray(r) ? r : [])
+      const r = await api<{ proxyPools?: RawProxyPoolItem[] }>('/api/proxy-pools')
+      const rawList = Array.isArray(r?.proxyPools) ? r.proxyPools : []
       const mapped: ProxyPool[] = rawList.map(p => ({
         id: p.id,
-        name: p.data?.name ?? p.name ?? '',
-        proxyUrl: p.data?.proxyUrl ?? p.proxyUrl ?? '',
-        type: p.data?.type ?? p.type ?? 'http',
-        isActive: p.isActive ?? true,
-        strictProxy: p.data?.strictProxy ?? p.strictProxy ?? false,
+        name: p.data.name,
+        proxyUrl: p.data.proxyUrl,
+        type: p.data.type,
+        isActive: p.isActive,
+        strictProxy: p.data.strictProxy ?? false,
       }))
       setProxyPools(mapped)
     })
@@ -274,27 +267,6 @@ function createGatewayStore() {
       setRequestDetails(Array.isArray(res?.details) ? res.details : [])
       setRequestDetailsPagination(res?.pagination || { page, pageSize, totalItems: 0, totalPages: 0, hasNext: false, hasPrev: false })
     } catch (e) { console.error('[store] loadRequestDetails failed:', e) }
-  }
-
-  async function loadProviderUsage(period = '7d') {
-    try {
-      const res = await api<{ providers?: ProviderUsage[] }>(`/api/usage/providers?period=${period}`)
-      setProviderUsage(Array.isArray(res?.providers) ? res.providers : [])
-    } catch { setProviderUsage([]) }
-  }
-
-  async function loadUsageLogs(limit = 50) {
-    try {
-      const res = await api<{ logs?: unknown[] }>(`/api/usage/logs?limit=${limit}`)
-      setUsageLogs(Array.isArray(res?.logs) ? res.logs : [])
-    } catch { setUsageLogs([]) }
-  }
-
-  async function loadQuota() {
-    try {
-      const res = await api<{ entries?: unknown[] }>('/api/quota')
-      setQuotaEntries(Array.isArray(res?.entries) ? res.entries : [])
-    } catch { setQuotaEntries([]) }
   }
 
   // ── provider actions ──
@@ -429,10 +401,6 @@ function createGatewayStore() {
     return res
   }
 
-  async function testBatch(ids: string[]) {
-    return apiPost('/api/providers/test-batch', { ids })
-  }
-
   async function refreshModels(id: string) {
     return apiPost(`/api/providers/${id}/refresh-models`)
   }
@@ -457,56 +425,8 @@ function createGatewayStore() {
   async function resetProviderModelMeta(id: string, modelId: string) {
     return apiDelete(`/api/providers/${id}/models/meta`, { id: modelId })
   }
-  // ── OAuth 流程 ──
-  // authorize 后端只注册 GET（用 POST 会 405）；device-code 为 POST
-  async function oauthStart(providerId: string, mode: 'authorize' | 'device-code', extra: Record<string, string | number | boolean> = {}) {
-    if (mode === 'authorize') {
-      const params = new URLSearchParams()
-      for (const [k, v] of Object.entries(extra)) {
-        if (v !== undefined && v !== null) params.set(k, String(v))
-      }
-      const qs = params.toString()
-      return api(`/api/oauth/${providerId}/authorize${qs ? `?${qs}` : ''}`)
-    }
-    return apiPost(`/api/oauth/${providerId}/${mode}`, extra)
-  }
-
-  async function oauthPoll(providerId: string, payload: Record<string, unknown>) {
-    return apiPost(`/api/oauth/${providerId}/device-code/poll`, payload, { silent: true })
-  }
-
-  async function oauthImport(providerId: string, payload: Record<string, unknown>) {
-    return apiPost(`/api/oauth/${providerId}/import`, payload)
-  }
-  async function oauthStatus(providerId: string) {
-    return api(`/api/oauth/${providerId}/status`)
-  }
-
-  async function oauthRefresh(providerId: string) {
-    return apiPost(`/api/oauth/${providerId}/refresh`)
-  }
-
-  // ── provider 节点 ──
-  async function loadNodes() {
-    try {
-      const r = await api('/api/provider-nodes')
-      return Array.isArray(r) ? r : []
-    } catch { return [] }
-  }
-
-  async function saveNode(payload: Record<string, unknown> & { id?: string }) {
-    if (payload.id) return apiPut(`/api/provider-nodes/${payload.id}`, payload)
-    return apiPost('/api/provider-nodes', payload)
-  }
-  async function deleteNode(id: string) {
-    return apiDelete(`/api/provider-nodes/${id}`)
-  }
 
   // ── 模型禁用 / 启用 ──
-  async function loadDisabledModels() {
-    try { return (await api('/api/models/disabled')) || {} } catch { return {} }
-  }
-
   async function setModelDisabled(model: string, disabled: boolean) {
     return batchSetModelsDisabled([model], disabled)
   }
@@ -522,21 +442,19 @@ function createGatewayStore() {
     version, health, providers, setProviders, combos, apiKeys, proxyPools, endpoints,
     registryCategories, registryList, settings,
     usageStats, usageChart, requestDetails, requestDetailsPagination,
-    providerUsage, usageLogs, quotaEntries, activeConnections,
+    activeConnections,
     loaded, loadErrors, usagePeriod,
     loadCore, loadProvidersOnly, loadKeys, loadProxyPools, loadSettings, loadUsage,
-    loadRequestDetails, loadProviderUsage, loadUsageLogs, loadQuota,
+    loadRequestDetails,
     addProvider, toggleProvider, resetCooldown, deleteProvider, testProvider,
     createKey, updateKey, deleteKey,
     saveCombo, deleteCombo,
     saveProxyPool, toggleProxyPool, deleteProxyPool,
     saveSettings, setPassword,
-    updateProvider, testBatch, refreshModels,
+    updateProvider, refreshModels,
     loadProviderModels, addProviderModel, deleteProviderModel,
     saveProviderModelMeta, resetProviderModelMeta,
-    oauthStart, oauthPoll, oauthImport, oauthStatus, oauthRefresh,
-    loadNodes, saveNode, deleteNode,
-    loadDisabledModels, setModelDisabled, batchSetModelsDisabled, testModel,
+    setModelDisabled, batchSetModelsDisabled, testModel,
   }
 }
 

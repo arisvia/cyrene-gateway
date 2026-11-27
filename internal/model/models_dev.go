@@ -34,8 +34,6 @@ type ModelsDevEntry struct {
 	ReleaseDate string `json:"release_date"`
 }
 
-type modelsDevEntry = ModelsDevEntry
-
 var (
 	modelsDevMu      sync.RWMutex
 	modelsDevCache   map[string]ModelsDevEntry // key: lowercase model id
@@ -63,7 +61,7 @@ type modelsDevProvider struct {
 // LoadModelsDevCatalog fetches (or reuses) the models.dev catalog as a
 // lowercase-id-keyed map. On fetch failure it returns the stale cache (if
 // any) or an error.
-func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, time.Time, error) {
+func LoadModelsDevCatalog(client *http.Client) (map[string]ModelsDevEntry, time.Time, error) {
 	if client == nil {
 		// Fail closed. model cannot import provider.SafeHTTPClient (provider
 		// imports model), so the only safe choices are "a caller-supplied
@@ -110,7 +108,7 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, time.
 		return modelsDevStale(), ModelsDevFetchedAt(), fmt.Errorf("models.dev parse failed: %w", err)
 	}
 
-	catalog := make(map[string]modelsDevEntry, 4096)
+	catalog := make(map[string]ModelsDevEntry, 4096)
 	// Provider order must not decide which duplicate wins: models.dev publishes the
 	// same id under several providers (e.g. gpt-4o under openai and azure-openai)
 	// with different release dates, and ranging the map directly kept a random one
@@ -127,7 +125,7 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, time.
 			if _, dup := catalog[key]; dup {
 				continue
 			}
-			catalog[key] = modelsDevEntry{
+			catalog[key] = ModelsDevEntry{
 				Name:        m.Name,
 				Family:      m.Family,
 				Context:     m.Limit.Context,
@@ -149,7 +147,7 @@ func LoadModelsDevCatalog(client *http.Client) (map[string]modelsDevEntry, time.
 	return catalog, fetched, nil
 }
 
-func modelsDevStale() map[string]modelsDevEntry {
+func modelsDevStale() map[string]ModelsDevEntry {
 	modelsDevMu.RLock()
 	defer modelsDevMu.RUnlock()
 	return modelsDevCache
@@ -357,8 +355,7 @@ func SetModelsDevCatalogAt(catalog map[string]ModelsDevEntry, fetchedAt time.Tim
 }
 
 // modelsDevCachePayload is the persisted catalog layout: entries plus the fetch
-// stamp. The pre-stamp layout was the bare entry map; DecodeModelsDevCache still
-// reads it and reports it as expired so the next call goes to the network once.
+// stamp.
 type modelsDevCachePayload struct {
 	FetchedAt time.Time                 `json:"fetched_at"`
 	Entries   map[string]ModelsDevEntry `json:"entries"`
@@ -373,33 +370,17 @@ func EncodeModelsDevCache(entries map[string]ModelsDevEntry, fetchedAt time.Time
 	return string(data), nil
 }
 
-// DecodeModelsDevCache parses a persisted catalog. A zero fetchedAt means the
-// payload predates the stamp and must be treated as expired.
+// DecodeModelsDevCache parses a persisted catalog envelope and rejects missing
+// entries or fetch timestamps so stale/unrecognized cache layouts are refreshed cleanly.
 func DecodeModelsDevCache(raw string) (map[string]ModelsDevEntry, time.Time, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+	var payload modelsDevCachePayload
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return nil, time.Time{}, err
 	}
-	if entryBlob, hasEntries := fields["entries"]; hasEntries {
-		stampBlob, hasStamp := fields["fetched_at"]
-		if !hasStamp {
-			return nil, time.Time{}, fmt.Errorf("malformed models.dev cache payload: fetched_at missing")
-		}
-		var entries map[string]ModelsDevEntry
-		if err := json.Unmarshal(entryBlob, &entries); err != nil {
-			return nil, time.Time{}, err
-		}
-		var fetchedAt time.Time
-		if err := json.Unmarshal(stampBlob, &fetchedAt); err != nil {
-			return nil, time.Time{}, err
-		}
-		return entries, fetchedAt, nil
+	if payload.Entries == nil || payload.FetchedAt.IsZero() {
+		return nil, time.Time{}, fmt.Errorf("malformed models.dev cache payload: fetched_at or entries missing")
 	}
-	var legacy map[string]ModelsDevEntry
-	if err := json.Unmarshal([]byte(raw), &legacy); err != nil {
-		return nil, time.Time{}, err
-	}
-	return legacy, time.Time{}, nil
+	return payload.Entries, payload.FetchedAt, nil
 }
 
 // ModelsDevFetchedAt reports when the in-memory catalog was last fetched from

@@ -16,7 +16,7 @@ describe('playground 会话 store', () => {
 
   it('是路由外的单例：离开演练场再回来仍持有同一段会话', () => {
     const first = usePlaygroundStore()
-    first.setTurns(prev => [...prev, turn('a', 'single')])
+    first.appendTurn(turn('a', 'single'))
     expect(usePlaygroundStore().turns().map(t => t.id)).toEqual(['a'])
   })
 

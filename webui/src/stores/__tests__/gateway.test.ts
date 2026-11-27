@@ -148,6 +148,9 @@ describe('gateway store', () => {
       id: 'pool-1', name: 'Test proxy', proxyUrl: 'http://proxy.example:8080', type: 'http',
       isActive: true, strictProxy: false,
     }]
+    const rawPools = pools.map(({ id, isActive, name, proxyUrl, type, strictProxy }) => ({
+      id, isActive, data: { name, proxyUrl, type, strictProxy },
+    }))
     const settings = { requireApiKey: true }
     const coreResponses = {
       '/api/auth/status': { requireLogin: false, authenticated: true },
@@ -158,13 +161,13 @@ describe('gateway store', () => {
       '/api/endpoints': { endpoints },
       '/api/registry': { categories: [{ category: 'apikey', count: 0, providers: [] }] },
       '/api/keys': keys,
-      '/api/proxy-pools': { proxyPools: pools },
+      '/api/proxy-pools': { proxyPools: rawPools },
     }
     const resources = [
       { resource: 'combos', path: '/api/combos', load: 'loadCore', read: 'combos', response: combos, value: combos, emptyResponse: [], emptyValue: [] },
       { resource: 'endpoints', path: '/api/endpoints', load: 'loadCore', read: 'endpoints', response: { endpoints }, value: endpoints, emptyResponse: { endpoints: [] }, emptyValue: [] },
       { resource: 'keys', path: '/api/keys', load: 'loadKeys', read: 'apiKeys', response: keys, value: keys, emptyResponse: [], emptyValue: [] },
-      { resource: 'pools', path: '/api/proxy-pools', load: 'loadProxyPools', read: 'proxyPools', response: { proxyPools: pools }, value: pools, emptyResponse: { proxyPools: [] }, emptyValue: [] },
+      { resource: 'pools', path: '/api/proxy-pools', load: 'loadProxyPools', read: 'proxyPools', response: { proxyPools: rawPools }, value: pools, emptyResponse: { proxyPools: [] }, emptyValue: [] },
       { resource: 'settings', path: '/api/settings', load: 'loadSettings', read: 'settings', response: settings, value: settings, emptyResponse: {}, emptyValue: {} },
     ] as const
 

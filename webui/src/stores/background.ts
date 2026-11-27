@@ -84,16 +84,6 @@ function createCustomBgStore(): BackgroundStore {
         if (data) {
           setImageData(data)
           applyAppearanceVariables(cfg, true)
-          // 自愈升级：若旧版本用户此前没有生成过 thumbnail，在后台静默生成并写入 localStorage
-          if (!cfg.thumbnail) {
-            processAndCompressImage(data).then(proc => {
-              if (proc.thumbnail) {
-                const updated = { ...config(), thumbnail: proc.thumbnail }
-                setConfig(updated)
-                saveWallpaperConfig(updated)
-              }
-            }).catch(() => {})
-          }
         } else if (!cfg.thumbnail) {
           // 仅在既无本地缓存也无缩略图也无远程 URL 时才重置开关
           const disabledCfg = { ...cfg, enabled: false }

@@ -388,7 +388,7 @@ func TestClaudeSSEToOpenAI(t *testing.T) {
 	}
 	data, _ := json.Marshal(event)
 
-	result, isDone, err := claudeSSEToOpenAI(data, "claude-sonnet-4-20250514")
+	result, isDone, err := NewSSETranslator(FormatAnthropic, "claude-sonnet-4-20250514").TranslateChunk(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestClaudeSSEToOpenAI_ThinkingDelta(t *testing.T) {
 	}
 	data, _ := json.Marshal(event)
 
-	result, isDone, err := claudeSSEToOpenAI(data, "claude-3-7-sonnet")
+	result, isDone, err := NewSSETranslator(FormatAnthropic, "claude-3-7-sonnet").TranslateChunk(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestClaudeSSEMessageStop(t *testing.T) {
 	event := map[string]any{"type": "message_stop"}
 	data, _ := json.Marshal(event)
 
-	result, isDone, err := claudeSSEToOpenAI(data, "claude-sonnet-4-20250514")
+	result, isDone, err := NewSSETranslator(FormatAnthropic, "claude-sonnet-4-20250514").TranslateChunk(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1115,7 +1115,7 @@ func TestGeminiSSEToOpenAI_ThoughtAndToolCall(t *testing.T) {
 		},
 	}
 	d1, _ := json.Marshal(thoughtChunk)
-	out1, done1, err1 := geminiSSEToOpenAI(d1, "gemini-2.5-flash")
+	out1, done1, err1 := NewSSETranslator(FormatGemini, "gemini-2.5-flash").TranslateChunk(d1)
 	if err1 != nil || done1 {
 		t.Fatalf("thought chunk failed: err=%v, done=%v", err1, done1)
 	}
@@ -1148,7 +1148,7 @@ func TestGeminiSSEToOpenAI_ThoughtAndToolCall(t *testing.T) {
 		},
 	}
 	d2, _ := json.Marshal(toolChunk)
-	out2, _, _ := geminiSSEToOpenAI(d2, "gemini-2.5-flash")
+	out2, _, _ := NewSSETranslator(FormatGemini, "gemini-2.5-flash").TranslateChunk(d2)
 	var c2 map[string]any
 	json.Unmarshal(out2, &c2)
 	delta2 := c2["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
@@ -1289,40 +1289,31 @@ func decodeTranslatorPayload(t *testing.T, data []byte) map[string]any {
 
 func TestSSETranslatorGeminiParallelParts(t *testing.T) {
 	input := []byte(`{"candidates":[{"content":{"parts":[{"text":"Hello "},{"text":"think ","thought":true},{"functionCall":{"name":"weather","args":{"city":"Tokyo"}}},{"text":"world"},{"text":"again","thought":true},{"functionCall":{"name":"weather","args":{"city":"Paris"}}}]}}]}`)
-	for _, stateful := range []bool{false, true} {
-		var out []byte
-		var done bool
-		var err error
-		if stateful {
-			out, done, err = NewSSETranslator(FormatGemini, "gemini").TranslateChunk(input)
-		} else {
-			out, done, err = TranslateSSEChunk(FormatGemini, input, "gemini")
+	out, done, err := NewSSETranslator(FormatGemini, "gemini").TranslateChunk(input)
+	if err != nil || done {
+		t.Fatalf("done=%v err=%v", done, err)
+	}
+	chunk := decodeTranslatorPayload(t, out)
+	delta := chunk["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
+	if delta["content"] != "Hello world" || delta["reasoning_content"] != "think again" {
+		t.Fatalf("parts overwritten: %s", out)
+	}
+	calls := delta["tool_calls"].([]any)
+	if len(calls) != 2 {
+		t.Fatalf("expected two parallel calls: %s", out)
+	}
+	ids := make(map[string]bool)
+	for i, raw := range calls {
+		call := raw.(map[string]any)
+		id, _ := call["id"].(string)
+		if id == "" || ids[id] || call["index"] != float64(i) {
+			t.Fatalf("calls must have unique IDs and indices: %s", out)
 		}
-		if err != nil || done {
-			t.Fatalf("stateful=%v: done=%v err=%v", stateful, done, err)
-		}
-		chunk := decodeTranslatorPayload(t, out)
-		delta := chunk["choices"].([]any)[0].(map[string]any)["delta"].(map[string]any)
-		if delta["content"] != "Hello world" || delta["reasoning_content"] != "think again" {
-			t.Fatalf("parts overwritten: %s", out)
-		}
-		calls := delta["tool_calls"].([]any)
-		if len(calls) != 2 {
-			t.Fatalf("expected two parallel calls: %s", out)
-		}
-		ids := make(map[string]bool)
-		for i, raw := range calls {
-			call := raw.(map[string]any)
-			id, _ := call["id"].(string)
-			if id == "" || ids[id] || call["index"] != float64(i) {
-				t.Fatalf("calls must have unique IDs and indices: %s", out)
-			}
-			ids[id] = true
-			fn := call["function"].(map[string]any)
-			args := decodeTranslatorPayload(t, []byte(fn["arguments"].(string)))
-			if fn["name"] != "weather" || args["city"] != []string{"Tokyo", "Paris"}[i] {
-				t.Fatalf("call arguments lost: %s", out)
-			}
+		ids[id] = true
+		fn := call["function"].(map[string]any)
+		args := decodeTranslatorPayload(t, []byte(fn["arguments"].(string)))
+		if fn["name"] != "weather" || args["city"] != []string{"Tokyo", "Paris"}[i] {
+			t.Fatalf("call arguments lost: %s", out)
 		}
 	}
 }
@@ -1496,10 +1487,6 @@ func TestSSETranslatorErrors(t *testing.T) {
 				if err != nil || !done || len(out) != 0 {
 					t.Fatalf("terminal payload emitted twice: %s done=%v err=%v", out, done, err)
 				}
-			}
-			out, done, err = TranslateSSEChunk(tc.format, []byte(tc.input), "model")
-			if err != nil || !done || len(out) == 0 {
-				t.Fatalf("compatibility entry point dropped error: %s done=%v err=%v", out, done, err)
 			}
 		})
 	}

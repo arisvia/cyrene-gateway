@@ -546,22 +546,6 @@ func (d *DB) GetUsageSummary(start, end time.Time) (*UsageSummary, error) {
 	return result, rows.Err()
 }
 
-// GetUsageDimensions returns aggregations by apiKey and by endpoint for records on or after cutoffTime.
-func (d *DB) GetUsageDimensions(cutoffTime string) (byKey map[string]DayCounter, byEndpoint map[string]DayCounter, err error) {
-	var start time.Time
-	if cutoffTime != "" {
-		start, err = time.Parse(time.RFC3339, cutoffTime)
-		if err != nil {
-			return nil, nil, err
-		}
-	}
-	summary, err := d.GetUsageSummary(start, time.Time{})
-	if err != nil {
-		return nil, nil, err
-	}
-	return summary.ByKey, summary.ByEndpoint, nil
-}
-
 func dateKeyFromTimestamp(ts string) string {
 	t, err := time.Parse(time.RFC3339, ts)
 	if err != nil {

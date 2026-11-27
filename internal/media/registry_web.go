@@ -16,7 +16,7 @@ func registerWebProviders() {
 			Provider:   p.id,
 			Kind:       KindWebFetch,
 			BaseURL:    p.baseURL,
-			AuthType:   "apikey",
+			AuthType:   "api-key",
 			AuthHeader: p.authHeader,
 			Format:     p.id,
 		})
@@ -36,7 +36,7 @@ func registerWebProviders() {
 			Provider:   p.id,
 			Kind:       KindWebSearch,
 			BaseURL:    p.baseURL,
-			AuthType:   "apikey",
+			AuthType:   "api-key",
 			AuthHeader: p.authHeader,
 			Format:     p.id,
 		})

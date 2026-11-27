@@ -41,11 +41,6 @@ function wizardPriority(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-/** 注册表用 "apikey"，连接与后端用 "api-key"，两边在进表单状态前先归一。 */
-function normAuthType(mode: string): string {
-  return mode === 'apikey' ? 'api-key' : mode
-}
-
 const Providers: Component = () => {
   const store = useGatewayStore()
   const { t } = useI18n()
@@ -62,7 +57,6 @@ const Providers: Component = () => {
 
   const authTypeLabel = (): Record<string, string> => ({
     'api-key': t('providers.authTypes.apiKey'),
-    apikey: t('providers.authTypes.apiKey'),
     oauth: t('providers.authTypes.oauth'),
   })
 
@@ -175,13 +169,10 @@ const Providers: Component = () => {
     const cat = catFilter()
     const cap = capFilter()
     const all = store.providers()
-    // 按规范化 Provider 标识聚合账号（兼容过渡/别名）
     const map: Record<string, Provider[]> = {}
     for (const p of all) {
-      const reg = registryFor(p.provider)
-      const canonicalId = reg?.id || p.provider
-      if (!map[canonicalId]) map[canonicalId] = []
-      map[canonicalId].push(p)
+      if (!map[p.provider]) map[p.provider] = []
+      map[p.provider].push(p)
     }
 
     const groups: ProviderConnectionGroup[] = []
@@ -201,7 +192,7 @@ const Providers: Component = () => {
       const activeCount = conns.filter(c => c.isActive).length
 
       if (cat) {
-        const matchesCat = conns.some(c => c.authType === cat || (cat === 'api-key' && c.authType === 'apikey')) || category === cat
+        const matchesCat = conns.some(c => c.authType === cat) || category === cat
         if (!matchesCat) continue
       }
 
@@ -415,15 +406,15 @@ const Providers: Component = () => {
     if (!reg) return
 
     const f = form()
-    const normAuth = normAuthType(f.authType)
+    const authType = f.authType
 
     // 若是 OAuth 模式，直接点击即发起授权，不预存空账号
-    if (normAuth === 'oauth') {
+    if (authType === 'oauth') {
       await startWizardOAuth()
       return
     }
 
-    if (normAuth === 'api-key') {
+    if (authType === 'api-key') {
       const isCustom = reg.category === 'custom' || reg.id.startsWith('custom-')
       if (isCustom && !f.baseUrl.trim()) {
         toast.error(t('toast.customBaseUrlRequired'))
@@ -444,7 +435,7 @@ const Providers: Component = () => {
     try {
       await store.addProvider({
         provider: reg.id,
-        authType: normAuth,
+        authType,
         name: f.name || reg.name,
         priority: wizardPriority(f.priority),
         data: {
@@ -938,7 +929,7 @@ const Providers: Component = () => {
               const r = reg()
               if (!r) return []
               const raw = r.authModes || [r.authType || 'api-key']
-              return raw.map(normAuthType).filter(m => m !== 'none')
+              return raw.filter(m => m !== 'none')
             }
 
             return (
@@ -973,16 +964,13 @@ const Providers: Component = () => {
                 <Show when={authModes().length > 1}>
                   <Field label={t('providers.authMethod')} hint={t('providers.authMethodHint')}>
                     <Select
-                      value={normAuthType(form().authType)}
-                      options={authModes().map(m => {
-                        const norm = normAuthType(m)
-                        return { value: norm, label: authTypeLabel()[norm] || norm }
-                      })}
+                      value={form().authType}
+                      options={authModes().map(m => ({ value: m, label: authTypeLabel()[m] || m }))}
                       onChange={v => setForm(f => ({ ...f, authType: v }))}
                     />
                   </Field>
                 </Show>
-                <Show when={normAuthType(form().authType) === 'api-key'}>
+                <Show when={form().authType === 'api-key'}>
                   <div class="space-y-2">
                     <Field label={t('providers.authCredential')} hint={reg().authHint || t('providers.credentialHint')}>
                       <div class="flex flex-wrap items-center gap-2 min-w-0">
@@ -1080,7 +1068,7 @@ const Providers: Component = () => {
                     variant="primary"
                     loading={saving() || wizardOAuthPolling()}
                     disabled={
-                      (normAuthType(form().authType) === 'api-key') && (!testedCreds() || !testedCreds()!.ok)
+                      (form().authType === 'api-key') && (!testedCreds() || !testedCreds()!.ok)
                     }
                     onClick={handleWizardSubmit}
                   >

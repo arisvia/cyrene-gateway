@@ -27,18 +27,10 @@ func TestModelsDevCacheCodecKeepsFetchStamp(t *testing.T) {
 		t.Fatalf("entry lost its release date: %+v", entries["gpt-4o"])
 	}
 
-	// The pre-stamp layout is a bare entry map: it must still load, and it must
-	// report no fetch time so the next call goes back to upstream exactly once.
+	// Bare entry map without the envelope is rejected so unrecognized/outdated layouts trigger a fresh fetch.
 	legacy := `{"gpt-4o":{"name":"OpenAI GPT-4o","family":"gpt","context":128000,"output":16384,"release_date":""}}`
-	entries, got, err = DecodeModelsDevCache(legacy)
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("legacy payload: %v, %d entries", err, len(entries))
-	}
-	if !got.IsZero() {
-		t.Fatalf("legacy payload must look expired, got stamp %v", got)
-	}
-	if entries["gpt-4o"].Context != 128000 {
-		t.Fatalf("legacy entry not parsed: %+v", entries["gpt-4o"])
+	if _, _, err := DecodeModelsDevCache(legacy); err == nil {
+		t.Errorf("bare map payload without fetched_at envelope must be rejected")
 	}
 
 	if _, _, err := DecodeModelsDevCache(`{"entries":{"gpt-4o":{}}}`); err == nil {

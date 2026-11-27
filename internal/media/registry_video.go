@@ -10,7 +10,7 @@ func registerVideoProviders() {
 			Provider:   "xai",
 			Kind:       KindVideo,
 			BaseURL:    chatOriginURL("xai", "/v1/videos"),
-			AuthType:   "apikey",
+			AuthType:   "api-key",
 			AuthHeader: "bearer",
 			Format:     "xai-video",
 		},

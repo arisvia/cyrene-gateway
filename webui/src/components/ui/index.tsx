@@ -9,7 +9,7 @@ export { ProviderAvatar, ProviderBrandIcon } from './ProviderIcon'
 export { Hint } from './Hint'
 export * from './CyreneLogo'
 export * from './icons'
-export { ConfirmDialogHost, confirm, alert } from '@/lib/confirm'
+export { ConfirmDialogHost, confirm } from '@/lib/confirm'
 export const Card: Component<{
   class?: string
   hover?: boolean
@@ -96,9 +96,10 @@ export const AuthBadge: Component<{ authType?: string; class?: string }> = props
   const norm = () => {
     const t = (props.authType || '').toLowerCase().trim()
     if (t === 'oauth') return 'OAuth'
-    if (t === 'api-key' || t === 'apikey' || t === 'pat' || t === 'key') return 'API Key'
+    if (t === 'api-key') return 'API Key'
+    if (t === 'access_token') return 'Access Token'
     if (t === 'none') return 'None'
-    return props.authType || 'API Key'
+    return props.authType || ''
   }
   return (
     <Badge tone="blue" class={`text-[10px] h-5 px-2 font-medium shrink-0 ${props.class ?? ''}`}>

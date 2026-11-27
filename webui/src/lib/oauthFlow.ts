@@ -135,19 +135,19 @@ export function useOAuthFlow(deps: OAuthFlowDeps) {
       }
 
       // 3. 设备码流（Device Code Flow，如 GitHub, Kimi, Qoder, X.AI 等）
-      const raw = (await apiPost(`/api/oauth/${p}/device-code`, undefined, { signal, silent: true })) as Record<string, unknown>
+      const raw = await apiPost<Partial<DeviceFlowState>>(`/api/oauth/${p}/device-code`, undefined, { signal, silent: true })
       if (signal.aborted) return
       const res: DeviceFlowState = {
-        verificationUri: ((raw.verificationUri || raw.verification_uri || '') as string),
-        verificationUriComplete: ((raw.verificationUriComplete || raw.verification_uri_complete || '') as string),
-        userCode: (raw.userCode || raw.user_code) as string | undefined,
-        deviceCode: (raw.deviceCode || raw.device_code) as string | undefined,
-        nonce: raw.nonce as string | undefined,
-        codeVerifier: (raw.codeVerifier || raw.code_verifier) as string | undefined,
-        machineId: (raw.machineId || raw.machine_id) as string | undefined,
-        extraData: (raw.extraData || raw.extra_data) as Record<string, unknown> | undefined,
-        expiresIn: (raw.expiresIn || raw.expires_in) as number | undefined,
-        interval: (raw.interval || 5) as number,
+        verificationUri: raw.verificationUri ?? '',
+        verificationUriComplete: raw.verificationUriComplete ?? '',
+        userCode: raw.userCode,
+        deviceCode: raw.deviceCode,
+        nonce: raw.nonce,
+        codeVerifier: raw.codeVerifier,
+        machineId: raw.machineId,
+        extraData: raw.extraData,
+        expiresIn: raw.expiresIn,
+        interval: raw.interval ?? 5,
       }
       setDeviceFlow(res)
       const targetUrl = res.verificationUriComplete || res.verificationUri

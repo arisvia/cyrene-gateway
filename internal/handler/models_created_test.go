@@ -157,9 +157,14 @@ func TestProviderModelsCreatedFromCatalog(t *testing.T) {
 func TestModelsDevCatalogRefetchedAfterRestart(t *testing.T) {
 	srv, database := setupTestServer(t)
 
-	// The pre-stamp layout written by an older build: entries only, no dates.
-	storedLegacy := `{"gpt-4o":{"name":"OpenAI GPT-4o","family":"gpt","context":128000,"output":16384,"release_date":""}}`
-	if err := database.KVSet("modelsDevCatalog", "cache", storedLegacy); err != nil {
+	// An expired stored catalog whose envelope carries a past fetch time and no dates.
+	storedExpired, err := model.EncodeModelsDevCache(map[string]model.ModelsDevEntry{
+		"gpt-4o": {Name: "OpenAI GPT-4o", Family: "gpt", Context: 128000, Output: 16384},
+	}, time.Now().Add(-48*time.Hour))
+	if err != nil {
+		t.Fatalf("encode stored catalog: %v", err)
+	}
+	if err := database.KVSet("modelsDevCatalog", "cache", storedExpired); err != nil {
 		t.Fatalf("seed stored catalog: %v", err)
 	}
 
@@ -180,13 +185,13 @@ func TestModelsDevCatalogRefetchedAfterRestart(t *testing.T) {
 	model.SetModelsDevCatalogAt(nil, time.Time{})
 
 	// Startup hydration, exactly as server.go performs it: a stored catalog whose
-	// payload carries no fetch time must come back hydrated *and* expired.
+	// payload carries an expired fetch time must come back hydrated *and* expired.
 	hydrateModelsDevCatalog(database)
 	if len(model.GetModelsDevCatalog()) == 0 {
 		t.Fatalf("stored catalog was not hydrated")
 	}
 	if !model.ModelsDevCatalogExpired() {
-		t.Fatalf("stamp-less stored catalog must hydrate as expired, not as just fetched")
+		t.Fatalf("expired stored catalog must hydrate as expired, not as just fetched")
 	}
 
 	got := srv.loadModelsDevCatalog(ts.Client())

@@ -1,7 +1,7 @@
 import { createSignal, Show, type Component, createEffect, onMount, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { Button } from '@/components/ui'
-import { useI18n, t as translate } from '@/i18n'
+import { useI18n } from '@/i18n'
 import { IconAlertCircle, IconAlertTriangle, IconInfo } from '@/components/ui/icons'
 
 export interface ConfirmOptions {
@@ -14,7 +14,6 @@ export interface ConfirmOptions {
 
 interface DialogState extends ConfirmOptions {
   isOpen: boolean
-  isAlert?: boolean
   resolve: (value: boolean) => void
 }
 
@@ -30,21 +29,6 @@ export function confirm(opts: ConfirmOptions | string): Promise<boolean> {
     setState({
       ...options,
       isOpen: true,
-      isAlert: false,
-      resolve,
-    })
-  })
-}
-
-export function alert(message: string, title?: string): Promise<boolean> {
-  return new Promise<boolean>(resolve => {
-    setState({
-      title: title || translate('confirm.titleInfo'),
-      message,
-      confirmText: translate('common.ok'),
-      variant: 'primary',
-      isOpen: true,
-      isAlert: true,
       resolve,
     })
   })
@@ -75,7 +59,7 @@ export const ConfirmDialogHost: Component = () => {
       document.body.style.overflow = 'hidden'
       onCleanup(() => { document.body.style.overflow = previousOverflow })
       queueMicrotask(() => {
-        if (!s().isAlert && (s().variant === 'danger' || s().variant === 'warning')) {
+        if (s().variant === 'danger' || s().variant === 'warning') {
           cancelBtnRef?.focus()
         } else {
           confirmBtnRef?.focus()
@@ -93,11 +77,6 @@ export const ConfirmDialogHost: Component = () => {
         return
       }
       if (e.key === 'Tab') {
-        if (s().isAlert) {
-          e.preventDefault()
-          confirmBtnRef?.focus()
-          return
-        }
         if (e.shiftKey) {
           if (document.activeElement === cancelBtnRef) {
             e.preventDefault()
@@ -166,16 +145,14 @@ export const ConfirmDialogHost: Component = () => {
           </div>
 
           <div class="mt-6 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
-            <Show when={!s().isAlert}>
-              <Button
-                ref={cancelBtnRef}
-                variant="secondary"
-                size="sm"
-                onClick={() => handleClose(false)}
-              >
-                {s().cancelText || t('common.cancel')}
-              </Button>
-            </Show>
+            <Button
+              ref={cancelBtnRef}
+              variant="secondary"
+              size="sm"
+              onClick={() => handleClose(false)}
+            >
+              {s().cancelText || t('common.cancel')}
+            </Button>
             <Button
               ref={confirmBtnRef}
               variant={s().variant === 'danger' ? 'danger' : 'primary'}

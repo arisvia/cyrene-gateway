@@ -30,7 +30,6 @@ export const zhCN = {
     add: "添加",
     collapse: "收起",
     expand: "展开",
-    ok: "好的",
     paused: "已暂停",
     save: '保存修改',
     saved: '全部已保存',
