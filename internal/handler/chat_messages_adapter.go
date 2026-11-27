@@ -174,11 +174,16 @@ func (a *anthropicResponseAdapter) Finish() {
 
 // handleMessagesViaChat translates an Anthropic /v1/messages request to OpenAI format,
 // routes it through the gateway's full Chat Completions pipeline, and translates the response back.
-func (s *Server) handleMessagesViaChat(w http.ResponseWriter, r *http.Request, reqBody map[string]any, modelStr string, stream bool) {
+func (s *Server) handleMessagesViaChat(w http.ResponseWriter, r *http.Request, reqBody map[string]any, modelStr string, stream bool, effortOverride string) {
 	openAIBodyMap, err := translator.ClaudeToOpenAIRequest(reqBody)
 	if err != nil {
 		writeAnthropicError(w, http.StatusBadRequest, fmt.Sprintf("failed to translate Anthropic request: %v", err))
 		return
+	}
+	if effortOverride != "" {
+		if existing, _ := openAIBodyMap["reasoning_effort"].(string); strings.TrimSpace(existing) == "" {
+			openAIBodyMap["reasoning_effort"] = effortOverride
+		}
 	}
 	openAIBytes, err := json.Marshal(openAIBodyMap)
 	if err != nil {

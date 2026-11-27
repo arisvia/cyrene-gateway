@@ -1180,3 +1180,126 @@ func TestOpenAIToResponsesRequest_MaxCompAndMultimodalSanitize(t *testing.T) {
 		t.Fatalf("reasoning_content must not leak to Responses input")
 	}
 }
+
+func TestResponsesReasoningBidirectional(t *testing.T) {
+	// 1. Responses -> OpenAI non-streaming extracts type:reasoning summary & content
+	respPayload := `{
+		"id": "resp_r1",
+		"status": "completed",
+		"model": "gpt-5.4",
+		"output": [
+			{"id": "rs_1", "type": "reasoning", "status": "completed", "summary": [{"type": "summary_text", "text": "Think A"}], "content": [{"type": "reasoning_text", "text": "Think B"}]},
+			{"id": "msg_1", "type": "message", "status": "completed", "role": "assistant", "content": [{"type": "output_text", "text": "Final answer"}]}
+		]
+	}`
+	chatBytes, err := ResponsesToOpenAIResponse([]byte(respPayload), "gpt-5.4")
+	if err != nil {
+		t.Fatalf("ResponsesToOpenAIResponse failed: %v", err)
+	}
+	var chatMap map[string]any
+	if err := json.Unmarshal(chatBytes, &chatMap); err != nil {
+		t.Fatal(err)
+	}
+	msg := chatMap["choices"].([]any)[0].(map[string]any)["message"].(map[string]any)
+	if msg["reasoning_content"] != "Think A\nThink B" {
+		t.Fatalf("expected reasoning_content Think A\\nThink B, got %#v", msg["reasoning_content"])
+	}
+	if msg["content"] != "Final answer" {
+		t.Fatalf("expected content Final answer, got %#v", msg["content"])
+	}
+
+	// 2. Responses SSE -> OpenAI SSE translates reasoning_summary_text.delta & reasoning_text.delta
+	sseTr := NewResponsesSSEToOpenAITranslator("gpt-5.4")
+	out1, done1, err1 := sseTr.TranslateChunk([]byte(`{"type":"response.reasoning_summary_text.delta","delta":"Step 1 "}`))
+	if err1 != nil || done1 || !strings.Contains(string(out1), `"reasoning_content":"Step 1 "`) {
+		t.Fatalf("unexpected reasoning_summary_text.delta output: %s err=%v done=%v", out1, err1, done1)
+	}
+	out2, done2, err2 := sseTr.TranslateChunk([]byte(`{"type":"response.reasoning_text.delta","delta":"Step 2"}`))
+	if err2 != nil || done2 || !strings.Contains(string(out2), `"reasoning_content":"Step 2"`) {
+		t.Fatalf("unexpected reasoning_text.delta output: %s err=%v done=%v", out2, err2, done2)
+	}
+
+	// 3. OpenAI -> Responses non-streaming from reasoning_content & <think> tags
+	oaiReasoning := `{"id":"chatcmpl-1","model":"r1","choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"Hidden step","content":"Visible"},"finish_reason":"stop"}]}`
+	back1, err := OpenAIToResponsesResponse([]byte(oaiReasoning), "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back1Map map[string]any
+	_ = json.Unmarshal(back1, &back1Map)
+	items1 := back1Map["output"].([]any)
+	if len(items1) != 2 || items1[0].(map[string]any)["type"] != "reasoning" || items1[1].(map[string]any)["type"] != "message" {
+		t.Fatalf("expected reasoning then message output items, got %#v", items1)
+	}
+	if back1Map["output_text"] != "Visible" {
+		t.Fatalf("expected clean output_text=Visible, got %v", back1Map["output_text"])
+	}
+
+	oaiThinkTag := `{"id":"chatcmpl-2","model":"r1","choices":[{"index":0,"message":{"role":"assistant","content":"<think>Tag thought</think>Clean answer"},"finish_reason":"stop"}]}`
+	back2, err := OpenAIToResponsesResponse([]byte(oaiThinkTag), "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back2Map map[string]any
+	_ = json.Unmarshal(back2, &back2Map)
+	items2 := back2Map["output"].([]any)
+	if len(items2) != 2 || items2[0].(map[string]any)["summary"].([]any)[0].(map[string]any)["text"] != "Tag thought" {
+		t.Fatalf("expected reasoning extracted from think tags, got %#v", items2)
+	}
+	if back2Map["output_text"] != "Clean answer" {
+		t.Fatalf("expected Clean answer, got %v", back2Map["output_text"])
+	}
+
+	// 4. OpenAI SSE -> Responses SSE emits full reasoning lifecycle (from delta.reasoning_content and split <think> tags)
+	for _, tc := range []struct {
+		name   string
+		chunks []string
+	}{
+		{
+			name: "reasoning_content",
+			chunks: []string{
+				`{"id":"chatcmpl-rs","choices":[{"index":0,"delta":{"reasoning_content":"First "},"finish_reason":null}]}`,
+				`{"id":"chatcmpl-rs","choices":[{"index":0,"delta":{"reasoning_content":"thought"},"finish_reason":null}]}`,
+				`{"id":"chatcmpl-rs","choices":[{"index":0,"delta":{"content":"Answer"},"finish_reason":"stop"}]}`,
+			},
+		},
+		{
+			name: "split_think_tags",
+			chunks: []string{
+				`{"id":"chatcmpl-tk","choices":[{"index":0,"delta":{"content":"<thi"},"finish_reason":null}]}`,
+				`{"id":"chatcmpl-tk","choices":[{"index":0,"delta":{"content":"nk>First thought</thi"},"finish_reason":null}]}`,
+				`{"id":"chatcmpl-tk","choices":[{"index":0,"delta":{"content":"nk>Answer"},"finish_reason":"stop"}]}`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := NewOpenAIToResponsesSSETranslator("r1")
+			var all strings.Builder
+			for _, c := range tc.chunks {
+				b, _, err := tr.TranslateChunk([]byte(c))
+				if err != nil {
+					t.Fatal(err)
+				}
+				all.Write(b)
+			}
+			bDone, done, err := tr.TranslateChunk([]byte(`[DONE]`))
+			if err != nil || !done {
+				t.Fatalf("done failed: err=%v done=%v", err, done)
+			}
+			all.Write(bDone)
+			full := all.String()
+			for _, ev := range []string{
+				"event: response.reasoning_summary_part.added",
+				"event: response.reasoning_summary_text.delta",
+				"event: response.reasoning_summary_text.done",
+				"event: response.reasoning_summary_part.done",
+				`"type":"reasoning"`,
+				`"output_text":"Answer"`,
+			} {
+				if !strings.Contains(full, ev) {
+					t.Fatalf("missing %s in Responses SSE output:\n%s", ev, full)
+				}
+			}
+		})
+	}
+}

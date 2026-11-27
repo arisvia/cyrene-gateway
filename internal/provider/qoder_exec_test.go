@@ -247,3 +247,20 @@ func TestBuildQoderRequestBodyStripsSourceAndTracksRetry(t *testing.T) {
 		t.Errorf("model_config.key = %v, want gmodel_latest", mc["key"])
 	}
 }
+
+func TestQoderNormalizeMessages_HoistsDeveloperRole(t *testing.T) {
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "system", "content": "Base rule"},
+			map[string]any{"role": "developer", "content": "Dev rule"},
+			map[string]any{"role": "user", "content": "Hello"},
+		},
+	}
+	msgs, sys := qoderNormalizeMessages(body)
+	if sys != "Base rule\n\nDev rule" {
+		t.Fatalf("expected system+developer hoisted into systemText, got %q", sys)
+	}
+	if len(msgs) != 1 || msgs[0]["role"] != "user" {
+		t.Fatalf("expected only user message remaining, got %+v", msgs)
+	}
+}

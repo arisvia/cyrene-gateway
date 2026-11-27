@@ -587,3 +587,49 @@ func TestOpenAIToGemini_EmptyArgsNotWrappedInInput(t *testing.T) {
 		t.Fatalf("SSE translator injected bogus input key for empty args: %s", out)
 	}
 }
+
+func TestOpenAIToGeminiReasoningOutput(t *testing.T) {
+	// Non-streaming: reasoning_content + text
+	oai := []byte(`{"choices":[{"index":0,"message":{"role":"assistant","reasoning_content":"Plan A","content":"Final B"},"finish_reason":"stop"}]}`)
+	gemBytes, err := OpenAIToGeminiResponse(oai, "gemini-2.5-pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := decodeTranslatorPayload(t, gemBytes)["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"].([]any)
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts (thought + text), got %#v", parts)
+	}
+	p0 := parts[0].(map[string]any)
+	p1 := parts[1].(map[string]any)
+	if p0["thought"] != true || p0["text"] != "Plan A" || p1["text"] != "Final B" {
+		t.Fatalf("unexpected parts: %#v", parts)
+	}
+
+	// Non-streaming: <think> tags fallback
+	oaiTag := []byte(`{"choices":[{"index":0,"message":{"role":"assistant","content":"<think>Tag plan</think>Tag out"},"finish_reason":"stop"}]}`)
+	gemTagBytes, err := OpenAIToGeminiResponse(oaiTag, "gemini-2.5-pro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagParts := decodeTranslatorPayload(t, gemTagBytes)["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"].([]any)
+	if len(tagParts) != 2 || tagParts[0].(map[string]any)["thought"] != true || tagParts[0].(map[string]any)["text"] != "Tag plan" || tagParts[1].(map[string]any)["text"] != "Tag out" {
+		t.Fatalf("unexpected think-tag parts: %#v", tagParts)
+	}
+
+	// Streaming: split <think> tags + reasoning_content + empty tool call args on finish_reason
+	tr := NewOpenAIToGeminiSSETranslator("gemini-2.5-pro")
+	c1, _, _ := tr.TranslateChunk([]byte(`{"choices":[{"delta":{"reasoning_content":"R1"}}]}`))
+	if !strings.Contains(string(c1), `"thought":true`) || !strings.Contains(string(c1), `"text":"R1"`) {
+		t.Fatalf("expected thought delta, got: %s", c1)
+	}
+	_, _, _ = tr.TranslateChunk([]byte(`{"choices":[{"delta":{"content":"<thi"}}]}`))
+	c3, _, _ := tr.TranslateChunk([]byte(`{"choices":[{"delta":{"content":"nk>T2</think>Ok"}}]}`))
+	if !strings.Contains(string(c3), `"text":"T2","thought":true`) || !strings.Contains(string(c3), `"text":"Ok"`) {
+		t.Fatalf("expected split <think> thought+text parts, got: %s", c3)
+	}
+	_, _, _ = tr.TranslateChunk([]byte(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"noop","arguments":""}}]}}]}`))
+	cDone, done, _ := tr.TranslateChunk([]byte(`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`))
+	if !done || strings.Contains(string(cDone), `"input":""`) || !strings.Contains(string(cDone), `"args":{}`) {
+		t.Fatalf("finish_reason tool flush failed: done=%v body=%s", done, cDone)
+	}
+}

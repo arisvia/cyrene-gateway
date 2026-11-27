@@ -446,7 +446,28 @@ func OpenAIToResponsesResponse(data []byte, model string) ([]byte, error) {
 			finishReason, _ := choice["finish_reason"].(string)
 			status, incompleteDetails = responsesStatus(finishReason)
 			if msg, ok := choice["message"].(map[string]any); ok {
-				if text, ok := msg["content"].(string); ok && text != "" {
+				reasoningText, _ := msg["reasoning_content"].(string)
+				if reasoningText == "" {
+					reasoningText, _ = msg["reasoning"].(string)
+				}
+				text, _ := msg["content"].(string)
+				if reasoningText == "" && text != "" {
+					reasoningText, text = StripThinkTags(text)
+				}
+				if reasoningText != "" {
+					outputItems = append(outputItems, map[string]any{
+						"id":     "rs_" + id,
+						"type":   "reasoning",
+						"status": status,
+						"summary": []any{
+							map[string]any{
+								"type": "summary_text",
+								"text": reasoningText,
+							},
+						},
+					})
+				}
+				if text != "" {
 					outputText = text
 					outputItems = append(outputItems, map[string]any{
 						"id":     "msg_" + id,
@@ -574,6 +595,7 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 	}
 
 	var contentText string
+	var reasoningParts []string
 	var toolCalls []any
 
 	if outputText, ok := resp["output_text"].(string); ok && outputText != "" {
@@ -584,7 +606,26 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 		for _, item := range outputItems {
 			if im, ok := item.(map[string]any); ok {
 				iType, _ := im["type"].(string)
-				if iType == "message" && contentText == "" {
+				if iType == "reasoning" {
+					if summaryArr, ok := im["summary"].([]any); ok {
+						for _, sp := range summaryArr {
+							if spm, ok := sp.(map[string]any); ok {
+								if t, ok := spm["text"].(string); ok && t != "" {
+									reasoningParts = append(reasoningParts, t)
+								}
+							}
+						}
+					}
+					if cArr, ok := im["content"].([]any); ok {
+						for _, cp := range cArr {
+							if cpm, ok := cp.(map[string]any); ok {
+								if t, ok := cpm["text"].(string); ok && t != "" {
+									reasoningParts = append(reasoningParts, t)
+								}
+							}
+						}
+					}
+				} else if iType == "message" && contentText == "" {
 					if cArr, ok := im["content"].([]any); ok {
 						for _, cp := range cArr {
 							if cpm, ok := cp.(map[string]any); ok {
@@ -614,6 +655,9 @@ func ResponsesToOpenAIResponse(data []byte, model string) ([]byte, error) {
 	message := map[string]any{
 		"role":    "assistant",
 		"content": contentText,
+	}
+	if len(reasoningParts) > 0 {
+		message["reasoning_content"] = strings.Join(reasoningParts, "\n")
 	}
 	if len(toolCalls) > 0 {
 		message["tool_calls"] = toolCalls
@@ -715,6 +759,29 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 		return b, true, err
 	}
 	switch eType {
+	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta", "response.reasoning.delta":
+		deltaText, _ := event["delta"].(string)
+		if deltaText == "" {
+			return nil, false, nil
+		}
+		chunk := map[string]any{
+			"id":      "chatcmpl-stream",
+			"object":  "chat.completion.chunk",
+			"created": time.Now().Unix(),
+			"model":   t.Model,
+			"choices": []any{
+				map[string]any{
+					"index": 0,
+					"delta": map[string]any{
+						"reasoning_content": deltaText,
+					},
+					"finish_reason": nil,
+				},
+			},
+		}
+		b, _ := json.Marshal(chunk)
+		return b, false, nil
+
 	case "response.output_text.delta":
 		deltaText, _ := event["delta"].(string)
 		chunk := map[string]any{
@@ -885,7 +952,9 @@ func (t *ResponsesSSEToOpenAITranslator) TranslateChunk(data []byte) ([]byte, bo
 type OpenAIToResponsesSSETranslator struct {
 	Model         string
 	respID        string
+	rsID          string
 	msgID         string
+	reasoningBuf  strings.Builder
 	outputBuf     strings.Builder
 	promptTokens  int
 	outputTokens  int
@@ -895,15 +964,20 @@ type OpenAIToResponsesSSETranslator struct {
 	deltaChunks   int  // fallback chunk counter when upstream omits usage
 	usageSeen     bool // whether usage was actually captured from upstream chunks
 	// Output item index allocation: assigned once at first emission, never recomputed.
-	nextOutputIndex int
-	msgOutputIndex  int // -1 until the message item is emitted
-	contentIndex    int
-	created         bool
-	itemAdded       bool
-	partAdded       bool
-	done            bool
-	finishReason    string
-	upstreamError   any
+	nextOutputIndex      int
+	reasoningOutputIndex int // -1 until the reasoning item is emitted
+	msgOutputIndex       int // -1 until the message item is emitted
+	contentIndex         int
+	created              bool
+	reasoningItemAdded   bool
+	reasoningPartAdded   bool
+	reasoningClosed      bool
+	itemAdded            bool
+	partAdded            bool
+	done                 bool
+	finishReason         string
+	upstreamError        any
+	thinkTags            ThinkTagState
 	// Tool call tracking
 	toolCalls []responsesToolCallState
 }
@@ -920,11 +994,161 @@ type responsesToolCallState struct {
 func NewOpenAIToResponsesSSETranslator(model string) *OpenAIToResponsesSSETranslator {
 	now := time.Now().UnixNano()
 	return &OpenAIToResponsesSSETranslator{
-		Model:          model,
-		respID:         fmt.Sprintf("resp_%d", now),
-		msgID:          fmt.Sprintf("msg_%d", now),
-		msgOutputIndex: -1,
+		Model:                model,
+		respID:               fmt.Sprintf("resp_%d", now),
+		rsID:                 fmt.Sprintf("rs_%d", now),
+		msgID:                fmt.Sprintf("msg_%d", now),
+		reasoningOutputIndex: -1,
+		msgOutputIndex:       -1,
 	}
+}
+
+func (t *OpenAIToResponsesSSETranslator) emitReasoningDelta(out *bytes.Buffer, delta string) {
+	if delta == "" {
+		return
+	}
+	if !t.reasoningItemAdded {
+		t.reasoningItemAdded = true
+		t.reasoningOutputIndex = t.nextOutputIndex
+		t.nextOutputIndex++
+		addedPayload := map[string]any{
+			"type":         "response.output_item.added",
+			"output_index": t.reasoningOutputIndex,
+			"item": map[string]any{
+				"id":      t.rsID,
+				"type":    "reasoning",
+				"status":  "in_progress",
+				"summary": []any{},
+			},
+		}
+		b, _ := json.Marshal(addedPayload)
+		out.WriteString(fmt.Sprintf("event: response.output_item.added\ndata: %s\n\n", string(b)))
+	}
+	if !t.reasoningPartAdded {
+		t.reasoningPartAdded = true
+		partAddedPayload := map[string]any{
+			"type":          "response.reasoning_summary_part.added",
+			"item_id":       t.rsID,
+			"output_index":  t.reasoningOutputIndex,
+			"summary_index": 0,
+			"part": map[string]any{
+				"type": "summary_text",
+				"text": "",
+			},
+		}
+		b, _ := json.Marshal(partAddedPayload)
+		out.WriteString(fmt.Sprintf("event: response.reasoning_summary_part.added\ndata: %s\n\n", string(b)))
+	}
+	t.reasoningBuf.WriteString(delta)
+	t.deltaChunks++
+	deltaPayload := map[string]any{
+		"type":          "response.reasoning_summary_text.delta",
+		"item_id":       t.rsID,
+		"output_index":  t.reasoningOutputIndex,
+		"summary_index": 0,
+		"delta":         delta,
+	}
+	b, _ := json.Marshal(deltaPayload)
+	out.WriteString(fmt.Sprintf("event: response.reasoning_summary_text.delta\ndata: %s\n\n", string(b)))
+}
+
+func (t *OpenAIToResponsesSSETranslator) closeReasoning(out *bytes.Buffer, itemStatus string) {
+	if !t.reasoningItemAdded || t.reasoningClosed {
+		return
+	}
+	t.reasoningClosed = true
+	rsText := t.reasoningBuf.String()
+	if t.reasoningPartAdded {
+		textDonePayload := map[string]any{
+			"type":          "response.reasoning_summary_text.done",
+			"item_id":       t.rsID,
+			"output_index":  t.reasoningOutputIndex,
+			"summary_index": 0,
+			"text":          rsText,
+		}
+		tdBytes, _ := json.Marshal(textDonePayload)
+		out.WriteString(fmt.Sprintf("event: response.reasoning_summary_text.done\ndata: %s\n\n", string(tdBytes)))
+
+		partDonePayload := map[string]any{
+			"type":          "response.reasoning_summary_part.done",
+			"item_id":       t.rsID,
+			"output_index":  t.reasoningOutputIndex,
+			"summary_index": 0,
+			"part": map[string]any{
+				"type": "summary_text",
+				"text": rsText,
+			},
+		}
+		pdBytes, _ := json.Marshal(partDonePayload)
+		out.WriteString(fmt.Sprintf("event: response.reasoning_summary_part.done\ndata: %s\n\n", string(pdBytes)))
+	}
+	itemDonePayload := map[string]any{
+		"type":         "response.output_item.done",
+		"output_index": t.reasoningOutputIndex,
+		"item": map[string]any{
+			"id":     t.rsID,
+			"type":   "reasoning",
+			"status": itemStatus,
+			"summary": []any{
+				map[string]any{
+					"type": "summary_text",
+					"text": rsText,
+				},
+			},
+		},
+	}
+	idBytes, _ := json.Marshal(itemDonePayload)
+	out.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: %s\n\n", string(idBytes)))
+}
+
+func (t *OpenAIToResponsesSSETranslator) emitTextDelta(out *bytes.Buffer, content string) {
+	if content == "" {
+		return
+	}
+	t.closeReasoning(out, "completed")
+	if !t.itemAdded {
+		t.itemAdded = true
+		t.msgOutputIndex = t.nextOutputIndex
+		t.nextOutputIndex++
+		itemAddedPayload := map[string]any{
+			"type":         "response.output_item.added",
+			"output_index": t.msgOutputIndex,
+			"item": map[string]any{
+				"id":      t.msgID,
+				"type":    "message",
+				"status":  "in_progress",
+				"role":    "assistant",
+				"content": []any{},
+			},
+		}
+		iaBytes, _ := json.Marshal(itemAddedPayload)
+		out.WriteString(fmt.Sprintf("event: response.output_item.added\ndata: %s\n\n", string(iaBytes)))
+	}
+	if !t.partAdded {
+		t.partAdded = true
+		partAddedPayload := map[string]any{
+			"type":          "response.content_part.added",
+			"output_index":  t.msgOutputIndex,
+			"content_index": t.contentIndex,
+			"part": map[string]any{
+				"type": "output_text",
+				"text": "",
+			},
+		}
+		paBytes, _ := json.Marshal(partAddedPayload)
+		out.WriteString(fmt.Sprintf("event: response.content_part.added\ndata: %s\n\n", string(paBytes)))
+	}
+	t.outputBuf.WriteString(content)
+	t.deltaChunks++
+	deltaPayload := map[string]any{
+		"type":          "response.output_text.delta",
+		"item_id":       t.msgID,
+		"output_index":  t.msgOutputIndex,
+		"content_index": t.contentIndex,
+		"delta":         content,
+	}
+	dBytes, _ := json.Marshal(deltaPayload)
+	out.WriteString(fmt.Sprintf("event: response.output_text.delta\ndata: %s\n\n", string(dBytes)))
 }
 
 // TranslateChunk converts an OpenAI ChatCompletion chunk (or [DONE]) into Responses API SSE events.
@@ -941,6 +1165,15 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 			incompleteDetails = nil
 		}
 		var out bytes.Buffer
+		for _, d := range t.thinkTags.Flush() {
+			switch d.Type {
+			case DeltaThinking:
+				t.emitReasoningDelta(&out, d.Delta)
+			case DeltaText:
+				t.emitTextDelta(&out, d.Delta)
+			}
+		}
+		t.closeReasoning(&out, itemStatus)
 		outText := t.outputBuf.String()
 
 		if t.partAdded {
@@ -987,6 +1220,19 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 
 		// Build output items ordered by assigned output_index.
 		outputItems := make([]any, t.nextOutputIndex)
+		if t.reasoningItemAdded && t.reasoningOutputIndex >= 0 && t.reasoningOutputIndex < len(outputItems) {
+			outputItems[t.reasoningOutputIndex] = map[string]any{
+				"id":     t.rsID,
+				"type":   "reasoning",
+				"status": itemStatus,
+				"summary": []any{
+					map[string]any{
+						"type": "summary_text",
+						"text": t.reasoningBuf.String(),
+					},
+				},
+			}
+		}
 		if t.itemAdded && t.msgOutputIndex >= 0 && t.msgOutputIndex < len(outputItems) {
 			outputItems[t.msgOutputIndex] = map[string]any{
 				"id":     t.msgID,
@@ -1080,6 +1326,7 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 	// Check for custom id or model
 	if id, ok := chunk["id"].(string); ok && id != "" && !t.created {
 		t.respID = "resp_" + id
+		t.rsID = "rs_" + id
 		t.msgID = "msg_" + id
 	}
 	if m, ok := chunk["model"].(string); ok && m != "" {
@@ -1144,59 +1391,26 @@ func (t *OpenAIToResponsesSSETranslator) TranslateChunk(data []byte) ([]byte, bo
 				t.finishReason = reason
 			}
 			if delta, ok := choice["delta"].(map[string]any); ok {
+				if rText, ok := delta["reasoning_content"].(string); ok && rText != "" {
+					t.emitReasoningDelta(&out, rText)
+				} else if rText, ok := delta["reasoning"].(string); ok && rText != "" {
+					t.emitReasoningDelta(&out, rText)
+				}
+
 				if content, ok := delta["content"].(string); ok && content != "" {
-					// Ensure message item added
-					if !t.itemAdded {
-						t.itemAdded = true
-						t.msgOutputIndex = t.nextOutputIndex
-						t.nextOutputIndex++
-						itemAddedPayload := map[string]any{
-							"type":         "response.output_item.added",
-							"output_index": t.msgOutputIndex,
-							"item": map[string]any{
-								"id":      t.msgID,
-								"type":    "message",
-								"status":  "in_progress",
-								"role":    "assistant",
-								"content": []any{},
-							},
+					for _, d := range t.thinkTags.ProcessFeed(content) {
+						switch d.Type {
+						case DeltaThinking:
+							t.emitReasoningDelta(&out, d.Delta)
+						case DeltaText:
+							t.emitTextDelta(&out, d.Delta)
 						}
-						iaBytes, _ := json.Marshal(itemAddedPayload)
-						out.WriteString(fmt.Sprintf("event: response.output_item.added\ndata: %s\n\n", string(iaBytes)))
 					}
-
-					// Ensure content part added
-					if !t.partAdded {
-						t.partAdded = true
-						partAddedPayload := map[string]any{
-							"type":          "response.content_part.added",
-							"output_index":  t.msgOutputIndex,
-							"content_index": t.contentIndex,
-							"part": map[string]any{
-								"type": "output_text",
-								"text": "",
-							},
-						}
-						paBytes, _ := json.Marshal(partAddedPayload)
-						out.WriteString(fmt.Sprintf("event: response.content_part.added\ndata: %s\n\n", string(paBytes)))
-					}
-
-					// Emit output_text.delta
-					t.outputBuf.WriteString(content)
-					t.deltaChunks++
-					deltaPayload := map[string]any{
-						"type":          "response.output_text.delta",
-						"item_id":       t.msgID,
-						"output_index":  t.msgOutputIndex,
-						"content_index": t.contentIndex,
-						"delta":         content,
-					}
-					dBytes, _ := json.Marshal(deltaPayload)
-					out.WriteString(fmt.Sprintf("event: response.output_text.delta\ndata: %s\n\n", string(dBytes)))
 				}
 
 				// Handle tool call deltas
-				if tcList, ok := delta["tool_calls"].([]any); ok {
+				if tcList, ok := delta["tool_calls"].([]any); ok && len(tcList) > 0 {
+					t.closeReasoning(&out, "completed")
 					for _, tcRaw := range tcList {
 						tc, ok := tcRaw.(map[string]any)
 						if !ok {

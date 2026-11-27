@@ -336,69 +336,12 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 
 	// Support reasoning_effort & thinking conversion
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
-		effortLower := strings.ToLower(effort)
-		if effortLower == "none" || effortLower == "off" {
-			// Explicitly disabled reasoning; do not emit thinking or effort.
-		} else if effortLower == "adaptive" || isClaudeAdaptiveThinkingModel(model) {
-			// Claude 5.x models use adaptive thinking. Sending legacy manual
-			// budget_tokens to these models causes upstream 400 responses.
-			result["thinking"] = map[string]any{
-				"type": "adaptive",
-			}
-			if effortLower != "adaptive" {
-				switch effortLower {
-				case "low", "medium", "high", "max", "xhigh":
-					if effortLower == "max" {
-						effortLower = "xhigh"
-					}
-					result["effort"] = effortLower
-					if oc, ok := result["output_config"].(map[string]any); ok {
-						oc["effort"] = effortLower
-					} else {
-						result["output_config"] = map[string]any{"effort": effortLower}
-					}
-				}
-			}
-		} else {
-			var budget int
-			switch effortLower {
-			case "minimal":
-				budget = 1024
-			case "low":
-				budget = 2048
-			case "medium":
-				budget = 8192
-			case "high":
-				budget = 16384
-			case "max", "xhigh":
-				budget = 32768
-			}
-			if budget > 0 {
-				result["thinking"] = map[string]any{
-					"type":          "enabled",
-					"budget_tokens": budget,
-				}
-			}
-		}
+		ApplyClaudeThinkingEffort(result, model, effort)
 	} else if thinking, ok := body["thinking"].(map[string]any); ok {
 		result["thinking"] = thinking
 	}
 
-	// When thinking is enabled (type != "disabled"), Anthropic strictly rejects temperature / top_p
-	// and requires max_tokens > budget_tokens.
-	thinkingEnabled := false
-	if thinkingMap, ok := result["thinking"].(map[string]any); ok {
-		if tType, _ := thinkingMap["type"].(string); tType != "disabled" {
-			thinkingEnabled = true
-			delete(result, "temperature")
-			delete(result, "top_p")
-			if budget := anyToInt(thinkingMap["budget_tokens"]); budget > 0 {
-				if maxTokens := anyToInt(result["max_tokens"]); maxTokens <= budget {
-					result["max_tokens"] = budget + 4096
-				}
-			}
-		}
-	}
+	thinkingEnabled := enforceClaudeThinkingConstraints(result)
 
 	// Convert tools
 	if tools, ok := body["tools"].([]any); ok && len(tools) > 0 {
@@ -448,6 +391,96 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 	trimClaudeCacheControl(result)
 
 	return result, nil
+}
+
+// ApplyClaudeThinkingEffort translates a normalized reasoning_effort string onto an
+// Anthropic Messages request body and enforces Claude's thinking parameter constraints.
+func ApplyClaudeThinkingEffort(body map[string]any, model, effort string) {
+	if body == nil {
+		return
+	}
+	effortLower := strings.ToLower(strings.TrimSpace(effort))
+	if effortLower == "" {
+		return
+	}
+	if effortLower == "none" || effortLower == "off" {
+		delete(body, "thinking")
+		delete(body, "effort")
+		if oc, ok := body["output_config"].(map[string]any); ok {
+			delete(oc, "effort")
+			if len(oc) == 0 {
+				delete(body, "output_config")
+			}
+		}
+		return
+	}
+	if effortLower == "adaptive" || isClaudeAdaptiveThinkingModel(model) {
+		// Claude 5.x models use adaptive thinking. Sending legacy manual
+		// budget_tokens to these models causes upstream 400 responses.
+		body["thinking"] = map[string]any{
+			"type": "adaptive",
+		}
+		if effortLower != "adaptive" {
+			switch effortLower {
+			case "minimal", "low", "medium", "high", "max", "xhigh":
+				if effortLower == "minimal" {
+					effortLower = "low"
+				} else if effortLower == "max" {
+					effortLower = "xhigh"
+				}
+				body["effort"] = effortLower
+				if oc, ok := body["output_config"].(map[string]any); ok {
+					oc["effort"] = effortLower
+				} else {
+					body["output_config"] = map[string]any{"effort": effortLower}
+				}
+			}
+		}
+	} else {
+		var budget int
+		switch effortLower {
+		case "minimal":
+			budget = 1024
+		case "low":
+			budget = 2048
+		case "medium":
+			budget = 8192
+		case "high":
+			budget = 16384
+		case "max", "xhigh":
+			budget = 32768
+		}
+		if budget > 0 {
+			body["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": budget,
+			}
+		}
+	}
+	enforceClaudeThinkingConstraints(body)
+}
+
+func enforceClaudeThinkingConstraints(body map[string]any) bool {
+	thinkingMap, ok := body["thinking"].(map[string]any)
+	if !ok {
+		return false
+	}
+	if tType, _ := thinkingMap["type"].(string); tType == "disabled" {
+		return false
+	}
+	delete(body, "temperature")
+	delete(body, "top_p")
+	if budget := anyToInt(thinkingMap["budget_tokens"]); budget > 0 {
+		if maxTokens := anyToInt(body["max_tokens"]); maxTokens <= budget {
+			body["max_tokens"] = budget + 4096
+		}
+	}
+	if tc, ok := body["tool_choice"].(map[string]any); ok {
+		if tcType, _ := tc["type"].(string); tcType == "any" || tcType == "tool" {
+			body["tool_choice"] = map[string]any{"type": "auto"}
+		}
+	}
+	return true
 }
 
 // isClaudeAdaptiveThinkingModel reports whether model is a Claude 5.x model using adaptive thinking.

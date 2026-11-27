@@ -42,7 +42,7 @@ func ExtractAndScrubDirectives(text string) (string, DirectiveResult) {
 	if matches := directiveEffortValueRegex.FindStringSubmatch(cleaned); len(matches) > 1 {
 		val := strings.ToLower(strings.TrimSpace(matches[1]))
 		switch val {
-		case "low", "medium", "high", "max", "adaptive", "none", "off":
+		case "minimal", "low", "medium", "high", "xhigh", "max", "adaptive", "none", "off":
 			res.ReasoningEffort = val
 			res.HasOverrides = true
 		}

@@ -425,3 +425,43 @@ func TestResponsesAdapter_ForwardsSSEKeepaliveComment(t *testing.T) {
 		t.Error("keepalive must be flushed immediately, otherwise the edge sees an idle origin")
 	}
 }
+
+func TestResponsesPreservesRemoteAddrForAffinity(t *testing.T) {
+	var hits [2]string
+	makeSrv := func(idx int) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits[idx] = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"id":"chatcmpl-aff","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+		}))
+	}
+	u1 := makeSrv(0)
+	defer u1.Close()
+
+	srv, database := setupTestServer(t)
+	for i, id := range []string{"conn-aff-a", "conn-aff-b"} {
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: id, Provider: "openai", AuthType: "api-key", IsActive: true, Priority: i + 1,
+			Data: model.ConnectionData{APIKey: "sk-" + id, BaseURL: u1.URL + "/chat/completions"},
+		})
+	}
+
+	req1 := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"openai/gpt-5.4","input":"hello","stream":false}`))
+	req1.RemoteAddr = "198.51.100.10:12345"
+	w1 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Fatalf("req1 status=%d body=%s", w1.Code, w1.Body.String())
+	}
+	firstAuth := hits[0]
+
+	// Second request from the exact same RemoteAddr must stick to the same affinity bucket
+	// when no session header is present.
+	req2 := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"openai/gpt-5.4","input":"hello","stream":false}`))
+	req2.RemoteAddr = "198.51.100.10:54321"
+	w2 := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK || hits[0] != firstAuth {
+		t.Fatalf("expected same affinity auth %q, got %q (status %d)", firstAuth, hits[0], w2.Code)
+	}
+}

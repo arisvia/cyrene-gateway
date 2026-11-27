@@ -586,3 +586,46 @@ func TestCodebuddyConversationHeaders_StabilityAndPrecedence(t *testing.T) {
 		t.Errorf("expected custom client conversation ID preserved, got %q", got)
 	}
 }
+
+func TestPrepareUpstreamRequest_SanitizesStrictOpenAIThinking(t *testing.T) {
+	rawBody := []byte(`{
+		"model": "openai/gpt-5.4",
+		"thinking": {"type": "enabled", "budget_tokens": 12000},
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	openaiCand := ExecutionCandidate{
+		Connection:   &model.ProviderConnection{ID: "oai", Provider: "openai", AuthType: "api-key", Data: model.ConnectionData{APIKey: "sk-test", BaseURL: "https://api.openai.com/v1"}},
+		ModelInfo:    model.ModelInfo{Provider: "openai", Model: "gpt-5.4"},
+		ProviderInfo: Registry["openai"],
+	}
+	reqOAI, _, err := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: rawBody}, openaiCand, nil)
+	if err != nil {
+		t.Fatalf("PrepareUpstreamRequest(openai) failed: %v", err)
+	}
+	oaiBytes, _ := io.ReadAll(reqOAI.Body)
+	var oaiMap map[string]any
+	_ = json.Unmarshal(oaiBytes, &oaiMap)
+	if _, hasThinking := oaiMap["thinking"]; hasThinking {
+		t.Fatalf("strict openai upstream must not receive top-level thinking: %s", oaiBytes)
+	}
+	if oaiMap["reasoning_effort"] != "high" {
+		t.Fatalf("expected converted reasoning_effort=high, got %v", oaiMap["reasoning_effort"])
+	}
+
+	customCand := ExecutionCandidate{
+		Connection:   &model.ProviderConnection{ID: "coai", Provider: "custom-openai-1", AuthType: "api-key", Data: model.ConnectionData{APIKey: "sk-test", BaseURL: "https://custom.example.com/v1"}},
+		ModelInfo:    model.ModelInfo{Provider: "custom-openai-1", Model: "deepseek-reasoner"},
+		ProviderInfo: ProviderInfo{APIType: "openai"},
+	}
+	reqCustom, _, err := PrepareUpstreamRequest(context.Background(), ExecutionRequest{RawBody: rawBody}, customCand, nil)
+	if err != nil {
+		t.Fatalf("PrepareUpstreamRequest(custom-openai) failed: %v", err)
+	}
+	customBytes, _ := io.ReadAll(reqCustom.Body)
+	var customMap map[string]any
+	_ = json.Unmarshal(customBytes, &customMap)
+	if _, hasThinking := customMap["thinking"]; !hasThinking {
+		t.Fatalf("custom-openai should keep thinking payload untouched: %s", customBytes)
+	}
+}

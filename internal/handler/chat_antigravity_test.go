@@ -1440,3 +1440,88 @@ func TestParkAntigravityQuotaPreservesTOSPark(t *testing.T) {
 		t.Errorf("TOS account-wide park must be preserved, got %q want %q", conn.Data.RateLimitedUntil, parked)
 	}
 }
+
+func TestAntigravityEffortNoneMaxMinimalAndFallback(t *testing.T) {
+	catalog := []model.ModelMetadata{
+		{ID: "gemini-3.8-flash-low", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 1},
+		{ID: "gemini-3.8-flash-medium", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 2},
+		{ID: "gemini-3.8-flash-xhigh", Family: "gemini", Capabilities: []string{"chat", "reasoning"}, ThinkingLevel: 100},
+	}
+
+	for _, eff := range []string{"none", "off"} {
+		target, level, inject, _ := resolveAntigravityModel("gemini-3.8-flash", eff, catalog)
+		if level != 0 || inject || strings.HasSuffix(target, "-"+eff) {
+			t.Errorf("catalog effort=%s: target=%s level=%d inject=%t", eff, target, level, inject)
+		}
+		coldTarget, coldLevel, coldInject, _ := resolveAntigravityModel("gemini-3.8-flash", eff, nil)
+		if coldTarget != "gemini-3.8-flash" || coldLevel != 0 || coldInject {
+			t.Errorf("cold effort=%s: target=%s level=%d inject=%t", eff, coldTarget, coldLevel, coldInject)
+		}
+	}
+
+	targetMax, levelMax, injectMax, _ := resolveAntigravityModel("gemini-3.8-flash", "max", catalog)
+	if targetMax != "gemini-3.8-flash-xhigh" || levelMax != 100 || !injectMax {
+		t.Errorf("effort=max: target=%s level=%d inject=%t", targetMax, levelMax, injectMax)
+	}
+	targetMin, levelMin, injectMin, _ := resolveAntigravityModel("gemini-3.8-flash", "minimal", catalog)
+	if targetMin != "gemini-3.8-flash-low" || levelMin != 1 || !injectMin {
+		t.Errorf("effort=minimal: target=%s level=%d inject=%t", targetMin, levelMin, injectMin)
+	}
+
+	if got := extractAntigravityFallbackEffort([]byte(`{"thinking":{"type":"disabled"}}`)); got != "none" {
+		t.Errorf("fallback disabled got %q, want none", got)
+	}
+	if got := extractAntigravityFallbackEffort([]byte(`{"thinking":{"type":"enabled","budget_tokens":16384}}`)); got != "high" {
+		t.Errorf("fallback enabled budget got %q, want high", got)
+	}
+	if got := extractAntigravityFallbackEffort([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingLevel":"xhigh"}}}`)); got != "xhigh" {
+		t.Errorf("fallback thinkingLevel got %q, want xhigh", got)
+	}
+}
+
+func TestAntigravityThoughtSignatureAndCallIDRoundTrip(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			srv, _ := setupTestServer(t)
+			realSig := "real_upstream_sig_xyz=="
+			realCallID := "fc_real_up_99"
+			if stream {
+				sse := fmt.Sprintf("data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"thoughtSignature\":%q,\"functionCall\":{\"id\":%q,\"name\":\"lookup\",\"args\":{\"q\":\"go\"}}}]},\"finishReason\":\"STOP\"}]}\n\n", realSig, realCallID)
+				resp := &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(strings.NewReader(sse)),
+					Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				}
+				w := httptest.NewRecorder()
+				srv.proxyAntigravityStreaming(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), resp, "gemini-3.8-flash", nil, nil)
+				if !strings.Contains(w.Body.String(), `"id":"`+realCallID+`"`) {
+					t.Fatalf("streaming did not preserve upstream call id: %s", w.Body.String())
+				}
+			} else {
+				payload := fmt.Sprintf(`{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":%q,"functionCall":{"id":%q,"name":"lookup","args":{"q":"go"}}}]},"finishReason":"STOP"}]}`, realSig, realCallID)
+				resp := &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(strings.NewReader(payload)),
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+				}
+				w := httptest.NewRecorder()
+				srv.proxyAntigravityNonStreaming(w, resp, "gemini-3.8-flash", nil, nil)
+				if !strings.Contains(w.Body.String(), `"id":"`+realCallID+`"`) {
+					t.Fatalf("non-streaming did not preserve upstream call id: %s", w.Body.String())
+				}
+			}
+
+			// Turn 2: outbound conversion with the same callID must send back the real signature.
+			msgs := []Message{
+				{Role: "user", Content: json.RawMessage(`"look up go"`)},
+				{Role: "assistant", ToolCalls: json.RawMessage(fmt.Sprintf(`[{"id":%q,"type":"function","function":{"name":"lookup","arguments":"{\"q\":\"go\"}"}}]`, realCallID))},
+				{Role: "tool", ToolCallID: realCallID, Content: json.RawMessage(`"ok"`)},
+			}
+			contents, _ := convertOpenAIToGeminiContentsWithLookup(msgs, "gemini-3.8-flash", srv.lookupAntigravityThoughtSignature)
+			fcPart := contents[1]["parts"].([]map[string]any)[0]
+			if fcPart["thoughtSignature"] != realSig {
+				t.Fatalf("expected cached thoughtSignature %q on turn 2, got %#v", realSig, fcPart["thoughtSignature"])
+			}
+		})
+	}
+}

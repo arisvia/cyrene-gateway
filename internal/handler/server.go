@@ -52,6 +52,12 @@ type Server struct {
 	// modelSyncInFlight holds the connection ids with a background catalog
 	// refresh running, keyed by connection id.
 	modelSyncInFlight sync.Map
+
+	// agThoughtSigCache pairs Antigravity functionCall IDs with the upstream
+	// thoughtSignature emitted alongside them so multi-turn tool loops echo
+	// the genuine signature instead of the dummy skip validator.
+	agThoughtSigMu    sync.Mutex
+	agThoughtSigCache map[string]agThoughtSigEntry
 }
 
 // goBackground runs fn asynchronously while keeping it observable to tests.

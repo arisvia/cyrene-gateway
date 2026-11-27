@@ -35,27 +35,48 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// Read the raw body for passthrough
 	bodyBytes, err := readRequestBody(r)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+		writeAnthropicError(w, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 
 	var reqBody map[string]any
 	if err := json.Unmarshal(bodyBytes, &reqBody); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		writeAnthropicError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 
 	modelStr, _ := reqBody["model"].(string)
 	if modelStr == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing model"})
+		writeAnthropicError(w, http.StatusBadRequest, "missing model")
 		return
+	}
+
+	// Support inline @cg-* / @ocr-* directives and model(effort) suffixes on /v1/messages.
+	// Always scrub reasoning_effort from reqBody so native Anthropic passthrough never leaks it.
+	dirRes := provider.ScrubDirectivesFromOpenAIBody(reqBody)
+	delete(reqBody, "reasoning_effort")
+	if dirRes.Model != "" {
+		modelStr = dirRes.Model
+		reqBody["model"] = modelStr
+	}
+	cleanModel, modelEffort := provider.ExtractModelReasoningEffort(modelStr)
+	if modelEffort != "" {
+		modelStr = cleanModel
+		reqBody["model"] = modelStr
+	}
+	effortOverride := dirRes.ReasoningEffort
+	if effortOverride == "" {
+		effortOverride = modelEffort
+	}
+	if dirRes.HasOverrides || modelEffort != "" {
+		if updated, err := json.Marshal(reqBody); err == nil {
+			bodyBytes = updated
+		}
 	}
 
 	keyObj := auth.APIKeyFromContext(r.Context())
 	if !keyAllowsModel(keyObj, modelStr) {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": fmt.Sprintf("model '%s' is not allowed for this API key", modelStr),
-		})
+		writeAnthropicError(w, http.StatusForbidden, fmt.Sprintf("model '%s' is not allowed for this API key", modelStr))
 		return
 	}
 
@@ -78,18 +99,18 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	// If model is a combo, route via Chat Completions adapter
 	if _, isCombo := provider.ResolveCombo(modelStr, s.DB); isCombo {
-		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
+		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream, effortOverride)
 		return
 	}
 
 	// Resolve model
 	modelInfo, err := provider.ResolveModel(modelStr, s.DB)
 	if err != nil || modelInfo.Provider == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("cannot resolve model: %s", modelStr)})
+		writeAnthropicError(w, http.StatusBadRequest, fmt.Sprintf("cannot resolve model: %s", modelStr))
 		return
 	}
 	if provider.IsModelDisabled(modelStr, s.DB) || provider.IsModelDisabled(modelInfo.Provider+"/"+modelInfo.Model, s.DB) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": fmt.Sprintf("model is disabled: %s", modelStr)})
+		writeAnthropicError(w, http.StatusForbidden, fmt.Sprintf("model is disabled: %s", modelStr))
 		return
 	}
 	// Phase: Response Cache check
@@ -138,7 +159,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	providerInfo, ok := provider.GetProvider(modelInfo.Provider)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unknown provider: %s", modelInfo.Provider)})
+		writeAnthropicError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", modelInfo.Provider))
 		return
 	}
 	// If the provider does not support native Anthropic Messages API (e.g. Qoder, Antigravity, OpenAI, DeepSeek),
@@ -146,15 +167,13 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// Calling selectAvailableConnection here and then again in handleSingleModelChat advances
 	// the round-robin counter twice per request, collapsing equal-priority load balancing.
 	if providerInfo.APIType != "anthropic" || provider.IsQoder(modelInfo.Provider) || modelInfo.Provider == "antigravity" {
-		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
+		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream, effortOverride)
 		return
 	}
 
 	conns, err := s.DB.ListConnectionsByProvider(modelInfo.Provider)
 	if err != nil || len(conns) == 0 {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider),
-		})
+		writeAnthropicError(w, http.StatusServiceUnavailable, fmt.Sprintf("no active credentials for provider: %s", modelInfo.Provider))
 		return
 	}
 
@@ -163,24 +182,27 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	// delegate to the chat pipeline, which walks its own account pool.
 	conn := s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
 	if conn == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
-		})
+		writeAnthropicError(w, http.StatusServiceUnavailable, fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider))
 		return
 	}
 	s.tryRefreshToken(conn)
 	baseURL, effectiveAPIType := effectiveAnthropicTarget(providerInfo, conn)
 	if effectiveAPIType != "anthropic" || baseURL == "" {
-		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream)
+		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream, effortOverride)
 		return
 	}
 
 	// Body preparation is account-independent: mutate and marshal once.
 	reqBody["model"] = modelInfo.Model
+	if effortOverride != "" {
+		if _, hasThinking := reqBody["thinking"]; !hasThinking {
+			translator.ApplyClaudeThinkingEffort(reqBody, modelInfo.Model, effortOverride)
+		}
+	}
 
 	// Strip output_config.format for non-official Anthropic endpoints to prevent 400 Bad Request
 	// (Claude Code sends output_config.format json_schema for session titles which third-party gateways reject)
-	if modelInfo.Provider != "anthropic" && modelInfo.Provider != "claude" && modelInfo.Provider != "cc" {
+	if modelInfo.Provider != "anthropic" && modelInfo.Provider != "claude" {
 		if oc, ok := reqBody["output_config"].(map[string]any); ok {
 			delete(oc, "format")
 			if len(oc) == 0 {
@@ -239,9 +261,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if lastStatus == 0 {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": fmt.Sprintf("no eligible accounts for provider: %s", modelInfo.Provider),
-		})
+		writeAnthropicError(w, http.StatusServiceUnavailable, fmt.Sprintf("no eligible accounts for provider: %s", modelInfo.Provider))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -288,7 +308,7 @@ func (s *Server) attemptMessagesPassthrough(
 
 	upstreamReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(translatedBody))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create upstream request"})
+		writeAnthropicError(w, http.StatusInternalServerError, "failed to create upstream request")
 		return
 	}
 
@@ -536,7 +556,7 @@ func (s *Server) attemptMessagesPassthrough(
 	} else {
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to read upstream response"})
+			writeAnthropicError(w, http.StatusBadGateway, "failed to read upstream response")
 			return
 		}
 		var anthropicResp struct {

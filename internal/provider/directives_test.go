@@ -97,4 +97,16 @@ func TestScrubDirectivesFromRawJSON(t *testing.T) {
 	if string(updated) == string(raw) {
 		t.Errorf("expected updated json to be modified")
 	}
+
+	for _, effort := range []string{"minimal", "xhigh"} {
+		cleaned, dRes := ExtractAndScrubDirectives("Solve carefully @cg-effort:" + effort)
+		if !dRes.HasOverrides || dRes.ReasoningEffort != effort || cleaned != "Solve carefully" {
+			t.Errorf("directive %q failed: cleaned=%q res=%+v", effort, cleaned, dRes)
+		}
+	}
+
+	cleanModel, modelEffort := ExtractModelReasoningEffort("openai/gpt-5.4(minimal)")
+	if cleanModel != "openai/gpt-5.4" || modelEffort != "minimal" {
+		t.Errorf("ExtractModelReasoningEffort minimal failed: clean=%q effort=%q", cleanModel, modelEffort)
+	}
 }

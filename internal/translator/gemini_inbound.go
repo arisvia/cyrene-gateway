@@ -335,7 +335,18 @@ func OpenAIToGeminiResponse(data []byte, model string) ([]byte, error) {
 	if choices, ok := openAIResp["choices"].([]any); ok && len(choices) > 0 {
 		if choice, ok := choices[0].(map[string]any); ok {
 			if msg, ok := choice["message"].(map[string]any); ok {
-				if text, ok := msg["content"].(string); ok && text != "" {
+				reasoningText, _ := msg["reasoning_content"].(string)
+				if reasoningText == "" {
+					reasoningText, _ = msg["reasoning"].(string)
+				}
+				text, _ := msg["content"].(string)
+				if reasoningText == "" && text != "" {
+					reasoningText, text = StripThinkTags(text)
+				}
+				if reasoningText != "" {
+					parts = append(parts, map[string]any{"text": reasoningText, "thought": true})
+				}
+				if text != "" {
 					parts = append(parts, map[string]any{"text": text})
 				}
 				if toolCalls, ok := msg["tool_calls"].([]any); ok {
@@ -417,6 +428,7 @@ type OpenAIToGeminiSSETranslator struct {
 	toolCalls    map[int]*geminiStreamingToolCall
 	Model        string
 	toolOrder    []int
+	thinkTags    ThinkTagState
 	done         bool
 	failed       bool
 	toolsEmitted bool
@@ -430,6 +442,20 @@ func NewOpenAIToGeminiSSETranslator(model string) *OpenAIToGeminiSSETranslator {
 	}
 }
 
+func appendGeminiThinkDeltas(parts []any, deltas []StreamDelta) []any {
+	for _, d := range deltas {
+		if d.Delta == "" {
+			continue
+		}
+		if d.Type == DeltaThinking {
+			parts = append(parts, map[string]any{"text": d.Delta, "thought": true})
+		} else {
+			parts = append(parts, map[string]any{"text": d.Delta})
+		}
+	}
+	return parts
+}
+
 // TranslateChunk converts a single OpenAI SSE chunk into a Gemini SSE chunk.
 func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool, error) {
 	if t.failed {
@@ -441,9 +467,9 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		}
 		t.done = true
 		var candidates []any
+		parts := appendGeminiThinkDeltas(nil, t.thinkTags.Flush())
 		if len(t.toolCalls) > 0 && !t.toolsEmitted {
 			t.toolsEmitted = true
-			var parts []any
 			for _, idx := range t.toolOrder {
 				tc := t.toolCalls[idx]
 				var argsMap map[string]any
@@ -461,6 +487,8 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 					},
 				})
 			}
+		}
+		if len(parts) > 0 {
 			candidates = append(candidates, map[string]any{
 				"content": map[string]any{
 					"role":  "model",
@@ -569,8 +597,13 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	}
 
 	var parts []any
+	if reasoningText, _ := delta["reasoning_content"].(string); reasoningText != "" {
+		parts = append(parts, map[string]any{"text": reasoningText, "thought": true})
+	} else if reasoningText, _ := delta["reasoning"].(string); reasoningText != "" {
+		parts = append(parts, map[string]any{"text": reasoningText, "thought": true})
+	}
 	if text, ok := delta["content"].(string); ok && text != "" {
-		parts = append(parts, map[string]any{"text": text})
+		parts = appendGeminiThinkDeltas(parts, t.thinkTags.ProcessFeed(text))
 	}
 
 	fr, _ := choice["finish_reason"].(string)
@@ -583,6 +616,7 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	}
 	if fr != "" {
 		t.done = true
+		parts = appendGeminiThinkDeltas(parts, t.thinkTags.Flush())
 	}
 
 	// If tool calls were accumulated and finishReason arrived, flush the functionCalls
@@ -593,7 +627,9 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 			tc := t.toolCalls[idx]
 			var argsMap map[string]any
 			argsStr := tc.args.String()
-			if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil {
+			if strings.TrimSpace(argsStr) == "" {
+				argsMap = map[string]any{}
+			} else if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil || argsMap == nil {
 				argsMap = map[string]any{"input": argsStr}
 			}
 			parts = append(parts, map[string]any{

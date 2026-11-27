@@ -286,7 +286,7 @@ func qoderNormalizeMessages(body map[string]any) (messages []map[string]any, sys
 		}
 		text := messageContentText(msg["content"])
 		role, _ := msg["role"].(string)
-		if role == "system" {
+		if role == "system" || role == "developer" {
 			if text != "" {
 				systemParts = append(systemParts, text)
 			}

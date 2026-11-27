@@ -72,7 +72,7 @@ func (s *Server) handleAntigravityChat(
 	}
 
 	// Transform OpenAI messages into Gemini contents format
-	contents, systemInstruction := convertOpenAIToGeminiContents(req.Messages, modelInfo.Model)
+	contents, systemInstruction := convertOpenAIToGeminiContentsWithLookup(req.Messages, modelInfo.Model, s.lookupAntigravityThoughtSignature)
 	systemInstruction = sanitizeAntigravitySystemPrompt(systemInstruction)
 
 	genConfig := map[string]any{}
@@ -149,8 +149,12 @@ func (s *Server) handleAntigravityChat(
 		}
 	}
 
+	effort := req.ReasoningEffort
+	if strings.TrimSpace(effort) == "" {
+		effort = extractAntigravityFallbackEffort(rawBody)
+	}
 	availableModels := s.getAntigravityAvailableModels()
-	targetModel, thinkingLevel, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, req.ReasoningEffort, availableModels)
+	targetModel, thinkingLevel, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, effort, availableModels)
 
 	if !isImage {
 		innerRequest["model"] = modelInfo.Model
@@ -380,6 +384,72 @@ func (s *Server) handleAntigravityChat(
 // officially recognized by Google Gemini and Vertex AI to bypass thought signature validation for prior turns.
 const defaultThinkingAgSignature = "c2tpcF90aG91Z2h0X3NpZ25hdHVyZV92YWxpZGF0b3I="
 
+const (
+	agThoughtSigTTL        = 2 * time.Hour
+	agThoughtSigMaxEntries = 2048
+)
+
+type agThoughtSigEntry struct {
+	sig       string
+	expiresAt time.Time
+}
+
+func (s *Server) storeAntigravityThoughtSignature(callID, sig string) {
+	if s == nil || callID == "" || sig == "" {
+		return
+	}
+	now := time.Now()
+	s.agThoughtSigMu.Lock()
+	defer s.agThoughtSigMu.Unlock()
+	if s.agThoughtSigCache == nil {
+		s.agThoughtSigCache = make(map[string]agThoughtSigEntry)
+	}
+	if len(s.agThoughtSigCache) >= agThoughtSigMaxEntries {
+		for k, entry := range s.agThoughtSigCache {
+			if now.After(entry.expiresAt) {
+				delete(s.agThoughtSigCache, k)
+			}
+		}
+		if len(s.agThoughtSigCache) >= agThoughtSigMaxEntries {
+			// Still full: evict half to keep memory strictly bounded.
+			removed := 0
+			target := agThoughtSigMaxEntries / 2
+			for k := range s.agThoughtSigCache {
+				delete(s.agThoughtSigCache, k)
+				removed++
+				if removed >= target {
+					break
+				}
+			}
+		}
+	}
+	s.agThoughtSigCache[callID] = agThoughtSigEntry{
+		sig:       sig,
+		expiresAt: now.Add(agThoughtSigTTL),
+	}
+}
+
+func (s *Server) lookupAntigravityThoughtSignature(callID string) string {
+	if s == nil || callID == "" {
+		return ""
+	}
+	now := time.Now()
+	s.agThoughtSigMu.Lock()
+	defer s.agThoughtSigMu.Unlock()
+	if len(s.agThoughtSigCache) == 0 {
+		return ""
+	}
+	entry, ok := s.agThoughtSigCache[callID]
+	if !ok {
+		return ""
+	}
+	if now.After(entry.expiresAt) {
+		delete(s.agThoughtSigCache, callID)
+		return ""
+	}
+	return entry.sig
+}
+
 func parseMessageContent(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -460,9 +530,17 @@ func splitBase64DataURI(u string) (string, string, bool) {
 }
 
 func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([]map[string]any, []map[string]any) {
+	modelName := ""
+	if len(targetModel) > 0 {
+		modelName = targetModel[0]
+	}
+	return convertOpenAIToGeminiContentsWithLookup(messages, modelName, nil)
+}
+
+func convertOpenAIToGeminiContentsWithLookup(messages []Message, targetModel string, lookupSig func(string) string) ([]map[string]any, []map[string]any) {
 	var contents []map[string]any
 	var systemParts []map[string]any
-	isGemini4 := len(targetModel) > 0 && isGemini4Model(targetModel[0])
+	isGemini4 := targetModel != "" && isGemini4Model(targetModel)
 	toolCallNames := make(map[string]string)
 	// cloudcode-pa turns functionCall parts into Anthropic tool_use blocks where
 	// id is REQUIRED (missing → 400 "messages.N.content.M.tool_use.id: Field
@@ -583,7 +661,13 @@ func convertOpenAIToGeminiContents(messages []Message, targetModel ...string) ([
 							"args": args,
 						},
 					}
-					if i == 0 {
+					cachedSig := ""
+					if lookupSig != nil {
+						cachedSig = lookupSig(fcID)
+					}
+					if cachedSig != "" {
+						fcPart["thoughtSignature"] = cachedSig
+					} else if i == 0 {
 						fcPart["thoughtSignature"] = defaultThinkingAgSignature
 					}
 					parts = append(parts, fcPart)
@@ -796,9 +880,11 @@ func moveFunctionResponsesLast(parts []map[string]any) []map[string]any {
 }
 
 type antigravityCandidatePart struct {
-	Text         string `json:"text"`
-	Thought      bool   `json:"thought"`
-	FunctionCall *struct {
+	Text             string `json:"text"`
+	Thought          bool   `json:"thought"`
+	ThoughtSignature string `json:"thoughtSignature,omitempty"`
+	FunctionCall     *struct {
+		ID   string         `json:"id,omitempty"`
 		Name string         `json:"name"`
 		Args map[string]any `json:"args"`
 	} `json:"functionCall,omitempty"`
@@ -978,12 +1064,27 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 				finishReason = strings.ToLower(cand.FinishReason)
 				sawFinish = true
 			}
+			lastThoughtSig := ""
 			for _, part := range cand.Content.Parts {
+				if part.ThoughtSignature != "" {
+					lastThoughtSig = part.ThoughtSignature
+				}
 				if part.Thought {
 					reasoningChunk += part.Text
 				} else if part.FunctionCall != nil {
 					tcIdx := toolCallSeq
 					toolCallSeq++
+					callID := part.FunctionCall.ID
+					if callID == "" {
+						callID = fmt.Sprintf("call_%s_%d", randomHex(8), tcIdx)
+					}
+					sig := part.ThoughtSignature
+					if sig == "" {
+						sig = lastThoughtSig
+					}
+					if sig != "" {
+						s.storeAntigravityThoughtSignature(callID, sig)
+					}
 					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
 					argsStr := string(argsBytes)
 					if argsStr == "null" || argsStr == "" {
@@ -993,7 +1094,7 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 					}
 					toolCallsDelta = append(toolCallsDelta, map[string]any{
 						"index": tcIdx,
-						"id":    fmt.Sprintf("call_%s_%d", randomHex(8), tcIdx),
+						"id":    callID,
 						"type":  "function",
 						"function": map[string]any{
 							"name":      part.FunctionCall.Name,
@@ -1255,17 +1356,32 @@ func (s *Server) proxyAntigravityNonStreaming(w http.ResponseWriter, resp *http.
 			if upstreamFinish == "" && payload.FinishReason != "" {
 				upstreamFinish = strings.ToLower(payload.FinishReason)
 			}
+			lastThoughtSig := ""
 			for i, part := range cand.Content.Parts {
+				if part.ThoughtSignature != "" {
+					lastThoughtSig = part.ThoughtSignature
+				}
 				if part.Thought {
 					reasoningText += part.Text
 				} else if part.FunctionCall != nil {
+					callID := part.FunctionCall.ID
+					if callID == "" {
+						callID = fmt.Sprintf("call_%s_%d", randomHex(8), i)
+					}
+					sig := part.ThoughtSignature
+					if sig == "" {
+						sig = lastThoughtSig
+					}
+					if sig != "" {
+						s.storeAntigravityThoughtSignature(callID, sig)
+					}
 					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
 					argsStr := string(argsBytes)
 					if argsStr == "null" || argsStr == "" {
 						argsStr = "{}"
 					}
 					toolCalls = append(toolCalls, map[string]any{
-						"id":   fmt.Sprintf("call_%s_%d", randomHex(8), i),
+						"id":   callID,
 						"type": "function",
 						"function": map[string]any{
 							"name":      part.FunctionCall.Name,
@@ -1452,6 +1568,92 @@ func splitAntigravityTier(id string) (string, int, bool) {
 	return id, 0, false
 }
 
+func antigravityEffortLevel(effort string) (int, bool) {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "minimal":
+		return 1, true
+	case "max":
+		return 100, true
+	default:
+		return antigravityTierByName(effort)
+	}
+}
+
+// extractAntigravityFallbackEffort inspects raw request payloads for Anthropic `thinking`
+// or Gemini `thinkingConfig` when standard OpenAI `reasoning_effort` is absent.
+func extractAntigravityFallbackEffort(rawBody []byte) string {
+	if len(rawBody) == 0 {
+		return ""
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rawBody, &body); err != nil {
+		return ""
+	}
+	budgetToEffort := func(budget float64) string {
+		switch {
+		case budget == 0:
+			return "none"
+		case budget < 0:
+			return "medium"
+		case budget <= 2048:
+			return "low"
+		case budget <= 8192:
+			return "medium"
+		case budget <= 16384:
+			return "high"
+		default:
+			return "xhigh"
+		}
+	}
+	if thinking, ok := body["thinking"].(map[string]any); ok {
+		tType, _ := thinking["type"].(string)
+		switch strings.ToLower(tType) {
+		case "disabled":
+			return "none"
+		case "adaptive":
+			return "medium"
+		case "enabled":
+			if b, ok := thinking["budget_tokens"].(float64); ok && b > 0 {
+				return budgetToEffort(b)
+			}
+			return "medium"
+		}
+	}
+	tc, _ := body["thinkingConfig"].(map[string]any)
+	if tc == nil {
+		tc, _ = body["thinking_config"].(map[string]any)
+	}
+	if tc == nil {
+		if gc, ok := body["generationConfig"].(map[string]any); ok {
+			tc, _ = gc["thinkingConfig"].(map[string]any)
+		}
+	}
+	if tc != nil {
+		if b, ok := tc["thinkingBudget"].(float64); ok {
+			return budgetToEffort(b)
+		}
+		switch lv := tc["thinkingLevel"].(type) {
+		case string:
+			switch strings.ToLower(strings.TrimSpace(lv)) {
+			case "minimal", "low", "medium", "high", "xhigh", "none":
+				return strings.ToLower(strings.TrimSpace(lv))
+			}
+		case float64:
+			switch {
+			case lv >= 100:
+				return "xhigh"
+			case lv >= 3:
+				return "high"
+			case lv == 2:
+				return "medium"
+			case lv == 1:
+				return "low"
+			}
+		}
+	}
+	return ""
+}
+
 // resolveAntigravityModel maps a requested model plus reasoning_effort onto the
 // upstream model id to call and the thinkingLevel to request from it. Tiers come
 // from the live catalog, so upstream renaming a tier or adding a new depth needs
@@ -1482,9 +1684,41 @@ func resolveAntigravityModel(
 	if b, level, ok := splitAntigravityTier(cleanModel); ok {
 		base, ownLevel = b, level
 	}
+
+	if ownLevel == 0 && (effort == "none" || effort == "off") {
+		if exists(cleanModel) {
+			targetModel = cleanModel
+		} else if len(availMap) > 0 {
+			type sibling struct {
+				id    string
+				level int
+			}
+			var candidates []sibling
+			for id, meta := range availMap {
+				if strings.HasPrefix(id, base+"-") {
+					candidates = append(candidates, sibling{id, meta.ThinkingLevel})
+				}
+			}
+			sort.Slice(candidates, func(i, j int) bool {
+				if candidates[i].level != candidates[j].level {
+					return candidates[i].level < candidates[j].level
+				}
+				return candidates[i].id < candidates[j].id
+			})
+			if len(candidates) > 0 {
+				targetModel = candidates[0].id
+			} else {
+				targetModel = cleanModel
+			}
+		} else {
+			targetModel = cleanModel
+		}
+		return targetModel, 0, false, false
+	}
+
 	chosen := ownLevel
 	if chosen == 0 {
-		chosen, _ = antigravityTierByName(effort)
+		chosen, _ = antigravityEffortLevel(effort)
 	}
 
 	// 1. The id as given, then the effort spelled as a catalog suffix (this is

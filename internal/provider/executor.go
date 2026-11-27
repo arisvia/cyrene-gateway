@@ -150,6 +150,9 @@ func PrepareUpstreamRequest(
 	if modelInfo.Provider == "openai" || strings.HasPrefix(modelInfo.Provider, "custom-openai") {
 		sanitizeOpenAIRequest(modelInfo.Model, bodyMap)
 	}
+	if targetFormat == translator.FormatOpenAI && isStrictOpenAISchemaProvider(modelInfo.Provider) {
+		sanitizeStrictOpenAIThinking(bodyMap)
+	}
 	ClampMaxTokens(modelInfo.Provider, modelInfo.Model, bodyMap)
 	// The sanitizers above may replace the system message, so the guard text is
 	// composed after them and reaches the upstream in the surviving shape.
@@ -714,6 +717,60 @@ func sanitizeGithubRequest(model string, bodyMap map[string]any) {
 
 func sanitizeOpenAIRequest(model string, bodyMap map[string]any) {
 	normalizeReasoningMaxTokens(model, bodyMap)
+}
+
+func isStrictOpenAISchemaProvider(providerID string) bool {
+	switch providerID {
+	case "openai", "github", "groq", "cerebras", "mistral":
+		return true
+	default:
+		return false
+	}
+}
+
+// sanitizeStrictOpenAIThinking converts/strips Anthropic-style top-level `thinking`
+// blocks when forwarding to strict OpenAI-schema providers that reject unknown fields.
+func sanitizeStrictOpenAIThinking(bodyMap map[string]any) {
+	rawThinking, hasThinking := bodyMap["thinking"].(map[string]any)
+	if !hasThinking {
+		return
+	}
+	if existing, _ := bodyMap["reasoning_effort"].(string); strings.TrimSpace(existing) == "" {
+		tType, _ := rawThinking["type"].(string)
+		switch strings.ToLower(tType) {
+		case "adaptive":
+			bodyMap["reasoning_effort"] = "medium"
+		case "enabled":
+			budget := thinkingBudgetInt(rawThinking["budget_tokens"])
+			switch {
+			case budget <= 0:
+				bodyMap["reasoning_effort"] = "medium"
+			case budget <= 2048:
+				bodyMap["reasoning_effort"] = "low"
+			case budget <= 8192:
+				bodyMap["reasoning_effort"] = "medium"
+			default:
+				bodyMap["reasoning_effort"] = "high"
+			}
+		}
+	}
+	delete(bodyMap, "thinking")
+}
+
+func thinkingBudgetInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i)
+		}
+	}
+	return 0
 }
 
 func stableNamespaceUUID(key string) string {
