@@ -2,6 +2,7 @@ package db
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -343,5 +344,63 @@ func TestDayAggregateCarriesCacheAndFailures(t *testing.T) {
 	}
 	if c := day.ByProvider["anthropic"]; c.CachedTokens != 1000 || c.Failed != 1 {
 		t.Fatalf("provider counter lost cache/failures: %+v", c)
+	}
+}
+
+func TestGetUsageSummaryIndexAndSinglePassMeta(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Verify GetUsageSummary uses idx_usage_history_ts rather than a full table scan.
+	rows, err := d.conn.Query(`EXPLAIN QUERY PLAN SELECT timestamp, COALESCE(provider,''), COALESCE(model,''), COALESCE(apiKey,''), COALESCE(endpoint,''), promptTokens, completionTokens, cost, COALESCE(status,''), COALESCE(meta,'') FROM usageHistory WHERE 1=1 AND timestamp >= ? AND timestamp <= ?`,
+		"2026-07-20T00:00:00Z", "2026-07-25T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan strings.Builder
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err == nil {
+			plan.WriteString(detail + "\n")
+		}
+	}
+	if !strings.Contains(plan.String(), "idx_usage_history_ts") {
+		t.Fatalf("expected query plan to use idx_usage_history_ts, got:\n%s", plan.String())
+	}
+
+	for _, e := range []*UsageEntry{
+		{
+			Timestamp: "2026-07-22T01:00:00+02:00", Provider: "openai", Model: "gpt-5",
+			APIKey: "sk-raw", Endpoint: "/v1/chat/completions",
+			PromptTokens: 100, CompletionTokens: 20, Cost: 0.5, Status: "ok",
+			Meta: `{"key_id":"kid_1","key_name":"Primary Key","client":"codex","client_version":"0.1.0","cached_tokens":40}`,
+		},
+		{
+			Timestamp: "2026-07-22T18:00:00-08:00", Provider: "anthropic", Model: "claude-4",
+			APIKey: "sk-raw2", Endpoint: "/v1/messages",
+			PromptTokens: 200, CompletionTokens: 30, Cost: 1.0, Status: "ok",
+			Meta: `{"client":"claude-cli","client_version":"2.1.0","cached_tokens":60}`,
+		},
+	} {
+		if err := d.SaveUsageEntry(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Date(2026, 7, 21, 22, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 23, 3, 0, 0, 0, time.UTC)
+	sum, err := d.GetUsageSummary(start, end)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Requests != 2 || sum.CachedTokens != 100 {
+		t.Fatalf("expected 2 requests & 100 cached tokens, got %+v", sum.DayData)
+	}
+	if sum.KeyNames["kid_1"] != "Primary Key" || sum.ByKey["kid_1"].CachedTokens != 40 {
+		t.Fatalf("unexpected key aggregation: names=%+v byKey=%+v", sum.KeyNames, sum.ByKey)
+	}
+	if sum.ByClient["codex"].Requests != 1 || sum.ClientVersions["codex"]["0.1.0"] != 1 {
+		t.Fatalf("unexpected client aggregation: byClient=%+v versions=%+v", sum.ByClient, sum.ClientVersions)
 	}
 }

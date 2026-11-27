@@ -698,6 +698,7 @@ func (d *DB) ImportData(payload *ExportPayload, mode string) error {
 		return fmt.Errorf("commit restore transaction: %w", err)
 	}
 	tx = nil // disarm rollback in defer
+	d.invalidateCaches()
 
 	return nil
 }

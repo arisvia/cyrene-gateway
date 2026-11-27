@@ -134,10 +134,9 @@ func init() {
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
 		},
-		ForceStream:    true,
-		ThinkingFormat: "openai",
-		ModelsURL:      "https://copilot.tencent.com/v3/config",
-		CampaignKind:   "codebuddy",
+		ForceStream:  true,
+		ModelsURL:    "https://copilot.tencent.com/v3/config",
+		CampaignKind: "codebuddy",
 	}
 	Registry["codebuddy"] = ProviderInfo{
 		ID: "codebuddy", Name: "CodeBuddy (Intl)",
@@ -176,10 +175,9 @@ func init() {
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
 		},
-		ForceStream:    true,
-		ThinkingFormat: "openai",
-		ModelsURL:      "https://www.codebuddy.ai/v3/config",
-		CampaignKind:   "codebuddy",
+		ForceStream:  true,
+		ModelsURL:    "https://www.codebuddy.ai/v3/config",
+		CampaignKind: "codebuddy",
 	}
 	Registry["cline"] = ProviderInfo{
 		ID: "cline", Name: "Cline",

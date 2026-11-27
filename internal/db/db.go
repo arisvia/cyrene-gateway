@@ -4,12 +4,31 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	_ "modernc.org/sqlite"
 )
 
 type DB struct {
-	conn *sql.DB
+	conn          *sql.DB
+	cacheMu       sync.RWMutex
+	settingsCache *Settings
+	kvScopeCache  map[string]map[string]string
+}
+
+func (d *DB) invalidateCaches() {
+	d.cacheMu.Lock()
+	d.settingsCache = nil
+	d.kvScopeCache = nil
+	d.cacheMu.Unlock()
+}
+
+func (d *DB) invalidateKVScope(scope string) {
+	d.cacheMu.Lock()
+	if d.kvScopeCache != nil {
+		delete(d.kvScopeCache, scope)
+	}
+	d.cacheMu.Unlock()
 }
 
 func Open(path string) (*DB, error) {

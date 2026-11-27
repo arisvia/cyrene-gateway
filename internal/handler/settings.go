@@ -62,8 +62,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePatchSettings merges a partial JSON object into the existing settings.
-// This allows the frontend to update individual fields (e.g. providerStrategies)
-// without needing to send the full settings blob.
+// This allows the frontend to update individual fields without needing to send
+// the full settings blob.
 func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 	var patch map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
