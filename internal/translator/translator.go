@@ -60,6 +60,7 @@ type SSETranslator struct {
 	model             string
 	responses         *ResponsesSSEToOpenAITranslator
 	claudeUsage       map[string]any
+	claudeToolIndices map[int]int
 	geminiToolIndices map[string]int
 	nextToolIndex     int
 	done              bool
@@ -73,6 +74,7 @@ func NewSSETranslator(format Format, model string) *SSETranslator {
 		t.responses = NewResponsesSSEToOpenAITranslator(model)
 	case FormatAnthropic:
 		t.claudeUsage = make(map[string]any)
+		t.claudeToolIndices = make(map[int]int)
 	case FormatGemini:
 		t.geminiToolIndices = make(map[string]int)
 	}
@@ -201,6 +203,25 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 
 	if temp, ok := body["temperature"]; ok {
 		result["temperature"] = temp
+	}
+	if topP, ok := body["top_p"]; ok {
+		result["top_p"] = topP
+	}
+	if stopRaw, ok := body["stop"]; ok {
+		switch s := stopRaw.(type) {
+		case string:
+			if s != "" {
+				result["stop_sequences"] = []string{s}
+			}
+		case []string:
+			if len(s) > 0 {
+				result["stop_sequences"] = s
+			}
+		case []any:
+			if len(s) > 0 {
+				result["stop_sequences"] = s
+			}
+		}
 	}
 
 	// Extract messages
@@ -341,13 +362,15 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		} else {
 			var budget int
 			switch effortLower {
+			case "minimal":
+				budget = 1024
 			case "low":
 				budget = 2048
 			case "medium":
 				budget = 8192
 			case "high":
 				budget = 16384
-			case "max":
+			case "max", "xhigh":
 				budget = 32768
 			}
 			if budget > 0 {
@@ -361,12 +384,18 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		result["thinking"] = thinking
 	}
 
-	// When thinking is enabled, Anthropic strictly rejects temperature != 1.0; drop it to avoid 400 Bad Request
+	// When thinking is enabled (type != "disabled"), Anthropic strictly rejects temperature / top_p
+	// and requires max_tokens > budget_tokens.
+	thinkingEnabled := false
 	if thinkingMap, ok := result["thinking"].(map[string]any); ok {
-		delete(result, "temperature")
-		if budget, ok := thinkingMap["budget_tokens"].(int); ok && budget > 0 {
-			if maxTokens, ok := result["max_tokens"].(int); ok && maxTokens <= budget {
-				result["max_tokens"] = budget + 4096
+		if tType, _ := thinkingMap["type"].(string); tType != "disabled" {
+			thinkingEnabled = true
+			delete(result, "temperature")
+			delete(result, "top_p")
+			if budget := anyToInt(thinkingMap["budget_tokens"]); budget > 0 {
+				if maxTokens := anyToInt(result["max_tokens"]); maxTokens <= budget {
+					result["max_tokens"] = budget + 4096
+				}
 			}
 		}
 	}
@@ -383,10 +412,14 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 			if !ok {
 				continue
 			}
+			inputSchema := fn["parameters"]
+			if inputSchema == nil {
+				inputSchema = map[string]any{"type": "object", "properties": map[string]any{}}
+			}
 			claudeTool := map[string]any{
 				"name":         fn["name"],
 				"description":  fn["description"],
-				"input_schema": fn["parameters"],
+				"input_schema": inputSchema,
 			}
 			if cc, ok := tool["cache_control"]; ok {
 				claudeTool["cache_control"] = cc
@@ -400,9 +433,15 @@ func openAIToClaude(model string, body map[string]any, stream bool) (map[string]
 		}
 	}
 
-	// Tool choice
+	// Tool choice (Anthropic rejects forced tool_choice any/tool while thinking is active)
 	if tc, ok := body["tool_choice"]; ok {
-		result["tool_choice"] = convertToolChoiceToClaude(tc)
+		converted := convertToolChoiceToClaude(tc)
+		if thinkingEnabled {
+			if tcType, _ := converted["type"].(string); tcType == "any" || tcType == "tool" {
+				converted = map[string]any{"type": "auto"}
+			}
+		}
+		result["tool_choice"] = converted
 	}
 
 	// Cap cache_control markers at 4 to comply with Anthropic strict budget
@@ -691,9 +730,14 @@ func convertMessageToClaude(msg map[string]any) map[string]any {
 			if !ok {
 				continue
 			}
-			var input any
-			if args, ok := fn["arguments"].(string); ok {
-				json.Unmarshal([]byte(args), &input)
+			input := map[string]any{}
+			if args, ok := fn["arguments"].(string); ok && strings.TrimSpace(args) != "" {
+				var parsed map[string]any
+				if err := json.Unmarshal([]byte(args), &parsed); err == nil && parsed != nil {
+					input = parsed
+				}
+			} else if argsMap, ok := fn["arguments"].(map[string]any); ok && argsMap != nil {
+				input = argsMap
 			}
 			blocks = append(blocks, map[string]any{
 				"type":  "tool_use",
@@ -822,15 +866,37 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 	if mt := getMaxTokens(body); mt > 0 {
 		genConfig["maxOutputTokens"] = mt
 	}
+	if stopRaw, ok := body["stop"]; ok {
+		switch s := stopRaw.(type) {
+		case string:
+			if s != "" {
+				genConfig["stopSequences"] = []string{s}
+			}
+		case []string:
+			if len(s) > 0 {
+				genConfig["stopSequences"] = s
+			}
+		case []any:
+			if len(s) > 0 {
+				genConfig["stopSequences"] = s
+			}
+		}
+	}
 	// Support reasoning_effort & thinking config for Gemini
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
 		switch strings.ToLower(effort) {
+		case "minimal":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 1024, "includeThoughts": true}
 		case "low":
 			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 2048, "includeThoughts": true}
 		case "medium":
 			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 8192, "includeThoughts": true}
 		case "high":
 			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 16384, "includeThoughts": true}
+		case "max", "xhigh":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 32768, "includeThoughts": true}
+		case "adaptive":
+			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": -1, "includeThoughts": true}
 		case "none", "off":
 			genConfig["thinkingConfig"] = map[string]any{"thinkingBudget": 0}
 		}
@@ -838,6 +904,13 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 		genConfig["thinkingConfig"] = tc
 	} else if tc, ok := body["thinkingConfig"].(map[string]any); ok {
 		genConfig["thinkingConfig"] = tc
+	}
+	if tc, ok := genConfig["thinkingConfig"].(map[string]any); ok {
+		if budget := anyToInt(tc["thinkingBudget"]); budget > 0 {
+			if anyToInt(genConfig["maxOutputTokens"]) <= budget {
+				genConfig["maxOutputTokens"] = budget + 4096
+			}
+		}
 	}
 
 	if len(genConfig) > 0 {
@@ -941,7 +1014,7 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 		}
 	}
 
-	result["contents"] = normalizeGeminiContents(contents)
+	result["contents"] = normalizeGeminiContents(contents, model)
 	if len(systemParts) > 0 {
 		result["systemInstruction"] = map[string]any{"parts": systemParts}
 	}
@@ -973,7 +1046,51 @@ func openAIToGemini(model string, body map[string]any, stream bool) (map[string]
 		}
 	}
 
+	if tc, ok := body["tool_choice"]; ok {
+		if toolCfg := ConvertToolChoiceToGemini(tc); toolCfg != nil {
+			result["toolConfig"] = toolCfg
+		}
+	}
+
 	return result, nil
+}
+
+// ConvertToolChoiceToGemini converts an OpenAI tool_choice value into a Gemini toolConfig map.
+func ConvertToolChoiceToGemini(tc any) map[string]any {
+	var fcc map[string]any
+	switch v := tc.(type) {
+	case string:
+		switch strings.ToLower(v) {
+		case "auto":
+			fcc = map[string]any{"mode": "AUTO"}
+		case "none":
+			fcc = map[string]any{"mode": "NONE"}
+		case "required":
+			fcc = map[string]any{"mode": "ANY"}
+		}
+	case map[string]any:
+		if fn, ok := v["function"].(map[string]any); ok {
+			if name, _ := fn["name"].(string); name != "" {
+				fcc = map[string]any{
+					"mode":                 "ANY",
+					"allowedFunctionNames": []string{name},
+				}
+			}
+		} else if t, _ := v["type"].(string); t != "" {
+			switch strings.ToLower(t) {
+			case "auto":
+				fcc = map[string]any{"mode": "AUTO"}
+			case "none":
+				fcc = map[string]any{"mode": "NONE"}
+			case "required", "any":
+				fcc = map[string]any{"mode": "ANY"}
+			}
+		}
+	}
+	if fcc == nil {
+		return nil
+	}
+	return map[string]any{"functionCallingConfig": fcc}
 }
 
 func convertContentToGeminiParts(content any) []any {
@@ -1278,6 +1395,9 @@ func geminiToOpenAI(data []byte, model string) ([]byte, error) {
 			if fr, ok := candidate["finishReason"].(string); ok {
 				finishReason = geminiFinishToOpenAI(fr)
 			}
+			if finishReason == "stop" && len(toolCalls) > 0 {
+				finishReason = "tool_calls"
+			}
 
 			message := map[string]any{
 				"role":    "assistant",
@@ -1347,15 +1467,19 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 					delta["reasoning_content"] = thinking
 				}
 			} else if d["type"] == "input_json_delta" {
-				idx := 0
-				if rawIdx, ok := event["index"]; ok {
-					if f, ok := rawIdx.(float64); ok {
-						idx = int(f)
+				blockIdx := anyToInt(event["index"])
+				tcIdx, exists := t.claudeToolIndices[blockIdx]
+				if !exists {
+					if t.claudeToolIndices == nil {
+						t.claudeToolIndices = make(map[int]int)
 					}
+					tcIdx = t.nextToolIndex
+					t.nextToolIndex++
+					t.claudeToolIndices[blockIdx] = tcIdx
 				}
 				delta["tool_calls"] = []any{
 					map[string]any{
-						"index":    idx,
+						"index":    tcIdx,
 						"function": map[string]any{"arguments": d["partial_json"]},
 					},
 				}
@@ -1371,12 +1495,16 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 	case "content_block_start":
 		if cb, ok := event["content_block"].(map[string]any); ok {
 			if cb["type"] == "tool_use" {
-				// Preserve the content_block index (9router#2747)
-				idx := 0
-				if rawIdx, ok := event["index"]; ok {
-					if f, ok := rawIdx.(float64); ok {
-						idx = int(f)
-					}
+				// Map Anthropic's global content_block index to a dense 0-based OpenAI tool_calls index.
+				blockIdx := anyToInt(event["index"])
+				if t.claudeToolIndices == nil {
+					t.claudeToolIndices = make(map[int]int)
+				}
+				tcIdx, exists := t.claudeToolIndices[blockIdx]
+				if !exists {
+					tcIdx = t.nextToolIndex
+					t.nextToolIndex++
+					t.claudeToolIndices[blockIdx] = tcIdx
 				}
 				callID, _ := cb["id"].(string)
 				if callID == "" {
@@ -1385,7 +1513,7 @@ func (t *SSETranslator) translateClaude(event map[string]any) ([]byte, bool, err
 				delta := map[string]any{
 					"tool_calls": []any{
 						map[string]any{
-							"index": idx,
+							"index": tcIdx,
 							"id":    callID,
 							"type":  "function",
 							"function": map[string]any{
@@ -1577,14 +1705,28 @@ func extractText(content any) string {
 	}
 }
 
-func getMaxTokens(body map[string]any) int {
-	if mt, ok := body["max_tokens"]; ok {
-		switch v := mt.(type) {
-		case float64:
-			return int(v)
-		case int:
-			return v
+func anyToInt(v any) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i)
 		}
+	}
+	return 0
+}
+
+func getMaxTokens(body map[string]any) int {
+	if mt := anyToInt(body["max_tokens"]); mt > 0 {
+		return mt
+	}
+	if mt := anyToInt(body["max_completion_tokens"]); mt > 0 {
+		return mt
 	}
 	return 4096
 }

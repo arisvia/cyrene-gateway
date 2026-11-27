@@ -165,6 +165,15 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 										"url": dataURL,
 									},
 								})
+							} else if srcType == "url" {
+								if url, _ := src["url"].(string); url != "" {
+									openAIParts = append(openAIParts, map[string]any{
+										"type": "image_url",
+										"image_url": map[string]any{
+											"url": url,
+										},
+									})
+								}
 							}
 						}
 					case "tool_use":
@@ -267,6 +276,8 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 			result["tool_choice"] = "auto"
 		case "any":
 			result["tool_choice"] = "required"
+		case "none":
+			result["tool_choice"] = "none"
 		case "tool":
 			if name, ok := tcRaw["name"].(string); ok && name != "" {
 				result["tool_choice"] = map[string]any{
@@ -276,6 +287,9 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 					},
 				}
 			}
+		}
+		if disableParallel, ok := tcRaw["disable_parallel_tool_use"].(bool); ok && disableParallel {
+			result["parallel_tool_calls"] = false
 		}
 	}
 

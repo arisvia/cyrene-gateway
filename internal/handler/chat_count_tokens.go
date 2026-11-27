@@ -63,11 +63,32 @@ func (s *Server) handleCountTokens(w http.ResponseWriter, r *http.Request) {
 					if conn.Data.BaseURL != "" {
 						baseURL = conn.Data.BaseURL
 					}
-					targetURL := strings.TrimRight(baseURL, "/") + "/v1/messages/count_tokens"
+					trimmedBase := strings.TrimRight(baseURL, "/")
+					var targetURL string
+					switch {
+					case strings.HasSuffix(trimmedBase, "/v1/messages") || strings.HasSuffix(trimmedBase, "/messages"):
+						targetURL = trimmedBase + "/count_tokens"
+					case strings.HasSuffix(trimmedBase, "/v1"):
+						targetURL = trimmedBase + "/messages/count_tokens"
+					default:
+						targetURL = trimmedBase + "/v1/messages/count_tokens"
+					}
+					forwardBody := make(map[string]any, len(reqBody))
+					for k, v := range reqBody {
+						forwardBody[k] = v
+					}
+					forwardBody["model"] = modelInfo.Model
+					forwardBytes, marshalErr := json.Marshal(forwardBody)
+					if marshalErr != nil {
+						forwardBytes = bodyBytes
+					}
 					allowPrivate := s.Config != nil && s.Config.AllowPrivateNetworks
 					if _, err := provider.ValidateUpstreamURL(targetURL, allowPrivate); err == nil {
-						if upReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(bodyBytes)); err == nil {
+						if upReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(forwardBytes)); err == nil {
 							transport := provider.ResolveTransport(providerInfo, baseURL, providerInfo.APIType, conn)
+							for k, v := range transport.Headers {
+								upReq.Header.Set(k, v)
+							}
 							provider.ApplyAuth(upReq, transport, provider.ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
 							upReq.Header.Set("Content-Type", "application/json")
 							if anthVer := r.Header.Get("anthropic-version"); anthVer != "" {

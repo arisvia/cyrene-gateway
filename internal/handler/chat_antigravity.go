@@ -86,10 +86,10 @@ func (s *Server) handleAntigravityChat(
 		}
 	}
 	if len(req.Stop) > 0 {
-		genConfig["stopSequences"] = req.Stop
+		genConfig["stopSequences"] = []string(req.Stop)
 	}
-	if req.MaxTokens != nil && *req.MaxTokens > 0 {
-		genConfig["maxOutputTokens"] = *req.MaxTokens
+	if mt := req.EffectiveMaxTokens(); mt > 0 {
+		genConfig["maxOutputTokens"] = mt
 	}
 	sessionID := fmt.Sprintf("-%d", time.Now().UnixNano()%9000000000000000000)
 	innerRequest := map[string]any{
@@ -137,6 +137,14 @@ func (s *Server) handleAntigravityChat(
 			}
 			if len(declarations) > 0 {
 				innerRequest["tools"] = []any{map[string]any{"functionDeclarations": declarations}}
+			}
+		}
+	}
+	if len(req.ToolChoice) > 0 {
+		var rawTC any
+		if err := json.Unmarshal(req.ToolChoice, &rawTC); err == nil {
+			if toolCfg := translator.ConvertToolChoiceToGemini(rawTC); toolCfg != nil {
+				innerRequest["toolConfig"] = toolCfg
 			}
 		}
 	}
@@ -1027,11 +1035,9 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		var fr any = nil
 		if finishReason != "" {
 			fr = antigravityFinishToOpenAI(finishReason)
-			if fr == "stop" && len(toolCallsDelta) > 0 {
+			if fr == "stop" && toolCallSeq > 0 {
 				fr = "tool_calls"
 			}
-		} else if len(toolCallsDelta) > 0 {
-			fr = "tool_calls"
 		}
 		chunk := map[string]any{
 			"id":      chatCmpleID,
@@ -1080,6 +1086,28 @@ func (s *Server) proxyAntigravityStreaming(w http.ResponseWriter, r *http.Reques
 		s.abortAntigravityStream(w, flusher, uc, conn, model, &outBuilder, &reasoningBuilder, lastUsage,
 			"antigravity stream produced no content before closing", http.StatusBadGateway)
 		return
+	}
+
+	if toolCallSeq > 0 && !sawFinish {
+		endChunk, _ := json.Marshal(map[string]any{
+			"id":      chatCmpleID,
+			"object":  "chat.completion.chunk",
+			"created": time.Now().Unix(),
+			"model":   model,
+			"choices": []map[string]any{
+				{
+					"index":         0,
+					"delta":         map[string]any{},
+					"finish_reason": "tool_calls",
+				},
+			},
+		})
+		if _, writeErr := fmt.Fprintf(w, "data: %s\n\n", string(endChunk)); writeErr != nil {
+			s.markAntigravityClientGone(uc, &outBuilder, &reasoningBuilder)
+			s.recordUsage(uc, lastUsage)
+			return
+		}
+		sawFinish = true
 	}
 
 	if lastUsage.Known || lastUsage.TotalTokens > 0 {

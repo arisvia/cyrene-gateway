@@ -623,3 +623,27 @@ func TestProxyStreaming_NoTransformHeader(t *testing.T) {
 		t.Errorf("expected Cache-Control to include no-transform, got: %q", cc)
 	}
 }
+
+func TestChatCompletionRequest_FlexibleStopAndMaxCompletionTokens(t *testing.T) {
+	var single ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{"model":"gpt-4o","stop":"\n","max_completion_tokens":2048,"messages":[{"role":"user","content":"hi"}]}`), &single); err != nil {
+		t.Fatalf("single string stop failed to unmarshal: %v", err)
+	}
+	if len(single.Stop) != 1 || single.Stop[0] != "\n" {
+		t.Fatalf("expected Stop=[\"\\n\"], got %#v", single.Stop)
+	}
+	if single.EffectiveMaxTokens() != 2048 {
+		t.Fatalf("expected EffectiveMaxTokens=2048, got %d", single.EffectiveMaxTokens())
+	}
+
+	var multi ChatCompletionRequest
+	if err := json.Unmarshal([]byte(`{"model":"gpt-4o","stop":["END","STOP"],"max_tokens":512,"messages":[{"role":"user","content":"hi"}]}`), &multi); err != nil {
+		t.Fatalf("array stop failed to unmarshal: %v", err)
+	}
+	if len(multi.Stop) != 2 || multi.Stop[0] != "END" || multi.Stop[1] != "STOP" {
+		t.Fatalf("expected Stop=[END STOP], got %#v", multi.Stop)
+	}
+	if multi.EffectiveMaxTokens() != 512 {
+		t.Fatalf("expected EffectiveMaxTokens=512, got %d", multi.EffectiveMaxTokens())
+	}
+}

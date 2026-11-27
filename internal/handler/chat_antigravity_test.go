@@ -914,6 +914,28 @@ func TestAntigravityStreamingSeparatesParallelToolCalls(t *testing.T) {
 	if slots["read"] == slots["bash"] {
 		t.Errorf("parallel tool calls landed in the same slot (clients would concatenate arguments): %+v", slots)
 	}
+
+	// Intermediate parallel tool-call chunks must NOT emit premature finish_reason="tool_calls"
+	// (which truncates downstream adapters like OpenAIToGeminiSSETranslator after the first call);
+	// a single terminal finish_reason="tool_calls" chunk must arrive at stream end.
+	var finishReasons []string
+	for _, line := range strings.Split(w.Body.String(), "\n") {
+		data, isDone, ok := translator.ParseSSEDataLineString(line)
+		if !ok || isDone {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				FinishReason *string `json:"finish_reason"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err == nil && len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != nil {
+			finishReasons = append(finishReasons, *chunk.Choices[0].FinishReason)
+		}
+	}
+	if len(finishReasons) != 1 || finishReasons[0] != "tool_calls" {
+		t.Fatalf("expected exactly 1 terminal finish_reason=tool_calls, got %v in:\n%s", finishReasons, w.Body.String())
+	}
 }
 
 func runAntigravityStreamFixture(t *testing.T, fixture string) (string, int) {

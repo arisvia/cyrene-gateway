@@ -1092,3 +1092,91 @@ func TestOpenAIToResponsesSSETranslatorUsageOnCompleted(t *testing.T) {
 		t.Errorf("expected usage 120/45/165, got %v", usage)
 	}
 }
+
+func TestResponsesToOpenAIRequest_ParallelCallsReasoningAndInputImage(t *testing.T) {
+	reqMap := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "Look at this"},
+					map[string]any{"type": "input_image", "image_url": "https://example.com/img.png"},
+				},
+			},
+			map[string]any{"type": "reasoning", "id": "rs_1", "summary": []any{}},
+			map[string]any{"type": "function_call", "call_id": "call_1", "name": "a", "arguments": "{}"},
+			map[string]any{"type": "function_call", "call_id": "call_2", "name": "b", "arguments": "{}"},
+		},
+	}
+	out, err := ResponsesToOpenAIRequest(reqMap)
+	if err != nil {
+		t.Fatalf("ResponsesToOpenAIRequest failed: %v", err)
+	}
+	msgs := out["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages (user + merged assistant), got %d: %#v", len(msgs), msgs)
+	}
+	userParts := msgs[0].(map[string]any)["content"].([]any)
+	imgPart := userParts[1].(map[string]any)["image_url"].(map[string]any)
+	if imgPart["url"] != "https://example.com/img.png" {
+		t.Fatalf("expected wrapped image_url object, got %+v", imgPart)
+	}
+	asst := msgs[1].(map[string]any)
+	tcs := asst["tool_calls"].([]any)
+	if len(tcs) != 2 {
+		t.Fatalf("expected 2 merged tool_calls, got %d", len(tcs))
+	}
+}
+
+func TestOpenAIToResponsesRequest_MaxCompAndMultimodalSanitize(t *testing.T) {
+	body := map[string]any{
+		"model":                 "gpt-5.4",
+		"max_completion_tokens": float64(3000),
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "text", "text": "hello"},
+					map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/cat.png"}},
+				},
+			},
+			map[string]any{
+				"role":              "assistant",
+				"reasoning_content": "secret chain of thought",
+				"content":           []any{map[string]any{"type": "text", "text": "calling tool"}},
+				"tool_calls": []any{
+					map[string]any{
+						"id":       "call_x",
+						"type":     "function",
+						"function": map[string]any{"name": "lookup", "arguments": "{}"},
+					},
+				},
+			},
+		},
+	}
+	res, err := OpenAIToResponsesRequest("gpt-5.4", body, false)
+	if err != nil {
+		t.Fatalf("OpenAIToResponsesRequest failed: %v", err)
+	}
+	if res["max_output_tokens"] != float64(3000) {
+		t.Fatalf("expected max_output_tokens=3000 from max_completion_tokens, got %v", res["max_output_tokens"])
+	}
+	input := res["input"].([]any)
+	if len(input) != 3 {
+		t.Fatalf("expected 3 input items (user msg, assistant msg, function_call), got %d: %#v", len(input), input)
+	}
+	userParts := input[0].(map[string]any)["content"].([]any)
+	if userParts[0].(map[string]any)["type"] != "input_text" {
+		t.Fatalf("expected input_text, got %+v", userParts[0])
+	}
+	if userParts[1].(map[string]any)["type"] != "input_image" || userParts[1].(map[string]any)["image_url"] != "https://example.com/cat.png" {
+		t.Fatalf("expected flat input_image, got %+v", userParts[1])
+	}
+	if input[1].(map[string]any)["type"] != "message" || input[2].(map[string]any)["type"] != "function_call" {
+		t.Fatalf("expected assistant message before function_call, got %#v", input[1:])
+	}
+	if _, leaked := input[1].(map[string]any)["reasoning_content"]; leaked {
+		t.Fatalf("reasoning_content must not leak to Responses input")
+	}
+}

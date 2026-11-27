@@ -177,4 +177,51 @@ func TestReasoningEffortTranslation(t *testing.T) {
 	if thinkingCfg["thinkingBudget"] != 2048 {
 		t.Errorf("expected thinkingBudget=2048 for low effort, got %+v", thinkingCfg)
 	}
+
+	// 3. JSON-decoded float64 thinking.budget_tokens lifts max_tokens; disabled preserves temperature;
+	//    forced tool_choice is downgraded to auto when thinking is enabled.
+	bodyFloatThinking := map[string]any{
+		"model":       "claude-3-7-sonnet",
+		"temperature": 0.4,
+		"top_p":       0.9,
+		"max_tokens":  float64(1024),
+		"thinking": map[string]any{
+			"type":          "enabled",
+			"budget_tokens": float64(4096),
+		},
+		"tool_choice": "required",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "think with tools"},
+		},
+	}
+	resFloat, err := openAIToClaude("claude-3-7-sonnet", bodyFloatThinking, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := anyToInt(resFloat["max_tokens"]); got <= 4096 {
+		t.Fatalf("expected max_tokens lifted above float64 budget 4096, got %v", resFloat["max_tokens"])
+	}
+	if _, hasTemp := resFloat["temperature"]; hasTemp {
+		t.Fatalf("expected temperature dropped when thinking enabled")
+	}
+	if _, hasTopP := resFloat["top_p"]; hasTopP {
+		t.Fatalf("expected top_p dropped when thinking enabled")
+	}
+	if tc, _ := resFloat["tool_choice"].(map[string]any); tc["type"] != "auto" {
+		t.Fatalf("expected forced tool_choice downgraded to auto under thinking, got %+v", tc)
+	}
+
+	bodyDisabled := map[string]any{
+		"model":       "claude-3-7-sonnet",
+		"temperature": 0.3,
+		"thinking":    map[string]any{"type": "disabled"},
+		"messages":    []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+	resDisabled, err := openAIToClaude("claude-3-7-sonnet", bodyDisabled, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resDisabled["temperature"] != 0.3 {
+		t.Fatalf("expected temperature preserved when thinking.type=disabled, got %v", resDisabled["temperature"])
+	}
 }

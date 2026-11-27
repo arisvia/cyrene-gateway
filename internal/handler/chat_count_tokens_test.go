@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/arisvia/cyrene-gateway/internal/model"
 )
 
 func TestHandleCountTokens_MissingModel(t *testing.T) {
@@ -78,5 +80,65 @@ func TestHandleCountTokens_Success(t *testing.T) {
 
 	if resp.InputTokens < 20 || resp.InputTokens > 150 {
 		t.Fatalf("expected input_tokens around ~50-80, got %d", resp.InputTokens)
+	}
+}
+
+func TestHandleCountTokens_UpstreamForwardURLAndModel(t *testing.T) {
+	var capturedPath string
+	var capturedModel string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		capturedModel, _ = body["model"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"input_tokens":321}`))
+	}))
+	defer upstream.Close()
+
+	srv, database := setupTestServer(t)
+	if err := database.CreateConnection(&model.ProviderConnection{
+		ID:       "anth-count-conn",
+		Provider: "anthropic",
+		AuthType: "api-key",
+		IsActive: true,
+		Data: model.ConnectionData{
+			APIKey:  "sk-ant-test",
+			BaseURL: upstream.URL + "/v1/messages",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	payload := map[string]any{
+		"model": "anthropic/claude-sonnet-4",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "count me"},
+		},
+	}
+	raw, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/v1/messages/count_tokens", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", w.Code, w.Body.String())
+	}
+	if capturedPath != "/v1/messages/count_tokens" {
+		t.Fatalf("expected upstream path /v1/messages/count_tokens, got %q", capturedPath)
+	}
+	if capturedModel != "claude-sonnet-4" {
+		t.Fatalf("expected stripped bare model claude-sonnet-4, got %q", capturedModel)
+	}
+	var resp struct {
+		InputTokens int `json:"input_tokens"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if resp.InputTokens != 321 {
+		t.Fatalf("expected upstream input_tokens=321, got %d", resp.InputTokens)
 	}
 }

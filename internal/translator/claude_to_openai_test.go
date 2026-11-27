@@ -502,3 +502,92 @@ func TestOpenAIToClaudeResponseNullArgsAndEmptyID(t *testing.T) {
 		t.Errorf("null arguments must normalize to an object, got %T", b["input"])
 	}
 }
+
+func TestClaudeSSEToOpenAIToolIndexDense(t *testing.T) {
+	tr := NewSSETranslator(FormatAnthropic, "claude-3-7-sonnet")
+
+	events := []string{
+		`{"type":"message_start","message":{"id":"msg_idx","role":"assistant","usage":{"input_tokens":5,"output_tokens":0}}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hmm"}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ok"}}`,
+		`{"type":"content_block_stop","index":1}`,
+		`{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_1","name":"read"}}`,
+		`{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"a\":1}"}}`,
+		`{"type":"content_block_stop","index":2}`,
+		`{"type":"content_block_start","index":3,"content_block":{"type":"tool_use","id":"toolu_2","name":"write"}}`,
+		`{"type":"content_block_delta","index":3,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}`,
+		`{"type":"content_block_stop","index":3}`,
+	}
+
+	var toolIndices []int
+	for _, ev := range events {
+		out, done, err := tr.TranslateChunk([]byte(ev))
+		if err != nil || done || len(out) == 0 {
+			continue
+		}
+		var chunk map[string]any
+		if err := json.Unmarshal(out, &chunk); err != nil {
+			t.Fatal(err)
+		}
+		choices, _ := chunk["choices"].([]any)
+		if len(choices) == 0 {
+			continue
+		}
+		delta, _ := choices[0].(map[string]any)["delta"].(map[string]any)
+		if tcs, ok := delta["tool_calls"].([]any); ok && len(tcs) > 0 {
+			idx := int(tcs[0].(map[string]any)["index"].(float64))
+			toolIndices = append(toolIndices, idx)
+		}
+	}
+
+	want := []int{0, 0, 1, 1}
+	if len(toolIndices) != len(want) {
+		t.Fatalf("expected 4 tool call chunks, got %v", toolIndices)
+	}
+	for i := range want {
+		if toolIndices[i] != want[i] {
+			t.Fatalf("tool_calls[%d].index = %d, want %d (full=%v)", i, toolIndices[i], want[i], toolIndices)
+		}
+	}
+}
+
+func TestClaudeToOpenAIRequest_URLImageAndToolChoiceNone(t *testing.T) {
+	body := map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "text", "text": "describe"},
+					map[string]any{"type": "image", "source": map[string]any{"type": "url", "url": "https://example.com/a.png"}},
+				},
+			},
+		},
+		"tool_choice": map[string]any{
+			"type":                      "none",
+			"disable_parallel_tool_use": true,
+		},
+	}
+	res, err := ClaudeToOpenAIRequest(body)
+	if err != nil {
+		t.Fatalf("ClaudeToOpenAIRequest failed: %v", err)
+	}
+	if res["tool_choice"] != "none" {
+		t.Fatalf("expected tool_choice=none, got %v", res["tool_choice"])
+	}
+	if res["parallel_tool_calls"] != false {
+		t.Fatalf("expected parallel_tool_calls=false, got %v", res["parallel_tool_calls"])
+	}
+	msgs := res["messages"].([]any)
+	parts := msgs[0].(map[string]any)["content"].([]any)
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 content parts including URL image, got %+v", parts)
+	}
+	img := parts[1].(map[string]any)["image_url"].(map[string]any)
+	if img["url"] != "https://example.com/a.png" {
+		t.Fatalf("expected URL image preserved, got %+v", img)
+	}
+}

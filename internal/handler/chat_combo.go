@@ -180,14 +180,55 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 				s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
 				continue
 			}
-			// Success (2xx) - check for zero usable content on non-final models (9router #4750 parity)
+			// On-401 retry with token refresh before falling over to next account.
+			if resp.StatusCode == http.StatusUnauthorized && conn.Data.RefreshToken != "" {
+				errBody, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				resp.Body = io.NopCloser(bytes.NewReader(errBody))
+
+				result, refreshErr := provider.RefreshCredentials(conn.Provider, conn, s.getHTTPClient(30*time.Second))
+				if refreshErr == nil {
+					if errUpdate := s.persistRefreshedCredentials(conn, result); errUpdate != nil {
+						slog.Error("Failed to persist combo connection after 401 refresh", "provider", conn.Provider, "error", errUpdate)
+					}
+					retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
+						provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
+						provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
+						func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+					)
+					if retryErr == nil {
+						slog.Info("Retrying combo request after token refresh", slog.String("provider", modelInfo.Provider))
+						retryResp, doErr := client.Do(retryReq)
+						if doErr != nil {
+							if errors.Is(doErr, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
+								slog.Info("Client canceled combo request after refresh", slog.String("model", modelStr))
+								s.saveAbandonedRequestDetail(r, req, modelInfo, conn.ID, endpoint, start, 499,
+									"client canceled while the combo model was being reached")
+								return
+							}
+							lastError = fmt.Sprintf("upstream request failed after refresh: %v", doErr)
+							lastStatus = 502
+							slog.Warn("Combo account transport failed after refresh, trying next account", slog.String("model", modelStr), "error", doErr)
+							provider.ApplyErrorState(conn, 502, doErr.Error())
+							s.DB.UpdateConnectionHealth(conn.ID, conn.Data)
+							continue
+						}
+						resp.Body.Close()
+						resp = retryResp
+					}
+				}
+			}
+			// Success (2xx) - check for zero usable content on non-streaming responses for non-final models (9router #4750 parity).
+			// Never buffer SSE streams with io.ReadAll, which destroys TTFT by waiting for stream EOF.
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				isLastModel := (i == len(models)-1)
-				if !isLastModel {
+				contentType := resp.Header.Get("Content-Type")
+				isSSE := strings.Contains(contentType, "text/event-stream")
+				if !isLastModel && !isSSE {
 					respBytes, err := io.ReadAll(resp.Body)
 					resp.Body.Close()
 					if err == nil {
-						if isZeroUsableContent(respBytes, resp.Header.Get("Content-Type")) {
+						if isZeroUsableContent(respBytes, contentType) {
 							slog.Warn("Combo model returned HTTP 200 with zero usable content, falling back to next model",
 								slog.String("model", modelStr),
 								slog.Int("attempt", i+1),

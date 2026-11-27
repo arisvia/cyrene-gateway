@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bufio"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -228,4 +230,86 @@ func TestComboFallback200ZeroUsableContent(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "hello from fallback model") {
 		t.Fatalf("expected response from mock2, got: %s", w.Body.String())
 	}
+}
+
+func TestComboStreamingDoesNotBufferBeforeEOF(t *testing.T) {
+	srv, database := setupTestServer(t)
+
+	releaseChunk2 := make(chan struct{})
+	upstream1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, "data: {\"id\":\"s1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"first\"}}]}\n\n")
+		flusher.Flush()
+
+		select {
+		case <-releaseChunk2:
+		case <-time.After(3 * time.Second):
+			return
+		}
+		fmt.Fprint(w, "data: {\"id\":\"s1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"second\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer upstream1.Close()
+
+	upstream2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream2.Close()
+
+	_ = database.CreateConnection(&model.ProviderConnection{
+		ID:       "conn-stream-1",
+		Provider: "openai",
+		AuthType: "api-key",
+		IsActive: true,
+		Data:     model.ConnectionData{APIKey: "sk-1", BaseURL: upstream1.URL + "/v1"},
+	})
+	_ = database.CreateConnection(&model.ProviderConnection{
+		ID:       "conn-stream-2",
+		Provider: "groq",
+		AuthType: "api-key",
+		IsActive: true,
+		Data:     model.ConnectionData{APIKey: "sk-2", BaseURL: upstream2.URL + "/v1"},
+	})
+	_ = database.CreateCombo(&model.Combo{
+		ID:     "combo-stream-ttft",
+		Name:   "combo-stream-ttft",
+		Kind:   "fallback",
+		Models: []string{"openai/gpt-4o", "groq/llama-3.3-70b-versatile"},
+	})
+
+	gwServer := httptest.NewServer(srv.Handler)
+	defer gwServer.Close()
+
+	resp, err := http.Post(gwServer.URL+"/v1/chat/completions", "application/json",
+		strings.NewReader(`{"model":"combo-stream-ttft","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	if err != nil {
+		t.Fatalf("gateway request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	chunk1Ready := make(chan string, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(line, "first") {
+				chunk1Ready <- line
+				return
+			}
+		}
+	}()
+
+	select {
+	case line := <-chunk1Ready:
+		if !strings.Contains(line, "first") {
+			t.Fatalf("unexpected first chunk: %s", line)
+		}
+	case <-time.After(1500 * time.Millisecond):
+		close(releaseChunk2)
+		t.Fatal("combo streaming buffered SSE chunks until upstream EOF instead of flushing immediately")
+	}
+
+	close(releaseChunk2)
 }

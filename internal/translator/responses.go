@@ -132,6 +132,10 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 			for _, item := range in {
 				if itemMap, ok := item.(map[string]any); ok {
 					iType, _ := itemMap["type"].(string)
+					// Skip Responses API reasoning summary items cleanly.
+					if iType == "reasoning" {
+						continue
+					}
 					// 1. Tool result item in Responses API (function_call_output)
 					if iType == "function_call_output" || (itemMap["call_id"] != nil && itemMap["output"] != nil) {
 						callID, _ := itemMap["call_id"].(string)
@@ -149,23 +153,31 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 						continue
 					}
 					// 2. Tool call item in Responses API (function_call)
+					// Merge consecutive function_call items into the preceding assistant message
+					// so parallel tool calls stay in a single assistant turn.
 					if iType == "function_call" || (itemMap["name"] != nil && itemMap["call_id"] != nil && itemMap["arguments"] != nil) {
 						callID, _ := itemMap["call_id"].(string)
 						name, _ := itemMap["name"].(string)
 						args, _ := itemMap["arguments"].(string)
-						openAIMessages = append(openAIMessages, map[string]any{
-							"role":    "assistant",
-							"content": nil,
-							"tool_calls": []any{
-								map[string]any{
-									"id":   callID,
-									"type": "function",
-									"function": map[string]any{
-										"name":      name,
-										"arguments": args,
-									},
-								},
+						tc := map[string]any{
+							"id":   callID,
+							"type": "function",
+							"function": map[string]any{
+								"name":      name,
+								"arguments": args,
 							},
+						}
+						if len(openAIMessages) > 0 {
+							if prev, ok := openAIMessages[len(openAIMessages)-1].(map[string]any); ok && prev["role"] == "assistant" {
+								existing, _ := prev["tool_calls"].([]any)
+								prev["tool_calls"] = append(existing, tc)
+								continue
+							}
+						}
+						openAIMessages = append(openAIMessages, map[string]any{
+							"role":       "assistant",
+							"content":    nil,
+							"tool_calls": []any{tc},
 						})
 						continue
 					}
@@ -194,17 +206,22 @@ func ResponsesToOpenAIRequest(responsesBody map[string]any) (map[string]any, err
 							if pm, ok := p.(map[string]any); ok {
 								pType, _ := pm["type"].(string)
 								switch pType {
-								case "input_text", "text":
+								case "input_text", "output_text", "text":
 									text, _ := pm["text"].(string)
 									parts = append(parts, map[string]any{
 										"type": "text",
 										"text": text,
 									})
 								case "input_image", "image_url":
-									if imgURL, ok := pm["image_url"]; ok {
+									if imgURLStr, ok := pm["image_url"].(string); ok && imgURLStr != "" {
 										parts = append(parts, map[string]any{
 											"type":      "image_url",
-											"image_url": imgURL,
+											"image_url": map[string]any{"url": imgURLStr},
+										})
+									} else if imgURLObj, ok := pm["image_url"].(map[string]any); ok {
+										parts = append(parts, map[string]any{
+											"type":      "image_url",
+											"image_url": imgURLObj,
 										})
 									}
 								default:
@@ -241,7 +258,11 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 	if topP, ok := body["top_p"]; ok {
 		result["top_p"] = topP
 	}
-	if maxTokens, ok := body["max_tokens"]; ok {
+	if maxOut, ok := body["max_output_tokens"]; ok {
+		result["max_output_tokens"] = maxOut
+	} else if maxComp, ok := body["max_completion_tokens"]; ok {
+		result["max_output_tokens"] = maxComp
+	} else if maxTokens, ok := body["max_tokens"]; ok {
 		result["max_output_tokens"] = maxTokens
 	}
 	if effort, ok := body["reasoning_effort"].(string); ok && effort != "" {
@@ -304,6 +325,13 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 						"output":  outputStr,
 					})
 				} else if role == "assistant" && mm["tool_calls"] != nil {
+					if text := extractText(content); text != "" {
+						inputItems = append(inputItems, map[string]any{
+							"type":    "message",
+							"role":    "assistant",
+							"content": text,
+						})
+					}
 					if tcList, ok := mm["tool_calls"].([]any); ok {
 						for _, tcRaw := range tcList {
 							if tc, ok := tcRaw.(map[string]any); ok {
@@ -321,15 +349,8 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 							}
 						}
 					}
-					if s, ok := content.(string); ok && s != "" {
-						inputItems = append(inputItems, map[string]any{
-							"type":    "message",
-							"role":    "assistant",
-							"content": s,
-						})
-					}
 				} else {
-					inputItems = append(inputItems, mm)
+					inputItems = append(inputItems, sanitizeMessageForResponses(role, content))
 				}
 			}
 		}
@@ -340,6 +361,58 @@ func OpenAIToResponsesRequest(model string, body map[string]any, stream bool) (m
 	}
 	result["input"] = inputItems
 	return result, nil
+}
+
+// sanitizeMessageForResponses strips non-Responses fields (such as reasoning_content)
+// and translates Chat content parts (text / image_url) into Responses parts (input_text / output_text / input_image).
+func sanitizeMessageForResponses(role string, content any) map[string]any {
+	sanitized := map[string]any{"role": role}
+	switch c := content.(type) {
+	case string:
+		sanitized["content"] = c
+	case []any:
+		textType := "input_text"
+		if role == "assistant" {
+			textType = "output_text"
+		}
+		parts := make([]any, 0, len(c))
+		for _, item := range c {
+			pm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			pType, _ := pm["type"].(string)
+			switch pType {
+			case "text", "input_text", "output_text":
+				parts = append(parts, map[string]any{
+					"type": textType,
+					"text": pm["text"],
+				})
+			case "image_url", "input_image":
+				var imgURL string
+				switch v := pm["image_url"].(type) {
+				case string:
+					imgURL = v
+				case map[string]any:
+					imgURL, _ = v["url"].(string)
+				}
+				if imgURL != "" {
+					parts = append(parts, map[string]any{
+						"type":      "input_image",
+						"image_url": imgURL,
+					})
+				}
+			default:
+				parts = append(parts, pm)
+			}
+		}
+		sanitized["content"] = parts
+	default:
+		if content != nil {
+			sanitized["content"] = content
+		}
+	}
+	return sanitized
 }
 
 // OpenAIToResponsesResponse converts an OpenAI ChatCompletion JSON response

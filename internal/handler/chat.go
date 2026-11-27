@@ -160,18 +160,60 @@ func extractAnthropicPrompt(reqBody map[string]any) string {
 	return ""
 }
 
+// FlexibleStop accepts either a single JSON string ("stop": "\n") or an array of strings,
+// matching the OpenAI Chat Completions specification.
+type FlexibleStop []string
+
+func (fs *FlexibleStop) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*fs = nil
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var single string
+		if err := json.Unmarshal(trimmed, &single); err != nil {
+			return err
+		}
+		if single != "" {
+			*fs = FlexibleStop{single}
+		} else {
+			*fs = nil
+		}
+		return nil
+	}
+	var list []string
+	if err := json.Unmarshal(trimmed, &list); err != nil {
+		return err
+	}
+	*fs = FlexibleStop(list)
+	return nil
+}
+
 // ChatCompletionRequest represents an OpenAI-compatible chat request
 type ChatCompletionRequest struct {
-	Temperature     *float64        `json:"temperature,omitempty"`
-	MaxTokens       *int            `json:"max_tokens,omitempty"`
-	ReasoningEffort string          `json:"reasoning_effort,omitempty"`
-	Model           string          `json:"model"`
-	Messages        []Message       `json:"messages"`
-	Tools           json.RawMessage `json:"tools,omitempty"`
-	ToolChoice      json.RawMessage `json:"tool_choice,omitempty"`
-	Stop            []string        `json:"stop,omitempty"`
-	TopP            *float64        `json:"top_p,omitempty"`
-	Stream          bool            `json:"stream,omitempty"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	MaxTokens           *int            `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int            `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string          `json:"reasoning_effort,omitempty"`
+	Model               string          `json:"model"`
+	Messages            []Message       `json:"messages"`
+	Tools               json.RawMessage `json:"tools,omitempty"`
+	ToolChoice          json.RawMessage `json:"tool_choice,omitempty"`
+	Stop                FlexibleStop    `json:"stop,omitempty"`
+	TopP                *float64        `json:"top_p,omitempty"`
+	Stream              bool            `json:"stream,omitempty"`
+}
+
+// EffectiveMaxTokens returns max_completion_tokens when set, otherwise max_tokens.
+func (r ChatCompletionRequest) EffectiveMaxTokens() int {
+	if r.MaxCompletionTokens != nil && *r.MaxCompletionTokens > 0 {
+		return *r.MaxCompletionTokens
+	}
+	if r.MaxTokens != nil && *r.MaxTokens > 0 {
+		return *r.MaxTokens
+	}
+	return 0
 }
 
 type Message struct {

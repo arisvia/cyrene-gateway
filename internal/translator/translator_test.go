@@ -1625,3 +1625,92 @@ func TestClaudeRefusalToOpenAI(t *testing.T) {
 		t.Errorf("expected stream delta content 'Stream refused', got %v", sDelta["content"])
 	}
 }
+
+func TestOpenAIToClaude_NoNullToolInputOrSchemaAndStop(t *testing.T) {
+	body := map[string]any{
+		"model": "claude-sonnet-4",
+		"stop":  "\n",
+		"tools": []any{
+			map[string]any{
+				"type":     "function",
+				"function": map[string]any{"name": "ping", "description": "no args"},
+			},
+		},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "ping"},
+			map[string]any{
+				"role": "assistant",
+				"tool_calls": []any{
+					map[string]any{
+						"id":       "call_ping",
+						"type":     "function",
+						"function": map[string]any{"name": "ping", "arguments": ""},
+					},
+				},
+			},
+			map[string]any{"role": "tool", "tool_call_id": "call_ping", "content": "pong"},
+		},
+	}
+	res, err := openAIToClaude("claude-sonnet-4", body, false)
+	if err != nil {
+		t.Fatalf("openAIToClaude failed: %v", err)
+	}
+	stopSeqs, ok := res["stop_sequences"].([]string)
+	if !ok || len(stopSeqs) != 1 || stopSeqs[0] != "\n" {
+		t.Fatalf("expected stop_sequences=[\"\\n\"], got %#v", res["stop_sequences"])
+	}
+	tools := res["tools"].([]any)
+	schema, ok := tools[0].(map[string]any)["input_schema"].(map[string]any)
+	if !ok || schema["type"] != "object" {
+		t.Fatalf("expected valid object input_schema, got %#v", tools[0])
+	}
+	msgs := res["messages"].([]any)
+	asstBlocks := msgs[1].(map[string]any)["content"].([]any)
+	toolUse := asstBlocks[0].(map[string]any)
+	inputMap, ok := toolUse["input"].(map[string]any)
+	if !ok || inputMap == nil {
+		t.Fatalf("expected non-nil map input for empty arguments, got %#v", toolUse["input"])
+	}
+}
+
+func TestOpenAIToGemini_ToolChoiceBudgetLiftAndGem4Ordering(t *testing.T) {
+	body := map[string]any{
+		"model":            "gemini-4-flash",
+		"reasoning_effort": "high",
+		"tool_choice":      map[string]any{"type": "function", "function": map[string]any{"name": "lookup"}},
+		"messages": []any{
+			map[string]any{"role": "user", "content": "check"},
+			map[string]any{"role": "tool", "tool_call_id": "c1", "content": `{"ok":true}`},
+		},
+	}
+	res, err := openAIToGemini("gemini-4-flash", body, false)
+	if err != nil {
+		t.Fatalf("openAIToGemini failed: %v", err)
+	}
+	genCfg := res["generationConfig"].(map[string]any)
+	if anyToInt(genCfg["maxOutputTokens"]) <= 16384 {
+		t.Fatalf("expected maxOutputTokens lifted above budget 16384, got %v", genCfg["maxOutputTokens"])
+	}
+	fcc := res["toolConfig"].(map[string]any)["functionCallingConfig"].(map[string]any)
+	if fcc["mode"] != "ANY" {
+		t.Fatalf("expected mode=ANY, got %#v", fcc)
+	}
+	contents := res["contents"].([]any)
+	parts := contents[0].(map[string]any)["parts"].([]any)
+	if _, isFR := parts[len(parts)-1].(map[string]any)["functionResponse"]; !isFR {
+		t.Fatalf("expected Gemini 4 functionResponse ordered last in user parts: %#v", parts)
+	}
+}
+
+func TestGeminiToOpenAIResponse_StopWithToolCallsBecomesToolCalls(t *testing.T) {
+	raw := []byte(`{"candidates":[{"content":{"parts":[{"functionCall":{"id":"call_1","name":"weather","args":{"city":"SF"}}}]},"finishReason":"STOP"}]}`)
+	out, err := geminiToOpenAI(raw, "gemini-2.5-flash")
+	if err != nil {
+		t.Fatalf("geminiToOpenAI failed: %v", err)
+	}
+	parsed := decodeTranslatorPayload(t, out)
+	fr := parsed["choices"].([]any)[0].(map[string]any)["finish_reason"]
+	if fr != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls when functionCall present, got %v", fr)
+	}
+}

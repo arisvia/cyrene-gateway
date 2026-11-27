@@ -513,3 +513,77 @@ func TestOpenAIToGeminiSSEPreservesParallelIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestGeminiToOpenAIRequest_DynamicBudgetThoughtAndSingleToolChoice(t *testing.T) {
+	req := map[string]any{
+		"contents": []any{
+			map[string]any{"role": "user", "parts": []any{map[string]any{"text": "hi"}}},
+			map[string]any{"role": "model", "parts": []any{
+				map[string]any{"text": "internal thought", "thought": true},
+				map[string]any{"text": "visible answer"},
+			}},
+		},
+		"generationConfig": map[string]any{
+			"thinkingConfig": map[string]any{"thinkingBudget": -1},
+		},
+		"toolConfig": map[string]any{
+			"functionCallingConfig": map[string]any{
+				"mode":                 "ANY",
+				"allowedFunctionNames": []any{"lookup"},
+			},
+		},
+	}
+	out, err := GeminiToOpenAIRequest(req, "gemini-2.5-pro")
+	if err != nil {
+		t.Fatalf("GeminiToOpenAIRequest failed: %v", err)
+	}
+	if out["reasoning_effort"] != "medium" {
+		t.Fatalf("thinkingBudget=-1 must map to medium (dynamic), got %v", out["reasoning_effort"])
+	}
+	msgs := out["messages"].([]any)
+	asst := msgs[1].(map[string]any)
+	if asst["content"] != "visible answer" || asst["reasoning_content"] != "internal thought" {
+		t.Fatalf("thought part leaked or dropped: %#v", asst)
+	}
+	tc := out["tool_choice"].(map[string]any)
+	if tc["type"] != "function" || tc["function"].(map[string]any)["name"] != "lookup" {
+		t.Fatalf("allowedFunctionNames single tool not preserved: %#v", tc)
+	}
+
+	reqLevel := map[string]any{
+		"contents": []any{map[string]any{"role": "user", "parts": []any{map[string]any{"text": "hi"}}}},
+		"generationConfig": map[string]any{
+			"thinkingConfig": map[string]any{"thinkingLevel": "HIGH"},
+		},
+	}
+	outLevel, err := GeminiToOpenAIRequest(reqLevel, "gemini-4-flash")
+	if err != nil {
+		t.Fatalf("GeminiToOpenAIRequest thinkingLevel failed: %v", err)
+	}
+	if outLevel["reasoning_effort"] != "high" {
+		t.Fatalf("expected reasoning_effort=high from thinkingLevel, got %v", outLevel["reasoning_effort"])
+	}
+}
+
+func TestOpenAIToGemini_EmptyArgsNotWrappedInInput(t *testing.T) {
+	openAIResp := []byte(`{"choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"noop","arguments":""}}]},"finish_reason":"tool_calls"}]}`)
+	gemBytes, err := OpenAIToGeminiResponse(openAIResp, "gemini-2.5-flash")
+	if err != nil {
+		t.Fatalf("OpenAIToGeminiResponse failed: %v", err)
+	}
+	parts := decodeTranslatorPayload(t, gemBytes)["candidates"].([]any)[0].(map[string]any)["content"].(map[string]any)["parts"].([]any)
+	args := parts[0].(map[string]any)["functionCall"].(map[string]any)["args"].(map[string]any)
+	if len(args) != 0 {
+		t.Fatalf("expected empty args map for empty arguments, got %#v", args)
+	}
+
+	tr := NewOpenAIToGeminiSSETranslator("gemini-2.5-flash")
+	_, _, _ = tr.TranslateChunk([]byte(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"noop","arguments":""}}]}}]}`))
+	out, done, err := tr.TranslateChunk([]byte(`[DONE]`))
+	if err != nil || !done {
+		t.Fatalf("SSE done failed: done=%v err=%v", done, err)
+	}
+	if strings.Contains(string(out), `"input":""`) {
+		t.Fatalf("SSE translator injected bogus input key for empty args: %s", out)
+	}
+}

@@ -69,6 +69,7 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 				}
 			}
 			var textParts []string
+			var reasoningParts []string
 			var toolCalls []any
 			var hasComplexParts bool
 			var contentBlocks []any
@@ -79,11 +80,15 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 				}
 
 				if t, ok := pm["text"].(string); ok {
-					textParts = append(textParts, t)
-					contentBlocks = append(contentBlocks, map[string]any{
-						"type": "text",
-						"text": t,
-					})
+					if thought, _ := pm["thought"].(bool); thought {
+						reasoningParts = append(reasoningParts, t)
+					} else {
+						textParts = append(textParts, t)
+						contentBlocks = append(contentBlocks, map[string]any{
+							"type": "text",
+							"text": t,
+						})
+					}
 				} else if fc, ok := pm["functionCall"].(map[string]any); ok {
 					name, _ := fc["name"].(string)
 					argsMap, _ := fc["args"].(map[string]any)
@@ -161,17 +166,28 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 				if len(textParts) > 0 {
 					msg["content"] = strings.Join(textParts, "\n")
 				}
+				if role == "assistant" && len(reasoningParts) > 0 {
+					msg["reasoning_content"] = strings.Join(reasoningParts, "\n")
+				}
 				messages = append(messages, msg)
 			} else if hasComplexParts {
-				messages = append(messages, map[string]any{
+				msg := map[string]any{
 					"role":    role,
 					"content": contentBlocks,
-				})
-			} else if len(textParts) > 0 {
-				messages = append(messages, map[string]any{
+				}
+				if role == "assistant" && len(reasoningParts) > 0 {
+					msg["reasoning_content"] = strings.Join(reasoningParts, "\n")
+				}
+				messages = append(messages, msg)
+			} else if len(textParts) > 0 || (role == "assistant" && len(reasoningParts) > 0) {
+				msg := map[string]any{
 					"role":    role,
 					"content": strings.Join(textParts, "\n"),
-				})
+				}
+				if role == "assistant" && len(reasoningParts) > 0 {
+					msg["reasoning_content"] = strings.Join(reasoningParts, "\n")
+				}
+				messages = append(messages, msg)
 			}
 		}
 	}
@@ -207,14 +223,40 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 				hasBudget = true
 			}
 			if hasBudget {
-				if budget <= 0 {
+				switch {
+				case budget == 0:
 					result["reasoning_effort"] = "none"
-				} else if budget <= 2048 {
-					result["reasoning_effort"] = "low"
-				} else if budget <= 8192 {
+				case budget < 0:
+					// Gemini -1 enables dynamic automatic thinking.
 					result["reasoning_effort"] = "medium"
-				} else {
+				case budget <= 2048:
+					result["reasoning_effort"] = "low"
+				case budget <= 8192:
+					result["reasoning_effort"] = "medium"
+				case budget <= 16384:
 					result["reasoning_effort"] = "high"
+				default:
+					result["reasoning_effort"] = "max"
+				}
+			} else if rawLevel, exists := tc["thinkingLevel"]; exists {
+				switch lv := rawLevel.(type) {
+				case string:
+					switch strings.ToLower(strings.TrimSpace(lv)) {
+					case "minimal", "low", "medium", "high", "xhigh":
+						result["reasoning_effort"] = strings.ToLower(strings.TrimSpace(lv))
+					}
+				case float64, int, int64:
+					n := anyToInt(lv)
+					switch {
+					case n >= 100:
+						result["reasoning_effort"] = "xhigh"
+					case n >= 3:
+						result["reasoning_effort"] = "high"
+					case n == 2:
+						result["reasoning_effort"] = "medium"
+					case n == 1:
+						result["reasoning_effort"] = "low"
+					}
 				}
 			}
 		}
@@ -259,6 +301,15 @@ func GeminiToOpenAIRequest(geminiBody map[string]any, model string) (map[string]
 				case "AUTO":
 					result["tool_choice"] = "auto"
 				case "ANY":
+					if allowed, ok := fcc["allowedFunctionNames"].([]any); ok && len(allowed) == 1 {
+						if name, ok := allowed[0].(string); ok && name != "" {
+							result["tool_choice"] = map[string]any{
+								"type":     "function",
+								"function": map[string]any{"name": name},
+							}
+							break
+						}
+					}
 					result["tool_choice"] = "required"
 				case "NONE":
 					result["tool_choice"] = "none"
@@ -294,7 +345,9 @@ func OpenAIToGeminiResponse(data []byte, model string) ([]byte, error) {
 								name, _ := fn["name"].(string)
 								argsStr, _ := fn["arguments"].(string)
 								var argsMap map[string]any
-								if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil {
+								if strings.TrimSpace(argsStr) == "" {
+									argsMap = map[string]any{}
+								} else if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil || argsMap == nil {
 									argsMap = map[string]any{"input": argsStr}
 								}
 								fc := map[string]any{"name": name, "args": argsMap}
@@ -395,7 +448,9 @@ func (t *OpenAIToGeminiSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 				tc := t.toolCalls[idx]
 				var argsMap map[string]any
 				argsStr := tc.args.String()
-				if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil {
+				if strings.TrimSpace(argsStr) == "" {
+					argsMap = map[string]any{}
+				} else if err := json.Unmarshal([]byte(argsStr), &argsMap); err != nil || argsMap == nil {
 					argsMap = map[string]any{"input": argsStr}
 				}
 				parts = append(parts, map[string]any{
