@@ -37,6 +37,7 @@ jobs:
           npm run build
       - name: Run Go Formatter, Vet & Tests
         run: |
+          if [ -n "$(gofmt -l .)" ]; then echo "Unformatted Go code found:"; gofmt -d .; exit 1; fi
           go vet ./...
           go test -race ./...
 
@@ -85,6 +86,7 @@ jobs:
 
   docker:
     name: Build & Push Multi-Arch Docker Image
+    needs: build-and-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -118,6 +120,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildRequestPayload,
+  extractPlaygroundResponseData,
+  extractPlaygroundSSEDelta,
   generateCodeSnippet,
   type CodeLang,
   type SamplingParams,
@@ -111,5 +113,48 @@ describe('generateCodeSnippet 客户端示例', () => {
     expect(snippet('python', 'gemini')).toContain('genai.Client')
     expect(snippet('node', 'gemini')).toContain('@google/genai')
     expect(snippet('node', 'gemini')).toContain('ai.models.generateContent({')
+  })
+
+  it('anthropic 不再同时发送 temperature 与 top_p，并正确映射思考强度', () => {
+    const bare = buildRequestPayload('anthropic', 'm', MESSAGES, false, params())
+    expect(bare.body).toHaveProperty('temperature', 0.7)
+    expect(bare.body).not.toHaveProperty('top_p')
+
+    const withEffort = buildRequestPayload('anthropic', 'm', MESSAGES, false, params({ reasoningEffort: 'high', maxTokens: 4096 }))
+    expect(withEffort.body.thinking).toEqual({ type: 'enabled', budget_tokens: 16384 })
+    expect(withEffort.body.max_tokens).toBe(20480)
+    expect(withEffort.body).not.toHaveProperty('temperature')
+
+    const oai = buildRequestPayload('openai', 'm', MESSAGES, false, params({ reasoningEffort: 'xhigh' }))
+    expect(oai.body.reasoning_effort).toBe('xhigh')
+
+    const resp = buildRequestPayload('responses', 'm', MESSAGES, false, params({ reasoningEffort: 'medium' }))
+    expect(resp.body.reasoning).toEqual({ effort: 'medium' })
+
+    const gem = buildRequestPayload('gemini', 'm', MESSAGES, false, params({ reasoningEffort: 'high', maxTokens: 4096 }))
+    const gemGC = gem.body.generationConfig as Record<string, unknown>
+    expect(gemGC.thinkingConfig).toEqual({ thinkingBudget: 16384, includeThoughts: true })
+    expect(gemGC.maxOutputTokens).toBe(20480)
+  })
+
+  it('responses 协议可正确提取非流式与流式 reasoning 及 output_text', () => {
+    const res = extractPlaygroundResponseData('responses', {
+      id: 'resp_1',
+      output: [
+        { id: 'rs_1', type: 'reasoning', summary: [{ type: 'summary_text', text: 'Plan step' }] },
+        { id: 'msg_1', type: 'message', content: [{ type: 'output_text', text: 'Final answer' }] },
+      ],
+      output_text: 'Final answer',
+    })
+    expect(res).toEqual({ content: 'Final answer', reasoning: 'Plan step' })
+
+    expect(extractPlaygroundSSEDelta('responses', {
+      type: 'response.reasoning_summary_text.delta',
+      delta: 'Thinking...',
+    })).toEqual({ reasoning: 'Thinking...' })
+    expect(extractPlaygroundSSEDelta('responses', {
+      type: 'response.output_text.delta',
+      delta: 'Hello',
+    })).toEqual({ content: 'Hello' })
   })
 })

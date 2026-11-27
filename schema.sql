@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS apiKeys (
     name TEXT, 
     machineId TEXT, 
     isActive INTEGER DEFAULT 1, 
+    allowedModels TEXT DEFAULT '', 
+    rpm INTEGER DEFAULT 0, 
+    systemPrompt TEXT DEFAULT '', 
+    expiresAt TEXT DEFAULT '', 
     createdAt TEXT NOT NULL
 );
 
@@ -96,3 +100,9 @@ CREATE TABLE IF NOT EXISTS requestDetails (
     status TEXT, 
     data TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_usage_history_ts ON usageHistory (timestamp);
+CREATE INDEX IF NOT EXISTS idx_usage_history_conn ON usageHistory (connectionId, timestamp);
+CREATE INDEX IF NOT EXISTS idx_usage_history_model ON usageHistory (provider, model, timestamp);
+CREATE INDEX IF NOT EXISTS idx_request_details_ts ON requestDetails (timestamp);
+CREATE INDEX IF NOT EXISTS idx_connections_provider ON providerConnections (provider, isActive);

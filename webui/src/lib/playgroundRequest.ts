@@ -1,5 +1,6 @@
 import { t } from '@/i18n'
-import type { ProtocolType } from '@/stores/playground'
+import { asArray, dig, str } from '@/lib/json'
+import type { ProtocolType, ReasoningEffort } from '@/stores/playground'
 
 /** 协议徽章色调，未知协议（历史轮次）落灰。 */
 export function protocolBadgeTone(proto?: ProtocolType): 'green' | 'purple' | 'amber' | 'blue' | 'gray' {
@@ -39,6 +40,16 @@ export interface SamplingParams {
   temperature: number
   topP: number
   maxTokens: number
+  reasoningEffort?: ReasoningEffort
+}
+
+const THINKING_BUDGETS: Record<string, number> = {
+  minimal: 1024,
+  low: 2048,
+  medium: 8192,
+  high: 16384,
+  xhigh: 32768,
+  max: 32768,
 }
 
 export interface HistoryMessage {
@@ -70,6 +81,7 @@ export function buildRequestPayload(
   const temp = params.temperature
   const top_p = params.topP
   const max_tokens = params.maxTokens
+  const effort = params.reasoningEffort || ''
 
   switch (proto) {
     case 'responses': {
@@ -90,6 +102,9 @@ export function buildRequestPayload(
       if (cleanSys) {
         body.instructions = cleanSys
       }
+      if (effort && effort !== 'none') {
+        body.reasoning = { effort }
+      }
       return {
         url: '/v1/responses',
         headers: { 'Content-Type': 'application/json' },
@@ -101,16 +116,29 @@ export function buildRequestPayload(
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.content,
       }))
+      const effectiveMax = max_tokens > 0 ? max_tokens : 4096
       const body: Record<string, unknown> = {
         model: targetModel,
         messages,
-        max_tokens: max_tokens > 0 ? max_tokens : 4096,
+        max_tokens: effectiveMax,
         temperature: temp,
-        top_p,
         stream: isStream,
       }
       if (cleanSys) {
         body.system = cleanSys
+      }
+      if (effort === 'none') {
+        body.thinking = { type: 'disabled' }
+      } else if (effort === 'adaptive') {
+        body.thinking = { type: 'adaptive' }
+        delete body.temperature
+      } else if (effort && THINKING_BUDGETS[effort]) {
+        const budget = THINKING_BUDGETS[effort]
+        body.thinking = { type: 'enabled', budget_tokens: budget }
+        if (effectiveMax <= budget) {
+          body.max_tokens = budget + 4096
+        }
+        delete body.temperature
       }
       return {
         url: '/v1/messages',
@@ -126,13 +154,26 @@ export function buildRequestPayload(
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }],
       }))
+      const effectiveMax = max_tokens > 0 ? max_tokens : 2048
+      const generationConfig: Record<string, unknown> = {
+        temperature: temp,
+        topP: top_p,
+        maxOutputTokens: effectiveMax,
+      }
+      if (effort === 'none') {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 }
+      } else if (effort === 'adaptive') {
+        generationConfig.thinkingConfig = { thinkingBudget: -1, includeThoughts: true }
+      } else if (effort && THINKING_BUDGETS[effort]) {
+        const budget = THINKING_BUDGETS[effort]
+        generationConfig.thinkingConfig = { thinkingBudget: budget, includeThoughts: true }
+        if (effectiveMax <= budget) {
+          generationConfig.maxOutputTokens = budget + 4096
+        }
+      }
       const body: Record<string, unknown> = {
         contents,
-        generationConfig: {
-          temperature: temp,
-          topP: top_p,
-          maxOutputTokens: max_tokens > 0 ? max_tokens : 2048,
-        },
+        generationConfig,
       }
       if (cleanSys) {
         body.systemInstruction = {
@@ -162,12 +203,179 @@ export function buildRequestPayload(
       if (max_tokens > 0) {
         body.max_tokens = max_tokens
       }
+      if (effort) {
+        body.reasoning_effort = effort
+      }
       return {
         url: '/v1/chat/completions',
         headers: { 'Content-Type': 'application/json' },
         body,
       }
     }
+  }
+}
+
+export interface ExtractedResponseData {
+  content: string
+  reasoning: string
+}
+
+export interface ExtractedSSEDelta {
+  content?: string
+  reasoning?: string
+}
+
+/** 跨协议提取非流式响应文本与思考过程 */
+export function extractPlaygroundResponseData(proto: ProtocolType, data: unknown): ExtractedResponseData {
+  const openAIFallback = (): ExtractedResponseData => {
+    const content = str(dig(data, 'choices', 0, 'message', 'content')) ?? ''
+    const reasoning =
+      str(dig(data, 'choices', 0, 'message', 'reasoning_content')) ??
+      str(dig(data, 'choices', 0, 'message', 'reasoning')) ??
+      ''
+    return { content, reasoning }
+  }
+  switch (proto) {
+    case 'responses': {
+      let content = ''
+      let reasoning = ''
+      const items = asArray(dig(data, 'output'))
+      if (items && items.length > 0) {
+        for (const item of items) {
+          const iType = str(dig(item, 'type'))
+          if (iType === 'reasoning') {
+            const summaryArr = asArray(dig(item, 'summary'))
+            if (summaryArr) {
+              for (const s of summaryArr) {
+                const txt = str(dig(s, 'text'))
+                if (txt) reasoning += (reasoning ? '\n' : '') + txt
+              }
+            }
+            const contentArr = asArray(dig(item, 'content'))
+            if (contentArr) {
+              for (const c of contentArr) {
+                const txt = str(dig(c, 'text'))
+                if (txt) reasoning += (reasoning ? '\n' : '') + txt
+              }
+            }
+          } else if (iType === 'message') {
+            const blocks = asArray(dig(item, 'content'))
+            if (blocks) {
+              for (const b of blocks) {
+                content += str(dig(b, 'text')) ?? ''
+              }
+            }
+          }
+        }
+      }
+      if (!content) {
+        const outText = str(dig(data, 'output_text'))
+        if (outText) content = outText
+      }
+      if (content || reasoning) return { content, reasoning }
+      return openAIFallback()
+    }
+    case 'anthropic': {
+      const blocks = asArray(dig(data, 'content'))
+      if (blocks && blocks.length > 0) {
+        let content = ''
+        let reasoning = ''
+        for (const b of blocks) {
+          const bType = str(dig(b, 'type'))
+          if (bType === 'thinking') {
+            reasoning += str(dig(b, 'thinking')) ?? ''
+          } else {
+            content += str(dig(b, 'text')) ?? ''
+          }
+        }
+        return { content, reasoning }
+      }
+      return openAIFallback()
+    }
+    case 'gemini': {
+      const parts = asArray(dig(data, 'candidates', 0, 'content', 'parts'))
+      if (parts && parts.length > 0) {
+        let content = ''
+        let reasoning = ''
+        for (const p of parts) {
+          if (Boolean(dig(p, 'thought'))) {
+            reasoning += str(dig(p, 'text')) ?? ''
+          } else {
+            content += str(dig(p, 'text')) ?? ''
+          }
+        }
+        return { content, reasoning }
+      }
+      return openAIFallback()
+    }
+    case 'openai':
+    default:
+      return openAIFallback()
+  }
+}
+
+/** 跨协议提取 SSE 增量文本与思考过程 */
+export function extractPlaygroundSSEDelta(proto: ProtocolType, parsed: unknown): ExtractedSSEDelta {
+  if (!parsed) return {}
+  const openAIFallback = (): ExtractedSSEDelta => {
+    const content = str(dig(parsed, 'choices', 0, 'delta', 'content')) ?? undefined
+    const reasoning =
+      str(dig(parsed, 'choices', 0, 'delta', 'reasoning_content')) ??
+      str(dig(parsed, 'choices', 0, 'delta', 'reasoning')) ??
+      undefined
+    return { content, reasoning }
+  }
+  switch (proto) {
+    case 'responses': {
+      const evType = dig(parsed, 'type')
+      if (
+        evType === 'response.reasoning_summary_text.delta' ||
+        evType === 'response.reasoning_text.delta' ||
+        evType === 'response.reasoning.delta'
+      ) {
+        const delta = str(dig(parsed, 'delta'))
+        if (delta !== null) return { reasoning: delta }
+      }
+      if (evType === 'response.output_text.delta') {
+        const delta = str(dig(parsed, 'delta'))
+        if (delta !== null) return { content: delta }
+      }
+      return openAIFallback()
+    }
+    case 'anthropic': {
+      if (dig(parsed, 'type') === 'content_block_delta') {
+        const deltaType = str(dig(parsed, 'delta', 'type'))
+        if (deltaType === 'thinking_delta') {
+          const thinking = str(dig(parsed, 'delta', 'thinking'))
+          if (thinking !== null) return { reasoning: thinking }
+        }
+        const delta = str(dig(parsed, 'delta', 'text'))
+        if (delta !== null) return { content: delta }
+      }
+      return openAIFallback()
+    }
+    case 'gemini': {
+      const parts = asArray(dig(parsed, 'candidates', 0, 'content', 'parts'))
+      if (parts && parts.length > 0) {
+        let content = ''
+        let reasoning = ''
+        for (const p of parts) {
+          if (Boolean(dig(p, 'thought'))) {
+            reasoning += str(dig(p, 'text')) ?? ''
+          } else {
+            content += str(dig(p, 'text')) ?? ''
+          }
+        }
+        return {
+          content: content || undefined,
+          reasoning: reasoning || undefined,
+        }
+      }
+      return openAIFallback()
+    }
+    case 'openai':
+    default:
+      return openAIFallback()
   }
 }
 

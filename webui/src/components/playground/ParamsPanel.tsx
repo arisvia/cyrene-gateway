@@ -1,6 +1,6 @@
 import { type Component, For, Show } from 'solid-js'
 import { useI18n } from '@/i18n'
-import { usePlaygroundStore, type ProtocolOption, type ProtocolType } from '@/stores/playground'
+import { usePlaygroundStore, type ProtocolOption, type ProtocolType, type ReasoningEffort } from '@/stores/playground'
 import { Badge, Button, Card, IconButton, IconClose, IconSliders, IconSparkles, IconZap, Input, Select, Slider, Textarea, Toggle } from '@/components/ui'
 
 interface ParamsPanelProps {
@@ -16,8 +16,19 @@ const ParamsPanel: Component<ParamsPanelProps> = props => {
   const { t } = useI18n()
   const {
     protocol, setProtocol, systemPrompt, setSystemPrompt, temperature, setTemperature,
-    topP, setTopP, maxTokens, setMaxTokens, stream, setStream,
+    topP, setTopP, maxTokens, setMaxTokens, reasoningEffort, setReasoningEffort, stream, setStream,
   } = usePlaygroundStore()
+
+  const reasoningOptions = () => [
+    { value: '', label: t('playground.reasoningAuto') },
+    { value: 'none', label: t('playground.reasoningNone') },
+    { value: 'minimal', label: t('playground.reasoningMinimal') },
+    { value: 'low', label: t('playground.reasoningLow') },
+    { value: 'medium', label: t('playground.reasoningMedium') },
+    { value: 'high', label: t('playground.reasoningHigh') },
+    { value: 'xhigh', label: t('playground.reasoningMax') },
+    { value: 'adaptive', label: t('playground.reasoningAdaptive') },
+  ]
 
   return (
     <Show when={props.open()}>
@@ -163,6 +174,18 @@ const ParamsPanel: Component<ParamsPanelProps> = props => {
                 value={maxTokens()}
                 onInput={(v: string) => setMaxTokens(parseInt(v) || 2048)}
                 class="font-mono"
+              />
+            </div>
+
+            {/* 思考强度 */}
+            <div class="space-y-1.5">
+              <label class="block text-xs font-medium text-muted leading-none">{t('playground.paramReasoningEffort')}</label>
+              <Select
+                class="w-full text-xs"
+                size="sm"
+                value={reasoningEffort()}
+                options={reasoningOptions()}
+                onChange={v => setReasoningEffort(v as ReasoningEffort)}
               />
             </div>
 

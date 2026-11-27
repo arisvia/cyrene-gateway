@@ -12,13 +12,14 @@ RUN npm run build
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY webui/embed.go webui/embed.go
 COPY --from=webui /src/webui/dist webui/dist
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o /out/cyrene-gateway ./cmd/gateway
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X github.com/arisvia/cyrene-gateway/internal/handler.version=${VERSION}" -o /out/cyrene-gateway ./cmd/gateway
 
 # ---------- 3) 运行镜像 ----------
 FROM alpine:3.21

@@ -421,6 +421,15 @@ export const zhCN = {
     paramTemperature: '温度',
     paramTopP: 'Top P',
     paramMaxTokens: '最大输出 Tokens',
+    paramReasoningEffort: '思考强度',
+    reasoningAuto: '默认 (Auto)',
+    reasoningNone: '关闭 (Off)',
+    reasoningMinimal: '极低 (Minimal)',
+    reasoningLow: '低 (Low)',
+    reasoningMedium: '中 (Medium)',
+    reasoningHigh: '高 (High)',
+    reasoningMax: '极限 (XHigh)',
+    reasoningAdaptive: '自适应 (Adaptive)',
     presets: {
       defaultAssistant: {
         label: '默认助手',

@@ -217,6 +217,4 @@ export interface GatewaySettings {
   responseCacheTTL?: number
   responseCacheAll?: boolean
   autoPromptCache?: boolean
-  providerStrategies?: Record<string, { fallbackStrategy?: string; stickyRoundRobinLimit?: number }>
-  providerThinking?: Record<string, { mode?: string }>
 }

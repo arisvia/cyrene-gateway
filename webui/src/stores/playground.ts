@@ -1,4 +1,5 @@
 import { createEffect, createRoot, createSignal } from 'solid-js'
+import { createStore } from 'solid-js/store'
 import { dig, num, str } from '@/lib/json'
 
 export interface Metrics {
@@ -9,6 +10,10 @@ export interface Metrics {
 }
 
 export type ProtocolType = 'openai' | 'responses' | 'anthropic' | 'gemini'
+
+export type ReasoningEffort = '' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'adaptive'
+
+const VALID_REASONING_EFFORTS = new Set<string>(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'adaptive'])
 
 export interface ProtocolOption {
   value: ProtocolType
@@ -50,6 +55,7 @@ interface PlaygroundConfig {
   temperature?: number
   topP?: number
   maxTokens?: number
+  reasoningEffort?: ReasoningEffort
   stream?: boolean
 }
 
@@ -62,6 +68,7 @@ function readConfig(): PlaygroundConfig {
     const parsed: unknown = JSON.parse(saved)
     const proto = str(dig(parsed, 'protocol'))
     const savedMode = str(dig(parsed, 'mode'))
+    const rawEffort = str(dig(parsed, 'reasoningEffort'))
     const stream = dig(parsed, 'stream')
     return {
       protocol: proto === 'openai' || proto === 'responses' || proto === 'anthropic' || proto === 'gemini' ? proto : undefined,
@@ -72,6 +79,7 @@ function readConfig(): PlaygroundConfig {
       temperature: num(dig(parsed, 'temperature')) ?? undefined,
       topP: num(dig(parsed, 'topP')) ?? undefined,
       maxTokens: num(dig(parsed, 'maxTokens')) ?? undefined,
+      reasoningEffort: rawEffort !== null && VALID_REASONING_EFFORTS.has(rawEffort) ? (rawEffort as ReasoningEffort) : undefined,
       stream: typeof stream === 'boolean' ? stream : undefined,
     }
   } catch {
@@ -90,13 +98,29 @@ function createPlaygroundStore() {
   const [temperature, setTemperature] = createSignal(saved.temperature ?? 0.7)
   const [topP, setTopP] = createSignal(saved.topP ?? 0.95)
   const [maxTokens, setMaxTokens] = createSignal(saved.maxTokens ?? 2048)
+  const [reasoningEffort, setReasoningEffort] = createSignal<ReasoningEffort>(saved.reasoningEffort ?? '')
   const [stream, setStream] = createSignal(saved.stream ?? true)
 
-  // 对话历史：按模式隔离（单模型与双模型对比各自保持独立消息流，切换不串流）
-  const [turnsAll, setTurnsAll] = createSignal<Turn[]>([])
-  const turns = () => turnsAll().filter(turn => turn.mode === mode())
-  const setTurns = (updater: Turn[] | ((prev: Turn[]) => Turn[])) => setTurnsAll(updater)
-  const clearTurns = () => setTurnsAll(prev => prev.filter(turn => turn.mode !== mode()))
+  // 对话历史：使用 createStore 实现细粒度响应式更新，流式追加时保持已有 Turn 引用不变，避免重建 ThinkingBlock 状态。
+  const [turnsState, setTurnsState] = createStore<Turn[]>([])
+  const turnsAll = () => turnsState
+  const setTurnsAll = (updater: Turn[] | ((prev: Turn[]) => Turn[])) => {
+    setTurnsState(typeof updater === 'function' ? updater(turnsState) : updater)
+  }
+  const setTurns = setTurnsAll
+  const turns = () => turnsState.filter(turn => turn.mode === mode())
+  const appendTurn = (turn: Turn) => setTurnsState(turnsState.length, turn)
+  const updateTurnSlot = (turnId: string, slot: 'a' | 'b', patch: Partial<AssistantResponse>) => {
+    const idx = turnsState.findIndex(t => t.id === turnId)
+    if (idx >= 0 && turnsState[idx][slot]) {
+      setTurnsState(idx, slot, patch)
+    }
+  }
+  const stopBusyTurns = () => {
+    setTurnsState(t => t.a.busy, 'a', 'busy', false)
+    setTurnsState(t => Boolean(t.b?.busy), 'b', 'busy', false)
+  }
+  const clearTurns = () => setTurnsState(turnsState.filter(turn => turn.mode !== mode()))
 
   createEffect(() => {
     const config: PlaygroundConfig = {
@@ -108,6 +132,7 @@ function createPlaygroundStore() {
       temperature: temperature(),
       topP: topP(),
       maxTokens: maxTokens(),
+      reasoningEffort: reasoningEffort(),
       stream: stream(),
     }
     try {
@@ -122,8 +147,8 @@ function createPlaygroundStore() {
   return {
     mode, setMode, protocol, setProtocol, modelA, setModelA, modelB, setModelB,
     systemPrompt, setSystemPrompt, temperature, setTemperature, topP, setTopP,
-    maxTokens, setMaxTokens, stream, setStream,
-    turnsAll, setTurnsAll, turns, setTurns, clearTurns,
+    maxTokens, setMaxTokens, reasoningEffort, setReasoningEffort, stream, setStream,
+    turnsAll, setTurnsAll, turns, setTurns, appendTurn, updateTurnSlot, stopBusyTurns, clearTurns,
   }
 }
 

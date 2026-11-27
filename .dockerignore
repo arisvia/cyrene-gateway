@@ -1,0 +1,14 @@
+.git
+.cache
+dist
+build
+webui/node_modules
+webui/dist
+*.sqlite*
+*.db
+*.log
+*.exe
+cyrene-gateway*
+.cyrene-gateway
+.codegraph
+*backup*.json

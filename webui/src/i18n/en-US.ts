@@ -423,6 +423,15 @@ export const enUS: TranslationDict = {
     paramTemperature: 'Temperature',
     paramTopP: 'Top P',
     paramMaxTokens: 'Max Tokens',
+    paramReasoningEffort: 'Reasoning Effort',
+    reasoningAuto: 'Default (Auto)',
+    reasoningNone: 'Off',
+    reasoningMinimal: 'Minimal',
+    reasoningLow: 'Low',
+    reasoningMedium: 'Medium',
+    reasoningHigh: 'High',
+    reasoningMax: 'Max (XHigh)',
+    reasoningAdaptive: 'Adaptive',
     presets: {
       defaultAssistant: {
         label: 'General Assistant',

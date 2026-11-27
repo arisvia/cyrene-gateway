@@ -1,6 +1,6 @@
 import { type Component, For, Show, createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js'
 import { reloadModels, type GatewayModel } from '@/lib/models'
-import { asArray, dig, num, str } from '@/lib/json'
+import { dig, num, str } from '@/lib/json'
 import { usePlaygroundStore, type AssistantResponse, type Metrics, type ProtocolOption, type ProtocolType, type Turn } from '@/stores/playground'
 import {
   Card,
@@ -28,7 +28,16 @@ import { useToast } from '@/lib/toast'
 import { copyToClipboard } from '@/lib/clipboard'
 import { confirm } from '@/lib/confirm'
 import { useGatewayStore } from '@/stores/gateway'
-import { buildRequestPayload, generateCodeSnippet, protocolBadgeTone, protocolLabel, type CodeLang, type SamplingParams } from '@/lib/playgroundRequest'
+import {
+  buildRequestPayload,
+  extractPlaygroundResponseData,
+  extractPlaygroundSSEDelta,
+  generateCodeSnippet,
+  protocolBadgeTone,
+  protocolLabel,
+  type CodeLang,
+  type SamplingParams,
+} from '@/lib/playgroundRequest'
 import ParamsPanel from '@/components/playground/ParamsPanel'
 import ExportCodeModal from '@/components/playground/ExportCodeModal'
 import RawJsonModal from '@/components/playground/RawJsonModal'
@@ -42,7 +51,7 @@ const Playground: Component = () => {
   const {
     mode, setMode, protocol, modelA, setModelA, modelB, setModelB,
     systemPrompt, temperature, topP,
-    maxTokens, stream, turnsAll, setTurnsAll, turns, setTurns,
+    maxTokens, reasoningEffort, stream, turnsAll, turns, appendTurn, updateTurnSlot, stopBusyTurns, clearTurns,
   } = usePlaygroundStore()
   const { t } = useI18n()
   const toast = useToast()
@@ -271,13 +280,7 @@ const Playground: Component = () => {
       abortControllerB.abort()
       abortControllerB = null
     }
-    setTurns(prev =>
-      prev.map(t => ({
-        ...t,
-        a: { ...t.a, busy: false },
-        b: t.b ? { ...t.b, busy: false } : undefined,
-      }))
-    )
+    stopBusyTurns()
   }
 
   onCleanup(() => {
@@ -288,7 +291,7 @@ const Playground: Component = () => {
     if (turns().length === 0) return
     if (!await confirm(t('playground.clearConfirm'))) return
     stopAll()
-    setTurnsAll(prev => prev.filter(t => t.mode !== mode()))
+    clearTurns()
     toast.info(t('toast.clearHistorySuccess'))
   }
 
@@ -299,6 +302,7 @@ const Playground: Component = () => {
       temperature: Number(temperature()),
       topP: Number(topP()),
       maxTokens: Number(maxTokens()),
+      reasoningEffort: reasoningEffort(),
     }
   }
 
@@ -314,134 +318,6 @@ const Playground: Component = () => {
     })
   }
 
-
-  interface ExtractedResponseData {
-    content: string
-    reasoning: string
-  }
-
-  interface ExtractedSSEDelta {
-    content?: string
-    reasoning?: string
-  }
-
-  // 跨协议提取非流式响应文本与思考过程
-  function extractResponseData(proto: ProtocolType, data: unknown): ExtractedResponseData {
-    const openAIFallback = (): ExtractedResponseData => {
-      const content = str(dig(data, 'choices', 0, 'message', 'content')) ?? ''
-      const reasoning =
-        str(dig(data, 'choices', 0, 'message', 'reasoning_content')) ??
-        str(dig(data, 'choices', 0, 'message', 'reasoning')) ??
-        ''
-      return { content, reasoning }
-    }
-    switch (proto) {
-      case 'responses': {
-        const outText = str(dig(data, 'output_text'))
-        if (outText) return { content: outText, reasoning: '' }
-        const items = asArray(dig(data, 'output'))
-        if (items && items.length > 0) {
-          const blocks = asArray(dig(items[0], 'content'))
-          if (blocks && blocks.length > 0) {
-            return { content: str(dig(blocks[0], 'text')) ?? '', reasoning: '' }
-          }
-        }
-        return openAIFallback()
-      }
-      case 'anthropic': {
-        const blocks = asArray(dig(data, 'content'))
-        if (blocks && blocks.length > 0) {
-          let content = ''
-          let reasoning = ''
-          for (const b of blocks) {
-            const bType = str(dig(b, 'type'))
-            if (bType === 'thinking') {
-              reasoning += str(dig(b, 'thinking')) ?? ''
-            } else {
-              content += str(dig(b, 'text')) ?? ''
-            }
-          }
-          return { content, reasoning }
-        }
-        return openAIFallback()
-      }
-      case 'gemini': {
-        const parts = asArray(dig(data, 'candidates', 0, 'content', 'parts'))
-        if (parts && parts.length > 0) {
-          let content = ''
-          let reasoning = ''
-          for (const p of parts) {
-            if (Boolean(dig(p, 'thought'))) {
-              reasoning += str(dig(p, 'text')) ?? ''
-            } else {
-              content += str(dig(p, 'text')) ?? ''
-            }
-          }
-          return { content, reasoning }
-        }
-        return openAIFallback()
-      }
-      case 'openai':
-      default:
-        return openAIFallback()
-    }
-  }
-
-  // 跨协议提取 SSE 增量文本与思考过程
-  function extractSSEDelta(proto: ProtocolType, parsed: unknown): ExtractedSSEDelta {
-    if (!parsed) return {}
-    const openAIFallback = (): ExtractedSSEDelta => {
-      const content = str(dig(parsed, 'choices', 0, 'delta', 'content')) ?? undefined
-      const reasoning =
-        str(dig(parsed, 'choices', 0, 'delta', 'reasoning_content')) ??
-        str(dig(parsed, 'choices', 0, 'delta', 'reasoning')) ??
-        undefined
-      return { content, reasoning }
-    }
-    switch (proto) {
-      case 'responses': {
-        if (dig(parsed, 'type') === 'response.output_text.delta') {
-          const delta = str(dig(parsed, 'delta'))
-          if (delta !== null) return { content: delta }
-        }
-        return openAIFallback()
-      }
-      case 'anthropic': {
-        if (dig(parsed, 'type') === 'content_block_delta') {
-          const deltaType = str(dig(parsed, 'delta', 'type'))
-          if (deltaType === 'thinking_delta') {
-            const thinking = str(dig(parsed, 'delta', 'thinking'))
-            if (thinking !== null) return { reasoning: thinking }
-          }
-          const delta = str(dig(parsed, 'delta', 'text'))
-          if (delta !== null) return { content: delta }
-        }
-        return openAIFallback()
-      }
-      case 'gemini': {
-        const parts = asArray(dig(parsed, 'candidates', 0, 'content', 'parts'))
-        if (parts && parts.length > 0) {
-          let content = ''
-          let reasoning = ''
-          for (const p of parts) {
-            if (Boolean(dig(p, 'thought'))) {
-              reasoning += str(dig(p, 'text')) ?? ''
-            } else {
-              content += str(dig(p, 'text')) ?? ''
-            }
-          }
-          return {
-            content: content || undefined,
-            reasoning: reasoning || undefined,
-          }
-        }
-        return openAIFallback()
-      }
-      case 'openai':
-      default:
-        return openAIFallback()
-    }
-  }
 
   // 执行单模型请求（支持多协议 Stream 与非 Stream）
   async function executeRequest(
@@ -485,7 +361,7 @@ const Playground: Component = () => {
     if (!stream() || !res.body) {
       const data: unknown = await res.json()
       const totalMs = Math.round(performance.now() - startTime)
-      const { content, reasoning } = extractResponseData(activeProto, data)
+      const { content, reasoning } = extractPlaygroundResponseData(activeProto, data)
       const reportedTokens =
         num(dig(data, 'usage', 'completion_tokens')) ??
         num(dig(data, 'usage', 'output_tokens')) ??
@@ -560,7 +436,7 @@ const Playground: Component = () => {
           if (!servedModel) {
             servedModel = str(dig(parsed, 'model')) ?? str(dig(parsed, 'modelVersion')) ?? ''
           }
-          const delta = extractSSEDelta(activeProto, parsed)
+          const delta = extractPlaygroundSSEDelta(activeProto, parsed)
           if (delta.content || delta.reasoning) {
             if (delta.content) accumulatedContent += delta.content
             if (delta.reasoning) accumulatedReasoning += delta.reasoning
@@ -619,13 +495,23 @@ const Playground: Component = () => {
     const isCompare = mode() === 'compare' && Boolean(modelB())
     const turnId = `turn-${Date.now()}`
 
-    // 组装历史消息序列
+    // 在追加 newTurn 之前构建两条历史消息，避免对比模式下 Model B 重复带上当前轮输入。
+    const currentTurns = turns()
     const historyA: { role: string; content: string }[] = []
-    for (const t of turns()) {
+    for (const t of currentTurns) {
       historyA.push({ role: 'user', content: t.user })
       if (t.a.content) historyA.push({ role: 'assistant', content: t.a.content })
     }
     historyA.push({ role: 'user', content: text })
+
+    const historyB: { role: string; content: string }[] = []
+    if (isCompare) {
+      for (const t of currentTurns) {
+        historyB.push({ role: 'user', content: t.user })
+        if (t.b?.content) historyB.push({ role: 'assistant', content: t.b.content })
+      }
+      historyB.push({ role: 'user', content: text })
+    }
 
     const newTurn: Turn = {
       id: turnId,
@@ -635,7 +521,7 @@ const Playground: Component = () => {
       b: isCompare ? { targetModel: modelB(), content: '', busy: true, protocol: protocol() } : undefined,
     }
 
-    setTurns(prev => [...prev, newTurn])
+    appendTurn(newTurn)
 
     // 启动 Model A
     abortControllerA = new AbortController()
@@ -643,132 +529,77 @@ const Playground: Component = () => {
       modelA(),
       historyA,
       (data, meta) => {
-        setTurns(prev =>
-          prev.map(t => {
-            if (t.id !== turnId) return t
-            return {
-              ...t,
-              a: {
-                ...t.a,
-                content: data.content,
-                reasoning: data.reasoning,
-                servedModel: meta?.servedModel || t.a.servedModel,
-              },
-            }
-          })
-        )
+        const patch: Partial<AssistantResponse> = {
+          content: data.content,
+          reasoning: data.reasoning,
+        }
+        if (meta?.servedModel) {
+          patch.servedModel = meta.servedModel
+        }
+        updateTurnSlot(turnId, 'a', patch)
       },
       abortControllerA.signal
     )
       .then(res => {
-        setTurns(prev =>
-          prev.map(t =>
-            t.id === turnId
-              ? {
-                  ...t,
-                  a: {
-                    ...t.a,
-                    content: res.fullContent,
-                    reasoning: res.fullReasoning,
-                    busy: false,
-                    servedModel: res.servedModel,
-                    protocol: res.protocol,
-                    metrics: res.metrics,
-                    rawRequest: res.rawRequest,
-                    rawResponse: res.rawResponse,
-                  },
-                }
-              : t
-          )
-        )
+        updateTurnSlot(turnId, 'a', {
+          content: res.fullContent,
+          reasoning: res.fullReasoning,
+          busy: false,
+          servedModel: res.servedModel,
+          protocol: res.protocol,
+          metrics: res.metrics,
+          rawRequest: res.rawRequest,
+          rawResponse: res.rawResponse,
+        })
       })
       .catch(err => {
         if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
-          setTurns(prev =>
-            prev.map(t => (t.id === turnId ? { ...t, a: { ...t.a, busy: false } } : t))
-          )
+          updateTurnSlot(turnId, 'a', { busy: false })
           return
         }
         const msg = err instanceof Error ? err.message : String(err)
-        setTurns(prev =>
-          prev.map(t =>
-            t.id === turnId
-              ? { ...t, a: { ...t.a, busy: false, error: msg } }
-              : t
-          )
-        )
+        updateTurnSlot(turnId, 'a', { busy: false, error: msg })
       })
 
     // 启动 Model B（如果在双模型对比模式）
     let promiseB = Promise.resolve()
     if (isCompare) {
       abortControllerB = new AbortController()
-      const historyB: { role: string; content: string }[] = []
-      for (const t of turns()) {
-        historyB.push({ role: 'user', content: t.user })
-        if (t.b?.content) historyB.push({ role: 'assistant', content: t.b.content })
-      }
-      historyB.push({ role: 'user', content: text })
-
       promiseB = executeRequest(
         modelB(),
         historyB,
         (data, meta) => {
-          setTurns(prev =>
-            prev.map(t => {
-              if (t.id !== turnId || !t.b) return t
-              return {
-                ...t,
-                b: {
-                  ...t.b,
-                  content: data.content,
-                  reasoning: data.reasoning,
-                  servedModel: meta?.servedModel || t.b.servedModel,
-                },
-              }
-            })
-          )
+          const patch: Partial<AssistantResponse> = {
+            content: data.content,
+            reasoning: data.reasoning,
+          }
+          if (meta?.servedModel) {
+            patch.servedModel = meta.servedModel
+          }
+          updateTurnSlot(turnId, 'b', patch)
         },
         abortControllerB.signal
       )
         .then(res => {
-          setTurns(prev =>
-            prev.map(t =>
-              t.id === turnId && t.b
-                ? {
-                    ...t,
-                    b: {
-                      ...t.b,
-                      content: res.fullContent,
-                      reasoning: res.fullReasoning,
-                      busy: false,
-                      servedModel: res.servedModel,
-                      protocol: res.protocol,
-                      metrics: res.metrics,
-                      rawRequest: res.rawRequest,
-                      rawResponse: res.rawResponse,
-                    },
-                  }
-                : t
-            )
-          )
+          updateTurnSlot(turnId, 'b', {
+            content: res.fullContent,
+            reasoning: res.fullReasoning,
+            busy: false,
+            servedModel: res.servedModel,
+            protocol: res.protocol,
+            metrics: res.metrics,
+            rawRequest: res.rawRequest,
+            rawResponse: res.rawResponse,
+          })
         })
-      .catch(err => {
-        if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
-          setTurns(prev =>
-            prev.map(t => (t.id === turnId && t.b ? { ...t, b: { ...t.b, busy: false } } : t))
-          )
-          return
-        }
-        const msg = err instanceof Error ? err.message : String(err)
-        setTurns(prev =>
-          prev.map(t =>
-            t.id === turnId && t.b
-              ? { ...t, b: { ...t.b, busy: false, error: msg } }
-              : t
-          )
-        )
-      })
+        .catch(err => {
+          if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
+            updateTurnSlot(turnId, 'b', { busy: false })
+            return
+          }
+          const msg = err instanceof Error ? err.message : String(err)
+          updateTurnSlot(turnId, 'b', { busy: false, error: msg })
+        })
     }
 
     await Promise.allSettled([promiseA, promiseB])
