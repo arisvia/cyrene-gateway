@@ -2,6 +2,22 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.0] - 2026-11-27
+
+### Added
+- **`/v1/responses` 与 Gemini 同协议无损直通**：原生支持 Responses 与 Gemini 协议的渠道绕过 OpenAI Chat 中转，直接透传请求体并保留原生思考、工具与签名语义，同时补齐对应的账号池轮换、Token 省流与 LoopGuard 注入。
+- **思考等级对齐与推理内容回传**：补全 Anthropic/OpenAI/Responses/Gemini 间的思考内容回传与思考等级映射（含 `developer` 角色识别与内联指令支持），并在 Antigravity 链路透传 `thoughtSignature` 避免多轮工具调用断链。
+- **演练场推理强度面板**：Playground 参数面板新增 `reasoningEffort` 选择，统一适配 Chat Completions、Responses、Anthropic 与 Gemini 四套协议载荷。
+
+### Changed
+- **设置与 KV 读缓存及用量索引优化**：为数据库 `Settings` 与 `KV` 增加内存读缓存及写失效，优化用量聚合的时间范围索引扫描与单遍 JSON 解析，并同步补齐 `schema.sql` 缺失列与索引。
+- **历史兼容垫片与死代码清理**：统一媒体与管理面 `api-key` 认证类型口径，收紧 `models.dev` 缓存信封与 OAuth 设备流驼峰字段，删除后端零引用遗留函数与前端废弃 store 导出及旧版缩略图迁移逻辑。
+
+### Fixed
+- **Combo 流式缓冲与工具/思考转换缺陷**：修复 Combo 流式切换未清空缓冲、跨协议工具参数与 `tool_choice`/`disable_parallel_tool_use` 丢失、`<think>` 标签与多块流式边界错位等核心链路问题。
+- **演练场对比重复与流式渲染抖动**：修复多模型对比重复追加提示词的问题，改用 `createStore` 细粒度更新消除流式输出期间的整页重建。
+- **容器与发版流水线对齐**：补齐 `.dockerignore` 与 `Dockerfile` 版本参数注入，并在 `release.yml` 补充 `gofmt` 检查与 Docker Job 的构建依赖门禁。
+
 ## [1.13.0] - 2026-11-25
 
 ### Added
