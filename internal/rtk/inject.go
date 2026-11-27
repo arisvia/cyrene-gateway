@@ -16,6 +16,8 @@ func InjectSystemPrompt(body map[string]any, format string, prompt string) {
 		injectClaudeSystem(body, prompt)
 	case "gemini":
 		injectGeminiSystem(body, prompt)
+	case "responses":
+		injectResponsesSystem(body, prompt)
 	default:
 		injectMessagesSystem(body, prompt)
 	}
@@ -33,6 +35,37 @@ func InjectPonytail(body map[string]any, format string, level string) {
 	if p, ok := PonytailPrompts[level]; ok {
 		InjectSystemPrompt(body, format, p)
 	}
+}
+
+func injectResponsesSystem(body map[string]any, prompt string) {
+	if instructions, ok := body["instructions"].(string); ok {
+		if strings.Contains(instructions, prompt) {
+			return
+		}
+		if instructions != "" {
+			body["instructions"] = instructions + sep + prompt
+		} else {
+			body["instructions"] = prompt
+		}
+		return
+	}
+
+	if input, ok := body["input"].([]any); ok {
+		for i, m := range input {
+			msg, ok := m.(map[string]any)
+			if !ok {
+				continue
+			}
+			role, _ := msg["role"].(string)
+			if role == "system" || role == "developer" {
+				appendToMessage(msg, prompt, "input_text")
+				input[i] = msg
+				return
+			}
+		}
+	}
+
+	body["instructions"] = prompt
 }
 
 func injectMessagesSystem(body map[string]any, prompt string) {

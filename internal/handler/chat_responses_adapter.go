@@ -200,6 +200,9 @@ func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stream, _ := reqMap["stream"].(bool)
+	if s.tryNativeResponsesPassthrough(w, r, reqMap, rawBody, modelStr, stream) {
+		return
+	}
 
 	// Convert Responses API payload to Chat Completions payload
 	chatReqMap, err := translator.ResponsesToOpenAIRequest(reqMap)

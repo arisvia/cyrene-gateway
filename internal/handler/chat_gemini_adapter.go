@@ -234,6 +234,15 @@ func (s *Server) handleGeminiGenerateContent(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	endpointPrefix := "/v1beta/models/"
+	if strings.HasPrefix(r.URL.Path, "/v1/") {
+		endpointPrefix = "/v1/models/"
+	}
+	endpoint := endpointPrefix + modelAction
+	if s.tryNativeGeminiPassthrough(w, r, reqMap, rawBody, modelStr, endpoint, isStream) {
+		return
+	}
+
 	chatReqMap, err := translator.GeminiToOpenAIRequest(reqMap, modelStr)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to parse Gemini request: %v", err)})
@@ -263,11 +272,7 @@ func (s *Server) handleGeminiGenerateContent(w http.ResponseWriter, r *http.Requ
 	// shared extractRequestAPIKey can attribute usage for ?key= callers.
 	newReq.URL.RawQuery = r.URL.RawQuery
 	newReq.Header.Set("Content-Type", "application/json")
-	endpointPrefix := "/v1beta/models/"
-	if strings.HasPrefix(r.URL.Path, "/v1/") {
-		endpointPrefix = "/v1/models/"
-	}
-	newReq.Header.Set("X-Cyrene-Original-Endpoint", endpointPrefix+modelAction)
+	newReq.Header.Set("X-Cyrene-Original-Endpoint", endpoint)
 	s.handleChatCompletions(adapter, newReq)
 	adapter.Finish()
 }

@@ -186,7 +186,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.tryRefreshToken(conn)
-	baseURL, effectiveAPIType := effectiveAnthropicTarget(providerInfo, conn)
+	baseURL, effectiveAPIType := effectiveProviderTarget(providerInfo, conn)
 	if effectiveAPIType != "anthropic" || baseURL == "" {
 		s.handleMessagesViaChat(w, r, reqBody, modelStr, stream, effortOverride)
 		return
@@ -254,7 +254,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			}
 			tried[next.ID] = true
 			s.tryRefreshToken(next)
-			if b, e := effectiveAnthropicTarget(providerInfo, next); e == "anthropic" && b != "" {
+			if b, e := effectiveProviderTarget(providerInfo, next); e == "anthropic" && b != "" {
 				cur = next
 				break
 			}
@@ -267,19 +267,6 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(lastStatus)
 	w.Write(wrapErrorWithHint(lastStatus, lastBody, modelInfo.Provider))
-}
-
-// effectiveAnthropicTarget resolves a connection's effective base URL and API
-// type (dual-auth routing plus user overrides) for the native passthrough.
-func effectiveAnthropicTarget(providerInfo provider.ProviderInfo, conn *model.ProviderConnection) (string, string) {
-	baseURL, apiType := providerInfo.EffectiveBaseURL(conn.AuthType, conn.Data.APIKey != "")
-	if conn.Data.BaseURL != "" {
-		baseURL = conn.Data.BaseURL
-		if apiType == "" {
-			apiType = providerInfo.APIType
-		}
-	}
-	return baseURL, apiType
 }
 
 // attemptMessagesPassthrough executes one native Anthropic Messages passthrough
@@ -297,7 +284,7 @@ func (s *Server) attemptMessagesPassthrough(
 	conn *model.ProviderConnection,
 	stream bool,
 ) (retryable bool, status int, errBody []byte) {
-	baseURL, _ := effectiveAnthropicTarget(providerInfo, conn)
+	baseURL, _ := effectiveProviderTarget(providerInfo, conn)
 
 	// Phase 30: resolve transport for URL building + auth injection.
 	transport := provider.ResolveTransport(providerInfo, baseURL, "anthropic", conn)

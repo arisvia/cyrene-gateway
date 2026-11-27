@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestGemini_NonStream(t *testing.T) {
@@ -212,4 +214,119 @@ func TestGeminiAdapter_KeepaliveDoesNotBreakEventStream(t *testing.T) {
 	if !strings.Contains(out, "hi") {
 		t.Fatalf("data frame after the keepalive must still be translated, got %q", out)
 	}
+}
+
+func TestNativeGeminiPassthrough_LosslessFailoverAndAntigravityBypass(t *testing.T) {
+	t.Run("lossless_nonstream_and_stream_with_failover", func(t *testing.T) {
+		var sentBodies []map[string]any
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("key") == "key-fail" || r.Header.Get("Authorization") == "Bearer key-fail" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"error":{"code":429,"message":"quota exhausted","status":"RESOURCE_EXHAUSTED"}}`))
+				return
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			sentBodies = append(sentBodies, body)
+			if strings.Contains(r.URL.Path, "streamGenerateContent") {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Write([]byte("data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"thoughtSignature\":\"sig_stream_99\",\"text\":\"native-stream\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":9,\"candidatesTokenCount\":3,\"totalTokenCount\":12}}\n\n"))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig_resp_123","functionCall":{"name":"search","args":{"q":"test"}}}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":6,"totalTokenCount":18}}`))
+		}))
+		defer upstream.Close()
+
+		id := "native-gem-test"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: upstream.URL + "/v1beta/models", APIType: "gemini", AuthType: "api-key"}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "g1", Provider: id, AuthType: "api-key", IsActive: true, Priority: 1,
+			Data: model.ConnectionData{APIKey: "key-fail"},
+		})
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "g2", Provider: id, AuthType: "api-key", IsActive: true, Priority: 2,
+			Data: model.ConnectionData{APIKey: "key-ok"},
+		})
+
+		reqBody := `{
+			"contents": [{"role":"user","parts":[{"text":"hello"},{"thoughtSignature":"sig_in_abc","text":"ctx"}]}],
+			"safetySettings": [{"category":"HARM_CATEGORY_HATE_SPEECH","threshold":"BLOCK_NONE"}],
+			"tools": [{"googleSearch": {}}],
+			"generationConfig": {
+				"responseSchema": {"type": "OBJECT"},
+				"thinkingConfig": {"thinkingLevel": "HIGH"}
+			}
+		}`
+		w := httptest.NewRecorder()
+		srv.Router.ServeHTTP(w, httptest.NewRequest("POST", "/v1beta/models/"+id+"/gemini-2.5-pro:generateContent", strings.NewReader(reqBody)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("native gemini status=%d body=%s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(w.Body.String(), "sig_resp_123") {
+			t.Fatalf("response dropped thoughtSignature: %s", w.Body.String())
+		}
+		if len(sentBodies) == 0 {
+			t.Fatal("expected upstream hit")
+		}
+		sent := sentBodies[len(sentBodies)-1]
+		if _, hasModel := sent["model"]; hasModel {
+			t.Fatalf("native Gemini request must not carry top-level model field: %#v", sent["model"])
+		}
+		if sent["safetySettings"] == nil || sent["tools"] == nil {
+			t.Fatalf("native Gemini fields lost upstream: %#v", sent)
+		}
+		gc := sent["generationConfig"].(map[string]any)
+		tc := gc["thinkingConfig"].(map[string]any)
+		if gc["responseSchema"] == nil || tc["thinkingLevel"] != "HIGH" {
+			t.Fatalf("generationConfig lost fields: %#v", gc)
+		}
+		if !strings.Contains(mustMarshalTestJSON(sent["contents"]), "sig_in_abc") {
+			t.Fatalf("request thoughtSignature lost upstream: %#v", sent["contents"])
+		}
+
+		// Streaming passthrough
+		wS := httptest.NewRecorder()
+		srv.Router.ServeHTTP(wS, httptest.NewRequest("POST", "/v1beta/models/"+id+"/gemini-2.5-pro:streamGenerateContent?alt=sse", strings.NewReader(reqBody)))
+		if wS.Code != http.StatusOK || !strings.Contains(wS.Body.String(), "sig_stream_99") {
+			t.Fatalf("native gemini stream failed: %d %s", wS.Code, wS.Body.String())
+		}
+		details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: id, Page: 1, PageSize: 10})
+		if err != nil || details.Pagination.TotalItems < 2 {
+			t.Fatalf("expected recorded gemini details, got %d err=%v", details.Pagination.TotalItems, err)
+		}
+	})
+
+	t.Run("antigravity_does_not_use_native_gemini_passthrough", func(t *testing.T) {
+		var sawV1Internal bool
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sawV1Internal = strings.Contains(r.URL.Path, "v1internal")
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Write([]byte("data: {\"response\":{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"ag-ok\"}]},\"finishReason\":\"STOP\"}]}}\n\n"))
+		}))
+		defer upstream.Close()
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "ag-gem", Provider: "antigravity", AuthType: "oauth", IsActive: true,
+			Data: model.ConnectionData{AccessToken: "ag-tok", BaseURL: upstream.URL, ProviderSpecificData: map[string]any{"projectId": "p1"}},
+		})
+
+		w := httptest.NewRecorder()
+		srv.Router.ServeHTTP(w, httptest.NewRequest("POST", "/v1beta/models/antigravity/gemini-3.8-flash:generateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)))
+		if w.Code != http.StatusOK || !sawV1Internal || !strings.Contains(w.Body.String(), "ag-ok") {
+			t.Fatalf("antigravity must route via v1internal envelope: code=%d sawV1Internal=%t body=%s", w.Code, sawV1Internal, w.Body.String())
+		}
+	})
+}
+
+func mustMarshalTestJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }

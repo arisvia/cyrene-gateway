@@ -18,9 +18,9 @@ const (
 	GrokCLIModel            = "grok-build"
 )
 
-// applyGrokConversationHeaders populates stable session ID and dynamic user-turn
+// ApplyGrokConversationHeaders populates stable session ID and dynamic user-turn
 // count for cli-chat-proxy before authHooks runs.
-func applyGrokConversationHeaders(req *http.Request, bodyMap map[string]any, conn *model.ProviderConnection) {
+func ApplyGrokConversationHeaders(req *http.Request, bodyMap map[string]any, conn *model.ProviderConnection) {
 	if req.Header.Get("x-grok-session-id") == "" {
 		var sessionID string
 		if conn != nil && conn.Data.ProviderSpecificData != nil {
@@ -51,6 +51,16 @@ func applyGrokConversationHeaders(req *http.Request, bodyMap map[string]any, con
 					}
 				}
 			}
+		} else if rawInput, ok := bodyMap["input"].([]any); ok {
+			for _, item := range rawInput {
+				if im, ok := item.(map[string]any); ok {
+					if role, _ := im["role"].(string); role == "user" {
+						turns++
+					}
+				}
+			}
+		} else if strInput, ok := bodyMap["input"].(string); ok && strings.TrimSpace(strInput) != "" {
+			turns = 1
 		}
 		if turns < 1 {
 			turns = 1

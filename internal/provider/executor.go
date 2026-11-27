@@ -193,7 +193,7 @@ func PrepareUpstreamRequest(
 		upstreamReq.Header.Set(k, v)
 	}
 	if modelInfo.Provider == "grok-cli" {
-		applyGrokConversationHeaders(upstreamReq, bodyMap, conn)
+		ApplyGrokConversationHeaders(upstreamReq, bodyMap, conn)
 	}
 	ApplyAuth(upstreamReq, transport, ResolveCredentials(conn, modelInfo.Provider, modelInfo.Model))
 	upstreamReq.Header.Set("Content-Type", "application/json")

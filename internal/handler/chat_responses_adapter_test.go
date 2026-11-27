@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arisvia/cyrene-gateway/internal/db"
 	"github.com/arisvia/cyrene-gateway/internal/model"
+	"github.com/arisvia/cyrene-gateway/internal/provider"
 )
 
 func TestResponses_StringInput_NonStream(t *testing.T) {
@@ -464,4 +466,117 @@ func TestResponsesPreservesRemoteAddrForAffinity(t *testing.T) {
 	if w2.Code != http.StatusOK || hits[0] != firstAuth {
 		t.Fatalf("expected same affinity auth %q, got %q (status %d)", firstAuth, hits[0], w2.Code)
 	}
+}
+
+func TestNativeResponsesPassthrough_LosslessFailoverAndForceStream(t *testing.T) {
+	t.Run("lossless_nonstream_and_stream_with_failover", func(t *testing.T) {
+		var sawBodies []map[string]any
+		callCount := 0
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			if r.URL.Path != "/responses" {
+				t.Errorf("unexpected path: %s", r.URL.Path)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			sawBodies = append(sawBodies, body)
+			if r.Header.Get("Authorization") == "Bearer k-fail" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"error":{"message":"rate limit"}}`))
+				return
+			}
+			if isStream, _ := body["stream"].(bool); isStream {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"stream-lossless\"}\n\n"))
+				w.Write([]byte("event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_up_s\",\"status\":\"completed\",\"output\":[{\"id\":\"rs_up\",\"type\":\"reasoning\",\"encrypted_content\":\"enc_stream_999\"}],\"usage\":{\"input_tokens\":8,\"output_tokens\":4,\"total_tokens\":12}}}\n\n"))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"id":"resp_up_1","object":"response","status":"completed","output":[{"id":"rs_1","type":"reasoning","encrypted_content":"enc_abc_123"},{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"output_text","text":"native-answer"}]}],"output_text":"native-answer","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}`))
+		}))
+		defer upstream.Close()
+
+		id := "native-resp-test"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: upstream.URL + "/responses", APIType: "responses", AuthType: "api-key"}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c1", Provider: id, AuthType: "api-key", IsActive: true, Priority: 1,
+			Data: model.ConnectionData{APIKey: "k-fail"},
+		})
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c2", Provider: id, AuthType: "api-key", IsActive: true, Priority: 2,
+			Data: model.ConnectionData{APIKey: "k-ok"},
+		})
+
+		reqBody := `{
+			"model": "` + id + `/gpt-5.4",
+			"previous_response_id": "resp_prev_77",
+			"input": "hello",
+			"text": {"format": {"type": "json_object"}},
+			"reasoning": {"effort": "high", "summary": "detailed"},
+			"include": ["reasoning.encrypted_content"],
+			"stream": false
+		}`
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(reqBody)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("non-stream status=%d body=%s", w.Code, w.Body.String())
+		}
+		if callCount < 2 {
+			t.Fatalf("expected failover after 429, callCount=%d", callCount)
+		}
+		if !strings.Contains(w.Body.String(), "enc_abc_123") || !strings.Contains(w.Body.String(), "native-answer") {
+			t.Fatalf("non-stream passthrough dropped fields: %s", w.Body.String())
+		}
+		sent := sawBodies[len(sawBodies)-1]
+		if sent["previous_response_id"] != "resp_prev_77" || sent["text"] == nil || sent["include"] == nil {
+			t.Fatalf("lossless request fields missing upstream: %#v", sent)
+		}
+		rsMap, _ := sent["reasoning"].(map[string]any)
+		if rsMap == nil || rsMap["summary"] != "detailed" {
+			t.Fatalf("reasoning.summary lost upstream: %#v", sent["reasoning"])
+		}
+
+		// Streaming passthrough preserves encrypted_content + usage
+		wS := httptest.NewRecorder()
+		reqStream := strings.Replace(reqBody, `"stream": false`, `"stream": true`, 1)
+		srv.Handler.ServeHTTP(wS, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(reqStream)))
+		if wS.Code != http.StatusOK || !strings.Contains(wS.Body.String(), "enc_stream_999") {
+			t.Fatalf("stream passthrough status=%d body=%s", wS.Code, wS.Body.String())
+		}
+		details, err := database.GetRequestDetails(db.RequestDetailFilter{Provider: id, Page: 1, PageSize: 10})
+		if err != nil || details.Pagination.TotalItems < 2 {
+			t.Fatalf("expected recorded request details, got total=%d err=%v", details.Pagination.TotalItems, err)
+		}
+	})
+
+	t.Run("forcestream_aggregation_preserves_output_items", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Write([]byte("data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"rs_fs\",\"type\":\"reasoning\",\"encrypted_content\":\"enc_fs_42\"}}\n\n"))
+			w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"agg-ok\"}\n\n"))
+			w.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_fs\",\"status\":\"completed\",\"usage\":{\"input_tokens\":5,\"output_tokens\":3,\"total_tokens\":8}}}\n\n"))
+		}))
+		defer upstream.Close()
+
+		id := "native-resp-fs"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: upstream.URL + "/responses", APIType: "responses", AuthType: "api-key", ForceStream: true}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c-fs", Provider: id, AuthType: "api-key", IsActive: true, Data: model.ConnectionData{APIKey: "k"},
+		})
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"`+id+`/m","input":"hi","stream":false}`)))
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "enc_fs_42") || !strings.Contains(w.Body.String(), `"output_text":"agg-ok"`) {
+			t.Fatalf("ForceStream aggregation failed: %d %s", w.Code, w.Body.String())
+		}
+	})
 }

@@ -76,3 +76,35 @@ func TestInjectGeminiSystemKeepsTypedParts(t *testing.T) {
 		t.Errorf("prompt was not appended: %v", parts)
 	}
 }
+
+func TestInjectSystemPromptResponses(t *testing.T) {
+	// 1. String input without instructions -> creates top-level instructions
+	strBody := map[string]any{"input": "hello"}
+	InjectSystemPrompt(strBody, "responses", "be brief")
+	if strBody["instructions"] != "be brief" {
+		t.Fatalf("expected instructions set on string input body, got %#v", strBody)
+	}
+
+	// 2. Existing instructions -> appends and deduplicates
+	InjectSystemPrompt(strBody, "responses", "be brief")
+	if strBody["instructions"] != "be brief" {
+		t.Fatalf("expected dedup on instructions, got %q", strBody["instructions"])
+	}
+	InjectSystemPrompt(strBody, "responses", "use Go")
+	if strBody["instructions"] != "be brief\n\nuse Go" {
+		t.Fatalf("expected appended instructions, got %q", strBody["instructions"])
+	}
+
+	// 3. Array input with existing developer item -> appends input_text block
+	arrBody := map[string]any{
+		"input": []any{
+			map[string]any{"role": "developer", "content": []any{map[string]any{"type": "input_text", "text": "base"}}},
+		},
+	}
+	InjectSystemPrompt(arrBody, "responses", "extra")
+	dev := arrBody["input"].([]any)[0].(map[string]any)
+	devParts := dev["content"].([]any)
+	if len(devParts) != 2 || devParts[1].(map[string]any)["type"] != "input_text" || devParts[1].(map[string]any)["text"] != "extra" {
+		t.Fatalf("expected appended input_text part on developer item, got %#v", devParts)
+	}
+}
