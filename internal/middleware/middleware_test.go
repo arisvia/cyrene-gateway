@@ -30,6 +30,10 @@ func TestCORS_Preflight_AllowHeaders(t *testing.T) {
 	allow := rec.Header().Get("Access-Control-Allow-Headers")
 	lower := strings.ToLower(allow)
 	for _, h := range []string{
+		"x-cyrene-connection-id",
+		"x-cyrene-session-id",
+		"x-cyrene-tool-slimmer",
+		"x-cyrene-no-cache",
 		"x-goog-api-key",
 		"anthropic-version",
 		"anthropic-beta",

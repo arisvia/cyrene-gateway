@@ -78,6 +78,7 @@ func main() {
 	// selection layer drains soonest-expiring accounts first, and a stale
 	// deadline silently disables that.
 	srv.StartBackgroundQuotaDeadlineSync(bgCtx, handler.QuotaDeadlineRefreshInterval)
+	srv.StartBackgroundLogPrune(bgCtx, handler.LogPruneInterval, handler.DefaultLogRetentionDays)
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
 	isRestart := os.Getenv("CYRENE_RESTART") == "1"
@@ -143,6 +144,8 @@ func main() {
 	case <-done:
 		slog.Info("Shutting down gracefully...")
 	}
+
+	bgCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

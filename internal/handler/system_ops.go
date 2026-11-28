@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -10,6 +11,11 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/system"
 	"github.com/arisvia/cyrene-gateway/internal/updater"
+)
+
+const (
+	DefaultLogRetentionDays = 90
+	LogPruneInterval        = 24 * time.Hour
 )
 
 // handleSystemStats handles GET /api/system/stats
@@ -80,6 +86,9 @@ func (s *Server) handleSystemMaintenance(w http.ResponseWriter, r *http.Request)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
+		if histCount > 0 {
+			s.invalidateUsageStats()
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"success":       true,
 			"action":        "prune_logs",
@@ -111,6 +120,54 @@ func (s *Server) handleSystemMaintenance(w http.ResponseWriter, r *http.Request)
 			"error": "unknown action: must be 'checkpoint', 'vacuum', 'prune_logs', or 'reset_usage'",
 		})
 	}
+}
+
+func (s *Server) pruneExpiredLogs(retentionDays int) {
+	if s.DB == nil || retentionDays <= 0 {
+		return
+	}
+	histCount, detailCount, err := s.DB.PruneLogs(retentionDays)
+	if err != nil {
+		slog.Warn("Background log prune failed", "error", err)
+		return
+	}
+	if histCount > 0 {
+		s.invalidateUsageStats()
+	}
+	if histCount > 0 || detailCount > 0 {
+		slog.Info("Pruned expired logs",
+			"retentionDays", retentionDays,
+			"prunedHistory", histCount,
+			"prunedDetails", detailCount,
+		)
+	}
+}
+
+// StartBackgroundLogPrune periodically removes old usageHistory and requestDetails
+// rows so unattended long-running gateways do not grow their SQLite DB unboundedly.
+func (s *Server) StartBackgroundLogPrune(ctx context.Context, interval time.Duration, retentionDays int) {
+	if interval <= 0 || retentionDays <= 0 {
+		return
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(1 * time.Minute):
+		}
+		s.pruneExpiredLogs(retentionDays)
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.pruneExpiredLogs(retentionDays)
+			}
+		}
+	}()
 }
 
 // handleSystemUpdateCheck handles GET /api/system/update/check

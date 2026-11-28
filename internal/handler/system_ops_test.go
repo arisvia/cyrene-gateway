@@ -168,3 +168,65 @@ func TestSystemOpsHandlers(t *testing.T) {
 
 	_ = os.DevNull
 }
+
+func TestPruneExpiredLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test-prune.sqlite")
+
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open test db: %v", err)
+	}
+	defer testDB.Close()
+
+	now := time.Now().UTC()
+	oldTS := now.AddDate(0, 0, -100).Format(time.RFC3339)
+	recentTS := now.AddDate(0, 0, -2).Format(time.RFC3339)
+
+	for _, ts := range []string{oldTS, recentTS} {
+		if err := testDB.SaveUsageEntry(&db.UsageEntry{
+			Timestamp:        ts,
+			Provider:         "openai",
+			Model:            "gpt-4o",
+			Status:           "ok",
+			PromptTokens:     10,
+			CompletionTokens: 20,
+		}); err != nil {
+			t.Fatalf("SaveUsageEntry(%s): %v", ts, err)
+		}
+	}
+	if err := testDB.SaveRequestDetail(&db.RequestDetail{
+		ID:        "req-old",
+		Timestamp: oldTS,
+		Provider:  "openai",
+		Model:     "gpt-4o",
+		Status:    "200",
+		Data:      "{}",
+	}); err != nil {
+		t.Fatalf("SaveRequestDetail(old): %v", err)
+	}
+	if err := testDB.SaveRequestDetail(&db.RequestDetail{
+		ID:        "req-recent",
+		Timestamp: recentTS,
+		Provider:  "openai",
+		Model:     "gpt-4o",
+		Status:    "200",
+		Data:      "{}",
+	}); err != nil {
+		t.Fatalf("SaveRequestDetail(recent): %v", err)
+	}
+
+	server := NewServer(testDB, &config.Config{DBPath: dbPath, DataDir: tmpDir})
+	server.pruneExpiredLogs(DefaultLogRetentionDays)
+
+	stats, err := testDB.GetStorageStats(dbPath)
+	if err != nil {
+		t.Fatalf("GetStorageStats: %v", err)
+	}
+	if stats.TotalRequests != 1 {
+		t.Fatalf("TotalRequests = %d, want 1", stats.TotalRequests)
+	}
+	if stats.TotalDetails != 1 {
+		t.Fatalf("TotalDetails = %d, want 1", stats.TotalDetails)
+	}
+}
