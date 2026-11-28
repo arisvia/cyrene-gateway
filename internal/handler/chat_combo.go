@@ -61,7 +61,6 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 		slog.Int("models", len(models)),
 	)
 	start := time.Now()
-	loopGuard := s.loopGuardEnabled()
 
 	// Try each model in order with fallback
 	var lastStatus int
@@ -145,6 +144,7 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			}
 
 			upstreamStream := req.Stream || providerInfo.ForceStream
+			loopGuard := s.loopGuardEnabledFor(modelInfo.Provider, modelStr)
 			upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
 				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},

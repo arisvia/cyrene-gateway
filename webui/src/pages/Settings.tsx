@@ -24,8 +24,21 @@ interface CacheStats {
   tokensSaved: number
 }
 
+const OAUTH_CLI_SUGGESTIONS = [
+  'qoder-cn', 'qoder',
+  'codebuddy-cn', 'codebuddy',
+  'antigravity', 'grok-cli',
+  'claude', 'kimi', 'cursor', 'github',
+]
+
 const Settings: Component = () => {
   const { t } = useI18n()
+  const rtkOptions = () => [
+    { value: 'lossless', label: t('settings.tokenSaver.rtkLevels.lossless') },
+    { value: 'balanced', label: t('settings.tokenSaver.rtkLevels.balanced') },
+    { value: 'aggressive', label: t('settings.tokenSaver.rtkLevels.aggressive') },
+  ]
+
   const cavemanOptions = () => [
     { value: 'lite', label: t('settings.tokenSaver.cavemanLevels.lite') },
     { value: 'full', label: t('settings.tokenSaver.cavemanLevels.full') },
@@ -111,11 +124,12 @@ const Settings: Component = () => {
     await updateSetting({ tokenSaverExclude: current.filter(p => p !== providerName) })
   }
   const quickSuggestions = () => {
-    const configured = store.providers().map(p => p.provider)
-    const defaults = ['deepseek', 'openai', 'anthropic', 'gemini']
-    const merged = Array.from(new Set([...defaults, ...configured]))
-    const current = excludedProviders()
-    return merged.filter(p => !current.includes(p))
+    const configuredOAuth = store.providers()
+      .filter(p => p.authType === 'oauth')
+      .map(p => p.provider)
+    const merged = Array.from(new Set([...configuredOAuth, ...OAUTH_CLI_SUGGESTIONS]))
+    const excludedLower = new Set(excludedProviders().map(p => p.toLowerCase()))
+    return merged.filter(p => !excludedLower.has(p.toLowerCase()))
   }
 
   async function fetchCacheStats() {
@@ -458,15 +472,35 @@ const Settings: Component = () => {
           {/* 压缩策略模块 */}
           <div class="p-4 rounded-xl bg-surface-inset space-y-4">
             {/* RTK 压缩 */}
-            <div class="flex items-start justify-between gap-4">
-              <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
-                <span />
-              </Field>
-              <Toggle
-                ariaLabel={t('settings.tokenSaver.rtkTitle')}
-                checked={!!store.settings().rtkEnabled}
-                onChange={v => updateSetting({ rtkEnabled: v })}
-              />
+            <div class="space-y-3">
+              <div class="flex items-start justify-between gap-4">
+                <Field label={t('settings.tokenSaver.rtkTitle')} hint={t('settings.tokenSaver.rtkHint')}>
+                  <span />
+                </Field>
+                <Toggle
+                  ariaLabel={t('settings.tokenSaver.rtkTitle')}
+                  checked={!!store.settings().rtkEnabled}
+                  onChange={v => {
+                    if (v && !store.settings().rtkLevel) {
+                      void updateSetting({ rtkEnabled: true, rtkLevel: 'aggressive' })
+                    } else {
+                      void updateSetting({ rtkEnabled: v })
+                    }
+                  }}
+                />
+              </div>
+              <Show when={!!store.settings().rtkEnabled}>
+                <div class="pl-3 sm:pl-4 border-l-2 border-accent/40">
+                  <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.rtkLevelHint')}>
+                    <Select
+                      value={String(store.settings().rtkLevel || 'aggressive')}
+                      options={rtkOptions()}
+                      onChange={v => updateSetting({ rtkLevel: v })}
+                      class="w-full mt-1"
+                    />
+                  </Field>
+                </div>
+              </Show>
             </div>
 
             {/* Caveman 极简表达 */}

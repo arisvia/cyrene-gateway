@@ -15,6 +15,7 @@ var ErrNotFound = errors.New("not found")
 type Settings struct {
 	PasswordHash  string `json:"passwordHash,omitempty"`
 	ComboStrategy string `json:"comboStrategy,omitempty"`
+	RTKLevel      string `json:"rtkLevel,omitempty"`
 	CavemanLevel  string `json:"cavemanLevel,omitempty"`
 	PonytailLevel string `json:"ponytailLevel,omitempty"`
 	// TokenSaverExclude lists providers where caveman/ponytail breaks output (9router#2767).
@@ -51,6 +52,7 @@ func DefaultSettings() *Settings {
 		RequireLogin:     false,
 		RequireAPIKey:    false,
 		ComboStrategy:    "fallback",
+		RTKLevel:         "aggressive",
 		CavemanLevel:     "lite",
 		PonytailLevel:    "lite",
 		LoopGuardEnabled: true,

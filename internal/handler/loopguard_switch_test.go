@@ -237,3 +237,76 @@ func TestLoopGuardSwitchOnAntigravityPath(t *testing.T) {
 		})
 	}
 }
+
+func setLoopGuardAndExclusions(t *testing.T, database *db.DB, excluded ...string) {
+	t.Helper()
+	settings, err := database.GetSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.LoopGuardEnabled = true
+	settings.TokenSaverExclude = excluded
+	if err := database.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoopGuardRespectsTokenSaverExclude(t *testing.T) {
+	t.Run("chat completions", func(t *testing.T) {
+		upstream := newLoopGuardUpstream(t, `{"id":"chatcmpl-1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+		srv, database := setupTestServer(t)
+		if err := database.CreateConnection(&model.ProviderConnection{
+			ID: "exclude-openai", Provider: "openai", AuthType: "api-key", IsActive: true,
+			Data: model.ConnectionData{APIKey: "sk-mock", BaseURL: upstream.url},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		setLoopGuardAndExclusions(t, database, "OpenAI")
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, newLocalRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(loopGuardChatBody("openai/mock-model"))))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		assertNoGuardText(t, upstream.next(t))
+	})
+
+	t.Run("messages", func(t *testing.T) {
+		upstream := newLoopGuardUpstream(t, `{"id":"msg_1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-20250514","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+		srv, database := setupTestServer(t)
+		if err := database.CreateConnection(&model.ProviderConnection{
+			ID: "exclude-anthropic", Provider: "anthropic", AuthType: "api-key", IsActive: true,
+			Data: model.ConnectionData{APIKey: "sk-ant-mock", BaseURL: upstream.url},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		setLoopGuardAndExclusions(t, database, "anthropic")
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, newLocalRequest(http.MethodPost, "/v1/messages", strings.NewReader(loopGuardMessagesBody("anthropic/claude-sonnet-4-20250514"))))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		assertNoGuardText(t, upstream.next(t))
+	})
+
+	t.Run("antigravity", func(t *testing.T) {
+		upstream := newLoopGuardUpstream(t, `{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)
+		srv, database := setupTestServer(t)
+		if err := database.CreateConnection(&model.ProviderConnection{
+			ID: "exclude-ag", Provider: "antigravity", AuthType: "oauth", IsActive: true,
+			Data: model.ConnectionData{AccessToken: "test-only", BaseURL: upstream.url,
+				ProviderSpecificData: map[string]any{"projectId": "loopguard-project"}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		setLoopGuardAndExclusions(t, database, "antigravity")
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, newLocalRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(loopGuardChatBody("antigravity/claude-sonnet-4-6"))))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		assertNoGuardText(t, upstream.next(t))
+	})
+}

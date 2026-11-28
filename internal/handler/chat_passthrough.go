@@ -372,7 +372,7 @@ func (s *Server) tryNativeResponsesPassthrough(
 	reqBody["model"] = modelInfo.Model
 	reqBody["stream"] = upstreamStream
 	s.applyTokenSaver(reqBody, "responses", modelInfo.Provider, r)
-	s.applyLoopGuard(reqBody, rawBody, "responses", reqBody["tools"] != nil)
+	s.applyLoopGuard(reqBody, rawBody, "responses", modelInfo.Provider, modelStr, reqBody["tools"] != nil)
 
 	endpoint := resolveRequestEndpoint(r, "/v1/responses")
 	prompt, turns := extractResponsesPrompt(reqBody)
@@ -1031,7 +1031,7 @@ func (s *Server) tryNativeGeminiPassthrough(
 	reqBody["model"] = modelInfo.Model
 	s.applyTokenSaver(reqBody, "gemini", modelInfo.Provider, r)
 	delete(reqBody, "model")
-	s.applyLoopGuard(reqBody, rawBody, "gemini", reqBody["tools"] != nil)
+	s.applyLoopGuard(reqBody, rawBody, "gemini", modelInfo.Provider, modelStr, reqBody["tools"] != nil)
 
 	payloadBytes, err := json.Marshal(reqBody)
 	if err != nil {

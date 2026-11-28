@@ -158,7 +158,7 @@ func (s *Server) handleAntigravityChat(
 
 	if !isImage {
 		innerRequest["model"] = modelInfo.Model
-		s.applyLoopGuard(innerRequest, rawBody, "gemini", req.Tools != nil)
+		s.applyLoopGuard(innerRequest, rawBody, "gemini", modelInfo.Provider, req.Model, req.Tools != nil)
 		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider, r)
 		delete(innerRequest, "model")
 	}

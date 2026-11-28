@@ -212,7 +212,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.applyTokenSaver(reqBody, "anthropic", modelInfo.Provider, r)
-	s.applyLoopGuard(reqBody, bodyBytes, "anthropic", reqBody["tools"] != nil)
+	s.applyLoopGuard(reqBody, bodyBytes, "anthropic", modelInfo.Provider, modelStr, reqBody["tools"] != nil)
 	if s.autoPromptCacheEnabled() {
 		translator.AutoInjectClaudeCacheControl(reqBody, true)
 	}

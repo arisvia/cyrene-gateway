@@ -569,7 +569,7 @@ func (s *Server) attemptSingleModelChat(
 	}
 
 	upstreamStream := req.Stream || providerInfo.ForceStream
-	loopGuard := s.loopGuardEnabled()
+	loopGuard := s.loopGuardEnabledFor(modelInfo.Provider, req.Model)
 	upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
 		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 		provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},

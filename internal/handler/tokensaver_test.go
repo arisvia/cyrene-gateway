@@ -297,3 +297,38 @@ func TestMessagesPassthrough_TokenSaverIntegration(t *testing.T) {
 		t.Errorf("expected native messages passthrough to execute RTK compression on historical tool_result, body: %s", capturedBody)
 	}
 }
+
+func TestApplyTokenSaver_RTKLosslessLevel(t *testing.T) {
+	srv, database := setupTestServer(t)
+	settings := &db.Settings{
+		RTKEnabled: true,
+		RTKLevel:   "lossless",
+	}
+	if err := database.SaveSettings(settings); err != nil {
+		t.Fatalf("failed to save settings: %v", err)
+	}
+
+	var lines []string
+	for i := range 300 {
+		lines = append(lines, "\x1b[32mline\x1b[0m "+strconv.Itoa(i)+" "+strings.Repeat("x", 20))
+	}
+	bodyMap := map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{"role": "assistant", "content": "checking"},
+			map[string]any{"role": "tool", "content": strings.Join(lines, "\n\n\n")},
+		},
+	}
+
+	srv.applyTokenSaver(bodyMap, "openai", "openai")
+	got := bodyMap["messages"].([]any)[1].(map[string]any)["content"].(string)
+	if strings.Contains(got, "\x1b[") {
+		t.Errorf("expected ANSI escape sequences stripped in lossless mode")
+	}
+	if strings.Contains(got, "omitted") {
+		t.Errorf("lossless RTK level must not truncate lines or characters")
+	}
+	if !strings.Contains(got, "line 150 ") {
+		t.Errorf("expected middle lines preserved in lossless mode")
+	}
+}

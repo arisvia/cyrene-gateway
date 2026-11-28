@@ -128,6 +128,7 @@ func cacheAffectingSettingsChanged(a, b *db.Settings) bool {
 		a.ResponseCacheTTL != b.ResponseCacheTTL ||
 		a.ResponseCacheAll != b.ResponseCacheAll ||
 		a.RTKEnabled != b.RTKEnabled ||
+		a.RTKLevel != b.RTKLevel ||
 		a.CavemanEnabled != b.CavemanEnabled ||
 		a.CavemanLevel != b.CavemanLevel ||
 		a.PonytailEnabled != b.PonytailEnabled ||

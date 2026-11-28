@@ -16,16 +16,28 @@ const (
 	minCompressSize = 500              // bytes; skip tiny blobs
 )
 
+const (
+	// RTKLossless performs lossless pre-cleaning only (ANSI strip, blank line collapse, JSON compaction) without truncation.
+	RTKLossless = "lossless"
+	// RTKBalanced raises truncation thresholds so long coding sessions retain more active and historical context.
+	RTKBalanced = "balanced"
+	// RTKAggressive applies compact turn-aware truncation thresholds (default behavior).
+	RTKAggressive = "aggressive"
+)
+
 // CompressMessages compresses tool_result content in-place within an OpenAI,
-// Anthropic, or Gemini shaped request body. It implements turn-aware slimming:
-// the latest active turn is preserved whole below generous thresholds (≤250
-// lines / ≤16 KiB) and its failing outputs are never touched, while stale
-// historical tool results collapse aggressively (>80 lines / >4 KiB keep only
-// head 30 + tail 20 lines) behind an explicit omission marker. Returns bytes
-// saved or 0.
-func CompressMessages(body map[string]any, enabled bool) int {
+// Anthropic, or Gemini shaped request body. Level controls truncation behavior:
+// RTKLossless cleans without truncating; RTKBalanced uses relaxed limits;
+// RTKAggressive (default) keeps the existing turn-aware slimming limits.
+// Failing outputs in the latest active turn are never touched. Returns bytes saved or 0.
+func CompressMessages(body map[string]any, enabled bool, level ...string) int {
 	if !enabled || body == nil {
 		return 0
+	}
+
+	mode := RTKAggressive
+	if len(level) > 0 && level[0] != "" {
+		mode = level[0]
 	}
 
 	saved := 0
@@ -56,7 +68,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					continue
 				}
 				if content, ok := msg["content"].(string); ok {
-					compressed := compressText(content, isHistorical)
+					compressed := compressText(content, isHistorical, mode)
 					if len(compressed) < len(content) {
 						saved += len(content) - len(compressed)
 						msg["content"] = compressed
@@ -65,7 +77,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					for _, part := range parts {
 						if p, ok := part.(map[string]any); ok {
 							if text, ok := p["text"].(string); ok {
-								compressed := compressText(text, isHistorical)
+								compressed := compressText(text, isHistorical, mode)
 								if len(compressed) < len(text) {
 									saved += len(text) - len(compressed)
 									p["text"] = compressed
@@ -97,7 +109,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					continue
 				}
 				if text, ok := b["content"].(string); ok {
-					compressed := compressText(text, isHistorical)
+					compressed := compressText(text, isHistorical, mode)
 					if len(compressed) < len(text) {
 						saved += len(text) - len(compressed)
 						b["content"] = compressed
@@ -106,7 +118,7 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					for _, inner := range innerArr {
 						if ib, ok := inner.(map[string]any); ok {
 							if text, ok := ib["text"].(string); ok {
-								compressed := compressText(text, isHistorical)
+								compressed := compressText(text, isHistorical, mode)
 								if len(compressed) < len(text) {
 									saved += len(text) - len(compressed)
 									ib["text"] = compressed
@@ -161,13 +173,13 @@ func CompressMessages(body map[string]any, enabled bool) int {
 					continue
 				}
 				if content, ok := resp["content"].(string); ok {
-					compressed := compressText(content, isHistorical)
+					compressed := compressText(content, isHistorical, mode)
 					if len(compressed) < len(content) {
 						saved += len(content) - len(compressed)
 						resp["content"] = compressed
 					}
 				} else if result, ok := resp["result"].(string); ok {
-					compressed := compressText(result, isHistorical)
+					compressed := compressText(result, isHistorical, mode)
 					if len(compressed) < len(result) {
 						saved += len(result) - len(compressed)
 						resp["result"] = compressed
@@ -268,10 +280,18 @@ func cleanAndCompactText(text string) string {
 	return text
 }
 
-// compressText applies lossless cleaning/compacting followed by turn-aware smart truncation.
-func compressText(text string, isHistorical bool) string {
+// compressText applies lossless cleaning/compacting followed by level-aware truncation.
+func compressText(text string, isHistorical bool, level string) string {
 	n := len(text)
-	if n < minCompressSize || n > rawCap {
+	if n == 0 || n > rawCap {
+		return text
+	}
+
+	if level == RTKLossless {
+		return cleanAndCompactText(text)
+	}
+
+	if n < minCompressSize {
 		return text
 	}
 
@@ -283,21 +303,43 @@ func compressText(text string, isHistorical bool) string {
 	}
 
 	// Thresholds depend on whether this tool output belongs to an active latest turn
-	// or an expired historical turn.
+	// or an expired historical turn, scaled by the configured RTK level.
 	safeLineThreshold := 250
 	maxCharThreshold := 16 * 1024 // 16 KiB (~4k tokens)
 	headLines := 120
 	tailLines := 60
+	headChars := 8 * 1024
+	tailChars := 4 * 1024
 	omittedMsg := "lines omitted"
 	omittedCharMsg := "characters omitted"
 
+	if level == RTKBalanced {
+		safeLineThreshold = 500
+		maxCharThreshold = 32 * 1024
+		headLines = 240
+		tailLines = 120
+		headChars = 16 * 1024
+		tailChars = 8 * 1024
+	}
+
 	if isHistorical {
-		safeLineThreshold = 80
-		maxCharThreshold = 4 * 1024 // 4 KiB (~1k tokens)
-		headLines = 30
-		tailLines = 20
 		omittedMsg = "lines of historical tool output omitted by Cyrene Gateway"
 		omittedCharMsg = "characters of historical tool output omitted by Cyrene Gateway"
+		if level == RTKBalanced {
+			safeLineThreshold = 200
+			maxCharThreshold = 12 * 1024
+			headLines = 100
+			tailLines = 60
+			headChars = 6 * 1024
+			tailChars = 3 * 1024
+		} else {
+			safeLineThreshold = 80
+			maxCharThreshold = 4 * 1024 // 4 KiB (~1k tokens)
+			headLines = 30
+			tailLines = 20
+			headChars = maxCharThreshold / 2
+			tailChars = maxCharThreshold / 4
+		}
 	}
 
 	lines := strings.Split(text, "\n")
@@ -330,13 +372,6 @@ func compressText(text string, isHistorical bool) string {
 
 	// Phase 3: Fallback character truncation for massive outputs with few/no newlines
 	if n > maxCharThreshold {
-		headChars := maxCharThreshold / 2
-		tailChars := maxCharThreshold / 4
-		if !isHistorical {
-			headChars = 8 * 1024
-			tailChars = 4 * 1024
-		}
-
 		head := safeSliceHead(text, headChars)
 		tail := safeSliceTail(text, tailChars)
 		omittedChars := n - len(head) - len(tail)

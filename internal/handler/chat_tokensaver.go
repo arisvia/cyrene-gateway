@@ -57,8 +57,12 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 
 	// RTK compression of tool results
 	if rtkEnabled {
-		if saved := rtk.CompressMessages(bodyMap, true); saved > 0 {
-			slog.Debug("RTK compressed tool results", slog.Int("bytes_saved", saved))
+		level := settings.RTKLevel
+		if level == "" {
+			level = rtk.RTKAggressive
+		}
+		if saved := rtk.CompressMessages(bodyMap, true, level); saved > 0 {
+			slog.Debug("RTK compressed tool results", slog.Int("bytes_saved", saved), slog.String("level", level))
 		}
 	}
 
@@ -81,11 +85,14 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 	}
 }
 
-// loopGuardEnabled resolves the settings switch once so every upstream path
-// composes the same guard prompts, or none at all.
-func (s *Server) loopGuardEnabled() bool {
+// loopGuardEnabledFor resolves LoopGuard enablement for a specific provider/model,
+// honoring the shared TokenSaverExclude list.
+func (s *Server) loopGuardEnabledFor(providerID, model string) bool {
 	settings, err := s.DB.GetSettings()
-	return err == nil && settings.LoopGuardEnabled
+	if err != nil || settings == nil || !settings.LoopGuardEnabled {
+		return false
+	}
+	return !isTokenSaverExcluded(settings, providerID, model)
 }
 
 // autoPromptCacheEnabled resolves the settings switch for prompt cache injection.
@@ -96,8 +103,11 @@ func (s *Server) autoPromptCacheEnabled() bool {
 
 // applyLoopGuard composes the loop guard prompts into a prepared upstream body.
 // Format selects the shape being rewritten, exactly as the token saver does.
-func (s *Server) applyLoopGuard(bodyMap map[string]any, rawBody []byte, format string, hasTools bool) {
-	if !s.loopGuardEnabled() {
+func (s *Server) applyLoopGuard(bodyMap map[string]any, rawBody []byte, format, providerID, model string, hasTools bool) {
+	if model == "" {
+		model, _ = bodyMap["model"].(string)
+	}
+	if !s.loopGuardEnabledFor(providerID, model) {
 		return
 	}
 	provider.ApplyLoopGuard(bodyMap, rawBody, format, hasTools)

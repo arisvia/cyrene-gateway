@@ -200,6 +200,7 @@ describe('Settings 页', () => {
     expect(text).toContain('12,500')
     expect(text).toContain('令牌节省引擎')
     expect(text).toContain('RTK 压缩')
+    expect(text).toContain('深度截断 (aggressive)')
     expect(text).toContain('Caveman 极简表达')
     expect(text).toContain('Ponytail 极简代码')
     expect(text).toContain('循环守卫')
@@ -208,12 +209,58 @@ describe('Settings 页', () => {
     expect(loopGuardSwitch?.getAttribute('aria-checked')).toBe('true')
     expect(text).toContain('排除提供商名单')
     expect(text).toContain('deepseek')
+    expect(text).toContain('+qoder-cn')
+    expect(text).toContain('+codebuddy-cn')
+    expect(text).toContain('+antigravity')
+    expect(text).toContain('+grok-cli')
+    expect(text).not.toContain('+deepseek')
+    expect(text).not.toContain('+openai')
     expect(text).toContain('全部已保存')
-    for (const input of document.querySelectorAll('input[type="password"], input[placeholder*="deepseek"]')) {
+    for (const input of document.querySelectorAll('input[type="password"], input[placeholder*="qoder-cn"]')) {
       expect(input.parentElement?.classList.contains('grid')).toBe(true)
       expect(input.classList.contains('flex-1')).toBe(false)
       expect(input.classList.contains('min-h-9')).toBe(true)
     }
+  })
+
+  it('RTK 启用时显示压缩级别选择并在切换为无损清理时自动保存', async () => {
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/settings') {
+        return Promise.resolve({
+          requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
+          rtkEnabled: true, rtkLevel: 'aggressive',
+          tokenSaverExclude: [],
+        })
+      }
+      return Promise.resolve(null)
+    })
+    vi.mocked(apiPatch).mockResolvedValue(null as never)
+    await useGatewayStore().loadSettings()
+    mount(Settings)
+    await tick()
+
+    const rtkTrigger = Array.from(document.body.querySelectorAll('button')).find(
+      b => b.textContent?.includes('深度截断 (aggressive)'),
+    ) as HTMLButtonElement | undefined
+    expect(rtkTrigger).toBeTruthy()
+    rtkTrigger!.click()
+    await tick()
+
+    const optionTexts = Array.from(document.body.querySelectorAll('[role="option"]')).map(el => el.textContent?.trim())
+    expect(optionTexts).toEqual(expect.arrayContaining([
+      '仅无损清理 (lossless)',
+      '温和截断 (balanced)',
+      '深度截断 (aggressive)',
+    ]))
+
+    const losslessOpt = Array.from(document.body.querySelectorAll('[role="option"]')).find(
+      el => el.textContent?.includes('仅无损清理 (lossless)'),
+    ) as HTMLButtonElement | undefined
+    expect(losslessOpt).toBeTruthy()
+    losslessOpt!.click()
+    await tick()
+
+    expect(vi.mocked(apiPatch)).toHaveBeenCalledWith('/api/settings', { rtkLevel: 'lossless' })
   })
 
   it('支持在设置页中交互式添加与移除排除提供商并即时自动保存', async () => {
@@ -241,7 +288,7 @@ describe('Settings 页', () => {
     expect(document.body.textContent).toContain('全部已保存')
 
     // 输入并添加 ollama
-    const input = document.body.querySelector('input[placeholder*="deepseek"]') as HTMLInputElement
+    const input = document.body.querySelector('input[placeholder*="qoder-cn"]') as HTMLInputElement
     expect(input).toBeTruthy()
     input.value = 'ollama'
     input.dispatchEvent(new Event('input', { bubbles: true }))

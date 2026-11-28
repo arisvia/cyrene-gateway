@@ -631,3 +631,85 @@ func TestCompressMessages_GeminiTypedSlices(t *testing.T) {
 		t.Fatalf("typed []map[string]any contents must compress, saved=%d", saved)
 	}
 }
+
+func TestCompressMessages_LosslessLevel(t *testing.T) {
+	// Even a >400-line output with ANSI escapes, extra blank lines, and pretty JSON
+	// must be cleaned losslessly without inserting any omission marker.
+	var lines []string
+	for i := range 420 {
+		lines = append(lines, "\x1b[32mline "+strconv.Itoa(i)+"\x1b[0m with extra content")
+	}
+	longOutput := strings.Join(lines, "\n\n\n")
+	shortAnsi := "\x1b[31mERR\x1b[0m\n\n\nok"
+
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "assistant", "content": "check"},
+			map[string]any{"role": "tool", "content": longOutput},
+			map[string]any{"role": "assistant", "content": "again"},
+			map[string]any{"role": "tool", "content": shortAnsi},
+		},
+	}
+
+	saved := CompressMessages(body, true, RTKLossless)
+	if saved <= 0 {
+		t.Fatalf("expected positive lossless savings, got %d", saved)
+	}
+
+	msgs := body["messages"].([]any)
+	cleanedLong := msgs[1].(map[string]any)["content"].(string)
+	cleanedShort := msgs[3].(map[string]any)["content"].(string)
+
+	if strings.Contains(cleanedLong, "\x1b[") || strings.Contains(cleanedLong, "omitted") {
+		t.Errorf("lossless mode must strip ANSI and never truncate, got snippet: %s", cleanedLong[:min(len(cleanedLong), 160)])
+	}
+	if !strings.Contains(cleanedLong, "line 419 with extra content") || !strings.Contains(cleanedLong, "line 210 with extra content") {
+		t.Errorf("lossless mode dropped middle/tail lines")
+	}
+	if cleanedShort != "ERR\n\nok" {
+		t.Errorf("lossless mode should also clean short tool output, got %q", cleanedShort)
+	}
+}
+
+func TestCompressMessages_BalancedLevel(t *testing.T) {
+	// 150 lines (historical) and 300 lines (active): both exceed aggressive thresholds
+	// (80 / 250) but stay below balanced thresholds (200 / 500), so neither truncates.
+	makeLines := func(n int) string {
+		lines := make([]string, 0, n)
+		for i := range n {
+			lines = append(lines, "balanced line "+strconv.Itoa(i)+" padding padding padding")
+		}
+		return strings.Join(lines, "\n")
+	}
+	hist150 := makeLines(150)
+	active300 := makeLines(300)
+	overHist := makeLines(260)
+
+	body := map[string]any{
+		"messages": []any{
+			map[string]any{"role": "user", "content": "run"},
+			map[string]any{"role": "assistant", "content": "step1"},
+			map[string]any{"role": "tool", "content": hist150},
+			map[string]any{"role": "assistant", "content": "step2"},
+			map[string]any{"role": "tool", "content": overHist},
+			map[string]any{"role": "assistant", "content": "step3"},
+			map[string]any{"role": "tool", "content": active300},
+		},
+	}
+
+	saved := CompressMessages(body, true, RTKBalanced)
+	if saved <= 0 {
+		t.Fatalf("expected balanced level to compress only >200-line historical item, got %d", saved)
+	}
+
+	msgs := body["messages"].([]any)
+	if got := msgs[2].(map[string]any)["content"].(string); got != hist150 {
+		t.Errorf("balanced level should preserve 150-line historical output")
+	}
+	if got := msgs[4].(map[string]any)["content"].(string); !strings.Contains(got, "historical tool output omitted by Cyrene Gateway") {
+		t.Errorf("balanced level should truncate >200-line historical output, got %q", got[:min(len(got), 120)])
+	}
+	if got := msgs[6].(map[string]any)["content"].(string); got != active300 {
+		t.Errorf("balanced level should preserve 300-line active output")
+	}
+}
