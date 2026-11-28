@@ -290,22 +290,15 @@ func TestOpenAIToClaudeSSELateUsage(t *testing.T) {
 	if err != nil || done {
 		t.Fatalf("late usage must not terminate: done=%v err=%v", done, err)
 	}
-	var update map[string]any
-	for _, line := range strings.Split(string(out), "\n") {
-		if data, _, ok := ParseSSEDataLineString(line); ok {
-			update = decodeTranslatorPayload(t, []byte(data))
-		}
-	}
-	if update["type"] != "message_delta" {
-		t.Fatalf("late usage must immediately update message_delta: %s", out)
-	}
-	usage := update["usage"].(map[string]any)
-	if usage["input_tokens"] != float64(10) || usage["output_tokens"] != float64(2) {
-		t.Fatalf("late usage not authoritative: %s", out)
+	if strings.Contains(string(out), "event: message_delta") {
+		t.Fatalf("late usage chunk must not emit premature message_delta: %s", out)
 	}
 	out, done, err = trans.TranslateChunk([]byte("[DONE]"))
 	if err != nil || !done || !strings.Contains(string(out), `"input_tokens":10`) || !strings.Contains(string(out), `"output_tokens":2`) {
 		t.Fatalf("final usage lost: %s done=%v err=%v", out, done, err)
+	}
+	if !strings.Contains(string(out), `"stop_reason":"end_turn"`) {
+		t.Fatalf("final message_delta missing stop_reason: %s", out)
 	}
 }
 
@@ -589,5 +582,98 @@ func TestClaudeToOpenAIRequest_URLImageAndToolChoiceNone(t *testing.T) {
 	img := parts[1].(map[string]any)["image_url"].(map[string]any)
 	if img["url"] != "https://example.com/a.png" {
 		t.Fatalf("expected URL image preserved, got %+v", img)
+	}
+}
+
+func TestOpenAIToClaude_CacheReadTokensAndClamping(t *testing.T) {
+	openAIJSON := []byte(`{
+		"id": "chatcmpl-cache1",
+		"object": "chat.completion",
+		"model": "qoder/kmodel_latest",
+		"choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+		"usage": {
+			"prompt_tokens": 194514,
+			"completion_tokens": 10,
+			"total_tokens": 194524,
+			"prompt_tokens_details": {"cached_tokens": 192922}
+		}
+	}`)
+	claudeBytes, err := OpenAIToClaudeResponse(openAIJSON, "qoder/kmodel_latest")
+	if err != nil {
+		t.Fatalf("OpenAIToClaudeResponse failed: %v", err)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(claudeBytes, &resp); err != nil {
+		t.Fatal(err)
+	}
+	u := resp["usage"].(map[string]any)
+	if u["input_tokens"] != float64(1592) || u["cache_read_input_tokens"] != float64(192922) || u["output_tokens"] != float64(10) {
+		t.Fatalf("unexpected OpenAI cached usage mapping: %#v", u)
+	}
+
+	// DeepSeek prompt_cache_hit_tokens + clamping when cached > prompt
+	dsJSON := []byte(`{
+		"id": "chatcmpl-ds",
+		"choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+		"usage": {"prompt_tokens": 100, "completion_tokens": 5, "prompt_cache_hit_tokens": 120}
+	}`)
+	dsBytes, err := OpenAIToClaudeResponse(dsJSON, "deepseek-chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dsResp map[string]any
+	_ = json.Unmarshal(dsBytes, &dsResp)
+	du := dsResp["usage"].(map[string]any)
+	if du["input_tokens"] != float64(0) || du["cache_read_input_tokens"] != float64(120) {
+		t.Fatalf("unexpected clamped DeepSeek cached usage: %#v", du)
+	}
+
+	// Streaming translator carries cache_read_input_tokens into final single message_delta
+	trans := NewOpenAIToClaudeSSETranslator("qoder/kmodel_latest")
+	var stream strings.Builder
+	for _, chunk := range []string{
+		`{"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":1000,"completion_tokens":0,"prompt_tokens_details":{"cached_tokens":800}}}`,
+		`{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":800}}}`,
+		`[DONE]`,
+	} {
+		out, _, err := trans.TranslateChunk([]byte(chunk))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream.Write(out)
+	}
+	full := stream.String()
+	if strings.Count(full, "event: message_delta") != 1 {
+		t.Fatalf("expected exactly 1 message_delta event, got %d:\n%s", strings.Count(full, "event: message_delta"), full)
+	}
+	if !strings.Contains(full, `"input_tokens":200`) || !strings.Contains(full, `"cache_read_input_tokens":800`) || !strings.Contains(full, `"output_tokens":5`) {
+		t.Fatalf("expected cached usage in streamed message_delta:\n%s", full)
+	}
+}
+
+func TestOpenAIToClaudeSSE_FlushesPendingThinkPrefixBeforeToolCalls(t *testing.T) {
+	trans := NewOpenAIToClaudeSSETranslator("qoder/qmodel_latest")
+	var stream strings.Builder
+
+	for _, chunk := range []string{
+		`{"id":"c1","choices":[{"delta":{"content":"check a <th"}}]}`,
+		`{"id":"c1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"read","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`,
+		`[DONE]`,
+	} {
+		out, _, err := trans.TranslateChunk([]byte(chunk))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stream.Write(out)
+	}
+
+	full := stream.String()
+	flushIdx := strings.Index(full, `"\u003cth"`)
+	toolIdx := strings.Index(full, `"type":"tool_use"`)
+	if flushIdx < 0 || toolIdx < 0 || flushIdx > toolIdx {
+		t.Fatalf("pending think-tag prefix must flush BEFORE tool_use starts (flush=%d tool=%d):\n%s", flushIdx, toolIdx, full)
+	}
+	if strings.Count(full, "event: message_delta") != 1 {
+		t.Fatalf("expected single message_delta, got:\n%s", full)
 	}
 }

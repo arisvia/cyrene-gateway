@@ -296,6 +296,36 @@ func ClaudeToOpenAIRequest(claudeBody map[string]any) (map[string]any, error) {
 	return result, nil
 }
 
+func extractOpenAICachedTokens(usageMap map[string]any) int {
+	if usageMap == nil {
+		return 0
+	}
+	if details, ok := usageMap["prompt_tokens_details"].(map[string]any); ok {
+		if cached := anyToInt(details["cached_tokens"]); cached > 0 {
+			return cached
+		}
+	}
+	if cached := anyToInt(usageMap["prompt_cache_hit_tokens"]); cached > 0 {
+		return cached
+	}
+	return 0
+}
+
+func buildClaudeUsage(promptTokens, cachedTokens, outputTokens int) map[string]any {
+	inputTokens := promptTokens - cachedTokens
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+	usage := map[string]any{
+		"input_tokens":  inputTokens,
+		"output_tokens": outputTokens,
+	}
+	if cachedTokens > 0 {
+		usage["cache_read_input_tokens"] = cachedTokens
+	}
+	return usage
+}
+
 // OpenAIToClaudeResponse converts an OpenAI ChatCompletion JSON response into an Anthropic Message JSON response.
 func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 	var openAIResp map[string]any
@@ -390,14 +420,12 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 	}
 
 	inTokens := 0
+	cachedTokens := 0
 	outTokens := 0
 	if usageMap, ok := openAIResp["usage"].(map[string]any); ok {
-		if pt, ok := usageMap["prompt_tokens"].(float64); ok {
-			inTokens = int(pt)
-		}
-		if ct, ok := usageMap["completion_tokens"].(float64); ok {
-			outTokens = int(ct)
-		}
+		inTokens = anyToInt(usageMap["prompt_tokens"])
+		cachedTokens = extractOpenAICachedTokens(usageMap)
+		outTokens = anyToInt(usageMap["completion_tokens"])
 	}
 
 	claudeResp := map[string]any{
@@ -408,10 +436,7 @@ func OpenAIToClaudeResponse(data []byte, model string) ([]byte, error) {
 		"content":       contentBlocks,
 		"stop_reason":   stopReason,
 		"stop_sequence": nil,
-		"usage": map[string]any{
-			"input_tokens":  inTokens,
-			"output_tokens": outTokens,
-		},
+		"usage":         buildClaudeUsage(inTokens, cachedTokens, outTokens),
 	}
 
 	return json.Marshal(claudeResp)
@@ -426,6 +451,7 @@ type OpenAIToClaudeSSETranslator struct {
 	nextBlockIndex   int
 	outputTokens     int
 	inTokens         int
+	cachedTokens     int
 	outputUsageKnown bool
 	started          bool
 	ended            bool
@@ -544,10 +570,7 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 					"role":    "assistant",
 					"content": []any{},
 					"model":   t.Model,
-					"usage": map[string]any{
-						"input_tokens":  t.inTokens,
-						"output_tokens": 0,
-					},
+					"usage":   buildClaudeUsage(t.inTokens, t.cachedTokens, 0),
 				},
 			}
 			startBytes, _ := json.Marshal(startEvent)
@@ -587,7 +610,16 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 		} else if t.finishReason == "content_filter" {
 			stopReason = "refusal"
 		}
-		out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d}}\n\n", stopReason, t.inTokens, t.outputTokens))
+		msgDeltaEvent := map[string]any{
+			"type": "message_delta",
+			"delta": map[string]any{
+				"stop_reason":   stopReason,
+				"stop_sequence": nil,
+			},
+			"usage": buildClaudeUsage(t.inTokens, t.cachedTokens, t.outputTokens),
+		}
+		msgDeltaBytes, _ := json.Marshal(msgDeltaEvent)
+		out.WriteString(fmt.Sprintf("event: message_delta\ndata: %s\n\n", string(msgDeltaBytes)))
 		out.WriteString("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 		return out.Bytes(), true, nil
 	}
@@ -645,15 +677,15 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	}
 
 	if usageMap, ok := chunk["usage"].(map[string]any); ok {
-		if pt, ok := usageMap["prompt_tokens"].(float64); ok {
-			t.inTokens = int(pt)
+		if pt := anyToInt(usageMap["prompt_tokens"]); pt > 0 {
+			t.inTokens = pt
 		}
-		if ct, ok := usageMap["completion_tokens"].(float64); ok {
-			t.outputTokens = int(ct)
+		if cached := extractOpenAICachedTokens(usageMap); cached > 0 {
+			t.cachedTokens = cached
+		}
+		if _, hasCT := usageMap["completion_tokens"]; hasCT {
+			t.outputTokens = anyToInt(usageMap["completion_tokens"])
 			t.outputUsageKnown = true
-		}
-		if t.started {
-			out.WriteString(fmt.Sprintf("event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{},\"usage\":{\"input_tokens\":%d,\"output_tokens\":%d}}\n\n", t.inTokens, t.outputTokens))
 		}
 	}
 
@@ -687,10 +719,7 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 				"role":    "assistant",
 				"content": []any{},
 				"model":   t.Model,
-				"usage": map[string]any{
-					"input_tokens":  t.inTokens,
-					"output_tokens": 0,
-				},
+				"usage":   buildClaudeUsage(t.inTokens, t.cachedTokens, 0),
 			},
 		}
 		startBytes, _ := json.Marshal(startEvent)
@@ -718,6 +747,13 @@ func (t *OpenAIToClaudeSSETranslator) TranslateChunk(data []byte) ([]byte, bool,
 	// 3. Tool calls streaming
 	if tcList, ok := delta["tool_calls"].([]any); ok && len(tcList) > 0 {
 		t.hasToolCalls = true
+		for _, fragment := range t.thinkTags.Flush() {
+			if fragment.Type == DeltaThinking {
+				t.emitThinking(&out, fragment.Delta)
+			} else {
+				t.emitText(&out, fragment.Delta)
+			}
+		}
 		if t.blockStarted {
 			out.WriteString(fmt.Sprintf("event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", t.blockIndex))
 			t.blockStarted = false
