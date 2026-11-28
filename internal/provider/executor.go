@@ -50,18 +50,110 @@ type ExecutionRequest struct {
 // prepared upstream body of any supported shape. Detection lives in loopguard; the
 // rewriting is shared with the token-saver injections through rtk.
 func ApplyLoopGuard(body map[string]any, rawBody []byte, format string, hasTools bool) {
-	var history struct {
-		Messages []loopguard.Message `json:"messages"`
-	}
-	if err := json.Unmarshal(rawBody, &history); err != nil {
-		return
-	}
-	if result := loopguard.DetectLoop(history.Messages); result.Detected {
-		rtk.InjectSystemPrompt(body, format, result.Hint)
+	msgs := extractLoopGuardMessages(rawBody)
+	if len(msgs) > 0 {
+		if result := loopguard.DetectLoop(msgs); result.Detected {
+			rtk.InjectSystemPrompt(body, format, result.Hint)
+		}
 	}
 	if hasTools {
 		rtk.InjectSystemPrompt(body, format, loopguard.TerminationPrompt)
 	}
+}
+
+func extractLoopGuardMessages(rawBody []byte) []loopguard.Message {
+	var history struct {
+		Messages []loopguard.Message `json:"messages"`
+		Input    json.RawMessage     `json:"input"`
+		Contents []struct {
+			Role  string `json:"role"`
+			Parts []struct {
+				Text         string `json:"text"`
+				Thought      bool   `json:"thought"`
+				FunctionCall *struct {
+					Name string          `json:"name"`
+					Args json.RawMessage `json:"args"`
+				} `json:"functionCall"`
+			} `json:"parts"`
+		} `json:"contents"`
+	}
+	if err := json.Unmarshal(rawBody, &history); err != nil {
+		return nil
+	}
+	if len(history.Messages) > 0 {
+		return history.Messages
+	}
+
+	if trimmed := bytes.TrimSpace(history.Input); len(trimmed) > 0 && trimmed[0] == '[' {
+		var items []struct {
+			Type      string          `json:"type"`
+			Role      string          `json:"role"`
+			Name      string          `json:"name"`
+			Arguments string          `json:"arguments"`
+			Content   json.RawMessage `json:"content"`
+		}
+		if json.Unmarshal(trimmed, &items) == nil {
+			var out []loopguard.Message
+			for _, item := range items {
+				if item.Type == "function_call" && item.Name != "" {
+					out = append(out, loopguard.Message{
+						Role: "assistant",
+						ToolCalls: []loopguard.ToolCall{{
+							Function: loopguard.ToolCallFunction{
+								Name:      item.Name,
+								Arguments: item.Arguments,
+							},
+						}},
+					})
+				} else if item.Role == "assistant" && len(item.Content) > 0 {
+					out = append(out, loopguard.Message{
+						Role:    "assistant",
+						Content: item.Content,
+					})
+				}
+			}
+			return out
+		}
+	}
+
+	if len(history.Contents) > 0 {
+		var out []loopguard.Message
+		for _, c := range history.Contents {
+			if !strings.EqualFold(c.Role, "model") {
+				continue
+			}
+			var toolCalls []loopguard.ToolCall
+			var texts []string
+			for _, p := range c.Parts {
+				if p.FunctionCall != nil && p.FunctionCall.Name != "" {
+					toolCalls = append(toolCalls, loopguard.ToolCall{
+						Function: loopguard.ToolCallFunction{
+							Name:      p.FunctionCall.Name,
+							Arguments: string(p.FunctionCall.Args),
+						},
+					})
+				}
+				if !p.Thought && p.Text != "" {
+					texts = append(texts, p.Text)
+				}
+			}
+			if len(toolCalls) == 0 && len(texts) == 0 {
+				continue
+			}
+			var contentRaw json.RawMessage
+			if len(texts) > 0 {
+				contentRaw, _ = json.Marshal(strings.Join(texts, " "))
+			}
+			out = append(out, loopguard.Message{
+				Role:      "assistant",
+				Content:   contentRaw,
+				ToolCalls: toolCalls,
+			})
+		}
+		return out
+	}
+
+	return nil
 }
 
 // ExecutionResult is the outcome of executing against an upstream provider.

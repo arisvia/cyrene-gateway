@@ -263,6 +263,42 @@ describe('Settings 页', () => {
     expect(vi.mocked(apiPatch)).toHaveBeenCalledWith('/api/settings', { rtkLevel: 'lossless' })
   })
 
+  it('未知 rtkLevel 时默认展示 aggressive 且排除名单大小写不敏感去重', async () => {
+    let currentSettings = {
+      requireLogin: false, requireApiKey: true, apiKeyRpm: 5,
+      rtkEnabled: true, rtkLevel: 'legacy-unknown',
+      tokenSaverExclude: ['deepseek'],
+    }
+    vi.mocked(api).mockImplementation((path: string) => {
+      if (path === '/api/settings') return Promise.resolve(currentSettings)
+      return Promise.resolve(null)
+    })
+    vi.mocked(apiPatch).mockImplementation((_path: string, body?: unknown) => {
+      if (body && typeof body === 'object') {
+        currentSettings = { ...currentSettings, ...body }
+      }
+      return Promise.resolve(null as never)
+    })
+    mount(Settings)
+    await tick()
+
+    expect(document.body.textContent).toContain('深度截断 (aggressive)')
+
+    const patchCallsBefore = vi.mocked(apiPatch).mock.calls.length
+    const input = document.body.querySelector('input[placeholder*="qoder-cn"]') as HTMLInputElement
+    input.value = 'DeepSeek'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await tick()
+
+    const addBtn = Array.from(document.body.querySelectorAll('button')).find(b => b.textContent?.trim() === '添加')
+    addBtn!.click()
+    await tick()
+
+    expect(vi.mocked(apiPatch).mock.calls.length).toBe(patchCallsBefore)
+    const chips = Array.from(document.body.querySelectorAll('span.font-mono > span')).map(el => el.textContent?.trim())
+    expect(chips).toEqual(['deepseek'])
+  })
+
   it('支持在设置页中交互式添加与移除排除提供商并即时自动保存', async () => {
     let currentSettings = {
       requireLogin: false, requireApiKey: true, apiKeyRpm: 5,

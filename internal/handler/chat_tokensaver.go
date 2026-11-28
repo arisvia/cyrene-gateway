@@ -10,15 +10,18 @@ import (
 	"github.com/arisvia/cyrene-gateway/internal/rtk"
 )
 
-func isTokenSaverExcluded(settings *db.Settings, providerID, model string) bool {
+func isTokenSaverExcluded(settings *db.Settings, providerID string, models ...string) bool {
 	if settings == nil || len(settings.TokenSaverExclude) == 0 {
 		return false
 	}
 	candidates := []string{providerID}
-	if model != "" {
-		candidates = append(candidates, model)
-		if idx := strings.Index(model, "/"); idx > 0 {
-			candidates = append(candidates, model[:idx])
+	for _, m := range models {
+		if m == "" {
+			continue
+		}
+		candidates = append(candidates, m)
+		if idx := strings.Index(m, "/"); idx > 0 {
+			candidates = append(candidates, m[:idx])
 		}
 	}
 	for _, cand := range candidates {
@@ -37,14 +40,14 @@ func isTokenSaverExcluded(settings *db.Settings, providerID, model string) bool 
 
 // applyTokenSaver applies RTK compression, caveman, and ponytail based on settings.
 // It accepts an optional *http.Request to honor per-request header overrides (e.g. X-Cyrene-Tool-Slimmer).
-func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, providerID string, req ...*http.Request) {
+func (s *Server) applyTokenSaver(bodyMap map[string]any, format, providerID, reqModel, resolvedModel string, req ...*http.Request) {
 	settings, err := s.DB.GetSettings()
 	if err != nil {
 		return
 	}
 
-	model, _ := bodyMap["model"].(string)
-	if isTokenSaverExcluded(settings, providerID, model) {
+	bodyModel, _ := bodyMap["model"].(string)
+	if isTokenSaverExcluded(settings, providerID, reqModel, resolvedModel, bodyModel) {
 		return
 	}
 
@@ -85,14 +88,14 @@ func (s *Server) applyTokenSaver(bodyMap map[string]any, format string, provider
 	}
 }
 
-// loopGuardEnabledFor resolves LoopGuard enablement for a specific provider/model,
+// loopGuardEnabledFor resolves LoopGuard enablement for a specific provider and model(s),
 // honoring the shared TokenSaverExclude list.
-func (s *Server) loopGuardEnabledFor(providerID, model string) bool {
+func (s *Server) loopGuardEnabledFor(providerID string, models ...string) bool {
 	settings, err := s.DB.GetSettings()
 	if err != nil || settings == nil || !settings.LoopGuardEnabled {
 		return false
 	}
-	return !isTokenSaverExcluded(settings, providerID, model)
+	return !isTokenSaverExcluded(settings, providerID, models...)
 }
 
 // autoPromptCacheEnabled resolves the settings switch for prompt cache injection.
@@ -103,11 +106,9 @@ func (s *Server) autoPromptCacheEnabled() bool {
 
 // applyLoopGuard composes the loop guard prompts into a prepared upstream body.
 // Format selects the shape being rewritten, exactly as the token saver does.
-func (s *Server) applyLoopGuard(bodyMap map[string]any, rawBody []byte, format, providerID, model string, hasTools bool) {
-	if model == "" {
-		model, _ = bodyMap["model"].(string)
-	}
-	if !s.loopGuardEnabledFor(providerID, model) {
+func (s *Server) applyLoopGuard(bodyMap map[string]any, rawBody []byte, format, providerID, reqModel, resolvedModel string, hasTools bool) {
+	bodyModel, _ := bodyMap["model"].(string)
+	if !s.loopGuardEnabledFor(providerID, reqModel, resolvedModel, bodyModel) {
 		return
 	}
 	provider.ApplyLoopGuard(bodyMap, rawBody, format, hasTools)

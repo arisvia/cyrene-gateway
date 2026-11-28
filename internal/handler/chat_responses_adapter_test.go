@@ -579,4 +579,124 @@ func TestNativeResponsesPassthrough_LosslessFailoverAndForceStream(t *testing.T)
 			t.Fatalf("ForceStream aggregation failed: %d %s", w.Code, w.Body.String())
 		}
 	})
+
+	t.Run("forcestream_aggregation_truncated_returns_502", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			// Drop TCP connection abruptly to produce non-EOF read error
+			if hj, ok := w.(http.Hijacker); ok {
+				conn, _, err := hj.Hijack()
+				if err == nil {
+					conn.Close()
+				}
+			}
+		}))
+		defer upstream.Close()
+
+		id := "native-resp-trunc"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: upstream.URL + "/responses", APIType: "responses", AuthType: "api-key", ForceStream: true}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c-trunc", Provider: id, AuthType: "api-key", IsActive: true, Data: model.ConnectionData{APIKey: "k"},
+		})
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"`+id+`/m","input":"hi","stream":false}`)))
+		if w.Code != http.StatusBadGateway {
+			t.Fatalf("expected 502 on interrupted non-streaming SSE aggregation, got %d body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("rtk_and_loopguard_and_exclude_on_native_responses", func(t *testing.T) {
+		var sawBody map[string]any
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&sawBody)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"id":"resp_ok","object":"response","status":"completed","output_text":"done"}`))
+		}))
+		defer upstream.Close()
+
+		id := "native-resp-rtk"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: upstream.URL + "/responses", APIType: "responses", AuthType: "api-key"}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c-rtk", Provider: id, AuthType: "api-key", IsActive: true, Data: model.ConnectionData{APIKey: "k"},
+		})
+		st, _ := database.GetSettings()
+		st.RTKEnabled = true
+		st.RTKLevel = "aggressive"
+		st.LoopGuardEnabled = true
+		_ = database.SaveSettings(st)
+
+		longOut := strings.Repeat("tool output padding padding line\n", 120)
+		reqBody, _ := json.Marshal(map[string]any{
+			"model": id + "/m",
+			"tools": []any{map[string]any{"type": "function", "name": "read_file"}},
+			"input": []any{
+				map[string]any{"type": "function_call", "call_id": "c1", "name": "read_file", "arguments": "{}"},
+				map[string]any{"type": "function_call_output", "call_id": "c1", "output": longOut},
+				map[string]any{"type": "function_call", "call_id": "c2", "name": "read_file", "arguments": "{}"},
+				map[string]any{"type": "function_call", "call_id": "c3", "name": "read_file", "arguments": "{}"},
+				map[string]any{"type": "function_call", "call_id": "c4", "name": "read_file", "arguments": "{}"},
+			},
+			"stream": false,
+		})
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(string(reqBody))))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		gotOut := sawBody["input"].([]any)[1].(map[string]any)["output"].(string)
+		if !strings.Contains(gotOut, "omitted") {
+			t.Errorf("expected RTK compression on native Responses input, got len=%d", len(gotOut))
+		}
+		inst, _ := sawBody["instructions"].(string)
+		if !strings.Contains(inst, "STOP repeating") {
+			t.Errorf("expected LoopGuard hint on repeated Responses function_call, got instructions=%q", inst)
+		}
+
+		// When excluded, both RTK and LoopGuard must be skipped
+		st.TokenSaverExclude = []string{id}
+		_ = database.SaveSettings(st)
+		sawBody = nil
+		wEx := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(wEx, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(string(reqBody))))
+		if wEx.Code != http.StatusOK {
+			t.Fatalf("excluded status=%d body=%s", wEx.Code, wEx.Body.String())
+		}
+		exOut := sawBody["input"].([]any)[1].(map[string]any)["output"].(string)
+		if exOut != longOut {
+			t.Errorf("excluded native Responses request must not compress output")
+		}
+		if _, hasInst := sawBody["instructions"]; hasInst {
+			t.Errorf("excluded native Responses request must not inject LoopGuard instructions, got %v", sawBody["instructions"])
+		}
+	})
+
+	t.Run("homogeneous_native_pool_rate_limited_returns_503_directly", func(t *testing.T) {
+		id := "native-resp-rl"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: "https://upstream.invalid/responses", APIType: "responses", AuthType: "api-key"}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c-rl", Provider: id, AuthType: "api-key", IsActive: true,
+			Data: model.ConnectionData{APIKey: "k", RateLimitedUntil: time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)},
+		})
+
+		w := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/responses", strings.NewReader(`{"model":"`+id+`/m","input":"hi","stream":false}`)))
+		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "all accounts rate-limited") {
+			t.Fatalf("expected direct 503 for rate-limited homogeneous native pool, got %d body=%s", w.Code, w.Body.String())
+		}
+	})
 }

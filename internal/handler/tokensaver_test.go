@@ -37,7 +37,7 @@ func TestApplyTokenSaver_FallbackAndExclusion(t *testing.T) {
 			map[string]any{"role": "user", "content": "Write some code."},
 		},
 	}
-	srv.applyTokenSaver(bodyMap, "openai", "openai")
+	srv.applyTokenSaver(bodyMap, "openai", "openai", "", "")
 
 	msgs, ok := bodyMap["messages"].([]any)
 	if !ok || len(msgs) != 2 {
@@ -59,7 +59,7 @@ func TestApplyTokenSaver_FallbackAndExclusion(t *testing.T) {
 			map[string]any{"role": "user", "content": "Hello"},
 		},
 	}
-	srv.applyTokenSaver(deepseekBody, "openai", "deepseek")
+	srv.applyTokenSaver(deepseekBody, "openai", "deepseek", "", "")
 	dsMsgs := deepseekBody["messages"].([]any)
 	if len(dsMsgs) != 1 {
 		t.Fatalf("expected excluded provider deepseek to have unchanged messages, got %d", len(dsMsgs))
@@ -76,7 +76,7 @@ func TestApplyTokenSaver_FallbackAndExclusion(t *testing.T) {
 			map[string]any{"role": "tool", "content": strings.Join(lines, "\n")},
 		},
 	}
-	srv.applyTokenSaver(toolBody, "openai", "anthropic")
+	srv.applyTokenSaver(toolBody, "openai", "anthropic", "", "")
 	// Since system prompt was prepended at index 0, the tool message is at index 1
 	toolMsg := toolBody["messages"].([]any)[1].(map[string]any)
 	toolContent := toolMsg["content"].(string)
@@ -108,7 +108,7 @@ func TestApplyTokenSaver_AllLevelsAndFormats(t *testing.T) {
 			map[string]any{"role": "user", "content": "hello"},
 		},
 	}
-	srv.applyTokenSaver(openaiBody, "openai", "openai")
+	srv.applyTokenSaver(openaiBody, "openai", "openai", "", "")
 	msgs := openaiBody["messages"].([]any)
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
@@ -126,7 +126,7 @@ func TestApplyTokenSaver_AllLevelsAndFormats(t *testing.T) {
 		"model":    "claude-3-opus",
 		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
 	}
-	srv.applyTokenSaver(claudeBody, "claude", "qoder")
+	srv.applyTokenSaver(claudeBody, "claude", "qoder", "", "")
 	sys, ok := claudeBody["system"].(string)
 	if !ok || !strings.Contains(sys, "文言文") {
 		t.Errorf("expected claude system prompt to contain wenyan, got: %v", sys)
@@ -137,7 +137,7 @@ func TestApplyTokenSaver_AllLevelsAndFormats(t *testing.T) {
 		"model":    "gemini-2.0-flash",
 		"contents": []any{map[string]any{"parts": []any{map[string]any{"text": "hi"}}}},
 	}
-	srv.applyTokenSaver(geminiBody, "gemini", "gemini")
+	srv.applyTokenSaver(geminiBody, "gemini", "gemini", "", "")
 	sysInst, ok := geminiBody["systemInstruction"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected systemInstruction in gemini body, got: %v", geminiBody)
@@ -155,7 +155,7 @@ func TestApplyTokenSaver_AllLevelsAndFormats(t *testing.T) {
 			map[string]any{"role": "user", "content": "hi"},
 		},
 	}
-	srv.applyTokenSaver(dsBody, "openai", "deepseek")
+	srv.applyTokenSaver(dsBody, "openai", "deepseek", "", "")
 	if len(dsBody["messages"].([]any)) != 1 {
 		t.Errorf("expected case-insensitive deepseek exclusion to skip injection")
 	}
@@ -167,7 +167,7 @@ func TestApplyTokenSaver_AllLevelsAndFormats(t *testing.T) {
 			map[string]any{"role": "user", "content": "hi"},
 		},
 	}
-	srv.applyTokenSaver(prefixBody, "openai", "openrouter")
+	srv.applyTokenSaver(prefixBody, "openai", "openrouter", "", "")
 	if len(prefixBody["messages"].([]any)) != 1 {
 		t.Errorf("expected model prefix exclusion to skip injection")
 	}
@@ -198,7 +198,7 @@ func TestApplyTokenSaver_HeaderOverride(t *testing.T) {
 			map[string]any{"role": "tool", "content": content},
 		},
 	}
-	srv.applyTokenSaver(body1, "openai", "openai", reqEnable)
+	srv.applyTokenSaver(body1, "openai", "openai", "", "", reqEnable)
 	res1 := body1["messages"].([]any)[0].(map[string]any)["content"].(string)
 	if !strings.Contains(res1, "lines omitted") {
 		t.Errorf("expected X-Cyrene-Tool-Slimmer: 1 to force-enable RTK compression")
@@ -217,7 +217,7 @@ func TestApplyTokenSaver_HeaderOverride(t *testing.T) {
 			map[string]any{"role": "tool", "content": content},
 		},
 	}
-	srv.applyTokenSaver(body2, "openai", "openai", reqDisable)
+	srv.applyTokenSaver(body2, "openai", "openai", "", "", reqDisable)
 	res2 := body2["messages"].([]any)[0].(map[string]any)["content"].(string)
 	if strings.Contains(res2, "lines omitted") {
 		t.Errorf("expected X-Cyrene-Tool-Slimmer: 0 to force-disable RTK compression")
@@ -320,7 +320,7 @@ func TestApplyTokenSaver_RTKLosslessLevel(t *testing.T) {
 		},
 	}
 
-	srv.applyTokenSaver(bodyMap, "openai", "openai")
+	srv.applyTokenSaver(bodyMap, "openai", "openai", "", "")
 	got := bodyMap["messages"].([]any)[1].(map[string]any)["content"].(string)
 	if strings.Contains(got, "\x1b[") {
 		t.Errorf("expected ANSI escape sequences stripped in lossless mode")
@@ -330,5 +330,50 @@ func TestApplyTokenSaver_RTKLosslessLevel(t *testing.T) {
 	}
 	if !strings.Contains(got, "line 150 ") {
 		t.Errorf("expected middle lines preserved in lossless mode")
+	}
+}
+
+func TestTokenSaverAndLoopGuard_PrefixExclusionParity(t *testing.T) {
+	srv, database := setupTestServer(t)
+	st, _ := database.GetSettings()
+	st.CavemanEnabled = true
+	st.LoopGuardEnabled = true
+	st.TokenSaverExclude = []string{"custom-prefix"}
+	if err := database.SaveSettings(st); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate post-rewrite bodyMap where bodyMap["model"] was stripped to bare model name,
+	// while the client originally requested "custom-prefix/claude-sonnet".
+	rawBody := []byte(`{"model":"custom-prefix/claude-sonnet","tools":[{"type":"function","function":{"name":"f"}}],"messages":[{"role":"user","content":"hi"}]}`)
+	bodyMap := map[string]any{
+		"model":    "claude-sonnet",
+		"messages": []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+	srv.applyTokenSaver(bodyMap, "openai", "openrouter", "custom-prefix/claude-sonnet", "claude-sonnet")
+	srv.applyLoopGuard(bodyMap, rawBody, "openai", "openrouter", "custom-prefix/claude-sonnet", "claude-sonnet", true)
+
+	if len(bodyMap["messages"].([]any)) != 1 {
+		t.Fatalf("both token saver and loop guard must honor original model prefix exclusion, got messages=%v", bodyMap["messages"])
+	}
+}
+
+func TestSettingsRejectsInvalidRTKLevel(t *testing.T) {
+	srv, _ := setupTestServer(t)
+
+	// Invalid value via PATCH -> 400
+	w := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(w, newLocalRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"rtkLevel":"lossles"}`)))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid rtkLevel, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Valid value via PATCH -> 200
+	for _, valid := range []string{"lossless", "balanced", "aggressive"} {
+		wOK := httptest.NewRecorder()
+		srv.Handler.ServeHTTP(wOK, newLocalRequest(http.MethodPatch, "/api/settings", strings.NewReader(`{"rtkLevel":"`+valid+`"}`)))
+		if wOK.Code != http.StatusOK {
+			t.Fatalf("expected 200 for valid rtkLevel=%s, got %d: %s", valid, wOK.Code, wOK.Body.String())
+		}
 	}
 }

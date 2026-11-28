@@ -323,3 +323,49 @@ func mustMessages(t *testing.T, raw string) []loopguard.Message {
 	}
 	return history.Messages
 }
+
+func TestApplyLoopGuardResponsesAndGeminiLoops(t *testing.T) {
+	t.Run("responses repeated function_call", func(t *testing.T) {
+		raw := `{
+			"model": "gpt-5.4",
+			"input": [
+				{"type": "function_call", "call_id": "c1", "name": "read_file", "arguments": "{\"path\":\"a.go\"}"},
+				{"type": "function_call", "call_id": "c2", "name": "read_file", "arguments": "{\"path\":\"a.go\"}"},
+				{"type": "function_call", "call_id": "c3", "name": "read_file", "arguments": "{\"path\":\"a.go\"}"}
+			]
+		}`
+		body := decodeBody(t, raw)
+		ApplyLoopGuard(body, []byte(raw), "responses", true)
+		encoded := marshalBody(t, body)
+		if !strings.Contains(encoded, "You have called the same tool with identical arguments") {
+			t.Errorf("expected loop hint on repeated Responses function_call, got: %s", encoded)
+		}
+		if !strings.Contains(encoded, loopguard.TerminationPrompt) {
+			t.Errorf("expected termination contract on Responses tools, got: %s", encoded)
+		}
+	})
+
+	t.Run("gemini repeated functionCall ignores thought parts", func(t *testing.T) {
+		raw := `{
+			"contents": [
+				{"role": "model", "parts": [
+					{"thought": true, "text": "repeated thought repeated thought"},
+					{"functionCall": {"name": "search", "args": {"q": "status"}}}
+				]},
+				{"role": "user", "parts": [{"functionResponse": {"name": "search", "response": {"ok": true}}}]},
+				{"role": "model", "parts": [{"functionCall": {"name": "search", "args": {"q": "status"}}}]},
+				{"role": "user", "parts": [{"functionResponse": {"name": "search", "response": {"ok": true}}}]},
+				{"role": "model", "parts": [{"functionCall": {"name": "search", "args": {"q": "status"}}}]}
+			]
+		}`
+		body := decodeBody(t, raw)
+		ApplyLoopGuard(body, []byte(raw), "gemini", true)
+		encoded := marshalBody(t, body)
+		if !strings.Contains(encoded, "You have called the same tool with identical arguments") {
+			t.Errorf("expected loop hint on repeated Gemini functionCall, got: %s", encoded)
+		}
+		if !strings.Contains(encoded, loopguard.TerminationPrompt) {
+			t.Errorf("expected termination contract on Gemini tools, got: %s", encoded)
+		}
+	})
+}

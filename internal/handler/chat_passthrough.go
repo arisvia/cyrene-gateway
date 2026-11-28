@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -52,16 +53,18 @@ func (s *Server) resolvePinnedConnection(conns []model.ProviderConnection, r *ht
 	return nil
 }
 
-func hasNativeTargetConnection(providerInfo provider.ProviderInfo, conns []model.ProviderConnection, targetAPIType string) bool {
+func filterNativeTargetConnections(providerInfo provider.ProviderInfo, conns []model.ProviderConnection, targetAPIType string) (native []model.ProviderConnection, hasNonNativeActive bool) {
 	for i := range conns {
 		if !conns[i].IsActive {
 			continue
 		}
 		if base, api := effectiveProviderTarget(providerInfo, &conns[i]); api == targetAPIType && base != "" {
-			return true
+			native = append(native, conns[i])
+		} else {
+			hasNonNativeActive = true
 		}
 	}
-	return false
+	return native, hasNonNativeActive
 }
 
 func (s *Server) recordPassthroughError(
@@ -291,44 +294,48 @@ func (s *Server) tryNativeResponsesPassthrough(
 		return false
 	}
 	pinned := s.resolvePinnedConnection(conns, r)
+	var nativeConns []model.ProviderConnection
+	var hasNonNativeActive bool
 	if pinned != nil {
 		if base, api := effectiveProviderTarget(providerInfo, pinned); api != "responses" || base == "" {
 			return false
 		}
-	} else if !hasNativeTargetConnection(providerInfo, conns, "responses") {
-		// e.g. OpenAI API-key-only pool uses Chat Completions, so skip selecting
-		// here and let the Chat adapter handle it without skewing round-robin.
-		return false
+	} else {
+		nativeConns, hasNonNativeActive = filterNativeTargetConnections(providerInfo, conns, "responses")
+		if len(nativeConns) == 0 {
+			// e.g. OpenAI API-key-only pool uses Chat Completions, so skip selecting
+			// here and let the Chat adapter handle it without skewing round-robin.
+			return false
+		}
 	}
 
 	sessionKey := resolveSessionKey(r, reqBody)
 	conn := pinned
 	if conn == nil {
-		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
+		conn = s.selectAvailableConnection(nativeConns, modelInfo.Model, nil, sessionKey)
 	}
 	if conn == nil {
-		return false
+		if hasNonNativeActive {
+			return false
+		}
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
+		})
+		return true
 	}
 	s.tryRefreshToken(conn)
-	baseURL, effectiveAPIType := effectiveProviderTarget(providerInfo, conn)
-	if effectiveAPIType != "responses" || baseURL == "" {
-		return false
-	}
 
 	requestID := ensureRequestID(r)
 	w.Header().Set(requestIDHeader, requestID)
 
+	reqBody["model"] = modelInfo.Model
 	if modelEffort != "" {
-		reqBody["model"] = modelInfo.Model
 		if _, hasReasoning := reqBody["reasoning"]; !hasReasoning && modelEffort != "none" && modelEffort != "off" {
 			reqBody["reasoning"] = map[string]any{"effort": modelEffort}
 		}
 	}
 	if keyObj != nil && keyObj.SystemPrompt != "" {
 		rtk.InjectSystemPrompt(reqBody, "responses", keyObj.SystemPrompt)
-		if updated, err := json.Marshal(reqBody); err == nil {
-			rawBody = updated
-		}
 	}
 
 	var settings *db.Settings
@@ -338,7 +345,8 @@ func (s *Server) tryNativeResponsesPassthrough(
 	cacheEnabled := settings != nil && settings.ResponseCacheEnabled && s.Cache != nil
 	var cacheKey string
 	if !clientStream && cacheEnabled && !cache.ShouldBypass(r.Header) {
-		eligible, key, err := cache.IsEligible("responses:"+modelInfo.Provider, rawBody, settings.ResponseCacheAll)
+		cachePayload, _ := json.Marshal(reqBody)
+		eligible, key, err := cache.IsEligible("responses:"+modelInfo.Provider, cachePayload, settings.ResponseCacheAll)
 		if err == nil && eligible {
 			cacheKey = key
 			if entry, hit := s.Cache.Get(key); hit {
@@ -369,10 +377,9 @@ func (s *Server) tryNativeResponsesPassthrough(
 	}
 
 	upstreamStream := clientStream || providerInfo.ForceStream
-	reqBody["model"] = modelInfo.Model
 	reqBody["stream"] = upstreamStream
-	s.applyTokenSaver(reqBody, "responses", modelInfo.Provider, r)
-	s.applyLoopGuard(reqBody, rawBody, "responses", modelInfo.Provider, modelStr, reqBody["tools"] != nil)
+	s.applyTokenSaver(reqBody, "responses", modelInfo.Provider, modelStr, modelInfo.Model, r)
+	s.applyLoopGuard(reqBody, rawBody, "responses", modelInfo.Provider, modelStr, modelInfo.Model, reqBody["tools"] != nil)
 
 	endpoint := resolveRequestEndpoint(r, "/v1/responses")
 	prompt, turns := extractResponsesPrompt(reqBody)
@@ -393,19 +400,12 @@ func (s *Server) tryNativeResponsesPassthrough(
 			break
 		}
 		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: endpoint})
-		cur = nil
-		for {
-			next := s.selectAvailableConnection(conns, modelInfo.Model, tried, sessionKey)
-			if next == nil {
-				break
-			}
+		next := s.selectAvailableConnection(nativeConns, modelInfo.Model, tried, sessionKey)
+		if next != nil {
 			tried[next.ID] = true
 			s.tryRefreshToken(next)
-			if b, e := effectiveProviderTarget(providerInfo, next); e == "responses" && b != "" {
-				cur = next
-				break
-			}
 		}
+		cur = next
 	}
 
 	if lastStatus == 0 {
@@ -704,6 +704,9 @@ func (s *Server) aggregateNativeResponsesSSE(w http.ResponseWriter, r *http.Requ
 				s.recordUsage(uc, lastUsage)
 				return
 			}
+			if !errors.Is(err, io.EOF) {
+				streamErr = map[string]any{"message": "upstream stream interrupted: " + err.Error()}
+			}
 			break
 		}
 		if len(ev.Data) == 0 || bytes.Equal(bytes.TrimSpace(ev.Data), []byte("[DONE]")) {
@@ -956,27 +959,34 @@ func (s *Server) tryNativeGeminiPassthrough(
 		return false
 	}
 	pinned := s.resolvePinnedConnection(conns, r)
+	var nativeConns []model.ProviderConnection
+	var hasNonNativeActive bool
 	if pinned != nil {
 		if base, api := effectiveProviderTarget(providerInfo, pinned); api != "gemini" || base == "" {
 			return false
 		}
-	} else if !hasNativeTargetConnection(providerInfo, conns, "gemini") {
-		return false
+	} else {
+		nativeConns, hasNonNativeActive = filterNativeTargetConnections(providerInfo, conns, "gemini")
+		if len(nativeConns) == 0 {
+			return false
+		}
 	}
 
 	sessionKey := resolveSessionKey(r, reqBody)
 	conn := pinned
 	if conn == nil {
-		conn = s.selectAvailableConnection(conns, modelInfo.Model, nil, sessionKey)
+		conn = s.selectAvailableConnection(nativeConns, modelInfo.Model, nil, sessionKey)
 	}
 	if conn == nil {
-		return false
+		if hasNonNativeActive {
+			return false
+		}
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": fmt.Sprintf("all accounts rate-limited for provider: %s", modelInfo.Provider),
+		})
+		return true
 	}
 	s.tryRefreshToken(conn)
-	baseURL, effectiveAPIType := effectiveProviderTarget(providerInfo, conn)
-	if effectiveAPIType != "gemini" || baseURL == "" {
-		return false
-	}
 
 	requestID := ensureRequestID(r)
 	w.Header().Set(requestIDHeader, requestID)
@@ -1026,12 +1036,8 @@ func (s *Server) tryNativeGeminiPassthrough(
 		w = rec
 	}
 
-	// Set "model" temporarily so tokenSaver exclusion rules can inspect it, then
-	// delete it because Gemini generateContent rejects unknown top-level "model".
-	reqBody["model"] = modelInfo.Model
-	s.applyTokenSaver(reqBody, "gemini", modelInfo.Provider, r)
-	delete(reqBody, "model")
-	s.applyLoopGuard(reqBody, rawBody, "gemini", modelInfo.Provider, modelStr, reqBody["tools"] != nil)
+	s.applyTokenSaver(reqBody, "gemini", modelInfo.Provider, modelStr, modelInfo.Model, r)
+	s.applyLoopGuard(reqBody, rawBody, "gemini", modelInfo.Provider, modelStr, modelInfo.Model, reqBody["tools"] != nil)
 
 	payloadBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -1058,19 +1064,12 @@ func (s *Server) tryNativeGeminiPassthrough(
 			break
 		}
 		s.publishRequestEvent(r, RequestEvent{Type: "fallback", Provider: modelInfo.Provider, Model: modelInfo.Model, Status: "fallback", Endpoint: endpoint})
-		cur = nil
-		for {
-			next := s.selectAvailableConnection(conns, modelInfo.Model, tried, sessionKey)
-			if next == nil {
-				break
-			}
+		next := s.selectAvailableConnection(nativeConns, modelInfo.Model, tried, sessionKey)
+		if next != nil {
 			tried[next.ID] = true
 			s.tryRefreshToken(next)
-			if b, e := effectiveProviderTarget(providerInfo, next); e == "gemini" && b != "" {
-				cur = next
-				break
-			}
 		}
+		cur = next
 	}
 
 	if lastStatus == 0 {
@@ -1310,6 +1309,21 @@ func (s *Server) aggregateNativeGeminiSSE(w http.ResponseWriter, r *http.Request
 					uc.Response = textBuf.String()
 				}
 				s.recordUsage(uc, lastUsage)
+				return
+			}
+			if !errors.Is(err, io.EOF) {
+				if uc != nil {
+					uc.Status = http.StatusBadGateway
+					uc.Response = textBuf.String()
+				}
+				s.recordUsage(uc, lastUsage)
+				writeJSON(w, http.StatusBadGateway, map[string]any{
+					"error": map[string]any{
+						"code":    502,
+						"status":  "UNAVAILABLE",
+						"message": "upstream stream interrupted: " + err.Error(),
+					},
+				})
 				return
 			}
 			break

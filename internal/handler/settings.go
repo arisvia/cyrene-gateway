@@ -8,6 +8,7 @@ import (
 
 	"github.com/arisvia/cyrene-gateway/internal/auth"
 	"github.com/arisvia/cyrene-gateway/internal/db"
+	"github.com/arisvia/cyrene-gateway/internal/rtk"
 )
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +50,10 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// Guard: cannot disable login requirement when accessing from public WAN or tunnel domain
 	if current != nil && current.RequireLogin && !settings.RequireLogin && auth.IsPublicWANRequest(r) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot disable login requirement when accessing from public WAN"})
+		return
+	}
+	if !rtk.IsValidRTKLevel(settings.RTKLevel) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid rtkLevel: must be lossless, balanced, or aggressive"})
 		return
 	}
 	if err := s.DB.SaveSettings(&settings); err != nil {
@@ -100,6 +105,10 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 	// Guard: cannot disable login requirement when accessing from public WAN or tunnel domain
 	if current.RequireLogin && !updated.RequireLogin && auth.IsPublicWANRequest(r) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot disable login requirement when accessing from public WAN"})
+		return
+	}
+	if !rtk.IsValidRTKLevel(updated.RTKLevel) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid rtkLevel: must be lossless, balanced, or aggressive"})
 		return
 	}
 	if err := s.DB.SaveSettings(&updated); err != nil {

@@ -713,3 +713,61 @@ func TestCompressMessages_BalancedLevel(t *testing.T) {
 		t.Errorf("balanced level should preserve 300-line active output")
 	}
 }
+
+func TestCompressMessages_ResponsesInput(t *testing.T) {
+	makeLines := func(prefix string, n int) string {
+		lines := make([]string, 0, n)
+		for i := range n {
+			lines = append(lines, prefix+" line "+strconv.Itoa(i)+" padding padding padding")
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	histOut := makeLines("hist", 120)     // >80 lines historical -> compressed
+	activeOK := makeLines("active", 120)  // <=250 lines active -> preserved
+	activeErr := makeLines("panic:", 300) // active error -> preserved even >250
+
+	body := map[string]any{
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": "c1", "name": "read_file", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "c1", "output": histOut},
+			map[string]any{"type": "function_call", "call_id": "c2", "name": "read_file", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "c2", "output": activeOK},
+			map[string]any{"type": "function_call_output", "call_id": "c3", "output": []any{
+				map[string]any{"type": "input_text", "text": activeErr},
+			}},
+		},
+	}
+
+	saved := CompressMessages(body, true, RTKAggressive)
+	if saved <= 0 {
+		t.Fatalf("expected positive savings for Responses input function_call_output, got %d", saved)
+	}
+	in := body["input"].([]any)
+	if got := in[1].(map[string]any)["output"].(string); !strings.Contains(got, "historical tool output omitted by Cyrene Gateway") {
+		t.Errorf("historical function_call_output must be compressed, got %q", got[:min(len(got), 120)])
+	}
+	if got := in[3].(map[string]any)["output"].(string); got != activeOK {
+		t.Errorf("active function_call_output <=250 lines must stay intact")
+	}
+	if got := in[4].(map[string]any)["output"].([]any)[0].(map[string]any)["text"].(string); got != activeErr {
+		t.Errorf("active failing function_call_output must stay intact")
+	}
+
+	// Lossless level on Responses input strips ANSI without truncating
+	ansiLines := "\x1b[32mok\x1b[0m\n\n\n" + histOut
+	losslessBody := map[string]any{
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": "c1", "name": "run", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "c1", "output": ansiLines},
+			map[string]any{"role": "assistant", "content": "next"},
+		},
+	}
+	if s := CompressMessages(losslessBody, true, RTKLossless); s <= 0 {
+		t.Fatalf("expected lossless cleanup savings on Responses input, got %d", s)
+	}
+	losslessOut := losslessBody["input"].([]any)[1].(map[string]any)["output"].(string)
+	if strings.Contains(losslessOut, "\x1b[") || strings.Contains(losslessOut, "omitted") {
+		t.Errorf("lossless Responses cleanup must strip ANSI without omitting lines")
+	}
+}

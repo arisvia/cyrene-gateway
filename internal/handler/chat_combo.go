@@ -144,11 +144,13 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 			}
 
 			upstreamStream := req.Stream || providerInfo.ForceStream
-			loopGuard := s.loopGuardEnabledFor(modelInfo.Provider, modelStr)
+			loopGuard := s.loopGuardEnabledFor(modelInfo.Provider, modelStr, modelInfo.Model)
 			upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
 				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+				func(body map[string]any, format string) {
+					s.applyTokenSaver(body, format, modelInfo.Provider, modelStr, modelInfo.Model, r)
+				},
 			)
 			if err != nil {
 				// Request-build failures repeat on every account of this model.
@@ -194,7 +196,9 @@ func (s *Server) handleComboChat(w http.ResponseWriter, r *http.Request, req Cha
 					retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
 						provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 						provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-						func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+						func(body map[string]any, format string) {
+							s.applyTokenSaver(body, format, modelInfo.Provider, modelStr, modelInfo.Model, r)
+						},
 					)
 					if retryErr == nil {
 						slog.Info("Retrying combo request after token refresh", slog.String("provider", modelInfo.Provider))

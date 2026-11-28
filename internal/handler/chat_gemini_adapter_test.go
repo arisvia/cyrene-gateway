@@ -324,6 +324,83 @@ func TestNativeGeminiPassthrough_LosslessFailoverAndAntigravityBypass(t *testing
 			t.Fatalf("antigravity must route via v1internal envelope: code=%d sawV1Internal=%t body=%s", w.Code, sawV1Internal, w.Body.String())
 		}
 	})
+
+	t.Run("loopguard_exclude_and_interrupted_forcestream_502", func(t *testing.T) {
+		var sawBody map[string]any
+		interrupt := false
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&sawBody)
+			if interrupt {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Write([]byte("data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"half\"}]}}]}\n\n"))
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				if hj, ok := w.(http.Hijacker); ok {
+					if conn, _, err := hj.Hijack(); err == nil {
+						conn.Close()
+					}
+				}
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"gem-ok"}]},"finishReason":"STOP"}]}`))
+		}))
+		defer upstream.Close()
+
+		id := "native-gem-guard"
+		provider.Registry[id] = provider.ProviderInfo{ID: id, Name: id, BaseURL: upstream.URL, APIType: "gemini", AuthType: "api-key"}
+		defer delete(provider.Registry, id)
+
+		srv, database := setupTestServer(t)
+		_ = database.CreateConnection(&model.ProviderConnection{
+			ID: "c-gem-g", Provider: id, AuthType: "api-key", IsActive: true, Data: model.ConnectionData{APIKey: "k"},
+		})
+		st, _ := database.GetSettings()
+		st.LoopGuardEnabled = true
+		_ = database.SaveSettings(st)
+
+		reqBody := `{
+			"tools": [{"functionDeclarations": [{"name": "lookup"}]}],
+			"contents": [
+				{"role": "model", "parts": [{"functionCall": {"name": "lookup", "args": {"k": "v"}}}]},
+				{"role": "model", "parts": [{"functionCall": {"name": "lookup", "args": {"k": "v"}}}]},
+				{"role": "model", "parts": [{"functionCall": {"name": "lookup", "args": {"k": "v"}}}]}
+			]
+		}`
+		w := httptest.NewRecorder()
+		srv.Router.ServeHTTP(w, httptest.NewRequest("POST", "/v1beta/models/"+id+"/gemini-2.5-pro:generateContent", strings.NewReader(reqBody)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+		if !strings.Contains(mustMarshalTestJSON(sawBody["systemInstruction"]), "STOP repeating") {
+			t.Errorf("expected LoopGuard hint in Gemini systemInstruction, got %#v", sawBody["systemInstruction"])
+		}
+
+		// Excluded provider skips LoopGuard
+		st.TokenSaverExclude = []string{id}
+		_ = database.SaveSettings(st)
+		sawBody = nil
+		wEx := httptest.NewRecorder()
+		srv.Router.ServeHTTP(wEx, httptest.NewRequest("POST", "/v1beta/models/"+id+"/gemini-2.5-pro:generateContent", strings.NewReader(reqBody)))
+		if wEx.Code != http.StatusOK {
+			t.Fatalf("excluded status=%d body=%s", wEx.Code, wEx.Body.String())
+		}
+		if sawBody["systemInstruction"] != nil {
+			t.Errorf("excluded Gemini request must not inject systemInstruction, got %#v", sawBody["systemInstruction"])
+		}
+
+		// ForceStream interrupted non-streaming aggregation must return 502 instead of fake 200
+		info := provider.Registry[id]
+		info.ForceStream = true
+		provider.Registry[id] = info
+		interrupt = true
+		wTrunc := httptest.NewRecorder()
+		srv.Router.ServeHTTP(wTrunc, httptest.NewRequest("POST", "/v1beta/models/"+id+"/gemini-2.5-pro:generateContent", strings.NewReader(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`)))
+		if wTrunc.Code != http.StatusBadGateway {
+			t.Fatalf("expected 502 on interrupted Gemini non-stream SSE aggregation, got %d body=%s", wTrunc.Code, wTrunc.Body.String())
+		}
+	})
 }
 
 func mustMarshalTestJSON(v any) string {

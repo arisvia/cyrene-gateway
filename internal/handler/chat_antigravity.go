@@ -157,10 +157,8 @@ func (s *Server) handleAntigravityChat(
 	targetModel, thinkingLevel, shouldInjectThinking, isImage := resolveAntigravityModel(modelInfo.Model, effort, availableModels)
 
 	if !isImage {
-		innerRequest["model"] = modelInfo.Model
-		s.applyLoopGuard(innerRequest, rawBody, "gemini", modelInfo.Provider, req.Model, req.Tools != nil)
-		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider, r)
-		delete(innerRequest, "model")
+		s.applyLoopGuard(innerRequest, rawBody, "gemini", modelInfo.Provider, req.Model, modelInfo.Model, req.Tools != nil)
+		s.applyTokenSaver(innerRequest, "gemini", modelInfo.Provider, req.Model, modelInfo.Model, r)
 	}
 	if isImage {
 		genConfig["maxOutputTokens"] = 8192

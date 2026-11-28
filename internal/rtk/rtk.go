@@ -25,6 +25,16 @@ const (
 	RTKAggressive = "aggressive"
 )
 
+// IsValidRTKLevel reports whether level is empty (default) or a recognized RTK mode.
+func IsValidRTKLevel(level string) bool {
+	switch level {
+	case "", RTKLossless, RTKBalanced, RTKAggressive:
+		return true
+	default:
+		return false
+	}
+}
+
 // CompressMessages compresses tool_result content in-place within an OpenAI,
 // Anthropic, or Gemini shaped request body. Level controls truncation behavior:
 // RTKLossless cleans without truncating; RTKBalanced uses relaxed limits;
@@ -183,6 +193,53 @@ func CompressMessages(body map[string]any, enabled bool, level ...string) int {
 					if len(compressed) < len(result) {
 						saved += len(result) - len(compressed)
 						resp["result"] = compressed
+					}
+				}
+			}
+		}
+	}
+
+	// OpenAI Responses format: body["input"] -> items with type "function_call_output"
+	if input, ok := body["input"].([]any); ok {
+		lastAssistantIdx := -1
+		for i, raw := range input {
+			if item, ok := raw.(map[string]any); ok {
+				role, _ := item["role"].(string)
+				itemType, _ := item["type"].(string)
+				if role == "assistant" || itemType == "function_call" || itemType == "reasoning" {
+					lastAssistantIdx = i
+				}
+			}
+		}
+
+		for i, raw := range input {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if itemType, _ := item["type"].(string); itemType != "function_call_output" {
+				continue
+			}
+			isHistorical := (lastAssistantIdx != -1 && i < lastAssistantIdx)
+			if !isHistorical && isToolOutputError(item["output"]) {
+				continue
+			}
+			if output, ok := item["output"].(string); ok {
+				compressed := compressText(output, isHistorical, mode)
+				if len(compressed) < len(output) {
+					saved += len(output) - len(compressed)
+					item["output"] = compressed
+				}
+			} else if parts, ok := item["output"].([]any); ok {
+				for _, part := range parts {
+					if p, ok := part.(map[string]any); ok {
+						if text, ok := p["text"].(string); ok {
+							compressed := compressText(text, isHistorical, mode)
+							if len(compressed) < len(text) {
+								saved += len(text) - len(compressed)
+								p["text"] = compressed
+							}
+						}
 					}
 				}
 			}

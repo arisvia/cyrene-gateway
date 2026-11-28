@@ -569,11 +569,13 @@ func (s *Server) attemptSingleModelChat(
 	}
 
 	upstreamStream := req.Stream || providerInfo.ForceStream
-	loopGuard := s.loopGuardEnabledFor(modelInfo.Provider, req.Model)
+	loopGuard := s.loopGuardEnabledFor(modelInfo.Provider, req.Model, modelInfo.Model)
 	upstreamReq, targetFormat, err := provider.PrepareUpstreamRequest(r.Context(),
 		provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 		provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-		func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+		func(body map[string]any, format string) {
+			s.applyTokenSaver(body, format, modelInfo.Provider, req.Model, modelInfo.Model, r)
+		},
 	)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -609,7 +611,9 @@ func (s *Server) attemptSingleModelChat(
 		if retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
 			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+			func(body map[string]any, format string) {
+				s.applyTokenSaver(body, format, modelInfo.Provider, req.Model, modelInfo.Model, r)
+			},
 		); retryErr == nil {
 			resp, err = client.Do(retryReq)
 		}
@@ -620,7 +624,9 @@ func (s *Server) attemptSingleModelChat(
 		if retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
 			provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 			provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-			func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+			func(body map[string]any, format string) {
+				s.applyTokenSaver(body, format, modelInfo.Provider, req.Model, modelInfo.Model, r)
+			},
 		); retryErr == nil {
 			resp, err = client.Do(retryReq)
 		}
@@ -656,7 +662,9 @@ func (s *Server) attemptSingleModelChat(
 			retryReq, _, retryErr := provider.PrepareUpstreamRequest(r.Context(),
 				provider.ExecutionRequest{RawBody: rawBody, Stream: req.Stream, HasTools: req.Tools != nil, LoopGuardEnabled: loopGuard, AutoPromptCache: s.autoPromptCacheEnabled()},
 				provider.ExecutionCandidate{Connection: conn, ModelInfo: modelInfo, ProviderInfo: providerInfo},
-				func(body map[string]any, format string) { s.applyTokenSaver(body, format, modelInfo.Provider, r) },
+				func(body map[string]any, format string) {
+					s.applyTokenSaver(body, format, modelInfo.Provider, req.Model, modelInfo.Model, r)
+				},
 			)
 			if retryErr == nil {
 				slog.Info("Retrying after token refresh", slog.String("provider", modelInfo.Provider))

@@ -24,6 +24,8 @@ interface CacheStats {
   tokensSaved: number
 }
 
+const VALID_RTK_LEVELS = new Set(['lossless', 'balanced', 'aggressive'])
+
 const OAUTH_CLI_SUGGESTIONS = [
   'qoder-cn', 'qoder',
   'codebuddy-cn', 'codebuddy',
@@ -114,7 +116,8 @@ const Settings: Component = () => {
     const trimmed = providerName.trim()
     if (!trimmed) return
     const current = excludedProviders()
-    if (!current.includes(trimmed)) {
+    const lower = trimmed.toLowerCase()
+    if (!current.some(p => p.toLowerCase() === lower)) {
       await updateSetting({ tokenSaverExclude: [...current, trimmed] })
     }
     setExcludeInput('')
@@ -493,7 +496,7 @@ const Settings: Component = () => {
                 <div class="pl-3 sm:pl-4 border-l-2 border-accent/40">
                   <Field label={t('settings.tokenSaver.compressionLevel')} hint={t('settings.rtkLevelHint')}>
                     <Select
-                      value={String(store.settings().rtkLevel || 'aggressive')}
+                      value={VALID_RTK_LEVELS.has(String(store.settings().rtkLevel || 'aggressive')) ? String(store.settings().rtkLevel || 'aggressive') : 'aggressive'}
                       options={rtkOptions()}
                       onChange={v => updateSetting({ rtkLevel: v })}
                       class="w-full mt-1"
