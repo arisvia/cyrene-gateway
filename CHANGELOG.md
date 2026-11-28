@@ -2,6 +2,20 @@
 
 所有显著变更记录于此。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.14.1] - 2026-11-28
+
+### Added
+- **RTK 压缩级别选择与 OAuth/CLI 快捷排除推荐**：RTK 新增 `lossless`（仅无损清洗）、`balanced`（温和截断）与 `aggressive`（标准压缩）三档选择；Token 省流排除面板的快捷推荐切换为 OAuth/CLI 转接渠道。
+- **后台历史日志定期自动清理**：新增 90 天保留期的每日后台日志清理任务，防止 `usageHistory` 长期无限增长，并在清理后同步失效用量统计缓存。
+
+### Changed
+- **循环守卫跟随 Token 省流排除名单**：`loopGuardEnabled` 在全上游路径统一遵守 `TokenSaverExclude` 排除规则，避免对 OAuth/CLI 原生代理渠道重复注入控制指令。
+
+### Fixed
+- **四大协议原生直通的 RTK、循环守卫与断流收敛修复**：补齐 Responses `function_call_output` 压缩与 Responses/Gemini 循环守卫检测，修复 Responses/Gemini 原生直通 SSE 聚合在流中断时误报 HTTP 200 及混合账号池轮换偏差，并统一后端 `rtkLevel` 校验与多协议排除匹配口径。
+- **OpenAI→Anthropic 跨协议翻译补齐**：补齐 `cache_read_input_tokens` 映射、工具调用前的 `<think>` 缓冲刷新，并收敛为单次终态 `message_delta`，消除跨协议流式事件错位。
+- **CORS 允许头与优雅退出细节收口**：补齐 `X-Cyrene-Tool-Slimmer` 与 `X-Cyrene-No-Cache` 跨域预检放行头，并在停服前提前取消后台定时同步协程。
+
 ## [1.14.0] - 2026-11-27
 
 ### Added
